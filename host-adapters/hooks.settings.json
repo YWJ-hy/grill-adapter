@@ -1,0 +1,36 @@
+{
+  "_comment": "grill-adapter canonical hook fragment. install.py merges these entries into the target project's .claude/settings.json idempotently (marker-tagged, add-only). __GRILL_ADAPTER_ROOT__ is replaced with the installed payload root. Host-agnostic: grill and plain hosts use the same hooks.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          { "type": "command", "command": "__GRILL_ADAPTER_ROOT__/hooks/wiki-reread.sh", "async": false }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "__GRILL_ADAPTER_ROOT__/hooks/wiki-reread.sh", "async": false }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|Bash",
+        "hooks": [
+          { "type": "command", "command": "__GRILL_ADAPTER_ROOT__/hooks/source-truth-lint.sh", "async": false }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "__GRILL_ADAPTER_ROOT__/hooks/wiki-capture-suggest.sh", "async": false },
+          { "type": "command", "command": "__GRILL_ADAPTER_ROOT__/hooks/source-truth-lint.sh", "async": false }
+        ]
+      }
+    ]
+  }
+}
