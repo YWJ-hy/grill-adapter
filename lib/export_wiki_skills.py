@@ -48,7 +48,7 @@ MANIFEST_REL = TOOLS_REL / ".export-manifest.json"
 
 # Optional CI: rebuild the root .graph.json after a PR merges into the default
 # branch. The template carries a marker placeholder substituted at export time.
-WORKFLOW_SRC = Path("overlays") / "wiki-repo-ci" / "rebuild-wiki-graph.yml"
+WORKFLOW_SRC = Path("wiki-repo-ci") / "rebuild-wiki-graph.yml"
 WORKFLOW_REL = Path(".github") / "workflows" / "rebuild-wiki-graph.yml"
 MARKER_PLACEHOLDER = "__ADAPTER_GENERATED_MARKER__"
 
@@ -79,8 +79,8 @@ def _skill_files(skills_src: Path, skill: str) -> list[tuple[Path, Path]]:
 def export(adapter_root: Path, repo_root: Path, graph_ci: bool = True) -> dict:
     adapter_root = adapter_root.resolve()
     repo_root = repo_root.resolve()
-    scripts_src = adapter_root / "overlays" / "scripts"
-    skills_src = adapter_root / "overlays" / "wiki-repo-skills"
+    scripts_src = adapter_root / "scripts"
+    skills_src = adapter_root / "wiki-repo-skills"
     marker = _marker(adapter_root)
     manifest = json.loads((adapter_root / "manifest.json").read_text(encoding="utf-8"))
 

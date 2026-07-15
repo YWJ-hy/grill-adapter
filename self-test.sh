@@ -6,13 +6,23 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${1:-}"
 TESTS_DIR="$SCRIPT_DIR/tests"
 
 if [[ ! -d "$TESTS_DIR" ]]; then
   echo "No tests/ directory." >&2
   exit 1
 fi
+
+# Every test gets (grill-adapter-root, project-root). Provide a throwaway project root
+# when the caller did not pass one, so tests that need a project still run.
+PROJECT_ROOT="${1:-}"
+CLEANUP_PROJECT=""
+if [[ -z "$PROJECT_ROOT" ]]; then
+  PROJECT_ROOT="$(mktemp -d)"
+  ( cd "$PROJECT_ROOT" && git init -q ) 2>/dev/null || true
+  CLEANUP_PROJECT="$PROJECT_ROOT"
+fi
+trap '[[ -n "$CLEANUP_PROJECT" ]] && rm -rf "$CLEANUP_PROJECT"' EXIT
 
 pass=0; fail=0; failed_names=()
 shopt -s nullglob
