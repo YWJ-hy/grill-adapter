@@ -1,0 +1,5 @@
+# one directory name per line
+# default directories are already ignored by the adapter:
+# draft
+# archive
+# examples

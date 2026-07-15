@@ -1,0 +1,12 @@
+{
+  "wiki": {
+    "sharedMcp": {
+      "repoUrl": "https://github.com/acme/platform-wiki.git",
+      "baseBranch": "master",
+      "remote": "origin",
+      "wikiRoot": ".",
+      "displayRoot": ".shared-superpowers/wiki",
+      "draftPr": true
+    }
+  }
+}

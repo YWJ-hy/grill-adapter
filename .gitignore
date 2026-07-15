@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+
+# Node / MCP build artifacts (rebuilt by `manage.sh install` / `npm run build`)
+mcp/shared-wiki/node_modules/
+mcp/shared-wiki/dist/
+node_modules/
+dist/
+
+# Machine-local install/config artifacts
+grill-adapter.config.json
+shared-wiki-mcp.config.json
+manifest-output.json
+
+# OS
+.DS_Store
