@@ -1,5 +1,15 @@
 # grill-adapter 构建蓝图：host-agnostic adapter（脱 Superpowers，grill 作前端）
 
+> ## ⚠️ 已归档 —— 历史文档，不要照此施工
+>
+> 本文是项目**初次构建**时的蓝图，保留作历史记录。它描述的**两级安装模型已整体废除**：grill-adapter 现在以 **Claude Code 插件**发货（`.claude-plugin/plugin.json`，skills/agents/hooks/MCP 随插件一起激活），`__GRILL_ADAPTER_ROOT__` 与用户级 payload 均已不存在。
+>
+> 当前事实以这些为准：`docs/ARCHITECTURE_CN.md`（架构）、`docs/HOST_INTEGRATION_CN.md`（安装模型与 `${CLAUDE_PLUGIN_ROOT}` 边界）、`docs/DECISIONS_CN.md` 决策 12（插件化的理由与代价）、`CLAUDE.md`（开发约定）。本文与它们冲突时，**一律以它们为准**。
+>
+> 下方原文保持不动。
+
+---
+
 > 本文是一份**自包含的新项目构建蓝图**。执行者是一个**全新的、无本对话上下文的 AI 会话**。请先完整读一遍，再动手。
 >
 > **工作名 `<PROJECT_NAME> = grill-adapter`**（wiki 是中心，但项目现在也含 Lanhu + source-truth；想要更中性的名字就全文替换）。

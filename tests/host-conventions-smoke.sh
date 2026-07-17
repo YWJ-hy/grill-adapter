@@ -2,35 +2,39 @@
 set -euo pipefail
 
 # Asserts the host-adapter convention blocks carry every touchpoint the dropped native
-# patches used to inject (blueprint §3, §8.5-8.7), and that the canonical hook fragment
-# wires the three hooks to the right events. This is the convention-based replacement for
-# the removed "patch into Superpowers brainstorming/writing-plans/..." coupling.
+# patches used to inject (blueprint §3, §8.5-8.7), and that the plugin's hooks.json wires the
+# three hooks to the right events. This is the convention-based replacement for the removed
+# "patch into Superpowers brainstorming/writing-plans/..." coupling.
+#
+# The blocks are written into a target project's CLAUDE.md, which is NOT plugin content, so
+# Claude Code never substitutes ${CLAUDE_PLUGIN_ROOT} there and the version-scoped plugin
+# path must not be baked in either. Hence: the blocks name skills, and carry no path at all.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${1:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 GRILL="$ROOT/host-adapters/grill/CLAUDE.md"
 PLAIN="$ROOT/host-adapters/plain/CLAUDE.md"
-HOOKS_JSON="$ROOT/host-adapters/hooks.settings.json"
+HOOKS_JSON="$ROOT/hooks/hooks.json"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 need() { grep -Fq "$2" "$1" || fail "$1 missing: $2"; }
+deny() { ! grep -Fq "$2" "$1" || fail "$1 must not contain: $2"; }
 
 for f in "$GRILL" "$PLAIN" "$HOOKS_JSON"; do
   [[ -f "$f" ]] || fail "missing host-adapter file: $f"
 done
 
-# grill block: markers + zero-patch invariant + all four wiki touchpoints + subsystems
+# grill block: markers + zero-patch invariant + all four wiki touchpoints + subsystems.
+# Skills are plugin skills, so every invocation must carry the grill-adapter: namespace.
 need "$GRILL" 'grill-adapter:host:grill:start'
 need "$GRILL" 'grill-adapter:host:grill:end'
 need "$GRILL" 'never patches any grill skill'
-need "$GRILL" '/wiki-research'          # Disclose
-need "$GRILL" '/wiki-materialize'       # Bind
-need "$GRILL" '/update-wiki'            # Capture
-need "$GRILL" '/source-truth-check'     # source-of-truth Verify
-need "$GRILL" '/lanhu-requirements'     # Lanhu Intake
-need "$GRILL" '/break-loop'             # break-loop
-need "$GRILL" 'grill_context_to_candidates.py'   # grill->wiki bridge
-need "$GRILL" '__GRILL_ADAPTER_ROOT__'  # payload placeholder (install replaces it)
+need "$GRILL" '/grill-adapter:wiki-research'       # Disclose
+need "$GRILL" '/grill-adapter:wiki-materialize'    # Bind
+need "$GRILL" '/grill-adapter:update-wiki'         # Capture
+need "$GRILL" '/grill-adapter:source-truth-check'  # source-of-truth Verify
+need "$GRILL" '/grill-adapter:lanhu-requirements'  # Lanhu Intake
+need "$GRILL" '/grill-adapter:break-loop'          # break-loop
 need "$GRILL" 'grill-with-docs'
 need "$GRILL" 'to-tickets'
 need "$GRILL" 'diagnosing-bugs'
@@ -39,28 +43,43 @@ need "$GRILL" 'input only'
 
 # plain block: same touchpoints, host-name-free framing
 need "$PLAIN" 'grill-adapter:host:plain:start'
-need "$PLAIN" '/wiki-research'
-need "$PLAIN" '/wiki-materialize'
-need "$PLAIN" '/update-wiki'
-need "$PLAIN" '/source-truth-check'
-need "$PLAIN" '/break-loop'
+need "$PLAIN" '/grill-adapter:wiki-research'
+need "$PLAIN" '/grill-adapter:wiki-materialize'
+need "$PLAIN" '/grill-adapter:update-wiki'
+need "$PLAIN" '/grill-adapter:source-truth-check'
+need "$PLAIN" '/grill-adapter:break-loop'
 need "$PLAIN" 'no host skill is patched'
+
+# Neither block may carry an install path: they land outside plugin content, where
+# ${CLAUDE_PLUGIN_ROOT} is never substituted, and a baked absolute path would rot on the
+# next plugin update (the cache path is version-scoped).
+for f in "$GRILL" "$PLAIN"; do
+  deny "$f" '__GRILL_ADAPTER_ROOT__'
+  deny "$f" 'CLAUDE_PLUGIN_ROOT'
+  deny "$f" 'grill_context_to_candidates.py'
+done
+
+# ...and the grill->wiki bridge the blocks used to invoke now lives in the skill that
+# consumes its output, where the path does get substituted.
+need "$ROOT/skills/update-wiki/SKILL.md" 'grill_context_to_candidates.py'
+need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/scripts/grill_context_to_candidates.py'
 
 # no residual Superpowers host references in the host blocks
 if grep -nE 'Superpowers' "$GRILL" "$PLAIN" | grep -vE '\.adapter/'; then
   fail "host blocks still reference Superpowers"
 fi
 
-# canonical hook fragment wires the three hooks to the right events
+# plugin hooks.json wires the three hooks to the right events, rooted at the plugin
 python3 - "$HOOKS_JSON" <<'PY' || exit 1
 import json, sys
-h = json.load(open(sys.argv[1]))["hooks"]
+h = json.load(open(sys.argv[1], encoding='utf-8'))["hooks"]
 def cmds(ev): return [x["command"] for g in h.get(ev, []) for x in g["hooks"]]
 assert any("wiki-reread.sh" in c for c in cmds("UserPromptSubmit")), "wiki-reread not on UserPromptSubmit"
 assert any("wiki-reread.sh" in c for c in cmds("SessionStart")), "wiki-reread not on SessionStart"
 assert any("source-truth-lint.sh" in c for c in cmds("PostToolUse")), "source-truth-lint not on PostToolUse"
 assert any("wiki-capture-suggest.sh" in c for c in cmds("Stop")), "wiki-capture-suggest not on Stop"
-assert all("__GRILL_ADAPTER_ROOT__/hooks/" in c for ev in h.values() for g in ev for c in [x["command"] for x in g["hooks"]]), "hook command not payload-rooted"
+every = [x["command"] for ev in h.values() for g in ev for x in g["hooks"]]
+assert all("${CLAUDE_PLUGIN_ROOT}/hooks/" in c for c in every), "hook command not plugin-rooted"
 PY
 
 printf 'host conventions smoke OK\n'

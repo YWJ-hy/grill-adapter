@@ -1,6 +1,6 @@
 # grill-adapter
 
-A **host-agnostic Claude Code adapter** that adds three things to your coding workflow — a sectioned, cross-repo **project wiki**; **Lanhu (蓝湖) requirements intake**; and **source-of-truth** verification — as standalone skills, agents, and hooks. It **never patches a host skill**: it wires into your workflow purely through a project `CLAUDE.md` convention block and Claude Code hooks, so host upgrades can't break it.
+A **host-agnostic Claude Code plugin** that adds three things to your coding workflow — a sectioned, cross-repo **project wiki**; **Lanhu (蓝湖) requirements intake**; and **source-of-truth** verification — as standalone skills, agents, and hooks. It **never patches a host skill**: it wires into your workflow purely through a project `CLAUDE.md` convention block and the plugin's own hooks, so host upgrades can't break it.
 
 It defaults to [**grill** (mattpocock/skills)](https://github.com/mattpocock/skills) as the front-end (`/grill-with-docs → /to-spec → /to-tickets → /implement → /code-review`), and also runs on **plain Claude Code**.
 
@@ -14,34 +14,47 @@ A code assistant forgets your project's durable rules between sessions and acros
 
 | Touchpoint | Mechanism | grill stage |
 |---|---|---|
-| **Disclose** | `/wiki-research` skill → `wiki-researcher` agent selects relevant sections | `/grill-with-docs` |
+| **Disclose** | `/grill-adapter:wiki-research` skill → `wiki-researcher` agent selects relevant sections | `/grill-with-docs` |
 | **Carry** | `.wiki-context.json` sidecar records the selection (source-aware refs + `sharedWiki` identity) | `/to-tickets` |
-| **Bind** | `/wiki-materialize <ticket>` re-reads hard-constraint sections (+ bounded 1-hop `depends-on` closure); a session-level hook is the coarse backstop | `/implement` |
-| **Capture** | `/update-wiki` writes durable knowledge back (fed by the `grill_context_to_candidates.py` bridge) | after `/code-review` |
+| **Bind** | `/grill-adapter:wiki-materialize <ticket>` re-reads hard-constraint sections (+ bounded 1-hop `depends-on` closure); a session-level hook is the coarse backstop | `/implement` |
+| **Capture** | `/grill-adapter:update-wiki` writes durable knowledge back (its own optional pre-step converts grill's `CONTEXT.md`/ADR increment into candidates) | after `/code-review` |
 
-Plus **Lanhu intake** (`/lanhu-requirements`), **source-of-truth** verify (`/source-truth-check`) + lint hook, and **break-loop** debugging retrospective (`/break-loop`).
+Plus **Lanhu intake** (`/grill-adapter:lanhu-requirements`), **source-of-truth** verify (`/grill-adapter:source-truth-check`) + lint hook, and **break-loop** debugging retrospective (`/grill-adapter:break-loop`).
 
 ## Install (30 seconds, if you already have grill)
+
+**1. Install the plugin** (from your project directory):
+
+```bash
+claude plugin marketplace add YWJ-hy/grill-adapter
+claude plugin install grill-adapter@grill-adapter --scope project
+```
+
+Claude Code discovers the whole component inventory from the plugin layout — **12 skills, 3 agents, 4 hooks, and the shared-wiki MCP server**, all registered together, nothing copied into `~/.claude`, nothing merged into your project's `.claude/settings.json`. The MCP starts automatically; no manual registration.
+
+> **Scope is shared.** Skills, agents, hooks, and the bundled MCP all take the plugin's scope — a plugin-bundled MCP cannot be scoped separately. Use `--scope project` for a project-scoped shared-wiki MCP, `--scope user` to share it across projects.
+
+**2. Wire the project** — the one thing a plugin cannot touch is your project's `CLAUDE.md`:
 
 ```bash
 git clone https://github.com/YWJ-hy/grill-adapter.git
 cd grill-adapter
-./manage.sh install /path/to/your/project --host grill   # user-level skills/agents + wire this project
+./manage.sh install /path/to/your/project --host grill   # write the host convention block
 ./manage.sh bootstrap-wiki /path/to/your/project           # seed .adapter/wiki/
 ./manage.sh doctor /path/to/your/project                   # sanity-check
 ```
 
-- **User level (once, cross-project):** skills → `~/.claude/skills/`, agents → `~/.claude/agents/`, a runtime payload (`scripts/`, `contracts/`, `hooks/`, the built shared-wiki MCP) → `~/.claude/grill-adapter/`.
-- **Project level (per project):** hook entries merged into `.claude/settings.json`, a host convention block appended to `CLAUDE.md`.
-- **Zero host-skill patching.** Uninstall with `./manage.sh uninstall /path/to/your/project`.
+- The convention block is marker-delimited and **names skills only — it carries no install path**, so plugin upgrades can't rot it.
+- **Zero host-skill patching.** To remove: drop `grill-adapter@grill-adapter` from the project's `.claude/settings.json` `enabledPlugins` (a project-scope plugin is a committed, team-shared setting, so `claude plugin uninstall` deliberately refuses to remove it for you — use `claude plugin disable grill-adapter@grill-adapter --scope local` to switch it off for yourself only), then `./manage.sh uninstall /path/to/your/project` to strip the convention block.
 
 New to grill? Follow [`docs/SETUP_AND_USAGE_CN.md`](docs/SETUP_AND_USAGE_CN.md), which installs grill first.
 
 ## Commands
 
+`manage.sh` only covers project wiring and the wiki utilities; the plugin itself is managed by `claude plugin` / `/plugin`.
+
 ```
-./manage.sh install|uninstall|verify|status [project] [--host grill|plain]
-./manage.sh mcp-registration
+./manage.sh install|uninstall|verify|status <project> [--host grill|plain]
 ./manage.sh bootstrap-wiki <project> [--template name] [--wiki-root project|shared]
 ./manage.sh init-wiki <project> [hint]
 ./manage.sh export-wiki-skills <wiki-repo> [--no-graph-ci]
@@ -61,7 +74,7 @@ grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe 
 | [`docs/SETUP_AND_USAGE_CN.md`](docs/SETUP_AND_USAGE_CN.md) | 从未装过 grill 的用户：装 grill + 装 grill-adapter + 端到端走一遍 |
 | [`QUICKSTART_CN.md`](QUICKSTART_CN.md) | 已装过 grill：5 分钟跑通 |
 | [`docs/ARCHITECTURE_CN.md`](docs/ARCHITECTURE_CN.md) | 三层架构、4 触点、引擎、section 图、shared MCP、执行期闭包 |
-| [`docs/HOST_INTEGRATION_CN.md`](docs/HOST_INTEGRATION_CN.md) | host 适配器模型、grill/plain 约定块全文、install 模型 |
+| [`docs/HOST_INTEGRATION_CN.md`](docs/HOST_INTEGRATION_CN.md) | host 适配器模型、grill/plain 约定块全文、plugin 安装模型 |
 | [`docs/USER_FLOW_CN.md`](docs/USER_FLOW_CN.md) | 最终用户端到端流程 |
 | [`docs/LANHU_CN.md`](docs/LANHU_CN.md) | Lanhu 需求录入专章 |
 | [`docs/DEVELOPMENT_CN.md`](docs/DEVELOPMENT_CN.md) | 开发与验收原则、测试分层 |
@@ -72,7 +85,7 @@ grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe 
 
 - Claude Code (CLI, desktop, or IDE extension)
 - Python 3.9+
-- Node.js ≥ 20 (only for the shared-wiki MCP server; built during install)
+- Node.js ≥ 20 (only to run the shared-wiki MCP server; the plugin ships a prebuilt bundle — nothing to build)
 
 ## License
 

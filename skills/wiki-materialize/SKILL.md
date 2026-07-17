@@ -11,8 +11,8 @@ This is the host-agnostic **Bind** touchpoint. During implementation it rereads,
 
 It does not patch any host skill. A host wires it in by convention:
 
-- **grill**: run `/wiki-materialize <ticket>` per ticket at the start of `/implement`, before touching code for that ticket. `/implement` is never patched.
-- **plain Claude Code**: run `/wiki-materialize <task-id>` yourself before implementing each task.
+- **grill**: run `/grill-adapter:wiki-materialize <ticket>` per ticket at the start of `/implement`, before touching code for that ticket. `/implement` is never patched.
+- **plain Claude Code**: run `/grill-adapter:wiki-materialize <task-id>` yourself before implementing each task.
 - The session-level `wiki-reread` hook is a coarse backstop when a per-ticket call is skipped (see `hooks/wiki-reread.sh`); the explicit per-ticket call is the precise path.
 
 The ticket id is the `taskId` from the feature's ticket roster — the same id the sidecar's `destination.tasks` routes to. Your host's convention block says how its tickets are identified (grill local-markdown: the `NN` filename prefix; a real tracker: the issue number). Resolve the sidecar and roster from the working tree (inside the final worktree if one is used).
@@ -24,7 +24,7 @@ The ticket id is the `taskId` from the feature's ticket roster — the same id t
 Before the first ticket, run exactly one preflight so execution can only proceed against the reviewed ticket text:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --fingerprint-preflight --strict --execution-ready --ticket-roster .adapter/context/<feature-slug>.ticket-roster.json
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --fingerprint-preflight --strict --execution-ready --ticket-roster .adapter/context/<feature-slug>.ticket-roster.json
 ```
 
 If the preflight fails because a ticket's text changed after the wiki was bound to it, stop and refresh the binding on the planning side: rebuild the roster from the current tickets, confirm the selected wiki routing still applies to the changed ticket, re-run `wiki_context_render.py <sidecar> --bind-fingerprints --strict --execution-ready --ticket-roster <roster>` to re-stamp fingerprints, and resume only after it passes. Do not re-stamp to silence a mismatch without re-checking routing, and do not reselect wiki pages or rewrite tickets during execution.
@@ -34,13 +34,13 @@ If the preflight fails because a ticket's text changed after the wiki was bound 
 1. Render this ticket's task-scoped wiki constraints and inject stdout under `## Rendered Wiki Constraints for This Task`, alongside the ticket's full text under `## Assigned Task`:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --task-id <ticket-id> --role implementer --strict --execution-ready
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --task-id <ticket-id> --role implementer --strict --execution-ready
 ```
 
 2. Materialize this ticket's hard-constraint full-section rereads — both local project wiki and `source: github_mcp` shared wiki — and inject stdout after the rendered constraints under `## Hard Wiki Constraint Rereads`:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_materialize_task.py .adapter/context/<feature-slug>.wiki-context.json --task-id <ticket-id> --role implementer --project-root <project-root> --strict --execution-ready
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_materialize_task.py .adapter/context/<feature-slug>.wiki-context.json --task-id <ticket-id> --role implementer --project-root <project-root> --strict --execution-ready
 ```
 
 For a reviewer pass, use `--role reviewer`. To append directly into a handoff file the subagent Reads, add `--append-to <file>`.

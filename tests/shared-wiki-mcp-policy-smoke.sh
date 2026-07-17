@@ -69,12 +69,14 @@ cat > "$CONFIG" <<JSON
 }
 JSON
 
-(cd "$ROOT_DIR/mcp/shared-wiki" && npm install >/dev/null && npm run build >/dev/null)
+# Run against src via tsx: `npm run build` is now an esbuild bundle (one dist/index.js), so
+# the per-module dist/*.js files this used to import no longer exist.
+(cd "$ROOT_DIR/mcp/shared-wiki" && npm install >/dev/null)
 
-SHARED_WIKI_MCP_CONFIG="$CONFIG" node --input-type=module <<'JS'
-import { loadConfig } from './mcp/shared-wiki/dist/config.js';
-import { treeTool } from './mcp/shared-wiki/dist/tools/tree.js';
-import { validatePatchTool } from './mcp/shared-wiki/dist/tools/validatePatch.js';
+SHARED_WIKI_MCP_CONFIG="$CONFIG" "$ROOT_DIR/mcp/shared-wiki/node_modules/.bin/tsx" --input-type=module <<'JS'
+import { loadConfig } from './mcp/shared-wiki/src/config.js';
+import { treeTool } from './mcp/shared-wiki/src/tools/tree.js';
+import { validatePatchTool } from './mcp/shared-wiki/src/tools/validatePatch.js';
 const config = loadConfig(process.env);
 const tree = await treeTool(config);
 if (!tree.files.some((file) => file.path === 'guide.md')) throw new Error('missing indexed guide');

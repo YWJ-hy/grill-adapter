@@ -381,7 +381,22 @@ def _resolve_shared_wiki_cmd(explicit: str | None, project_root: Path) -> dict[s
         resolved = _cmd_from_registration(candidate)
         if resolved:
             return resolved
-    return None
+    return _bundled_cmd()
+
+
+def _bundled_cmd() -> dict[str, Any] | None:
+    """The shared-wiki MCP bundle shipped next to this script inside the plugin.
+
+    A plugin-bundled MCP is registered in ``${CLAUDE_PLUGIN_ROOT}/.mcp.json``, which none of the
+    ``_registration_candidates`` paths cover -- so registration discovery comes up empty for the
+    very server we ship. This script lives at ``<plugin_root>/scripts/``, so self-locate the
+    bundle the way the hooks self-locate via ``BASH_SOURCE``. Tried last, so an explicit flag, an
+    env var, or a real registration (an externally deployed server) all still win.
+    """
+    entry = Path(__file__).resolve().parent.parent / "mcp" / "shared-wiki" / "dist" / "index.js"
+    if not entry.is_file():
+        return None
+    return {"argv": ["node", entry.as_posix()], "env": {}}
 
 
 def _registration_candidates(project_root: Path) -> list[Path]:
@@ -507,8 +522,10 @@ def main() -> int:
             if not cmd:
                 raise MaterializeError(
                     f"{len(mcp_entries)} github_mcp hard-constraint section(s) require the shared-wiki MCP "
-                    "CLI, but it could not be resolved. Register the shared-wiki MCP server for "
-                    "this project, or pass --shared-wiki-cmd / set SHARED_WIKI_MCP_CMD."
+                    "CLI, but it could not be resolved. The server ships inside the grill-adapter "
+                    "plugin, so this normally means a broken install (no mcp/shared-wiki/dist/index.js "
+                    "next to these scripts). Otherwise register a shared-wiki MCP server, pass "
+                    "--shared-wiki-cmd, or set SHARED_WIKI_MCP_CMD."
                 )
             # Close each selected github_mcp hard section's 1-hop depends-on edges against the
             # remote graph, then materialize the directly-selected + closed sections in one

@@ -48,6 +48,16 @@ Apply this skill's normal responsibilities to every line: decide whether it is d
 
 The sidecar is scratch: after consuming it, delete it, and never commit it. If it is missing, proceed with the normal end-of-flow review.
 
+### Optional pre-step — convert a grill knowledge increment
+
+Only when the project keeps grill-style knowledge files (`CONTEXT.md`, `docs/adr/`): diff that increment into candidate rows first, appending to the same sidecar, then consume the sidecar as above.
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/grill_context_to_candidates.py <repo-root> --since <branch-point> --out .adapter/context/<feature-slug>.wiki-candidates.jsonl
+```
+
+grill's glossary/ADRs are tier-1 and the wiki is tier-2, so this bridge is how a day-to-day increment reaches the wiki. Do **not** route grill knowledge through `import-wiki` — that is a flat structural copy, not an increment. No grill knowledge files → skip this entirely.
+
 ---
 
 ## Wiki First Rule

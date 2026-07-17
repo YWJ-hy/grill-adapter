@@ -57,7 +57,7 @@ Treat as optional: `--wiki-root project|shared|all` to scope migration. Default:
 ### Step 1: Generate inventory
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_migrate_helper.py --inventory . --wiki-root $WIKI_ROOT
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_migrate_helper.py --inventory . --wiki-root $WIKI_ROOT
 ```
 
 This outputs all indexed leaf pages with their line counts and heading structure.
@@ -117,8 +117,8 @@ The section table belongs below this header and is generated from markers by the
 ### Step 5: Validate and generate section tables
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_migrate_helper.py --validate . --wiki-root $WIKI_ROOT
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_migrate_helper.py --generate-indexes . --wiki-root $WIKI_ROOT
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_migrate_helper.py --validate . --wiki-root $WIKI_ROOT
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_migrate_helper.py --generate-indexes . --wiki-root $WIKI_ROOT
 ```
 
 The index generator updates only the section table and preserves the `.index.md` header, including the semantic overview.
@@ -142,7 +142,7 @@ bodies that lack a summary, never re-scan whole wiki documents:
 1. List the sections missing a summary, **with their bodies**, in one call:
 
    ```bash
-   python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_migrate_helper.py --missing-summaries . --wiki-root $WIKI_ROOT --with-body --json
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_migrate_helper.py --missing-summaries . --wiki-root $WIKI_ROOT --with-body --json
    ```
 
    Output is `[{root, path, sectionId, body}]` — exactly the sections to summarize, nothing else.
@@ -155,7 +155,7 @@ bodies that lack a summary, never re-scan whole wiki documents:
    roots) on stdin:
 
    ```bash
-   python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_migrate_helper.py --set-summaries . --wiki-root $WIKI_ROOT < summaries.jsonl
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_migrate_helper.py --set-summaries . --wiki-root $WIKI_ROOT < summaries.jsonl
    ```
 
 4. Regenerate indexes + graph (`--generate-indexes`, as in Step 5).

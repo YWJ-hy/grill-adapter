@@ -141,14 +141,14 @@ the root `.graph.json` (section nodes, `[[ ]]` edges, backlinks, dangling) — t
 backlink data you consult above:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_generate_section_index.py <wiki-file-path> --wiki-root <project|shared> --project-root .
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_generate_section_index.py <wiki-file-path> --wiki-root <project|shared> --project-root .
 ```
 
 Then refresh indexed page summaries for the changed local root:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/update-wiki.py --wiki-root project --authorized-update
-python3 __GRILL_ADAPTER_ROOT__/scripts/update-wiki.py --wiki-root shared --authorized-update
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/update-wiki.py --wiki-root project --authorized-update
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/update-wiki.py --wiki-root shared --authorized-update
 ```
 
 Run only the command for the local root you changed. If the shared update went through the
@@ -157,5 +157,5 @@ GitHub-backed MCP PR flow, use the MCP validation summary instead of refreshing 
 validator across both local roots — it also reports dangling `[[page#section]]` edges:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_update_check.py --wiki-root all --json
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_update_check.py --wiki-root all --json
 ```

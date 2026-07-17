@@ -10,7 +10,10 @@ from pathlib import Path
 
 from subagent_models import apply_agent_model
 
-COMMON_SKELETON = Path('agents/lanhu-requirements-analyst.common.md')
+# Lives under role-prd/ alongside its co-inputs (frontend.md, backend.md), NOT under
+# agents/ — a plugin auto-discovers every agents/*.md, so a generation source parked
+# there would register as a phantom agent.
+COMMON_SKELETON = Path('role-prd/analyst.common.md')
 
 
 @dataclass(frozen=True)

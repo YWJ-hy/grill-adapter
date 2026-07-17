@@ -1,0 +1,22 @@
+{
+  "name": "grill-adapter",
+  "owner": {
+    "name": "yewenjie",
+    "url": "https://github.com/YWJ-hy"
+  },
+  "description": "grill-adapter as an installable Claude Code plugin.",
+  "plugins": [
+    {
+      "name": "grill-adapter",
+      "source": "./",
+      "description": "Sectioned cross-repo project wiki, Lanhu requirements intake, and source-of-truth verify/lint for grill or plain Claude Code.",
+      "category": "engineering",
+      "keywords": [
+        "wiki",
+        "requirements",
+        "source-of-truth",
+        "grill"
+      ]
+    }
+  ]
+}

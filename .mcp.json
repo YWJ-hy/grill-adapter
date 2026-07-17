@@ -1,0 +1,9 @@
+{
+  "_comment": "grill-adapter plugin MCP servers. Auto-started when the plugin is enabled — no `claude mcp add-json` step. Scope follows the plugin's install scope (`claude plugin install grill-adapter --scope project|user`); a plugin-bundled server cannot be scoped independently. The server self-configures per project by reading CLAUDE_PROJECT_DIR -> <project>/.shared-adapter/settings.json -> wiki.sharedMcp, and fails closed when that is absent. Tools are namespaced mcp__plugin_grill-adapter_shared-wiki__*.",
+  "mcpServers": {
+    "shared-wiki": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/shared-wiki/dist/index.js"]
+    }
+  }
+}

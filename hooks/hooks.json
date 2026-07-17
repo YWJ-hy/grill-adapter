@@ -1,0 +1,36 @@
+{
+  "_comment": "grill-adapter plugin hooks. Auto-registered when the plugin is enabled — no merge into any project's .claude/settings.json. ${CLAUDE_PLUGIN_ROOT} resolves to this plugin's versioned install dir and survives plugin updates. Host-agnostic: grill and plain hosts use the same hooks.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/wiki-reread.sh\"", "async": false }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/wiki-reread.sh\"", "async": false }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|Bash",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/source-truth-lint.sh\"", "async": false }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/wiki-capture-suggest.sh\"", "async": false },
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/source-truth-lint.sh\"", "async": false }
+        ]
+      }
+    ]
+  }
+}

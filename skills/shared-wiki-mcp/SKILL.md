@@ -30,13 +30,13 @@ Use the user request that invoked this skill as the input. If the user invoked t
 
 ## Expected MCP tools
 
-The user should have copied `mcp/shared-wiki/`, configured it with a repo such as:
+The server ships inside the grill-adapter plugin and starts automatically wherever the plugin is enabled — nothing to copy, build, or register by hand. What each project must declare is the **binding**: `<project>/.shared-adapter/settings.json` → `wiki.sharedMcp`, naming the shared wiki repo, e.g.
 
 ```text
 https://github.com/YWJ-hy/shared-wiki.git
 ```
 
-and enabled the MCP server in Claude Code.
+The server reads `CLAUDE_PROJECT_DIR` and self-configures from that file; it fails closed when the binding is absent, so an unbound project never reads another project's shared wiki.
 
 Expected tools:
 
@@ -49,7 +49,7 @@ Expected tools:
 - `shared_wiki_validate_patch`
 - `shared_wiki_create_patch_pr`
 
-If the tools are unavailable, tell the user to build and configure the MCP server from `mcp/shared-wiki/README.md`.
+If the tools are missing entirely, the grill-adapter plugin is not enabled here — a plugin-bundled MCP shares its plugin's scope, so tell the user to run `claude plugin install grill-adapter --scope project` (or `--scope user` for every project). If the tools are present but erroring, the project's `wiki.sharedMcp` binding is missing or drifted; see `mcp/shared-wiki/README.md`.
 
 ## Read workflow
 

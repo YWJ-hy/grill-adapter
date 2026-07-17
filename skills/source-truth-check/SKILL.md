@@ -11,8 +11,8 @@ This is the host-agnostic **source-of-truth Verify** touchpoint. Some repo paths
 
 It does not patch any host skill. A host wires it in by convention:
 
-- **grill**: run `/source-truth-check` during `/to-spec` (render `spec-pre`) and `/to-tickets` (render `plan-pre`, and `plan-review` when reviewing the plan). `/to-spec` and `/to-tickets` are never patched.
-- **plain Claude Code**: run `/source-truth-check` yourself before finalizing a spec or plan.
+- **grill**: run `/grill-adapter:source-truth-check` during `/to-spec` (render `spec-pre`) and `/to-tickets` (render `plan-pre`, and `plan-review` when reviewing the plan). `/to-spec` and `/to-tickets` are never patched.
+- **plain Claude Code**: run `/grill-adapter:source-truth-check` yourself before finalizing a spec or plan.
 
 Policy is root-specific: project `sourceOfTruth` lives in `.adapter/settings.json`; a shared root uses `.shared-adapter/settings.json`. The policy is a **prompt guard only** — do not add a mandatory source-of-truth section to the spec/plan, run a semantic verifier agent, or create source-of-truth sidecar artifacts.
 
@@ -45,7 +45,7 @@ Policy is root-specific: project `sourceOfTruth` lives in `.adapter/settings.jso
 ## Verify at spec time
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/source_truth_settings.py <repo-root> --render-prompt spec-pre
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/source_truth_settings.py <repo-root> --render-prompt spec-pre
 ```
 
 If stdout is non-empty, include it as a short `Source-of-Truth Policy` prompt input while drafting the spec: do not spec direct edits to `truth/edit: never` paths, and require explicit user confirmation for `truth/edit: ask` paths. If stdout is empty, `sourceOfTruth` is unconfigured — skip silently; add no "not configured" noise.
@@ -55,13 +55,13 @@ If stdout is non-empty, include it as a short `Source-of-Truth Policy` prompt in
 Before decomposing tasks:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/source_truth_settings.py <repo-root> --render-prompt plan-pre
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/source_truth_settings.py <repo-root> --render-prompt plan-pre
 ```
 
 During plan review, render the review checklist and apply it to the drafted plan:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/source_truth_settings.py <repo-root> --render-prompt plan-review
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/source_truth_settings.py <repo-root> --render-prompt plan-review
 ```
 
 Request revision or user confirmation if the plan explicitly or implicitly edits configured truth paths.

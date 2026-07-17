@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """Resolve grill-adapter install targets.
 
-Unlike the Superpowers-coupled ancestor, grill-adapter never discovers or writes into a
-host plugin directory. It installs at two levels:
+grill-adapter ships as a Claude Code plugin, so there is no user-level install to resolve:
+skills, agents, hooks, the shared-wiki MCP, and the script/contract payload all live inside
+the plugin and are addressed from skill/agent/hook/MCP config via ``${CLAUDE_PLUGIN_ROOT}``,
+which Claude Code substitutes with the plugin's versioned install dir. Never hard-code that
+path anywhere that outlives a session -- it changes on every plugin update.
 
-  user level (once, cross-project):
-    - skills  -> ~/.claude/skills/<name>/
-    - agents  -> ~/.claude/agents/<name>.md
-    - payload -> $GRILL_ADAPTER_HOME (default ~/.claude/grill-adapter), holding
-                 scripts/, contracts/, hooks/, mcp/ — this is __GRILL_ADAPTER_ROOT__.
+What remains is the one thing a plugin cannot do: edit a target project's CLAUDE.md.
 
   project level (per project):
-    - hook entries -> <project>/.claude/settings.json
-    - host block   -> <project>/CLAUDE.md
+    - host convention block -> <project>/CLAUDE.md
 """
 
 from __future__ import annotations
@@ -22,34 +20,18 @@ from pathlib import Path
 
 
 def user_claude_dir() -> Path:
-    """The user's Claude Code config dir (~/.claude), override with CLAUDE_CONFIG_DIR."""
+    """The user's Claude Code config dir (~/.claude), override with CLAUDE_CONFIG_DIR.
+
+    Only used to read the plugin registry for advisory status output -- nothing is installed
+    here any more.
+    """
     override = os.environ.get("CLAUDE_CONFIG_DIR")
     base = Path(override).expanduser() if override else (Path.home() / ".claude")
     return base.resolve()
 
 
-def payload_root() -> Path:
-    """Where the runtime payload (scripts/contracts/hooks/mcp) is installed.
-
-    This absolute path is what every skill/agent/hook config uses as __GRILL_ADAPTER_ROOT__.
-    Override with GRILL_ADAPTER_HOME.
-    """
-    override = os.environ.get("GRILL_ADAPTER_HOME")
-    if override:
-        return Path(override).expanduser().resolve()
-    return user_claude_dir() / "grill-adapter"
-
-
-def user_skills_dir() -> Path:
-    return user_claude_dir() / "skills"
-
-
-def user_agents_dir() -> Path:
-    return user_claude_dir() / "agents"
-
-
 def resolve_project_target(explicit: str | None) -> Path | None:
-    """Resolve the per-project target root, or None for a user-level-only install."""
+    """Resolve the per-project target root, or None when no project was passed."""
     if not explicit:
         return None
     path = Path(explicit).expanduser().resolve()
@@ -77,9 +59,6 @@ def main() -> int:
     explicit = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else None
     print(json.dumps({
         "userClaudeDir": user_claude_dir().as_posix(),
-        "payloadRoot": payload_root().as_posix(),
-        "userSkillsDir": user_skills_dir().as_posix(),
-        "userAgentsDir": user_agents_dir().as_posix(),
         "projectTarget": (resolve_project_target(explicit).as_posix() if explicit else None),
     }, indent=2))
     return 0

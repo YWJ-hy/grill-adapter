@@ -58,7 +58,7 @@ python3 ./.shared-adapter/scripts/run-hook.py sharedWikiSubmodule:verify
 4. Run the shared wiki mechanical validator, including configured neutrality guards:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_update_check.py --wiki-root shared
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_update_check.py --wiki-root shared
 ```
 
 5. Tell the user exactly what will be committed and pushed, including the shared wiki repository/submodule state and the parent repository pointer change.

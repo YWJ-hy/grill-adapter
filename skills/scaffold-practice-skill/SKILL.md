@@ -50,13 +50,13 @@ All file operations, discovery-card registration, companion-index regeneration, 
 
 ```bash
 # create a new pack skeleton (open file set; only SKILL.md is mandatory)
-python3 __GRILL_ADAPTER_ROOT__/scripts/scaffold_practice_skill.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/scaffold_practice_skill.py \
   --project-root . --json scaffold --name <skill-name> \
   --description "<trigger-rich one-liner>" --files implement.md,review.md,rules.md
 
 # convert an existing skill (NON-DESTRUCTIVE): stages a new pack, carries over all
 # bundled files (scripts/, assets), and reports source content not yet represented
-python3 __GRILL_ADAPTER_ROOT__/scripts/scaffold_practice_skill.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/scaffold_practice_skill.py \
   --project-root . --json convert --from <path/to/old/SKILL.md-or-dir> \
   --name <skill-name> --files rules.md,review.md
 
@@ -69,7 +69,7 @@ python3 __GRILL_ADAPTER_ROOT__/scripts/scaffold_practice_skill.py \
 # execution render time (a review-only card is never injected into implementer prompts).
 # Run register-card from the PROJECT ROOT (or pass an absolute --project-root): the wiki
 # must already exist (init-wiki/bootstrap-wiki first) — register-card never mints one.
-python3 __GRILL_ADAPTER_ROOT__/scripts/scaffold_practice_skill.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/scaffold_practice_skill.py \
   --project-root . --json register-card --name <skill-name> \
   --title "<card title>" --triggers "<scenario keywords>" \
   --summary "<one-line theme summary; ≤140 chars; single line; no \" or >>" \
@@ -77,7 +77,7 @@ python3 __GRILL_ADAPTER_ROOT__/scripts/scaffold_practice_skill.py \
   [--doc-summary "<override page overview>"] [--authorized-create|--authorized-update]
 
 # validate pack invariants + discoverability (+ optional source coverage)
-python3 __GRILL_ADAPTER_ROOT__/scripts/scaffold_practice_skill.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/scaffold_practice_skill.py \
   --project-root . --json validate --name <skill-name> [--from <old SKILL.md-or-dir>]
 ```
 

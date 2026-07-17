@@ -221,18 +221,39 @@ if grep -Fq 'SHARED FULL TEXT' "$OUT4"; then
   exit 1
 fi
 
-# --- Case 5: unresolved github_mcp CLI fails closed (never silently drops a hard constraint) ---
+# --- Case 5: an unbound project fails closed (never silently drops a hard constraint) ---
 # Point HOME and USERPROFILE (Windows Path.home() uses USERPROFILE) at an empty dir so registration
-# discovery finds nothing; the temp project has no .mcp.json either.
+# discovery finds nothing; the temp project has no .mcp.json either. The bundled MCP that ships in
+# the plugin is still self-located, so the CLI resolves and the run fails on the *binding* instead:
+# the project never declared wiki.sharedMcp. Either way the hard constraint is never dropped.
 mkdir -p "$TMP/empty-home"
 OUT5="$TMP/task-1-nocli.md"
 : > "$OUT5"
 if HOME="$TMP/empty-home" USERPROFILE="$TMP/empty-home" run_materialize --task-id 1 --append-to "$OUT5" 2> "$TMP/err5"; then
-  printf 'Case 5: expected failure when github_mcp CLI is unresolved\n' >&2
+  printf 'Case 5: expected failure when the project has no shared-wiki binding\n' >&2
   exit 1
 fi
-if ! grep -Fq 'could not be resolved' "$TMP/err5"; then
-  printf 'Case 5: expected unresolved-CLI error, got: %s\n' "$(cat "$TMP/err5")" >&2
+if ! grep -Fq 'Missing shared wiki repo URL' "$TMP/err5"; then
+  printf 'Case 5: expected an unbound-project error, got: %s\n' "$(cat "$TMP/err5")" >&2
+  exit 1
+fi
+
+# --- Case 5b: with no bundle to self-locate either, the CLI is genuinely unresolved ---
+# Run a copy of scripts/ that has no sibling mcp/shared-wiki/dist/index.js, so _bundled_cmd()
+# finds nothing. Proves the self-location fallback degrades to a clear error rather than
+# crashing or silently skipping the github_mcp hard section.
+mkdir -p "$TMP/no-bundle"
+cp -r "$ROOT/scripts" "$TMP/no-bundle/scripts"
+OUT5B="$TMP/task-1-nobundle.md"
+: > "$OUT5B"
+if HOME="$TMP/empty-home" USERPROFILE="$TMP/empty-home" \
+  python3 "$TMP/no-bundle/scripts/wiki_materialize_task.py" "$CONTEXT" --project-root "$PROJECT" \
+  --strict --execution-ready --task-id 1 --append-to "$OUT5B" 2> "$TMP/err5b"; then
+  printf 'Case 5b: expected failure when no shared-wiki CLI can be resolved at all\n' >&2
+  exit 1
+fi
+if ! grep -Fq 'could not be resolved' "$TMP/err5b"; then
+  printf 'Case 5b: expected unresolved-CLI error, got: %s\n' "$(cat "$TMP/err5b")" >&2
   exit 1
 fi
 

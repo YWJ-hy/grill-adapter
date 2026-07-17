@@ -1,14 +1,19 @@
 # grill-adapter 架构
 
-grill-adapter 是 host 无关的 Claude Code adapter。它把 wiki / Lanhu / source-truth 作为**独立 skill/agent/hook** 挂进宿主工作流，**绝不 patch 宿主 skill**——只靠项目 `CLAUDE.md` 约定块 + Claude Code hook 接线。这是不被宿主（grill）版本 churn 波及的关键不变式。
+grill-adapter 是 host 无关的 Claude Code adapter，**本身以 Claude Code 插件形式发货**。它把 wiki / Lanhu / source-truth 作为**独立 skill/agent/hook** 挂进宿主工作流，**绝不 patch 宿主 skill**——只靠项目 `CLAUDE.md` 约定块 + Claude Code hook 接线。这是不被宿主（grill）版本 churn 波及的关键不变式。
 
 ## 三层 + 多子系统同构
 
 ```
+        ┌───────── 插件边界（.claude-plugin/plugin.json）─────────┐
+        │  skills/ · agents/ · hooks/hooks.json · .mcp.json      │
+        │  随 `claude plugin install` 一起激活，同一作用域         │
+        └────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────┐
 │  Host 适配器（薄、可插拔、零 skill patch）                 │
-│   ├─ grill-host  ← 默认：CLAUDE.md 约定块 + hook          │
-│   └─ plain       ← 裸 Claude Code：/命令 + hook            │
+│   ├─ grill-host  ← 默认：CLAUDE.md 约定块                 │
+│   └─ plain       ← 裸 Claude Code：手动调触点              │
+│   ※ 约定块写进目标项目、在插件外，故只点名 skill、无路径     │
 ├─────────────────────────────────────────────────────────┤
 │  各子系统的 host 无关触点                                  │
 │   （独立 skill/agent + host-adapter 约定 + 可选 hook）      │
@@ -23,29 +28,31 @@ grill-adapter 是 host 无关的 Claude Code adapter。它把 wiki / Lanhu / sou
 └─────────────────────────────────────────────────────────┘
 ```
 
-**不变式**：host 适配器绝不 patch 宿主 skill。grill-host 只靠项目 `CLAUDE.md` 约定 + Claude Code hook。
+**不变式**：host 适配器绝不 patch 宿主 skill。grill-host 只靠项目 `CLAUDE.md` 约定 + 插件自带 hook。
+
+安装模型与 `${CLAUDE_PLUGIN_ROOT}` 替换边界见 `HOST_INTEGRATION_CN.md`。
 
 ## wiki 稳定契约：4 个 host 无关触点
 
 | 触点 | 机制 | 落到 grill |
 |---|---|---|
-| **Disclose** 选 wiki | 独立 `/wiki-research` skill（驱动 `wiki-researcher` agent），任何 host 都能调 | grill-with-docs 质询期 |
+| **Disclose** 选 wiki | 独立 `/grill-adapter:wiki-research` skill（驱动 `grill-adapter:wiki-researcher` agent），任何 host 都能调 | grill-with-docs 质询期 |
 | **Carry** 带约束 | `.adapter/context/<feature-slug>.wiki-context.json` sidecar = 中立载体（选中 section 的 source-aware 引用 + `sharedWiki` 身份）；task 身份/指纹来自 host 产出的 ticket roster，锚点是 feature 不是 plan 文件 | to-tickets 据 selection 写 |
-| **Bind** 执行期 reread | ① 精确：每 ticket `/wiki-materialize <ticket>` ② 粗兜底：`wiki-reread` hook 检测 active sidecar 注入（会话级） | implement 逐 ticket |
-| **Capture** 回写 | `/update-wiki`（语义门），经 `grill_context_to_candidates.py` 吃 grill CONTEXT.md/ADR 增量 | code-review 后 |
+| **Bind** 执行期 reread | ① 精确：每 ticket `/grill-adapter:wiki-materialize <ticket>` ② 粗兜底：`wiki-reread` hook 检测 active sidecar 注入（会话级） | implement 逐 ticket |
+| **Capture** 回写 | `/grill-adapter:update-wiki`（语义门），其可选前置步经 `grill_context_to_candidates.py` 吃 grill CONTEXT.md/ADR 增量 | code-review 后 |
 
-`/wiki-materialize` 复用 `scripts/wiki_materialize_task.py`——本地 + `github_mcp` 两类 section 统一取，含**执行期有界 1 跳 `depends-on` 闭包**。
+`/grill-adapter:wiki-materialize` 复用 `scripts/wiki_materialize_task.py`——本地 + `github_mcp` 两类 section 统一取，含**执行期有界 1 跳 `depends-on` 闭包**。
 
 ### 子系统触点
 
-- **Lanhu Intake**：`/lanhu-requirements` skill + 3 个 analyst agent（`agents/lanhu-*`）+ `role-prd/` 模板 → `.lanhu/.../index.md` 证据包（**只作输入**）。详见 `LANHU_CN.md`。
-- **source-truth Verify**：`/source-truth-check` skill（复用 `scripts/source_truth_settings.py`），规划期渲染 policy prompt（spec-pre/plan-pre/plan-review）。**Lint**：`hooks/source-truth-lint.sh`（PostToolUse/Stop）对真实 changed files 跑 `source_truth_common` lint。
-- **break-loop**：`/break-loop` skill，调试复盘 → 交 `/update-wiki`。
+- **Lanhu Intake**：`/grill-adapter:lanhu-requirements` skill + 2 个 analyst agent（`agents/lanhu-{frontend,backend}-requirements-analyst.md`，由 `lib/sync_role_prd.py` 从 `role-prd/analyst.common.md` + `role-prd/{frontend,backend}.md` 生成）→ `.lanhu/.../index.md` 证据包（**只作输入**）。生成源住在 `role-prd/` 而非 `agents/`：插件会把 `agents/*.md` 全部注册成 agent，模板放那儿会变幽灵 agent。详见 `LANHU_CN.md`。
+- **source-truth Verify**：`/grill-adapter:source-truth-check` skill（复用 `scripts/source_truth_settings.py`），规划期渲染 policy prompt（spec-pre/plan-pre/plan-review）。**Lint**：`hooks/source-truth-lint.sh`（PostToolUse/Stop）对真实 changed files 跑 `source_truth_common` lint。
+- **break-loop**：`/grill-adapter:break-loop` skill，调试复盘 → 交 `/grill-adapter:update-wiki`。
 
 ## 引擎组件
 
 - **执行层脚本 `scripts/*.py`**：`wiki_common`（1 跳邻居、depends-on 闭包等共享逻辑）、`wiki_context_render`（schemaVersion 5 sidecar 校验/渲染/scaffold/finalize，task 身份与指纹来自 host 产出的 ticket roster）、`wiki_materialize_task`（单一固定取数器：本地 + github_mcp reread + 1 跳闭包）、`wiki_generate_section_index` / `wiki_update_check` / `wiki_migrate_helper`（支持 `--wiki-dir`，仓库根即 wiki）、`wiki_graph_neighbors`（有界 1 跳邻居查询）、`wiki_section` / `wiki_read_section` / `wiki_select_target` / `wiki_apply_update` / `wiki_import` / `init-wiki` / `update-wiki`；`source_truth_settings` / `source_truth_common`；`lanhu_settings`；`scaffold_practice_skill`；`grill_context_to_candidates`（grill→wiki 桥）。
-- **shared-wiki MCP `mcp/shared-wiki/`**：TypeScript MCP server，启动读 Claude Code 注入的 `CLAUDE_PROJECT_DIR`，从该项目 `.shared-adapter/settings.json` 的 `wiki.sharedMcp` 自我配置；提供 `shared_wiki_read` / `read-section(s)` / `graph-neighbors` / PR 等工具；`read-sections` / `graph-neighbors` 也以 CLI 子命令暴露给执行层（`wiki_materialize_task.py` 硬约束 reread 唯一走这条，不在别处用 python 重新 clone）。
+- **shared-wiki MCP `mcp/shared-wiki/`**：TypeScript MCP server，随插件 `.mcp.json` 自启，启动读 Claude Code 注入的 `CLAUDE_PROJECT_DIR`，从该项目 `.shared-adapter/settings.json` 的 `wiki.sharedMcp` 自我配置；提供 `shared_wiki_read` / `read-section(s)` / `graph-neighbors` / PR 等工具（插件内工具名前缀 `mcp__plugin_grill-adapter_shared-wiki__`）；`read-sections` / `graph-neighbors` 也以 CLI 子命令暴露给执行层（`wiki_materialize_task.py` 硬约束 reread 唯一走这条，不在别处用 python 重新 clone；命令解析顺序：`--shared-wiki-cmd` > `SHARED_WIKI_MCP_CMD` > 注册发现 > 插件内 bundle 自定位）。`npm run build` 是 **esbuild 单文件打包**，产物 `dist/index.js` **提交进仓库**——插件缓存没有安装期构建步骤；类型检查另走 `npm run typecheck`。
 - **模板与导出**：`wiki-template/`（bootstrap 到目标项目 `.adapter/wiki/`）、`wiki-repo-skills/` + `wiki-repo-ci/`（`export-wiki-skills` 钉版本写入独立 wiki 仓库 `.claude/` 的作者侧 skill + 图重建 Action）、`contracts/`（`wiki-context-v5` / `wiki-selection-v1` / `ticket-roster-v1` schema 示例）。
 
 ## section 图
@@ -54,7 +61,7 @@ wiki 页被 `<!-- wiki-section:xxx summary="..." -->` 标记切成 section；sec
 
 ## shared MCP（跨 repo 共享）
 
-连接是**每项目**的：消费项目在自己的 `.shared-adapter/settings.json` 的 `wiki.sharedMcp`（`repoUrl`/`baseBranch`/`remote`/`wikiRoot`/`displayRoot`/`draftPr`）声明连哪个 shared wiki。MCP server 注册为**一份通用、不含 repo 的注册**，启动读 `CLAUDE_PROJECT_DIR` 从该项目 settings 自配置。没声明的项目 fail-closed（无 MCP shared wiki）。注意区分：消费项目的 `wiki.sharedMcp` 是「连接」，shared wiki 仓库内的 `.shared-adapter/settings.json` 才是该 wiki 的「治理」（policy）。
+连接是**每项目**的：消费项目在自己的 `.shared-adapter/settings.json` 的 `wiki.sharedMcp`（`repoUrl`/`baseBranch`/`remote`/`wikiRoot`/`displayRoot`/`draftPr`）声明连哪个 shared wiki。MCP server 随插件发货、**一份通用、不含 repo 的注册**（插件根 `.mcp.json`），启动读 `CLAUDE_PROJECT_DIR` 从该项目 settings 自配置。没声明的项目 fail-closed（无 MCP shared wiki）。server 的**可见范围跟随插件作用域**（`--scope project` 即只在该项目可见），插件自带 MCP 无法单独选作用域。注意区分：消费项目的 `wiki.sharedMcp` 是「连接」，shared wiki 仓库内的 `.shared-adapter/settings.json` 才是该 wiki 的「治理」（policy）。
 
 ## 执行期闭包
 

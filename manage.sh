@@ -9,12 +9,15 @@ usage() {
   cat >&2 <<EOF
 grill-adapter — host-agnostic Claude Code adapter (wiki + Lanhu + source-truth)
 
+grill-adapter ships as a Claude Code plugin: skills, agents, hooks and the shared-wiki MCP
+all activate together via \`claude plugin install grill-adapter --scope project|user\`.
+These commands only wire the one thing a plugin cannot touch — a project's CLAUDE.md.
+
 Usage:
-  $0 install [project-root] [--host grill|plain]   Install user-level skills/agents/payload; wire a project
-  $0 uninstall [project-root]                       Remove user-level install; unwire a project
-  $0 verify [project-root] [--host grill|plain]     Verify the install (user level, and project if given)
-  $0 status [project-root]                           Report install + binding status
-  $0 mcp-registration                                Print the generic shared-wiki MCP registration JSON
+  $0 install <project-root> [--host grill|plain]    Write the host convention block into a project
+  $0 uninstall <project-root>                        Strip the host convention block from a project
+  $0 verify <project-root> [--host grill|plain]      Verify the project is wired
+  $0 status [project-root]                           Report plugin + convention-block status
   $0 bootstrap-wiki <project-root> [--template name] [--wiki-root project|shared]
   $0 init-wiki <project-root> [analysis-hint]        Emit project inventory for agent-led wiki init
   $0 export-wiki-skills <wiki-repo-root> [--no-graph-ci]
@@ -37,7 +40,7 @@ require_project_root() {
 shift || true
 
 case "$COMMAND" in
-  install|uninstall|verify|status|mcp-registration)
+  install|uninstall|verify|status)
     exec python3 "$SCRIPT_DIR/lib/install.py" "$COMMAND" "$@"
     ;;
   bootstrap-wiki)

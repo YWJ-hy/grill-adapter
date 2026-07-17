@@ -49,13 +49,13 @@ For shared imports, also honor `.shared-adapter/settings.json` `wiki.sharedNeutr
 When the user provides a source wiki directory and does not specify shared wiki, default to project wiki. Under the default policy, ask first and then run:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_import.py path/to/original-wiki-dir --authorized-create
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_import.py path/to/original-wiki-dir --authorized-create
 ```
 
 To import into shared wiki:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_import.py path/to/original-wiki-dir --wiki-root shared --authorized-create
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_import.py path/to/original-wiki-dir --wiki-root shared --authorized-create
 ```
 
 The script will:
@@ -69,15 +69,15 @@ The script will:
 If all source wiki pages should be placed under a target adapter directory:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_import.py path/to/original-wiki-dir --target imported --authorized-create
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_import.py path/to/original-wiki-dir --wiki-root shared --target imported --authorized-create
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_import.py path/to/original-wiki-dir --target imported --authorized-create
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_import.py path/to/original-wiki-dir --wiki-root shared --target imported --authorized-create
 ```
 
 If a single source file should go to a specific adapter leaf:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_import.py path/to/source-wiki-page.md --target imported/source-wiki-page.md --authorized-create
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_import.py path/to/source-wiki-page.md --wiki-root shared --target imported/source-wiki-page.md --authorized-create
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_import.py path/to/source-wiki-page.md --target imported/source-wiki-page.md --authorized-create
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_import.py path/to/source-wiki-page.md --wiki-root shared --target imported/source-wiki-page.md --authorized-create
 ```
 
 Use `--merge-existing` only to allow identical existing files to be skipped. It never overwrites different content.

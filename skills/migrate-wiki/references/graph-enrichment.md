@@ -84,13 +84,13 @@ Let the user confirm, adjust, or drop items. Only write the confirmed set.
    the `> Type:` line, and `pageTypes`; relationships live in `.graph.json`, not the index table):
 
    ```bash
-   python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_migrate_helper.py --generate-indexes . --wiki-root $WIKI_ROOT
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_migrate_helper.py --generate-indexes . --wiki-root $WIKI_ROOT
    ```
 
 3. Lint for dangling edges and unknown types, and fix what it reports before the next batch:
 
    ```bash
-   python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_update_check.py --wiki-root all --json
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_update_check.py --wiki-root all --json
    ```
 
    `.graph.json`'s `dangling` array lists unresolved `[[ ]]` targets and unknown edge types;

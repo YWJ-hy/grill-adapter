@@ -2,11 +2,13 @@
 __pycache__/
 *.pyc
 
-# Node / MCP build artifacts (rebuilt by `manage.sh install` / `npm run build`)
+# Node deps
 mcp/shared-wiki/node_modules/
-mcp/shared-wiki/dist/
 node_modules/
-dist/
+
+# mcp/shared-wiki/dist/ is deliberately NOT ignored: the plugin cache has no install-time
+# build step, so the bundled MCP must ship prebuilt for the plugin's .mcp.json to start it.
+# Rebuild with `npm run build` in mcp/shared-wiki; release-check gates dist-vs-src drift.
 
 # Machine-local install/config artifacts
 grill-adapter.config.json

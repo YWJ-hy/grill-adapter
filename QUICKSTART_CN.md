@@ -4,33 +4,44 @@
 
 ## 1. 装 grill-adapter
 
+grill-adapter 是个 Claude Code plugin。两步：
+
+**① 装 plugin**（在你的项目目录下）：
+
+```bash
+claude plugin marketplace add YWJ-hy/grill-adapter
+claude plugin install grill-adapter@grill-adapter --scope project
+```
+
+12 个 skill、3 个 agent、4 个 hook、shared-wiki MCP **一起注册、自动生效**——不拷文件进 `~/.claude`，不动你项目的 `.claude/settings.json`。MCP 装好即自动启动，**无需手工注册**；它们共用 plugin 的 scope（`--scope project` = 只在本项目起；`--scope user` = 跨项目）。
+
+**② 给项目写约定块**（plugin 唯一管不到的东西）：
+
 ```bash
 git clone https://github.com/YWJ-hy/grill-adapter.git
 cd grill-adapter
 ./manage.sh install /path/to/your/project --host grill
 ```
 
-这会：用户级把 12 个 skill 装进 `~/.claude/skills/`、3 个 agent 装进 `~/.claude/agents/`、payload（含构建好的 shared-wiki MCP）装进 `~/.claude/grill-adapter/`；项目级把 hook 并进你项目的 `.claude/settings.json`、把 grill 约定块写进你项目的 `CLAUDE.md`。**不改 grill 一行。**
-
-按提示把打印出来的 shared-wiki MCP 注册（一次、用户级）粘进你的用户 MCP 配置——只有要用跨 repo 共享 wiki 才需要。
+只把 grill 约定块写进你项目的 `CLAUDE.md`（marker 包裹，只点名 skill、不含安装路径）。**不改 grill 一行。**
 
 ## 2. 播种 wiki
 
 ```bash
 ./manage.sh bootstrap-wiki /path/to/your/project --template standard
-./manage.sh doctor /path/to/your/project      # 确认安装 + 绑定状态
+./manage.sh doctor /path/to/your/project      # 确认接线 + 绑定状态
 ```
 
-`.adapter/wiki/` 就绪。也可以在 Claude Code 里用 `/init-wiki` 让 agent 基于项目盘点初始化，或 `/import-wiki` + `/migrate-wiki` 导入已有文档。
+`.adapter/wiki/` 就绪。也可以在 Claude Code 里用 `/grill-adapter:init-wiki` 让 agent 基于项目盘点初始化，或 `/grill-adapter:import-wiki` + `/grill-adapter:migrate-wiki` 导入已有文档。
 
 ## 3. 跑一遍 grill → implement → update-wiki
 
 在 Claude Code 里对你的项目：
 
-1. `/grill-with-docs`：描述需求。约定会在质询期自动提示调 `/wiki-research` 披露相关 wiki。
-2. `/to-tickets`：规划期 `/wiki-research`（plan）正式选 wiki → 生成 `.adapter/context/<feature-slug>.wiki-context.json` sidecar；ticket 发布后由真实 ticket 建 roster，再 `--finalize` 盖指纹。
-3. `/implement`：每个 ticket 前跑 `/wiki-materialize <ticket>`，把该 ticket 的硬约束 wiki section 整段 reread 进上下文。改到 source-of-truth 保护路径时 `source-truth-lint` hook 会提醒。
-4. `/code-review` 后：`grill_context_to_candidates.py` 把 grill 的 CONTEXT.md/ADR 增量转成候选行 → `/update-wiki` 审查是否有 durable 知识回写。
+1. `/grill-with-docs`：描述需求。约定会在质询期自动提示调 `/grill-adapter:wiki-research` 披露相关 wiki。
+2. `/to-tickets`：规划期 `/grill-adapter:wiki-research`（plan）正式选 wiki → 生成 `.adapter/context/<feature-slug>.wiki-context.json` sidecar；ticket 发布后由真实 ticket 建 roster，再 `--finalize` 盖指纹。
+3. `/implement`：每个 ticket 前跑 `/grill-adapter:wiki-materialize <ticket>`，把该 ticket 的硬约束 wiki section 整段 reread 进上下文。改到 source-of-truth 保护路径时 `source-truth-lint` hook 会提醒。
+4. `/code-review` 后：跑 `/grill-adapter:update-wiki` 审查是否有 durable 知识回写（它自己会先把 grill 的 CONTEXT.md/ADR 增量转成候选行）。
 
 ## 4. 验证
 
@@ -42,8 +53,7 @@ cd grill-adapter
 ## 常用命令速查
 
 ```
-./manage.sh install|uninstall|verify|status [project] [--host grill|plain]
-./manage.sh mcp-registration
+./manage.sh install|uninstall|verify|status <project> [--host grill|plain]
 ./manage.sh bootstrap-wiki <project> [--template standard]
 ./manage.sh init-wiki <project> [hint]
 ./manage.sh export-wiki-skills <wiki-repo> [--no-graph-ci]
@@ -52,4 +62,4 @@ cd grill-adapter
 ./manage.sh release-check <project>
 ```
 
-要卸载：`./manage.sh uninstall /path/to/your/project`（删用户级安装 + 剥项目 hook/约定块）。
+要卸载：把 `grill-adapter@grill-adapter` 从项目 `.claude/settings.json` 的 `enabledPlugins` 里删掉（project scope 是提交进仓库、与团队共享的设置，`claude plugin uninstall` 会**拒绝**替你删；只想自己关掉用 `claude plugin disable grill-adapter@grill-adapter --scope local`），再 `./manage.sh uninstall /path/to/your/project` 剥项目约定块。

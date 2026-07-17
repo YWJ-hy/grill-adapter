@@ -20,7 +20,7 @@ A wiki page is already covered when an existing indexed file states the same dur
 You may list indexed leaf candidates mechanically:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_select_target.py --wiki-root all --json
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_select_target.py --wiki-root all --json
 ```
 
 This only lists candidates. It does not choose the target for you.

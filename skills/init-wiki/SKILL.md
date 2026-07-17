@@ -44,7 +44,7 @@ You must consider the user input before proceeding. Treat it as an optional focu
 3. Generate mechanical inventory:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/init-wiki.py . "<optional focus from the user request>" --json
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/init-wiki.py . "<optional focus from the user request>" --json
 ```
 
 4. Read relevant indexed wiki pages from the inventory, using root-prefixed paths.
@@ -55,8 +55,8 @@ python3 __GRILL_ADAPTER_ROOT__/scripts/init-wiki.py . "<optional focus from the 
 9. Refresh indexed references for changed roots, for example:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/update-wiki.py --wiki-root project --authorized-update
-python3 __GRILL_ADAPTER_ROOT__/scripts/update-wiki.py --wiki-root shared --authorized-update
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/update-wiki.py --wiki-root project --authorized-update
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/update-wiki.py --wiki-root shared --authorized-update
 ```
 
 10. Tell the user which files were initialized, which signals were only candidates, and remind them that later knowledge changes belong in the `update-wiki` skill.
