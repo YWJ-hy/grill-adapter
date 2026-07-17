@@ -11,7 +11,7 @@ function config(root: string): SharedWikiConfig {
     baseBranch: 'main',
     remote: 'origin',
     wikiRoot: '.',
-    displayRoot: '.shared-superpowers/wiki',
+    displayRoot: '.shared-adapter/wiki',
     cacheDir: root,
     cloneDir: root,
     draftPr: true,
@@ -81,7 +81,7 @@ describe('index graph', () => {
     expect(leaf?.readStrategy).toBe('companion_index_then_section');
     expect(leaf?.companionIndex).toEqual({
       path: 'frontend/component-guidelines.index.md',
-      displayPath: '.shared-superpowers/wiki/frontend/component-guidelines.index.md',
+      displayPath: '.shared-adapter/wiki/frontend/component-guidelines.index.md',
       exists: true,
       readable: true,
     });

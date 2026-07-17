@@ -25,9 +25,9 @@ diagnosing-bugs (or an equivalent debugging workflow)
 
 - The debugging workflow finds the root cause, tests hypotheses, implements the fix, and verifies it.
 - `break-loop` analyzes the completed debugging work and extracts prevention lessons.
-- `update-wiki` is the only place that persists durable implementation knowledge into `.superpowers/wiki/`.
+- `update-wiki` is the only place that persists durable implementation knowledge into `.adapter/wiki/`.
 
-Do not use this skill to choose wiki targets, check semantic duplicates, edit `.superpowers/wiki/`, or refresh indexes. Hand candidate knowledge to `update-wiki` instead.
+Do not use this skill to choose wiki targets, check semantic duplicates, edit `.adapter/wiki/`, or refresh indexes. Hand candidate knowledge to `update-wiki` instead.
 
 ---
 
@@ -181,6 +181,6 @@ Skip `update-wiki` when the finding is only:
 
 If the decision is `skip update-wiki`, stop after reporting the analysis.
 
-If the decision is `run update-wiki`, use the `update-wiki` skill next and pass the handoff packet as input context. Do not edit `.superpowers/wiki/` from this skill.
+If the decision is `run update-wiki`, use the `update-wiki` skill next and pass the handoff packet as input context. Do not edit `.adapter/wiki/` from this skill.
 
 `update-wiki` must still make its own decisions: whether each candidate is durable, how to split candidates atomically, which indexed wiki pages to read, whether the idea is already covered, which leaf wiki page owns the rule, and how to refresh and validate the wiki index.

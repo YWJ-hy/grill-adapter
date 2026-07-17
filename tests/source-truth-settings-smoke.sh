@@ -6,7 +6,7 @@ ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-mkdir -p "$TMP_DIR/.superpowers" "$TMP_DIR/src/services/generated" "$TMP_DIR/openapi" "$TMP_DIR/src/mocks" "$TMP_DIR/dist"
+mkdir -p "$TMP_DIR/.adapter" "$TMP_DIR/src/services/generated" "$TMP_DIR/openapi" "$TMP_DIR/src/mocks" "$TMP_DIR/dist"
 
 grep_json() {
   local text="$1"
@@ -37,7 +37,7 @@ fi
 python3 "$ROOT/scripts/source_truth_settings.py" "$TMP_DIR" --lint-changed --changed-path src/app.ts --format json >"$TMP_DIR/no-config-lint.json"
 grep_json '"status": "pass"' "$TMP_DIR/no-config-lint.json"
 
-cat >"$TMP_DIR/.superpowers/settings.json" <<'JSON'
+cat >"$TMP_DIR/.adapter/settings.json" <<'JSON'
 {
   "sourceOfTruth": {
     "sources": [
@@ -120,7 +120,7 @@ grep_json '"status": "warn"' "$TMP_DIR/lint-warn.json"
 # Inline `!` negation inside a single truth/edit: never rule: the carved sub-path
 # must render as an explicit carve-out (not under the truth heading) and must
 # classify as unconfigured so the changed-path lint does not block it.
-cat >"$TMP_DIR/.superpowers/settings.json" <<'JSON'
+cat >"$TMP_DIR/.adapter/settings.json" <<'JSON'
 {
   "sourceOfTruth": {
     "sources": [
@@ -143,7 +143,7 @@ grep_json '"status": "block"' "$TMP_DIR/carveout-lint.json"
 grep_json '"path": "src/service2/widget/widget.adapter.ts"' "$TMP_DIR/carveout-lint.json"
 grep_json '"role": "unconfigured"' "$TMP_DIR/carveout-lint.json"
 
-cat >"$TMP_DIR/.superpowers/settings.json" <<'JSON'
+cat >"$TMP_DIR/.adapter/settings.json" <<'JSON'
 {"sourceOfTruth": {"sources": [{"paths": ["src/**"], "role": "contract", "edit": "never"}]}}
 JSON
 if python3 "$ROOT/scripts/source_truth_settings.py" "$TMP_DIR" --show-policy >"$TMP_DIR/invalid-role.out" 2>&1; then
@@ -152,7 +152,7 @@ if python3 "$ROOT/scripts/source_truth_settings.py" "$TMP_DIR" --show-policy >"$
 fi
 grep_json 'expected one of' "$TMP_DIR/invalid-role.out"
 
-cat >"$TMP_DIR/.superpowers/settings.json" <<'JSON'
+cat >"$TMP_DIR/.adapter/settings.json" <<'JSON'
 {"sourceOfTruth": {"sources": [{"paths": ["src/**"], "role": "truth"}]}}
 JSON
 if python3 "$ROOT/scripts/source_truth_settings.py" "$TMP_DIR" --show-policy >"$TMP_DIR/missing-edit.out" 2>&1; then
@@ -161,7 +161,7 @@ if python3 "$ROOT/scripts/source_truth_settings.py" "$TMP_DIR" --show-policy >"$
 fi
 grep_json "edit is required for role 'truth'" "$TMP_DIR/missing-edit.out"
 
-cat >"$TMP_DIR/.superpowers/settings.json" <<'JSON'
+cat >"$TMP_DIR/.adapter/settings.json" <<'JSON'
 {"sourceOfTruth": {"sources": [{"paths": ["src/mocks/**"], "role": "evidence", "edit": "ask"}]}}
 JSON
 if python3 "$ROOT/scripts/source_truth_settings.py" "$TMP_DIR" --show-policy >"$TMP_DIR/non-truth-edit.out" 2>&1; then
@@ -170,7 +170,7 @@ if python3 "$ROOT/scripts/source_truth_settings.py" "$TMP_DIR" --show-policy >"$
 fi
 grep_json 'edit is only allowed when role is' "$TMP_DIR/non-truth-edit.out"
 
-cat >"$TMP_DIR/.superpowers/settings.json" <<'JSON'
+cat >"$TMP_DIR/.adapter/settings.json" <<'JSON'
 {"sourceOfTruth": {"sources": [{"paths": ["../secret"], "role": "truth", "edit": "never"}]}}
 JSON
 if python3 "$ROOT/scripts/source_truth_settings.py" "$TMP_DIR" --show-policy >"$TMP_DIR/bad-pattern.out" 2>&1; then
@@ -179,7 +179,7 @@ if python3 "$ROOT/scripts/source_truth_settings.py" "$TMP_DIR" --show-policy >"$
 fi
 grep_json "must not contain '..'" "$TMP_DIR/bad-pattern.out"
 
-cat >"$TMP_DIR/.superpowers/settings.json" <<'JSON'
+cat >"$TMP_DIR/.adapter/settings.json" <<'JSON'
 {"sourceOfTruth": {"heuristics": true, "sources": [{"paths": ["src/mocks/**"], "role": "evidence"}, {"paths": ["dist/**"], "role": "ignore"}]}}
 JSON
 python3 "$ROOT/scripts/source_truth_settings.py" "$TMP_DIR" --show-policy >"$TMP_DIR/evidence-ignore.json"

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Smoke test for scaffold-practice-skill mechanical layer.
-# Usage: bash tests/scaffold-practice-skill-smoke.sh <installed-superpowers-target>
+# Usage: bash tests/scaffold-practice-skill-smoke.sh <installed-adapter-target>
 #
 # Exercises the installed scaffold_practice_skill.py against a hermetic temp
 # project: scaffold (open file set), discovery-card registration + companion
@@ -11,7 +11,7 @@ set -euo pipefail
 
 TARGET_DIR="${1:-}"
 if [[ -z "$TARGET_DIR" ]]; then
-  printf 'Usage: %s <installed-superpowers-target>\n' "$0" >&2
+  printf 'Usage: %s <installed-adapter-target>\n' "$0" >&2
   exit 1
 fi
 SCRIPT="$TARGET_DIR/scripts/scaffold_practice_skill.py"
@@ -32,7 +32,7 @@ assert_contains()  { [[ "$3" == *"$2"* ]] && ok "$1" || bad "$1 (missing: $2)"; 
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-WIKI="$TMP/.superpowers/wiki"
+WIKI="$TMP/.adapter/wiki"
 mkdir -p "$WIKI/guides"
 printf '# Project Wiki\n\n- [Guides](guides/)\n' > "$WIKI/index.md"
 printf '# Guides\n\n<!-- grill-adapter:auto:start -->\n<!-- grill-adapter:auto:end -->\n' > "$WIKI/guides/index.md"
@@ -98,7 +98,7 @@ if python3 "$SCRIPT" --project-root "$NOWIKI" register-card --name x --authorize
 else
   ok "register-card refused (no wiki to write into)"
 fi
-assert_no_file "no stray .superpowers/wiki minted" "$NOWIKI/.superpowers/wiki/index.md"
+assert_no_file "no stray .adapter/wiki minted" "$NOWIKI/.adapter/wiki/index.md"
 rm -rf "$NOWIKI"
 
 printf '\nTest: running from a subdir with --project-root . anchors to the real root (no stray wiki)\n'
@@ -106,7 +106,7 @@ mkdir -p "$TMP/.claude/skills"
 ( cd "$TMP/.claude/skills" && python3 "$SCRIPT" --project-root . register-card \
     --name subdir-practice --title "子目录实践" --triggers "x" \
     --summary "子目录实践概述；命中即绑定 skill" --authorized-update > /dev/null 2>&1 )
-assert_no_file "no stray wiki under .claude/skills" "$TMP/.claude/skills/.superpowers/wiki/index.md"
+assert_no_file "no stray wiki under .claude/skills" "$TMP/.claude/skills/.adapter/wiki/index.md"
 assert_contains "card landed in the real project wiki" "wiki-section:subdir-practice" "$(cat "$WIKI/guides/skills.md")"
 
 printf '\nTest: validate happy path\n'
@@ -137,16 +137,16 @@ fi
 
 printf '\nTest: refuse policy blocks card writes\n'
 TMP2="$(mktemp -d)"
-mkdir -p "$TMP2/.superpowers/wiki"
-printf '# Project Wiki\n' > "$TMP2/.superpowers/wiki/index.md"
-printf '{\n  "wiki": { "updateAuthorization": { "createNewDocument": "refuse" } }\n}\n' > "$TMP2/.superpowers/settings.json"
+mkdir -p "$TMP2/.adapter/wiki"
+printf '# Project Wiki\n' > "$TMP2/.adapter/wiki/index.md"
+printf '{\n  "wiki": { "updateAuthorization": { "createNewDocument": "refuse" } }\n}\n' > "$TMP2/.adapter/settings.json"
 python3 "$SCRIPT" --project-root "$TMP2" scaffold --name refused-skill > /dev/null
 if python3 "$SCRIPT" --project-root "$TMP2" register-card --name refused-skill --authorized-create > /dev/null 2>&1; then
   bad "refuse policy should block even with --authorized-create"
 else
   ok "refuse policy blocked"
 fi
-assert_no_file "no skills.md under refuse policy" "$TMP2/.superpowers/wiki/guides/skills.md"
+assert_no_file "no skills.md under refuse policy" "$TMP2/.adapter/wiki/guides/skills.md"
 rm -rf "$TMP2"
 
 printf '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'

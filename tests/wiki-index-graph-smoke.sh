@@ -5,8 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TARGET_INPUT="${1:-${ROOT}}"
 PROJECT_ROOT="${2:-${ROOT}/..}"
-WIKI_ROOT="${PROJECT_ROOT}/.superpowers/wiki"
-SHARED_WIKI_ROOT="${PROJECT_ROOT}/.shared-superpowers/wiki"
+WIKI_ROOT="${PROJECT_ROOT}/.adapter/wiki"
+SHARED_WIKI_ROOT="${PROJECT_ROOT}/.shared-adapter/wiki"
 
 mkdir -p "${WIKI_ROOT}/platform/api" "${WIKI_ROOT}/guides" "${WIKI_ROOT}/shared/deep" "${WIKI_ROOT}/unindexed"
 mkdir -p "${SHARED_WIKI_ROOT}/platform/shared" "${SHARED_WIKI_ROOT}/unindexed"
@@ -41,7 +41,7 @@ printf '# Shared Conventions\n\nShared behavior.\n' > "${SHARED_WIKI_ROOT}/platf
 printf '# Shared Secret\n\nUnindexed shared behavior.\n' > "${SHARED_WIKI_ROOT}/unindexed/secret.md"
 
 tree_output="$(cd "${PROJECT_ROOT}" && python3 "${TARGET_INPUT}/scripts/wiki-context.py" --tree --depth 5)"
-for expected in "Wiki root: \`.superpowers/wiki/\`" "Wiki root: \`.shared-superpowers/wiki/\`" ".superpowers/wiki/platform/api/contract.md" ".superpowers/wiki/guides/index.md" ".superpowers/wiki/guides/debugging.md" ".superpowers/wiki/shared/deep/rule.md" ".shared-superpowers/wiki/platform/shared/conventions.md"; do
+for expected in "Wiki root: \`.adapter/wiki/\`" "Wiki root: \`.shared-adapter/wiki/\`" ".adapter/wiki/platform/api/contract.md" ".adapter/wiki/guides/index.md" ".adapter/wiki/guides/debugging.md" ".adapter/wiki/shared/deep/rule.md" ".shared-adapter/wiki/platform/shared/conventions.md"; do
   case "${tree_output}" in
     *"${expected}"*) : ;;
     *) printf 'Expected index-driven tree to include %s\n%s\n' "${expected}" "${tree_output}" >&2; exit 1 ;;
@@ -52,7 +52,7 @@ case "${tree_output}" in
   *) : ;;
 esac
 
-shared_file_output="$(cd "${PROJECT_ROOT}" && python3 "${TARGET_INPUT}/scripts/wiki-context.py" --file .shared-superpowers/wiki/platform/shared/conventions.md)"
+shared_file_output="$(cd "${PROJECT_ROOT}" && python3 "${TARGET_INPUT}/scripts/wiki-context.py" --file .shared-adapter/wiki/platform/shared/conventions.md)"
 case "${shared_file_output}" in
   *"Shared behavior."*) : ;;
   *) printf 'Expected root-prefixed shared file read to work\n%s\n' "${shared_file_output}" >&2; exit 1 ;;
@@ -86,7 +86,7 @@ printf '# Hook Guidelines\n\nReusable useUpload composables and hook extraction 
 printf '# Type Safety\n\nTypeScript contracts and Naive UI component declarations.\n' > "${WIKI_ROOT}/frontend/type-safety.md"
 printf '# Example\n\nIgnored example content.\n' > "${WIKI_ROOT}/frontend/examples/example.md"
 component_tree_output="$(cd "${PROJECT_ROOT}" && python3 "${TARGET_INPUT}/scripts/wiki-context.py" --tree --depth 4)"
-for expected in ".superpowers/wiki/frontend/component-guidelines.md" ".superpowers/wiki/frontend/hook-guidelines.md" ".superpowers/wiki/frontend/type-safety.md"; do
+for expected in ".adapter/wiki/frontend/component-guidelines.md" ".adapter/wiki/frontend/hook-guidelines.md" ".adapter/wiki/frontend/type-safety.md"; do
   case "${component_tree_output}" in
     *"${expected}"*) : ;;
     *) printf 'Expected component tree to include %s\n%s\n' "${expected}" "${component_tree_output}" >&2; exit 1 ;;

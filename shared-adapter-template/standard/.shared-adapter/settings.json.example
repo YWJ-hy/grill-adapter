@@ -1,0 +1,38 @@
+{
+  "wiki": {
+    "updateAuthorization": {
+      "updateExistingPage": "skip",
+      "createNewDocument": "ask"
+    },
+    "sharedNeutrality": {
+      "blockedTerms": [],
+      "blockedPatterns": []
+    }
+  },
+  "hooks": {
+    "sharedWikiSubmodule:sync": [
+      {
+        "command": "./.shared-adapter/scripts/sync-submodule.sh",
+        "args": ["--path", ".shared-adapter/wiki"]
+      }
+    ],
+    "sharedWikiSubmodule:publish": [
+      {
+        "command": "./.shared-adapter/scripts/publish-submodule.sh",
+        "args": ["--path", ".shared-adapter/wiki"]
+      }
+    ],
+    "sharedWikiSubmodule:verify": [
+      {
+        "command": "./.shared-adapter/scripts/verify-submodule.sh",
+        "args": ["--path", ".shared-adapter/wiki"]
+      }
+    ],
+    "sharedWikiSubmodule:status": [
+      {
+        "command": "./.shared-adapter/scripts/status-submodule.sh",
+        "args": ["--path", ".shared-adapter/wiki"]
+      }
+    ]
+  }
+}

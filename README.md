@@ -27,7 +27,7 @@ Plus **Lanhu intake** (`/lanhu-requirements`), **source-of-truth** verify (`/sou
 git clone https://github.com/YWJ-hy/grill-adapter.git
 cd grill-adapter
 ./manage.sh install /path/to/your/project --host grill   # user-level skills/agents + wire this project
-./manage.sh bootstrap-wiki /path/to/your/project           # seed .superpowers/wiki/
+./manage.sh bootstrap-wiki /path/to/your/project           # seed .adapter/wiki/
 ./manage.sh doctor /path/to/your/project                   # sanity-check
 ```
 

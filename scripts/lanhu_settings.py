@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import sys
 
-PROJECT_SETTINGS_REL = Path(".superpowers") / "settings.json"
+PROJECT_SETTINGS_REL = Path(".adapter") / "settings.json"
 LANHU_ROLE_VALUES = {"frontend", "backend"}
 DEPRECATED_FRONTEND_OUTPUT_VALUES = {"markdown", "html"}
 
@@ -16,7 +16,7 @@ DEPRECATED_FRONTEND_OUTPUT_VALUES = {"markdown", "html"}
 def repo_root(start: Path) -> Path:
     current = start.resolve()
     for candidate in (current, *current.parents):
-        if (candidate / ".superpowers").exists() or (candidate / ".shared-superpowers").exists() or (candidate / "superpowers").exists():
+        if (candidate / ".adapter").exists() or (candidate / ".shared-adapter").exists():
             return candidate
         if (candidate / ".git").exists():
             # Stop at the enclosing git repository root; never climb past .git
@@ -127,7 +127,7 @@ def resolve_output_preference(project_root: Path, role: str | None) -> dict:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Resolve Lanhu role and unified package settings from project-local .superpowers/settings.json")
+    parser = argparse.ArgumentParser(description="Resolve Lanhu role and unified package settings from project-local .adapter/settings.json")
     parser.add_argument("args", nargs="*")
     parsed = parser.parse_args(argv)
     if len(parsed.args) > 2:

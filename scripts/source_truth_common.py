@@ -9,7 +9,7 @@ from typing import Any
 import json
 import re
 
-PROJECT_SETTINGS_REL = Path(".superpowers") / "settings.json"
+PROJECT_SETTINGS_REL = Path(".adapter") / "settings.json"
 ROLE_VALUES = {"truth", "evidence", "ignore"}
 EDIT_VALUES = {"never", "ask"}
 DEFAULT_HEURISTICS = False
@@ -53,7 +53,7 @@ class SourceTruthPolicy:
 def repo_root(start: Path) -> Path:
     current = start.resolve()
     for candidate in (current, *current.parents):
-        if (candidate / ".git").exists() or (candidate / ".superpowers").exists() or (candidate / "superpowers").exists():
+        if (candidate / ".git").exists() or (candidate / ".adapter").exists():
             return candidate
     return current
 

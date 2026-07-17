@@ -14,63 +14,63 @@ fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-PLAN="$TMP/plan.md"
-CONTEXT="$TMP/plan.wiki-context.json"
-cat > "$PLAN" <<'MD'
-# Example Plan
+ROSTER="$TMP/roster.json"
+CONTEXT="$TMP/feature.wiki-context.json"
+cat > "$ROSTER" <<'JSON'
+{
+  "featureSlug": "example-feature",
+  "ticketSource": "manual",
+  "tickets": [
+    {
+      "taskId": "T1",
+      "taskTitle": "Implement path-based form updates",
+      "text": "# 01 — Implement path-based form updates\n\n**What to build:** field writes go through updateByPath(path, value).\n\n**Blocked by:** None — can start immediately."
+    },
+    {
+      "taskId": "T2",
+      "taskTitle": "Add contract coverage",
+      "text": "# 02 — Add contract coverage\n\n**What to build:** cover the shared payload contract.\n\n**Blocked by:** 01"
+    }
+  ]
+}
+JSON
 
-### Task T1: Implement path-based form updates
-Update field writes to use path-based updates.
-
-### Task T2: Add contract coverage
-Cover the shared payload contract.
-MD
-
-read -r T1_HASH T2_HASH <<<"$(python3 - <<'PY' "$PLAN"
-from pathlib import Path
+# Independent fingerprint oracle: recompute the expected digests here rather than trusting the
+# engine's own value, so a normalization regression is caught instead of confirmed. Mirrors
+# wiki_context_render._normalize_task_text: CRLF->LF, rstrip each line, drop leading/trailing
+# blank lines, single trailing newline.
+read -r T1_HASH T2_HASH <<<"$(python3 - <<'PY' "$ROSTER"
 import hashlib
-import re
+import json
 import sys
+from pathlib import Path
 
-plan_path = Path(sys.argv[1])
-text = plan_path.read_text(encoding='utf-8').replace('\r\n', '\n').replace('\r', '\n')
-lines = text.split('\n')
-task_re = re.compile(r'^### Task\s+([A-Za-z0-9][A-Za-z0-9_-]*):\s*(.+?)\s*$')
-heading_re = re.compile(r'^#{1,3}\s+')
+roster = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
 
-hashes = {}
-idx = 0
-while idx < len(lines):
-    match = task_re.match(lines[idx])
-    if not match:
-        idx += 1
-        continue
-    task_id = match.group(1)
-    start = idx
-    idx += 1
-    while idx < len(lines) and not task_re.match(lines[idx]) and not heading_re.match(lines[idx]):
-        idx += 1
-    block = lines[start:idx]
-    while block and not block[0].strip():
-        block.pop(0)
-    while block and not block[-1].strip():
-        block.pop()
-    normalized = '\n'.join(line.rstrip() for line in block) + '\n'
-    hashes[task_id] = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+def fingerprint(text: str) -> str:
+    lines = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+    lines = [line.rstrip() for line in lines]
+    while lines and not lines[0]:
+        lines.pop(0)
+    while lines and not lines[-1]:
+        lines.pop()
+    normalized = '\n'.join(lines) + '\n'
+    return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
 
+hashes = {t['taskId']: fingerprint(t['text']) for t in roster['tickets']}
 print(hashes['T1'], hashes['T2'])
 PY
 )"
 
 cat > "$CONTEXT" <<JSON
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "kind": "grill-adapter.wiki-context",
   "generatedBy": "grill-adapter",
-  "planPath": "${PLAN}",
+  "featureSlug": "example-feature",
   "taskRouting": {
     "status": "confirmed",
-    "planTaskFormat": "grill-adapter-plan-task-heading-v1",
+    "ticketRosterFormat": "grill-adapter-ticket-roster-v1",
     "fingerprintAlgorithm": "sha256:grill-adapter-task-text-v1",
     "selectedSectionsFrozen": true,
     "refreshPolicy": "refresh-taskWikiRefs-and-fingerprints-only"
@@ -79,12 +79,12 @@ cat > "$CONTEXT" <<JSON
     {
       "root": "project",
       "source": "local",
-      "displayPath": ".superpowers/wiki/frontend/hook-guidelines.md",
+      "displayPath": ".adapter/wiki/frontend/hook-guidelines.md",
       "localPath": "frontend/hook-guidelines.md",
       "documentContext": {
         "title": "Hook Guidelines",
         "overview": "Project-private hook rules for generated form adapters.",
-        "contextSource": ".superpowers/wiki/frontend/hook-guidelines.index.md"
+        "contextSource": ".adapter/wiki/frontend/hook-guidelines.index.md"
       },
       "sections": [
         {
@@ -146,7 +146,7 @@ cat > "$CONTEXT" <<JSON
     {
       "root": "shared",
       "source": "github_mcp",
-      "displayPath": ".shared-superpowers/wiki/frontend/contracts.md",
+      "displayPath": ".shared-adapter/wiki/frontend/contracts.md",
       "wikiPath": "frontend/contracts.md",
       "revision": {
         "ref": "main",
@@ -231,7 +231,7 @@ assert_not_contains() {
   fi
 }
 
-EXAMPLE="${TARGET_INPUT}/contracts/wiki-context-v4.example.jsonc"
+EXAMPLE="${TARGET_INPUT}/contracts/wiki-context-v5.example.jsonc"
 if [[ ! -f "$EXAMPLE" ]]; then
   printf 'Missing wiki context example contract: %s\n' "$EXAMPLE" >&2
   exit 1
@@ -245,12 +245,12 @@ PY
 assert_contains "example contract" 'AI-facing authoring contract' "$EXAMPLE_TEXT"
 assert_contains "example contract" 'Do not inspect <plugin-root>/scripts/wiki_context_render.py to infer this format' "$EXAMPLE_TEXT"
 assert_contains "example contract" '--bind-fingerprints --strict' "$EXAMPLE_TEXT"
-assert_contains "example contract" '--execution-ready --plan-path' "$EXAMPLE_TEXT"
+assert_contains "example contract" '--execution-ready --ticket-roster' "$EXAMPLE_TEXT"
 assert_contains "example contract" '--fingerprint-preflight' "$EXAMPLE_TEXT"
 assert_not_contains "example contract" '0000000000000000' "$EXAMPLE_TEXT"
 
-python3 "$SCRIPT" "$CONTEXT" --validate-only --strict --execution-ready --plan-path "$PLAN" >/dev/null
-python3 "$SCRIPT" "$CONTEXT" --fingerprint-preflight --strict --execution-ready --plan-path "$PLAN" >/dev/null
+python3 "$SCRIPT" "$CONTEXT" --validate-only --strict --execution-ready --ticket-roster "$ROSTER" >/dev/null
+python3 "$SCRIPT" "$CONTEXT" --fingerprint-preflight --strict --execution-ready --ticket-roster "$ROSTER" >/dev/null
 
 # --- Adapter fingerprint binding (mechanical taskFingerprint stamping) ---
 # Author a sidecar with NO taskFingerprint, then stamp it with --bind-fingerprints.
@@ -264,16 +264,16 @@ for ref in data['taskWikiRefs']:
 open(dst, 'w', encoding='utf-8').write(json.dumps(data))
 PY
 # Pre-bind execution-ready validation must fail because fingerprints are absent.
-if python3 "$SCRIPT" "$BIND_CTX" --validate-only --strict --execution-ready --plan-path "$PLAN" >/tmp/wiki-context-prebind.out 2>&1; then
+if python3 "$SCRIPT" "$BIND_CTX" --validate-only --strict --execution-ready --ticket-roster "$ROSTER" >/tmp/wiki-context-prebind.out 2>&1; then
   printf 'Expected validate-only to fail before binding fingerprints\n' >&2
   exit 1
 fi
 assert_contains "pre-bind validate failure" 'taskFingerprint' "$(cat /tmp/wiki-context-prebind.out)"
 # Bind stamps fingerprints, validates execution-ready, and writes in place.
-BIND_OUT="$(python3 "$SCRIPT" "$BIND_CTX" --bind-fingerprints --strict --execution-ready --plan-path "$PLAN")"
+BIND_OUT="$(python3 "$SCRIPT" "$BIND_CTX" --bind-fingerprints --strict --execution-ready --ticket-roster "$ROSTER")"
 assert_contains "bind output" 'bound taskFingerprint for 2 task(s)' "$BIND_OUT"
 # A clean bind guarantees the execution-side preflight passes.
-python3 "$SCRIPT" "$BIND_CTX" --fingerprint-preflight --strict --execution-ready --plan-path "$PLAN" >/dev/null
+python3 "$SCRIPT" "$BIND_CTX" --fingerprint-preflight --strict --execution-ready --ticket-roster "$ROSTER" >/dev/null
 # The stamped digest must equal the independently computed plan hash (one algorithm, one source of truth).
 BOUND_T1="$(python3 -c "import json,sys;print(next(r['taskFingerprint'] for r in json.load(open(sys.argv[1], encoding='utf-8'))['taskWikiRefs'] if r['taskId']=='T1'))" "$BIND_CTX")"
 if [[ "$BOUND_T1" != "$T1_HASH" ]]; then
@@ -281,7 +281,7 @@ if [[ "$BOUND_T1" != "$T1_HASH" ]]; then
   exit 1
 fi
 # Re-binding an already-current sidecar is idempotent.
-assert_contains "rebind idempotent" 'already current' "$(python3 "$SCRIPT" "$BIND_CTX" --bind-fingerprints --strict --execution-ready --plan-path "$PLAN")"
+assert_contains "rebind idempotent" 'already current' "$(python3 "$SCRIPT" "$BIND_CTX" --bind-fingerprints --strict --execution-ready --ticket-roster "$ROSTER")"
 
 # Placeholder fingerprints (e.g. copied skeleton zeros) must be rejected, not silently accepted.
 PLACEHOLDER_CTX="$TMP/placeholder.wiki-context.json"
@@ -292,14 +292,14 @@ data = json.load(open(src, encoding='utf-8'))
 data['taskWikiRefs'][0]['taskFingerprint'] = '0' * 64
 open(dst, 'w', encoding='utf-8').write(json.dumps(data))
 PY
-if python3 "$SCRIPT" "$PLACEHOLDER_CTX" --validate-only --strict --execution-ready --plan-path "$PLAN" >/tmp/wiki-context-placeholder.out 2>&1; then
+if python3 "$SCRIPT" "$PLACEHOLDER_CTX" --validate-only --strict --execution-ready --ticket-roster "$ROSTER" >/tmp/wiki-context-placeholder.out 2>&1; then
   printf 'Expected placeholder fingerprint to fail validation\n' >&2
   exit 1
 fi
 assert_contains "placeholder failure" 'placeholder' "$(cat /tmp/wiki-context-placeholder.out)"
 
 # Root-cause guard: a well-formed but STALE fingerprint must be caught by validate-only itself
-# (with --execution-ready --plan-path), not only later at the execution-side preflight.
+# (with --execution-ready --ticket-roster), not only later at the execution-side preflight.
 STALE_CTX="$TMP/stale.wiki-context.json"
 python3 - <<'PY' "$CONTEXT" "$STALE_CTX"
 import json, sys
@@ -308,20 +308,26 @@ data = json.load(open(src, encoding='utf-8'))
 data['taskWikiRefs'][0]['taskFingerprint'] = 'abc1230000000000000000000000000000000000000000000000000000000001'
 open(dst, 'w', encoding='utf-8').write(json.dumps(data))
 PY
-if python3 "$SCRIPT" "$STALE_CTX" --validate-only --strict --execution-ready --plan-path "$PLAN" >/tmp/wiki-context-stale.out 2>&1; then
-  printf 'Expected stale fingerprint to fail validate-only with --plan-path\n' >&2
+if python3 "$SCRIPT" "$STALE_CTX" --validate-only --strict --execution-ready --ticket-roster "$ROSTER" >/tmp/wiki-context-stale.out 2>&1; then
+  printf 'Expected stale fingerprint to fail validate-only with --ticket-roster\n' >&2
   exit 1
 fi
 assert_contains "stale validate failure" 'fingerprint mismatch' "$(cat /tmp/wiki-context-stale.out)"
 
-# --bind-fingerprints refuses to write when the plan and sidecar task sets disagree.
-DRIFT_PLAN="$TMP/plan-drift.md"
-printf '%s\n\n### Task T3: Extra task\nNew work.\n' "$(cat "$PLAN")" > "$DRIFT_PLAN"
-if python3 "$SCRIPT" "$BIND_CTX" --bind-fingerprints --strict --execution-ready --plan-path "$DRIFT_PLAN" >/tmp/wiki-context-bind-drift.out 2>&1; then
-  printf 'Expected bind to refuse when a plan task is missing from taskWikiRefs\n' >&2
+# --bind-fingerprints refuses to write when the roster and sidecar task sets disagree.
+DRIFT_ROSTER="$TMP/roster-drift.json"
+python3 - <<'PY' "$ROSTER" "$DRIFT_ROSTER"
+import json, sys
+src, dst = sys.argv[1:3]
+data = json.load(open(src, encoding='utf-8'))
+data['tickets'].append({'taskId': 'T3', 'taskTitle': 'Extra task', 'text': '# 03 — Extra task\n\n**What to build:** new work.\n\n**Blocked by:** 02'})
+open(dst, 'w', encoding='utf-8').write(json.dumps(data))
+PY
+if python3 "$SCRIPT" "$BIND_CTX" --bind-fingerprints --strict --execution-ready --ticket-roster "$DRIFT_ROSTER" >/tmp/wiki-context-bind-drift.out 2>&1; then
+  printf 'Expected bind to refuse when a roster ticket is missing from taskWikiRefs\n' >&2
   exit 1
 fi
-assert_contains "bind drift failure" 'plan task missing from taskWikiRefs: T3' "$(cat /tmp/wiki-context-bind-drift.out)"
+assert_contains "bind drift failure" 'roster ticket missing from taskWikiRefs: T3' "$(cat /tmp/wiki-context-bind-drift.out)"
 
 T1_OUT="$(python3 "$SCRIPT" "$CONTEXT" --task-id T1 --role implementer --strict --execution-ready)"
 assert_contains "T1 render" 'Hook Guidelines' "$T1_OUT"
@@ -360,7 +366,7 @@ assert_contains "T2 reread list" 'contract-review' "$REREAD_T2"
 assert_not_contains "T2 reread list" 'path-based-update' "$REREAD_T2"
 
 EMPTY_CONTEXT="$TMP/empty.wiki-context.json"
-printf '{"schemaVersion":4,"kind":"grill-adapter.wiki-context","wikiPages":[]}' > "$EMPTY_CONTEXT"
+printf '{"schemaVersion":5,"kind":"grill-adapter.wiki-context","wikiPages":[]}' > "$EMPTY_CONTEXT"
 EMPTY_OUT="$(python3 "$SCRIPT" "$EMPTY_CONTEXT" --role implementer --strict)"
 assert_contains "empty render" 'No selected wiki constraints for this role.' "$EMPTY_OUT"
 
@@ -385,7 +391,7 @@ if python3 "$SCRIPT" "$BAD_SCHEMA" --validate-only >/tmp/wiki-context-bad-schema
   printf 'Expected bad schema to fail\n' >&2
   exit 1
 fi
-assert_contains "bad schema failure" 'schemaVersion must be 4' "$(cat /tmp/wiki-context-bad-schema.out)"
+assert_contains "bad schema failure" 'schemaVersion must be 5' "$(cat /tmp/wiki-context-bad-schema.out)"
 
 BAD_CATEGORY="$TMP/bad-category.wiki-context.json"
 python3 - <<'PY' "$CONTEXT" "$BAD_CATEGORY"
@@ -425,13 +431,13 @@ data = json.load(open(src, encoding='utf-8'))
 data['wikiPages'][0]['sections'][0]['destination'].pop('tasks', None)
 open(dst, 'w', encoding='utf-8').write(json.dumps(data))
 PY
-if python3 "$SCRIPT" "$TASKBOUND_MISSING" --validate-only --strict --execution-ready --plan-path "$PLAN" >/tmp/wiki-context-taskbound-missing.out 2>&1; then
+if python3 "$SCRIPT" "$TASKBOUND_MISSING" --validate-only --strict --execution-ready --ticket-roster "$ROSTER" >/tmp/wiki-context-taskbound-missing.out 2>&1; then
   printf 'Expected task-bound section with no destination.tasks to fail\n' >&2
   exit 1
 fi
 assert_contains "task-bound missing failure" 'destination.tasks' "$(cat /tmp/wiki-context-taskbound-missing.out)"
 
-# appliesTo is removed in schemaVersion 4: strict validation rejects it with a migration hint.
+# appliesTo is removed in schemaVersion 5: strict validation rejects it with a migration hint.
 APPLIES_TO="$TMP/applies-to.wiki-context.json"
 python3 - <<'PY' "$CONTEXT" "$APPLIES_TO"
 import json, sys
@@ -455,7 +461,7 @@ data = json.load(open(src, encoding='utf-8'))
 data['wikiPages'][0]['sections'][0]['destination']['tasks'] = ['T99']
 open(dst, 'w', encoding='utf-8').write(json.dumps(data))
 PY
-if python3 "$SCRIPT" "$UNKNOWN_TASK_REF" --validate-only --strict --execution-ready --plan-path "$PLAN" >/tmp/wiki-context-unknown-task-ref.out 2>&1; then
+if python3 "$SCRIPT" "$UNKNOWN_TASK_REF" --validate-only --strict --execution-ready --ticket-roster "$ROSTER" >/tmp/wiki-context-unknown-task-ref.out 2>&1; then
   printf 'Expected destination.tasks referencing an unknown task id to fail\n' >&2
   exit 1
 fi
@@ -469,7 +475,7 @@ data = json.load(open(src, encoding='utf-8'))
 data['wikiPages'][0]['sections'][0]['destination']['kind'] = 'planning-only'
 open(dst, 'w', encoding='utf-8').write(json.dumps(data))
 PY
-if python3 "$SCRIPT" "$BAD_DESTINATION" --validate-only --strict --execution-ready --plan-path "$PLAN" >/tmp/wiki-context-bad-destination.out 2>&1; then
+if python3 "$SCRIPT" "$BAD_DESTINATION" --validate-only --strict --execution-ready --ticket-roster "$ROSTER" >/tmp/wiki-context-bad-destination.out 2>&1; then
   printf 'Expected hard/direct planning-only destination to fail\n' >&2
   exit 1
 fi
@@ -483,22 +489,30 @@ data = json.load(open(src, encoding='utf-8'))
 del data['wikiPages'][0]['sections'][0]['reread']
 open(dst, 'w', encoding='utf-8').write(json.dumps(data))
 PY
-if python3 "$SCRIPT" "$HARD_NO_REREAD" --validate-only --strict --execution-ready --plan-path "$PLAN" >/tmp/wiki-context-hard-no-reread.out 2>&1; then
+if python3 "$SCRIPT" "$HARD_NO_REREAD" --validate-only --strict --execution-ready --ticket-roster "$ROSTER" >/tmp/wiki-context-hard-no-reread.out 2>&1; then
   printf 'Expected hard-constraint section without reread to fail execution-ready validation\n' >&2
   exit 1
 fi
 assert_contains "hard no reread failure" 'reread' "$(cat /tmp/wiki-context-hard-no-reread.out)"
 
-PLAN_EDITED="$TMP/plan-edited.md"
-python3 - <<'PY' "$PLAN" "$PLAN_EDITED"
-from pathlib import Path
-import sys
-src, dst = map(Path, sys.argv[1:3])
-text = src.read_text(encoding='utf-8')
-text = text.replace('Update field writes to use path-based updates.', 'Update field writes to use path-based updates and preserve nested change tracking.')
-dst.write_text(text, encoding='utf-8')
+# A ticket edited after the wiki was bound to it must fail the execution-side preflight.
+ROSTER_EDITED="$TMP/roster-edited.json"
+python3 - <<'PY' "$ROSTER" "$ROSTER_EDITED"
+import json, sys
+src, dst = sys.argv[1:3]
+data = json.load(open(src, encoding='utf-8'))
+original = data['tickets'][0]['text']
+edited = original.replace(
+    'field writes go through updateByPath(path, value).',
+    'field writes go through updateByPath(path, value) and preserve nested change tracking.',
+)
+# Guard the guard: a no-op replace would leave the fingerprint intact and make this drift case
+# silently vacuous (the preflight would pass and the test would fail for the wrong reason).
+assert edited != original, 'drift fixture did not change the ticket text'
+data['tickets'][0]['text'] = edited
+open(dst, 'w', encoding='utf-8').write(json.dumps(data))
 PY
-if python3 "$SCRIPT" "$CONTEXT" --fingerprint-preflight --strict --execution-ready --plan-path "$PLAN_EDITED" >/tmp/wiki-context-bad-fingerprint.out 2>&1; then
+if python3 "$SCRIPT" "$CONTEXT" --fingerprint-preflight --strict --execution-ready --ticket-roster "$ROSTER_EDITED" >/tmp/wiki-context-bad-fingerprint.out 2>&1; then
   printf 'Expected fingerprint preflight mismatch to fail\n' >&2
   exit 1
 fi

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 KIND = "grill-adapter.wiki-context"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 CONSTRAINT_CATEGORIES = ("implementation", "test", "review", "general")
 ROLE_CATEGORIES = {
     "implementer": ("implementation", "test", "general"),
@@ -34,13 +34,14 @@ SCAFFOLD_GENERATED_BY = "grill-adapter"
 # --bind-fingerprints + --execution-ready then gate it. The other three are fixed declared strings.
 SCAFFOLD_TASK_ROUTING = {
     "status": "candidate_sections_only",
-    "planTaskFormat": "grill-adapter-plan-task-heading-v1",
+    "ticketRosterFormat": "grill-adapter-ticket-roster-v1",
     "fingerprintAlgorithm": "sha256:grill-adapter-task-text-v1",
     "selectedSectionsFrozen": False,
     "refreshPolicy": "refresh-taskWikiRefs-and-fingerprints-only",
 }
-TASK_HEADING_RE = re.compile(r"^### Task\s+([A-Za-z0-9][A-Za-z0-9_-]*):\s*(.+?)\s*$")
-TASK_OR_HIGHER_HEADING_RE = re.compile(r"^#{1,3}\s+")
+# Declared ticket sources. Audit metadata only: the engine fingerprints whatever text the roster
+# hands it and never branches on this value, reads a tracker, or touches the network.
+TICKET_SOURCES = {"grill-local-scratch", "github-issues", "manual"}
 HEX_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 # A digest of 64 identical hex chars (0000…, 1111…, ffff…) is an authoring placeholder, never a
 # real sha256. Rejecting it stops copy-pasted skeleton fingerprints from passing validation and
@@ -94,7 +95,7 @@ def _load_json(path: Path, label: str) -> dict[str, Any]:
 
 def _load_context(path: Path) -> dict[str, Any]:
     if path.suffix == ".md":
-        raise ValidationError("Legacy .wiki-context.md is not supported for selected wiki context rendering; regenerate a schemaVersion 4 .wiki-context.json during planning.")
+        raise ValidationError("Legacy .wiki-context.md is not supported for selected wiki context rendering; regenerate a schemaVersion 5 .wiki-context.json during planning.")
     return _load_json(path, "wiki context")
 
 
@@ -127,7 +128,7 @@ def _validate_task_fingerprint(task_ref: dict[str, Any], field: str) -> None:
         raise ValidationError(f"{field}.taskFingerprint must be a 64-character lowercase sha256 hex digest")
     if PLACEHOLDER_FINGERPRINT_RE.match(fingerprint):
         raise ValidationError(
-            f"{field}.taskFingerprint looks like a placeholder; run --bind-fingerprints --plan-path <plan> to stamp the real fingerprint"
+            f"{field}.taskFingerprint looks like a placeholder; run --bind-fingerprints --ticket-roster <roster> to stamp the real fingerprint"
         )
 
 
@@ -138,7 +139,7 @@ def _validate_execution_ready(data: dict[str, Any]) -> None:
     if task_routing.get("selectedSectionsFrozen") is not True:
         raise ValidationError("taskRouting.selectedSectionsFrozen must be true for execution-ready wiki context")
 
-    # taskWikiRefs is the task roster + fingerprint anchor only. In schemaVersion 4 there are no per-task
+    # taskWikiRefs is the task roster + fingerprint anchor only. In schemaVersion 5 there are no per-task
     # wiki refs and no globalWikiRefs collection; routing lives entirely on each section's destination.
     # Collect valid task ids first so task-bound sections can be checked against them.
     task_refs = _as_list(data.get("taskWikiRefs"), "taskWikiRefs")
@@ -325,7 +326,7 @@ def _role_allows(section: dict[str, Any], role: str) -> bool:
 def _append_document_context(lines: list[str], display: str, context: dict[str, Any]) -> None:
     """Render the page heading plus its bounded document context, content-first.
 
-    The heading folds the wiki path (its `.superpowers/` vs `.shared-superpowers/` prefix already
+    The heading folds the wiki path (its `.adapter/` vs `.shared-adapter/` prefix already
     signals the root) and the human title into one line; the overview renders as a blockquote. The
     machine plumbing an execution/reviewer subagent never acts on -- root/source/localPath/wikiPath
     metadata rows, the `.index.md` context-source path, the standalone "Document Context" heading --
@@ -464,8 +465,8 @@ def render_markdown(data: dict[str, Any], role: str, task_id: str | None = None)
 def _load_local_section_graph(root_name: str) -> dict[str, Any] | None:
     """Load a local wiki root's derived .graph.json, or None if unavailable.
 
-    Works for both ``project`` (``.superpowers/wiki``) and a locally checked-out
-    ``shared`` wiki (``.shared-superpowers/wiki``). Read lazily and defensively:
+    Works for both ``project`` (``.adapter/wiki``) and a locally checked-out
+    ``shared`` wiki (``.shared-adapter/wiki``). Read lazily and defensively:
     depends-on closure is an additive convenience, so any failure to locate/parse the
     graph must degrade to "no closure", never break rereads. The github_mcp shared wiki
     has no local graph; its closure is computed by wiki_materialize_task.py against the
@@ -605,40 +606,47 @@ def _task_fingerprint(task_text: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def extract_plan_tasks(plan_path: Path) -> dict[str, dict[str, str]]:
-    try:
-        text = plan_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise FingerprintError(f"Cannot read plan: {exc}") from exc
-    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    starts: list[tuple[int, str, str]] = []
-    for index, line in enumerate(lines):
-        match = TASK_HEADING_RE.match(line)
-        if match:
-            starts.append((index, match.group(1), match.group(2)))
-    if not starts:
-        raise FingerprintError("No stable task headings found; expected numeric headings like `### Task 1: Title`")
+def load_ticket_roster(roster_path: Path) -> dict[str, dict[str, str]]:
+    """Load the host-produced ticket roster: the task identity + fingerprint source of truth.
+
+    This is the host-agnostic boundary. The engine never reads a tracker, a plan document, or the
+    network -- it fingerprints exactly the text it is handed. Each host's convention block tells the
+    agent how to fill the roster (grill local-markdown reads `.scratch/<slug>/issues/<NN>-<slug>.md`,
+    grill GitHub runs `gh issue view`, plain takes a user-specified source), so a new host needs a
+    convention block and no engine change.
+
+    Returns the same shape the renderer's fingerprint/scaffold paths consume: taskId -> title/text/hash.
+    """
+    # _load_json already rejects a non-object (as ValidationError) and unreadable/invalid JSON.
+    raw = _load_json(roster_path, "ticket roster")
+    source = raw.get("ticketSource")
+    if source is not None and source not in TICKET_SOURCES:
+        raise FingerprintError(f"Unknown ticketSource {source!r}; expected one of {', '.join(sorted(TICKET_SOURCES))}")
+    entries = raw.get("tickets")
+    if not isinstance(entries, list) or not entries:
+        raise FingerprintError("Ticket roster has no tickets; expected a non-empty `tickets` array")
 
     tasks: dict[str, dict[str, str]] = {}
-    for position, (start, task_id, title) in enumerate(starts):
+    for index, entry in enumerate(entries):
+        ticket = _as_dict(entry, f"tickets[{index}]")
+        task_id = ticket.get("taskId")
+        if not isinstance(task_id, str) or not task_id.strip():
+            raise FingerprintError(f"tickets[{index}] missing a non-empty taskId")
+        task_id = task_id.strip()
         if task_id in tasks:
-            raise FingerprintError(f"Duplicate task id in plan: {task_id}")
-        end = len(lines)
-        next_task_start = starts[position + 1][0] if position + 1 < len(starts) else None
-        for index in range(start + 1, len(lines)):
-            if next_task_start is not None and index == next_task_start:
-                end = index
-                break
-            if TASK_OR_HIGHER_HEADING_RE.match(lines[index]) and not lines[index].startswith("####"):
-                end = index
-                break
-        task_text = "\n".join(lines[start:end])
-        tasks[task_id] = {"title": title, "text": task_text, "hash": _task_fingerprint(task_text)}
+            raise FingerprintError(f"Duplicate taskId in ticket roster: {task_id}")
+        text = ticket.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise FingerprintError(f"tickets[{index}] (taskId {task_id}) missing non-empty text to fingerprint")
+        title = ticket.get("taskTitle")
+        if not isinstance(title, str) or not title.strip():
+            raise FingerprintError(f"tickets[{index}] (taskId {task_id}) missing a non-empty taskTitle")
+        tasks[task_id] = {"title": title.strip(), "text": text, "hash": _task_fingerprint(text)}
     return tasks
 
 
-def fingerprint_preflight(data: dict[str, Any], plan_path: Path) -> str:
-    plan_tasks = extract_plan_tasks(plan_path)
+def fingerprint_preflight(data: dict[str, Any], roster_path: Path) -> str:
+    roster_tasks = load_ticket_roster(roster_path)
     sidecar_tasks: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
     for index, task_ref in enumerate(_as_list(data.get("taskWikiRefs"), "taskWikiRefs")):
@@ -652,32 +660,32 @@ def fingerprint_preflight(data: dict[str, Any], plan_path: Path) -> str:
             continue
         sidecar_tasks[task_id] = task_obj
 
-    for task_id, task in plan_tasks.items():
+    for task_id, task in roster_tasks.items():
         sidecar = sidecar_tasks.get(task_id)
         if not sidecar:
-            errors.append(f"plan task missing from taskWikiRefs: {task_id}")
+            errors.append(f"roster ticket missing from taskWikiRefs: {task_id}")
             continue
         fingerprint = sidecar.get("taskFingerprint")
         if fingerprint != task["hash"]:
             errors.append(f"fingerprint mismatch for {task_id}: expected {fingerprint}, current {task['hash']}")
 
-    for task_id in sorted(set(sidecar_tasks) - set(plan_tasks)):
-        errors.append(f"taskWikiRefs contains task not found in plan: {task_id}")
+    for task_id in sorted(set(sidecar_tasks) - set(roster_tasks)):
+        errors.append(f"taskWikiRefs contains task not found in the ticket roster: {task_id}")
 
     if errors:
         raise FingerprintError("\n".join(errors))
-    return f"fingerprint preflight passed for {len(plan_tasks)} task(s)"
+    return f"fingerprint preflight passed for {len(roster_tasks)} task(s)"
 
 
-def bind_fingerprints(data: dict[str, Any], plan_path: Path) -> tuple[int, int, list[str]]:
-    """Stamp each taskWikiRefs entry's taskFingerprint from the current plan task text.
+def bind_fingerprints(data: dict[str, Any], roster_path: Path) -> tuple[int, int, list[str]]:
+    """Stamp each taskWikiRefs entry's taskFingerprint from the current ticket roster text.
 
     Routing (which sections bind to which task) stays author-owned; only the mechanical sha256 of
-    the normalized plan task text is (re)written here, from the single source of truth in this
+    the normalized ticket text is (re)written here, from the single source of truth in this
     module. Mirrors fingerprint_preflight's structural checks and refuses to write on any mismatch,
     so a successful bind guarantees the execution-side --fingerprint-preflight will pass.
     """
-    plan_tasks = extract_plan_tasks(plan_path)
+    roster_tasks = load_ticket_roster(roster_path)
     sidecar_tasks: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
     for index, task_ref in enumerate(_as_list(data.get("taskWikiRefs"), "taskWikiRefs")):
@@ -691,17 +699,17 @@ def bind_fingerprints(data: dict[str, Any], plan_path: Path) -> tuple[int, int, 
             continue
         sidecar_tasks[task_id] = task_obj
 
-    for task_id in sorted(set(sidecar_tasks) - set(plan_tasks)):
-        errors.append(f"taskWikiRefs contains task not found in plan: {task_id}")
-    for task_id in plan_tasks:
+    for task_id in sorted(set(sidecar_tasks) - set(roster_tasks)):
+        errors.append(f"taskWikiRefs contains task not found in the ticket roster: {task_id}")
+    for task_id in roster_tasks:
         if task_id not in sidecar_tasks:
-            errors.append(f"plan task missing from taskWikiRefs: {task_id}")
+            errors.append(f"roster ticket missing from taskWikiRefs: {task_id}")
     if errors:
         raise FingerprintError("\n".join(errors))
 
     changed = 0
     for task_id, task_obj in sidecar_tasks.items():
-        current_hash = plan_tasks[task_id]["hash"]
+        current_hash = roster_tasks[task_id]["hash"]
         if task_obj.get("taskFingerprint") != current_hash:
             task_obj["taskFingerprint"] = current_hash
             changed += 1
@@ -856,7 +864,9 @@ def _scaffold_shared_wiki(selection: dict[str, Any], pages: list[dict[str, Any]]
     return shared
 
 
-def scaffold_from_selection(selection: dict[str, Any], plan_path: str | None) -> dict[str, Any]:
+def scaffold_from_selection(
+    selection: dict[str, Any], feature_slug: str | None, ticket_source: str | None
+) -> dict[str, Any]:
     """Mechanically turn a wiki-researcher selection JSON into a complete-shaped sidecar skeleton.
 
     Copies the researcher's page/section selection verbatim and fills everything mechanical: schema
@@ -864,14 +874,22 @@ def scaffold_from_selection(selection: dict[str, Any], plan_path: str | None) ->
     and default destination kinds (task-bound defaults also get an empty destination.tasks). The author
     then edits only the semantic routing on each section's destination (reason, kind, and the tasks list
     for task-bound) plus taskRouting.status. taskWikiRefs are intentionally empty here; --scaffold-tasks
-    adds them once the plan has stable task ids.
+    adds them once the ticket roster exists.
+
+    featureSlug is the sidecar's identity: hosts that produce no plan document (grill publishes tickets
+    to an issue tracker or to .scratch/<slug>/issues/) still have a feature to anchor on, so the sidecar
+    is named for the feature rather than for a plan file that may not exist.
     """
+    if ticket_source is not None and ticket_source not in TICKET_SOURCES:
+        raise ValidationError(f"Unknown ticketSource {ticket_source!r}; expected one of {', '.join(sorted(TICKET_SOURCES))}")
     raw_pages = _as_list(selection.get("wikiPages"), "selection.wikiPages")
     pages = [_scaffold_page(raw_page, page_index) for page_index, raw_page in enumerate(raw_pages)]
 
     data: dict[str, Any] = {"schemaVersion": SCHEMA_VERSION, "kind": KIND, "generatedBy": SCAFFOLD_GENERATED_BY}
-    if plan_path:
-        data["planPath"] = plan_path
+    if feature_slug:
+        data["featureSlug"] = feature_slug
+    if ticket_source:
+        data["ticketSource"] = ticket_source
     shared = _scaffold_shared_wiki(selection, pages)
     if shared:
         data["sharedWiki"] = shared
@@ -883,16 +901,16 @@ def scaffold_from_selection(selection: dict[str, Any], plan_path: str | None) ->
     return data
 
 
-def scaffold_tasks(data: dict[str, Any], plan_path: Path) -> tuple[list[str], list[str]]:
-    """Scaffold one taskWikiRefs entry per stable plan task (the task roster + fingerprint anchor).
+def scaffold_tasks(data: dict[str, Any], roster_path: Path) -> tuple[list[str], list[str]]:
+    """Scaffold one taskWikiRefs entry per roster ticket (the task roster + fingerprint anchor).
 
-    taskId/taskTitle come mechanically from the plan headings (extract_plan_tasks). Any prior
-    taskFingerprint/caveats are preserved for surviving tasks so re-running after a plan edit is
-    idempotent; tasks no longer in the plan are dropped and reported. taskFingerprint is never stamped
+    taskId/taskTitle come mechanically from the ticket roster (load_ticket_roster). Any prior
+    taskFingerprint/caveats are preserved for surviving tasks so re-running after a ticket edit is
+    idempotent; tasks no longer in the roster are dropped and reported. taskFingerprint is never stamped
     here -- that stays --bind-fingerprints' single responsibility. Section->task routing is NOT touched
     here: it lives on each section's destination.tasks, independent of this roster.
     """
-    plan_tasks = extract_plan_tasks(plan_path)
+    roster_tasks = load_ticket_roster(roster_path)
     existing: dict[str, dict[str, Any]] = {}
     for index, raw_ref in enumerate(_as_list(data.get("taskWikiRefs"), "taskWikiRefs")):
         ref = _as_dict(raw_ref, f"taskWikiRefs[{index}]")
@@ -901,7 +919,7 @@ def scaffold_tasks(data: dict[str, Any], plan_path: Path) -> tuple[list[str], li
             existing[task_id] = ref
 
     new_refs: list[dict[str, Any]] = []
-    for task_id, task in plan_tasks.items():
+    for task_id, task in roster_tasks.items():
         prev = existing.get(task_id)
         ref: dict[str, Any] = {"taskId": task_id, "taskTitle": task["title"]}
         if prev and prev.get("taskFingerprint"):
@@ -910,9 +928,9 @@ def scaffold_tasks(data: dict[str, Any], plan_path: Path) -> tuple[list[str], li
             ref["caveats"] = prev["caveats"]
         new_refs.append(ref)
 
-    dropped = sorted(set(existing) - set(plan_tasks))
+    dropped = sorted(set(existing) - set(roster_tasks))
     data["taskWikiRefs"] = new_refs
-    return list(plan_tasks), dropped
+    return list(roster_tasks), dropped
 
 
 def _write_context(path: Path, data: dict[str, Any]) -> None:
@@ -927,14 +945,16 @@ def _write_context(path: Path, data: dict[str, Any]) -> None:
 
 def main() -> int:
     _configure_stdio()
-    parser = argparse.ArgumentParser(description="Validate and render schemaVersion 4 selected wiki context JSON.")
-    parser.add_argument("context_path", help="Path to docs/superpowers/plans/<plan-stem>.wiki-context.json")
+    parser = argparse.ArgumentParser(description="Validate and render schemaVersion 5 selected wiki context JSON.")
+    parser.add_argument("context_path", help="Path to .adapter/context/<feature-slug>.wiki-context.json")
     parser.add_argument("--task", action="append", default=[], help="Deprecated compatibility option; selected wiki context is not filtered by task string")
-    parser.add_argument("--task-id", help="Render only wiki refs bound to the finalized plan task id, plus global refs")
-    parser.add_argument("--plan-path", help="Implementation plan path used for task fingerprint preflight")
+    parser.add_argument("--task-id", help="Render only wiki refs bound to the finalized ticket id, plus global refs")
+    parser.add_argument("--ticket-roster", help="Path to the host-produced ticket roster JSON (.adapter/context/<feature-slug>.ticket-roster.json) used as the task identity + fingerprint source")
+    parser.add_argument("--feature-slug", help="With --scaffold, the feature identity stamped into the sidecar")
+    parser.add_argument("--ticket-source", choices=sorted(TICKET_SOURCES), help="With --scaffold, records where the roster's tickets came from (audit metadata; the engine never branches on it)")
     parser.add_argument("--execution-ready", action="store_true", help="Require confirmed taskRouting and per-section destination routing suitable for execution")
-    parser.add_argument("--fingerprint-preflight", action="store_true", help="Compare taskWikiRefs fingerprints against the current plan task text")
-    parser.add_argument("--bind-fingerprints", action="store_true", help="Stamp taskWikiRefs taskFingerprint values from the current plan task text and write the sidecar in place (requires --plan-path)")
+    parser.add_argument("--fingerprint-preflight", action="store_true", help="Compare taskWikiRefs fingerprints against the current ticket roster text")
+    parser.add_argument("--bind-fingerprints", action="store_true", help="Stamp taskWikiRefs taskFingerprint values from the current ticket roster text and write the sidecar in place (requires --ticket-roster)")
     parser.add_argument("--role", choices=["implementer", "reviewer"], default="implementer")
     parser.add_argument("--format", choices=["markdown"], default="markdown")
     parser.add_argument("--validate-only", action="store_true")
@@ -942,19 +962,19 @@ def main() -> int:
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("--scaffold", metavar="SELECTION_JSON", help="Generate a sidecar skeleton from a wiki-researcher selection JSON and write it to the positional context path")
     parser.add_argument("--keep-selection", action="store_true", help="With --scaffold, keep the consumed selection JSON instead of removing it on success (for tests/debugging, or to regenerate from an edited selection)")
-    parser.add_argument("--scaffold-tasks", action="store_true", help="Scaffold the taskWikiRefs roster (taskId/taskTitle) from stable plan headings into the existing sidecar, preserving any prior taskFingerprint (requires --plan-path)")
-    parser.add_argument("--finalize", action="store_true", help="One-shot planning finalize after the single destination edit pass: scaffold the taskWikiRefs roster from stable plan headings, stamp every taskFingerprint, validate execution readiness, and write the sidecar once (requires --plan-path). Combines --scaffold-tasks + --bind-fingerprints into a single write.")
+    parser.add_argument("--scaffold-tasks", action="store_true", help="Scaffold the taskWikiRefs roster (taskId/taskTitle) from the ticket roster into the existing sidecar, preserving any prior taskFingerprint (requires --ticket-roster)")
+    parser.add_argument("--finalize", action="store_true", help="One-shot planning finalize after the single destination edit pass: scaffold the taskWikiRefs roster from the ticket roster, stamp every taskFingerprint, validate execution readiness, and write the sidecar once (requires --ticket-roster). Combines --scaffold-tasks + --bind-fingerprints into a single write.")
     args = parser.parse_args()
 
     try:
         if args.scaffold and args.scaffold_tasks:
-            raise ValidationError("Run --scaffold and --scaffold-tasks in separate invocations: --scaffold builds the sidecar from a selection, --scaffold-tasks adds task routing after the plan stabilizes")
+            raise ValidationError("Run --scaffold and --scaffold-tasks in separate invocations: --scaffold builds the sidecar from a selection, --scaffold-tasks adds task routing once the ticket roster exists")
         if args.finalize and (args.scaffold or args.scaffold_tasks or args.bind_fingerprints):
             raise ValidationError("--finalize already runs scaffold-tasks + bind-fingerprints in one write; do not combine it with --scaffold, --scaffold-tasks, or --bind-fingerprints")
         if args.scaffold:
             selection_path = Path(args.scaffold)
             selection = _load_json(selection_path, "wiki selection")
-            data = scaffold_from_selection(selection, args.plan_path)
+            data = scaffold_from_selection(selection, args.feature_slug, args.ticket_source)
             _validate_context(data, args.strict, execution_ready=False)
             context_path = Path(args.context_path)
             _write_context(context_path, data)
@@ -978,40 +998,40 @@ def main() -> int:
             return 0
         data = _load_context(Path(args.context_path))
         if args.finalize:
-            if not args.plan_path:
-                raise ValidationError("--finalize requires --plan-path")
+            if not args.ticket_roster:
+                raise ValidationError("--finalize requires --ticket-roster")
             # Single transactional finalize for the planning flow, run once after the author's lone
-            # destination edit pass: refresh the task roster from the stable plan headings (idempotent,
+            # destination edit pass: refresh the task roster from the ticket roster (idempotent,
             # preserving prior fingerprints), validate structure, stamp every taskFingerprint from the
-            # current plan task text, then confirm the result is fully execution-ready before the one
+            # current ticket text, then confirm the result is fully execution-ready before the one
             # write. Combining scaffold-tasks + bind into a single write means the planning agent's
             # Read-tracked sidecar is re-surfaced once here instead of after two separate rewrites.
-            task_ids, dropped = scaffold_tasks(data, Path(args.plan_path))
+            task_ids, dropped = scaffold_tasks(data, Path(args.ticket_roster))
             _validate_context(data, args.strict, execution_ready=False)
-            total, changed, _ = bind_fingerprints(data, Path(args.plan_path))
+            total, changed, _ = bind_fingerprints(data, Path(args.ticket_roster))
             _validate_context(data, args.strict, execution_ready=True)
             _write_context(Path(args.context_path), data)
             for task_id in dropped:
-                print(f"Warning: dropped taskWikiRefs entry no longer in plan: {task_id}", file=sys.stderr)
+                print(f"Warning: dropped taskWikiRefs entry no longer in the ticket roster: {task_id}", file=sys.stderr)
             status = f"{changed} updated" if changed else "already current"
             print(f"finalized {total} task(s) ({status}): {', '.join(task_ids)}")
             return 0
         if args.scaffold_tasks:
-            if not args.plan_path:
-                raise ValidationError("--scaffold-tasks requires --plan-path")
-            task_ids, dropped = scaffold_tasks(data, Path(args.plan_path))
+            if not args.ticket_roster:
+                raise ValidationError("--scaffold-tasks requires --ticket-roster")
+            task_ids, dropped = scaffold_tasks(data, Path(args.ticket_roster))
             _validate_context(data, args.strict, execution_ready=False)
             _write_context(Path(args.context_path), data)
             for task_id in dropped:
-                print(f"Warning: dropped taskWikiRefs entry no longer in plan: {task_id}", file=sys.stderr)
+                print(f"Warning: dropped taskWikiRefs entry no longer in the ticket roster: {task_id}", file=sys.stderr)
             print(f"scaffolded {len(task_ids)} task(s): {', '.join(task_ids)}")
             return 0
         if args.bind_fingerprints:
-            if not args.plan_path:
-                raise ValidationError("--bind-fingerprints requires --plan-path")
+            if not args.ticket_roster:
+                raise ValidationError("--bind-fingerprints requires --ticket-roster")
             # Validate structure but tolerate missing/placeholder fingerprints; stamping fixes them.
             _validate_context(data, args.strict, execution_ready=False)
-            total, changed, task_ids = bind_fingerprints(data, Path(args.plan_path))
+            total, changed, task_ids = bind_fingerprints(data, Path(args.ticket_roster))
             # With real fingerprints stamped, confirm the result is fully execution-ready before
             # writing, so a successful bind is transactional (correct fingerprints + valid routing).
             if args.execution_ready:
@@ -1022,17 +1042,17 @@ def main() -> int:
             return 0
         caveats = _validate_context(data, args.strict, args.execution_ready)
         if args.fingerprint_preflight:
-            if not args.plan_path:
-                raise ValidationError("--fingerprint-preflight requires --plan-path")
-            print(fingerprint_preflight(data, Path(args.plan_path)))
+            if not args.ticket_roster:
+                raise ValidationError("--fingerprint-preflight requires --ticket-roster")
+            print(fingerprint_preflight(data, Path(args.ticket_roster)))
             return 0
         if args.validate_only:
-            # --plan-path alone cannot catch stale fingerprints in validate-only mode (format-only),
-            # so when execution-ready validation is requested with a plan, run the same fingerprint
+            # --ticket-roster alone cannot catch stale fingerprints in validate-only mode (format-only),
+            # so when execution-ready validation is requested with a roster, run the same fingerprint
             # preflight execution uses. This closes the gap where placeholder/stale fingerprints
             # passed planning validation and only failed later at dispatch time.
-            if args.execution_ready and args.plan_path:
-                fingerprint_preflight(data, Path(args.plan_path))
+            if args.execution_ready and args.ticket_roster:
+                fingerprint_preflight(data, Path(args.ticket_roster))
             for caveat in caveats:
                 print(f"Warning: {caveat}", file=sys.stderr)
             print("wiki context JSON is valid")

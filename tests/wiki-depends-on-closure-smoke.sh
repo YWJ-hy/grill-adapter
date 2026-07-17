@@ -4,7 +4,7 @@ set -euo pipefail
 # Smoke test for P3b depends-on selection-time closure: a hard-constraint section's
 # depends-on target is pulled into the reread list (1-hop, bounded) and is readable
 # end-to-end; a see-also edge is NOT closed. Exercises installed target scripts.
-# Usage: bash tests/wiki-depends-on-closure-smoke.sh [superpowers-target]
+# Usage: bash tests/wiki-depends-on-closure-smoke.sh [adapter-target]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -15,7 +15,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 git -C "${TMP}" init -q
 
-W="${TMP}/.superpowers/wiki"
+W="${TMP}/.adapter/wiki"
 mkdir -p "${W}/backend"
 printf '# W\n- `backend/`\n' > "${W}/index.md"
 printf '# B\n- `contract.md`\n- `data.md`\n' > "${W}/backend/index.md"
@@ -28,16 +28,16 @@ write_contract() {  # $1 = edge type prefix ("depends-on: " or "")
 write_sidecar() {
   cat > "${TMP}/side.wiki-context.json" <<'JSON'
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "kind": "grill-adapter.wiki-context",
   "generatedBy": "grill-adapter",
-  "planPath": "docs/superpowers/plans/example.md",
+  "featureSlug": "example-feature",
   "taskRouting": {"status": "confirmed", "selectedSectionsFrozen": true},
   "wikiPages": [
     {
       "root": "project",
       "source": "local",
-      "displayPath": ".superpowers/wiki/backend/contract.md",
+      "displayPath": ".adapter/wiki/backend/contract.md",
       "localPath": "backend/contract.md",
       "documentContext": {"title": "Contract", "overview": "Response rules."},
       "sections": [
@@ -99,9 +99,9 @@ print("see-also not closed OK")
 PY
 
 # --- Shared-local: a locally checked-out shared wiki closes depends-on the same way ---
-# Same depends-on shape under .shared-superpowers/wiki with a shared-root local hard section;
+# Same depends-on shape under .shared-adapter/wiki with a shared-root local hard section;
 # the closure entry must carry root "shared" so the materializer reads it from the shared root.
-SW="${TMP}/.shared-superpowers/wiki"
+SW="${TMP}/.shared-adapter/wiki"
 mkdir -p "${SW}/backend"
 printf '# W\n- `backend/`\n' > "${SW}/index.md"
 printf '# B\n- `contract.md`\n- `data.md`\n' > "${SW}/backend/index.md"
@@ -109,7 +109,7 @@ printf '# D\n<!-- wiki-section:tx-rules -->\n## Tx\nSHARED_CURSOR_RULE\n<!-- /wi
 printf '# C\n<!-- wiki-section:resp -->\n## R\n必须遵循 [[depends-on: backend/data#tx-rules]]\n<!-- /wiki-section:resp -->\n' > "${SW}/backend/contract.md"
 cat > "${TMP}/shared.wiki-context.json" <<'JSON'
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "kind": "grill-adapter.wiki-context",
   "generatedBy": "grill-adapter",
   "taskRouting": {"status": "confirmed", "selectedSectionsFrozen": true},
@@ -117,7 +117,7 @@ cat > "${TMP}/shared.wiki-context.json" <<'JSON'
     {
       "root": "shared",
       "source": "local",
-      "displayPath": ".shared-superpowers/wiki/backend/contract.md",
+      "displayPath": ".shared-adapter/wiki/backend/contract.md",
       "localPath": "backend/contract.md",
       "documentContext": {"title": "Contract", "overview": "Response rules."},
       "sections": [

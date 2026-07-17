@@ -21,14 +21,14 @@ cd grill-adapter
 ./manage.sh doctor /path/to/your/project      # 确认安装 + 绑定状态
 ```
 
-`.superpowers/wiki/` 就绪。也可以在 Claude Code 里用 `/init-wiki` 让 agent 基于项目盘点初始化，或 `/import-wiki` + `/migrate-wiki` 导入已有文档。
+`.adapter/wiki/` 就绪。也可以在 Claude Code 里用 `/init-wiki` 让 agent 基于项目盘点初始化，或 `/import-wiki` + `/migrate-wiki` 导入已有文档。
 
 ## 3. 跑一遍 grill → implement → update-wiki
 
 在 Claude Code 里对你的项目：
 
 1. `/grill-with-docs`：描述需求。约定会在质询期自动提示调 `/wiki-research` 披露相关 wiki。
-2. `/to-tickets`：规划期 `/wiki-research`（plan）正式选 wiki → 生成 `<plan>.wiki-context.json` sidecar，plan 里出现 `## Referenced Project Wiki`。
+2. `/to-tickets`：规划期 `/wiki-research`（plan）正式选 wiki → 生成 `.adapter/context/<feature-slug>.wiki-context.json` sidecar；ticket 发布后由真实 ticket 建 roster，再 `--finalize` 盖指纹。
 3. `/implement`：每个 ticket 前跑 `/wiki-materialize <ticket>`，把该 ticket 的硬约束 wiki section 整段 reread 进上下文。改到 source-of-truth 保护路径时 `source-truth-lint` hook 会提醒。
 4. `/code-review` 后：`grill_context_to_candidates.py` 把 grill 的 CONTEXT.md/ADR 增量转成候选行 → `/update-wiki` 审查是否有 durable 知识回写。
 

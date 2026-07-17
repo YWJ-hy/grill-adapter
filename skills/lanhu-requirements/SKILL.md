@@ -88,8 +88,8 @@ The aggregate `index.md` is only the global entrypoint, page package table, read
 
 - Treat this as a standalone adapter skill, not as a host development workflow step.
 - Do not require Lanhu MCP to be installed. If tools are unavailable, ask the user to paste requirements or continue with the host's normal flow.
-- Do not write `.superpowers/wiki/`.
-- Do not write specs, plans, plan sidecars, or `Referenced Project Wiki`.
+- Do not write `.adapter/wiki/`.
+- Do not write specs, tickets, or anything under `.adapter/context/` (wiki-context sidecars, ticket rosters, candidates).
 - Do not implement code.
 - Do not run the host's writing-plans or execution from this skill.
 - Treat this as a standalone adapter requirements-intake skill until the user confirms the generated `.lanhu/.../index.md`; do not auto-invoke the host's completion, review, verification, or similar workflow skills when this skill finishes its local package work.
@@ -106,7 +106,7 @@ The aggregate `index.md` is only the global entrypoint, page package table, read
 
 Use the user request that invoked this skill as the input. If the user invoked the skill explicitly with arguments, treat those arguments as the primary input.
 
-Treat the input as a Lanhu URL or invite link plus an optional role and an optional requirement name hint. Accepted role forms are `frontend`, `front-end`, `fe`, `前端` for `frontend`, and `backend`, `back-end`, `be`, `后端` for `backend`. If the role is omitted and `.superpowers/settings.json` contains `lanhu.role`, use the configured role without asking the user.
+Treat the input as a Lanhu URL or invite link plus an optional role and an optional requirement name hint. Accepted role forms are `frontend`, `front-end`, `fe`, `前端` for `frontend`, and `backend`, `back-end`, `be`, `后端` for `backend`. If the role is omitted and `.adapter/settings.json` contains `lanhu.role`, use the configured role without asking the user.
 
 Supported examples:
 
@@ -122,11 +122,11 @@ If the user asks for both frontend and backend, or says full-stack / 全栈 / �
 ## Workflow
 
 1. Confirm the current repository root.
-2. Resolve the role from project-local `.superpowers/settings.json` first when `lanhu.role` is configured. If the settings file sets `lanhu.role`, use that role and do not ask the user to choose. If `lanhu.role` is missing, determine `role: frontend | backend` from `<user input>`.
+2. Resolve the role from project-local `.adapter/settings.json` first when `lanhu.role` is configured. If the settings file sets `lanhu.role`, use that role and do not ask the user to choose. If `lanhu.role` is missing, determine `role: frontend | backend` from `<user input>`.
    - If the role is still missing or ambiguous, ask: `这次要生成哪种输入包？1. 前端 Lanhu 需求输入包 2. 后端相关 Lanhu 原始需求证据包`
    - If the role is ambiguous or both roles are requested, ask which one to generate first.
    - Do not invoke a Lanhu analyst agent or Lanhu MCP until the role is known.
-3. Resolve Lanhu package settings from project-local `.superpowers/settings.json` before routing. Use `python3 __GRILL_ADAPTER_ROOT__/scripts/lanhu_settings.py <repo-root>` to inspect configured role and package kind, or `python3 __GRILL_ADAPTER_ROOT__/scripts/lanhu_settings.py <role> <repo-root>` when role needs to be forced by the user. Deprecated `lanhu.frontend.output.format` is ignored; frontend always uses the unified `frontend-prd/` package.
+3. Resolve Lanhu package settings from project-local `.adapter/settings.json` before routing. Use `python3 __GRILL_ADAPTER_ROOT__/scripts/lanhu_settings.py <repo-root>` to inspect configured role and package kind, or `python3 __GRILL_ADAPTER_ROOT__/scripts/lanhu_settings.py <role> <repo-root>` when role needs to be forced by the user. Deprecated `lanhu.frontend.output.format` is ignored; frontend always uses the unified `frontend-prd/` package.
 4. Determine the specialized analyst agent, but do not dispatch it until URL-rooted page selection is complete:
    - If `role: frontend`, use `lanhu-frontend-requirements-analyst`.
    - If `role: backend`, use `lanhu-backend-requirements-analyst`.
@@ -194,7 +194,7 @@ userHint: <optional requirement name or focus from <user input>>
 requestedOutputLanguage: zh-CN
 resolutionMode: initial
 outputPreference:
-  source: .superpowers/settings.json | default
+  source: .adapter/settings.json | default
   packageKind: frontend_unified | backend_markdown
   rolePackageDir: frontend-prd | backend-prd
   primaryOutput:

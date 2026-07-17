@@ -10,7 +10,7 @@ Load this only once you have decided there is durable knowledge to write.
 
 For each candidate:
 
-1. Read existing root indexes: `.superpowers/wiki/index.md` and `.shared-superpowers/wiki/index.md` when present.
+1. Read existing root indexes: `.adapter/wiki/index.md` and `.shared-adapter/wiki/index.md` when present.
 2. Follow relevant child indexes inside each root.
 3. Read the small set of leaf wiki pages that may already cover the same rule.
 
@@ -42,8 +42,8 @@ Do not let a script decide whether an update is needed.
 
 Each candidate should update exactly one indexed leaf wiki page unless it genuinely spans unrelated areas.
 Choose both the target root and the target page:
-- `.shared-superpowers/wiki/` owns cross-project architecture, conventions, workflows, shared API contracts, shared component rules, and gotchas likely to apply to sibling projects.
-- `.superpowers/wiki/` owns project-specific business rules, local integration details, deployment/environment details, local overrides, and decisions that should not affect sibling projects.
+- `.shared-adapter/wiki/` owns cross-project architecture, conventions, workflows, shared API contracts, shared component rules, and gotchas likely to apply to sibling projects.
+- `.adapter/wiki/` owns project-specific business rules, local integration details, deployment/environment details, local overrides, and decisions that should not affect sibling projects.
 
 Prefer the most specific indexed leaf that owns the rule.
 Use broader guide wiki pages only when the candidate is a checklist or thinking prompt.
@@ -113,8 +113,8 @@ If the existing page may already be referenced elsewhere, prefer keeping the ori
 ## 8. Check update authorization policy
 
 Before editing or creating wiki content, read the selected root's settings file:
-- `.superpowers/settings.json` controls `.superpowers/wiki/`.
-- `.shared-superpowers/settings.json` controls `.shared-superpowers/wiki/`.
+- `.adapter/settings.json` controls `.adapter/wiki/`.
+- `.shared-adapter/settings.json` controls `.shared-adapter/wiki/`.
 
 Use these defaults when the settings file or keys are missing:
 - `wiki.updateAuthorization.updateExistingPage`: `skip`

@@ -23,8 +23,8 @@ You may:
 
 You must not:
 - Modify files outside `.lanhu/MM-DD-需求名称/`.
-- Write `.superpowers/wiki/`.
-- Create or edit the host's specs, plans, plan sidecars, or `Referenced Project Wiki`.
+- Write `.adapter/wiki/`.
+- Create or edit the host's specs, tickets, or anything under `.adapter/context/` (wiki-context sidecars, ticket rosters, candidates).
 - Infer frontend components, backend APIs, database impact, frontend/backend boundaries, exception/risk analysis, implementation approach, code files, test cases, testing points, technical test plans, acceptance criteria, or plan tasks.
 - Treat Lanhu AI output as authoritative when it contains implementation guesses; strip those parts.
 - Call arbitrary Lanhu MCP tools. For PRD intake, do not call `lanhu_get_pages`, `lanhu_get_ai_analyze_page_result`, `lanhu_get_designs`, `lanhu_get_ai_analyze_design_result`, `lanhu_get_design_slices`, `lanhu_get_members`, `lanhu_say`, `lanhu_say_list`, `lanhu_say_detail`, `lanhu_say_edit`, or `lanhu_say_delete`.
@@ -59,7 +59,7 @@ userHint: <optional feature name, scope, or page focus>
 requestedOutputLanguage: zh-CN
 resolutionMode: initial | resolve_confirmation
 outputPreference:
-  source: .superpowers/settings.json | default
+  source: .adapter/settings.json | default
   packageKind: frontend_unified | backend_markdown
   rolePackageDir: frontend-prd | backend-prd
   primaryOutput:

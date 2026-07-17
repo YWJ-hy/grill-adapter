@@ -6,7 +6,7 @@ import { isCompanionIndexForIndexedLeaf } from '../wiki/indexGraph.js';
 import { wikiRootPath } from '../wiki/paths.js';
 
 const GRAPH_FILE = '.graph.json';
-const DEFAULT_DISPLAY_ROOT_PREFIXES = ['.shared-superpowers/wiki/', '.superpowers/wiki/'];
+const DEFAULT_DISPLAY_ROOT_PREFIXES = ['.shared-adapter/wiki/', '.adapter/wiki/'];
 const MD_SUFFIX_RE = /\.(md|markdown|mdx)$/;
 
 type OutEdge = { to: string; type?: string; indexed: boolean };
@@ -19,7 +19,7 @@ function emptyNeighbors(nodes: string[]): Record<string, Slice> {
 
 // Normalize a query node id to the persisted graph's canonical `rel/path.md#section` key.
 // The graph keys pages wiki-root-relative with a `.md` suffix, but callers routinely hold a
-// page in the shape the read path accepts: display-root-prefixed (.shared-superpowers/wiki/…),
+// page in the shape the read path accepts: display-root-prefixed (.shared-adapter/wiki/…),
 // ./-prefixed, or the `.md`-less form shown in [[page#section]] link text and companion index
 // tables. read-sections resolves all of those via normalizeWikiRelativePath; before this, they
 // silently missed every graph lookup and returned empty edges. Mirror that normalization so any

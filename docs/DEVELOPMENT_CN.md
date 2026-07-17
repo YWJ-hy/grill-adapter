@@ -39,7 +39,7 @@
 
 `tests/` 下近 40 个脚本，`self-test.sh` 一次跑全套。按子系统速查：
 
-- **wiki 引擎 / section 图 / 执行期闭包**：`test-wiki-section.sh`、`wiki-section-{e2e,graph,index}-smoke.sh`、`wiki-context-{json-render,scaffold}-smoke.sh`、`wiki-materialize-task-smoke.sh`、`wiki-depends-on-closure-smoke.sh`、`wiki-graph-neighbors-smoke.sh`、`wiki-index-graph-smoke.sh`、`wiki-update-check-smoke.sh`、`wiki-page-type-smoke.sh`、`wiki-card-roles-smoke.sh`、`wiki-summary-backfill-smoke.sh`。
+- **wiki 引擎 / section 图 / 执行期闭包**：`test-wiki-section.sh`、`wiki-section-{e2e,graph,index}-smoke.sh`、`wiki-context-{json-render,scaffold}-smoke.sh`、`ticket-roster-smoke.sh`（host 无关 ticket roster 边界 + fail-closed）、`wiki-materialize-task-smoke.sh`、`wiki-depends-on-closure-smoke.sh`、`wiki-graph-neighbors-smoke.sh`、`wiki-index-graph-smoke.sh`、`wiki-update-check-smoke.sh`、`wiki-page-type-smoke.sh`、`wiki-card-roles-smoke.sh`、`wiki-summary-backfill-smoke.sh`。
 - **wiki 授权 / 导入 / 导出 / 模板 / scaffold**：`wiki-authorization-policy-smoke.sh`、`wiki-import-skill-path-smoke.sh`、`export-wiki-skills-smoke.sh`、`bootstrap-wiki-template-import.sh`、`init-wiki-inventory-smoke.sh`、`scaffold-practice-skill-smoke.sh`。
 - **shared wiki（MCP / 绑定 / 中性化）**：`shared-wiki-mcp-{copyable,policy,pr}-smoke.sh`、`shared-wiki-{neutrality,submodule}-smoke.sh`。
 - **Lanhu 录入**：`lanhu-{confirmation-gate,contradiction-detection,effective-prd-sanitization,html-settings,scoped-evidence,selective-image-analysis,tree-prd-guardrails,url-root-selection}-smoke.sh`。
@@ -111,9 +111,9 @@ bash tests/host-conventions-smoke.sh "$PWD"
 - **markdown 唯一真相源**：`.graph.json` 是派生物，**不引外部图数据库**。
 - **执行期有界 1 跳 `depends-on` 闭包**：执行期只消费 `.wiki-context.json` sidecar + 有界 1 跳闭包（不传递、去重、缺图静默 no-op），绝不追链。
 - **section 级 `[[page#section]]` typed 边** + 渐进披露。
-- **shared wiki 每项目绑定，fail-closed**：消费项目在自己的 `.shared-superpowers/settings.json` 的 `wiki.sharedMcp`（`repoUrl`/`baseBranch`/`remote`/`wikiRoot`/`displayRoot`/`draftPr`）声明连接；MCP 读 `CLAUDE_PROJECT_DIR` 自配置；未声明即 fail-closed（无 MCP shared wiki）。换绑 / revision 漂移也 fail-closed。
-- **root-specific 写授权门**：`.superpowers/settings.json` 管 project wiki，`.shared-superpowers/settings.json` 管 shared wiki。二者的 `wiki.updateAuthorization`：`updateExistingPage` 默认 **skip**，`createNewDocument` 默认 **ask**（可选 `skip` / `ask` / `refuse`）。执行层的 `--authorized-update` / `--authorized-create` 只表示 skill 已取得授权，**不能绕过 `refuse`**。source-truth 的 lint / edit 门同构，授权标志同样不绕硬门。
-- **shared wiki 中性化**：`.shared-superpowers/settings.json` 的 `wiki.sharedNeutrality.blockedTerms` / `blockedPatterns` 机械拒绝系统特有标识；shared wiki 不得含内部 URL、环境名、本地路径、部署实例或专属业务规则。
+- **shared wiki 每项目绑定，fail-closed**：消费项目在自己的 `.shared-adapter/settings.json` 的 `wiki.sharedMcp`（`repoUrl`/`baseBranch`/`remote`/`wikiRoot`/`displayRoot`/`draftPr`）声明连接；MCP 读 `CLAUDE_PROJECT_DIR` 自配置；未声明即 fail-closed（无 MCP shared wiki）。换绑 / revision 漂移也 fail-closed。
+- **root-specific 写授权门**：`.adapter/settings.json` 管 project wiki，`.shared-adapter/settings.json` 管 shared wiki。二者的 `wiki.updateAuthorization`：`updateExistingPage` 默认 **skip**，`createNewDocument` 默认 **ask**（可选 `skip` / `ask` / `refuse`）。执行层的 `--authorized-update` / `--authorized-create` 只表示 skill 已取得授权，**不能绕过 `refuse`**。source-truth 的 lint / edit 门同构，授权标志同样不绕硬门。
+- **shared wiki 中性化**：`.shared-adapter/settings.json` 的 `wiki.sharedNeutrality.blockedTerms` / `blockedPatterns` 机械拒绝系统特有标识；shared wiki 不得含内部 URL、环境名、本地路径、部署实例或专属业务规则。
 - **Lanhu evidence 边界**：Lanhu 证据包（`.lanhu/.../index.md`）**只作 Superpowers/grill 的输入**，不写进 wiki、不进最终 spec、不进验收。
 
 ---

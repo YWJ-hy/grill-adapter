@@ -6,7 +6,7 @@ set -euo pipefail
 #  - a section without a summary falls back to a mechanical excerpt capped at 140 chars
 #  - wiki_migrate_helper --missing-summaries / --with-body / --set-summaries round-trip
 # Exercises the installed Superpowers target scripts (repo-root wiki layout via --wiki-dir).
-# Usage: bash tests/wiki-summary-backfill-smoke.sh [superpowers-target]
+# Usage: bash tests/wiki-summary-backfill-smoke.sh [adapter-target]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"

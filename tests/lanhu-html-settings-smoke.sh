@@ -9,7 +9,7 @@ TMP_PARENT="${CLAUDE_JOB_DIR:-${TMPDIR:-/tmp}}"
 PROJECT_ROOT="$(mktemp -d "${TMP_PARENT%/}/lanhu-unified-settings.XXXXXX")"
 trap 'rm -rf "${PROJECT_ROOT}"' EXIT
 
-mkdir -p "${PROJECT_ROOT}/.superpowers"
+mkdir -p "${PROJECT_ROOT}/.adapter"
 
 assert_json_field() {
   local file="$1"
@@ -39,7 +39,7 @@ assert_json_field "${PROJECT_ROOT}/default-frontend.json" "payload['frontendPack
 assert_json_field "${PROJECT_ROOT}/default-frontend.json" "payload['frontendPackage']['assetsDir'] == 'frontend-prd/design/assets/'"
 assert_json_field "${PROJECT_ROOT}/default-frontend.json" "payload['deprecatedSettings']['ignored'] is False"
 
-python3 - "${PROJECT_ROOT}/.superpowers/settings.json" <<'PY'
+python3 - "${PROJECT_ROOT}/.adapter/settings.json" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -71,7 +71,7 @@ assert_json_field "${PROJECT_ROOT}/legacy-html-frontend.json" "'deprecated and i
 python3 "${TARGET_DIR}/scripts/lanhu_settings.py" "${PROJECT_ROOT}" > "${PROJECT_ROOT}/configured-role.json"
 assert_json_field "${PROJECT_ROOT}/configured-role.json" "payload['role'] == 'frontend'"
 assert_json_field "${PROJECT_ROOT}/configured-role.json" "payload['configuredRole'] == 'frontend'"
-assert_json_field "${PROJECT_ROOT}/configured-role.json" "payload['roleSource'] == '.superpowers/settings.json'"
+assert_json_field "${PROJECT_ROOT}/configured-role.json" "payload['roleSource'] == '.adapter/settings.json'"
 assert_json_field "${PROJECT_ROOT}/configured-role.json" "payload['packageKind'] == 'frontend_unified'"
 
 python3 "${TARGET_DIR}/scripts/lanhu_settings.py" backend "${PROJECT_ROOT}" > "${PROJECT_ROOT}/backend.json"
@@ -87,7 +87,7 @@ assert_json_field "${PROJECT_ROOT}/backend.json" "payload['backendPackage']['mar
 assert_json_field "${PROJECT_ROOT}/backend.json" "payload['frontendPackage']['enabled'] is False"
 assert_json_field "${PROJECT_ROOT}/backend.json" "payload['deprecatedSettings']['ignored'] is True"
 
-python3 - "${PROJECT_ROOT}/.superpowers/settings.json" <<'PY'
+python3 - "${PROJECT_ROOT}/.adapter/settings.json" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -109,7 +109,7 @@ assert_json_field "${PROJECT_ROOT}/unsupported-legacy-format.json" "payload['pac
 assert_json_field "${PROJECT_ROOT}/unsupported-legacy-format.json" "payload['deprecatedSettings']['lanhu.frontend.output.format'] == 'markdown+html'"
 assert_json_field "${PROJECT_ROOT}/unsupported-legacy-format.json" "'unsupported legacy value' in payload['warnings'][0]"
 
-python3 - "${PROJECT_ROOT}/.superpowers/settings.json" <<'PY'
+python3 - "${PROJECT_ROOT}/.adapter/settings.json" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -130,7 +130,7 @@ if ! grep -Fq 'Invalid lanhu.role' "${PROJECT_ROOT}/invalid-role.out"; then
   exit 1
 fi
 
-printf '{ invalid json' > "${PROJECT_ROOT}/.superpowers/settings.json"
+printf '{ invalid json' > "${PROJECT_ROOT}/.adapter/settings.json"
 if python3 "${TARGET_DIR}/scripts/lanhu_settings.py" frontend "${PROJECT_ROOT}" > "${PROJECT_ROOT}/malformed.out" 2>&1; then
   printf 'Expected malformed settings JSON to fail\n' >&2
   exit 1

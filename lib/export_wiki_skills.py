@@ -190,10 +190,10 @@ def main(argv: list[str]) -> int:
     else:
         print("  graph CI: disabled (--no-graph-ci); root .graph.json must be rebuilt by a maintainer")
 
-    settings = repo_root / ".shared-superpowers" / "settings.json"
+    settings = repo_root / ".shared-adapter" / "settings.json"
     if not settings.is_file():
         print(
-            "\nHint: no .shared-superpowers/settings.json found. Add one with "
+            "\nHint: no .shared-adapter/settings.json found. Add one with "
             "wiki.sharedNeutrality.blockedTerms / blockedPatterns to enable mechanical "
             "neutrality guards, and wiki.updateAuthorization to govern writes.",
         )

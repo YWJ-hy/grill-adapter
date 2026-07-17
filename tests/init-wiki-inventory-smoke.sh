@@ -6,9 +6,9 @@ ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TARGET_INPUT="${1:-${ROOT}}"
 PROJECT_ROOT="${2:-${ROOT}/..}"
 
-before="$(cd "${PROJECT_ROOT}" && { find .superpowers/wiki .shared-superpowers/wiki -type f -name '*.md' -print0 2>/dev/null || true; } | xargs -0 shasum 2>/dev/null || true)"
+before="$(cd "${PROJECT_ROOT}" && { find .adapter/wiki .shared-adapter/wiki -type f -name '*.md' -print0 2>/dev/null || true; } | xargs -0 shasum 2>/dev/null || true)"
 json_output="$(cd "${PROJECT_ROOT}" && python3 "${TARGET_INPUT}/scripts/init-wiki.py" . "self-test" --json)"
-after="$(cd "${PROJECT_ROOT}" && { find .superpowers/wiki .shared-superpowers/wiki -type f -name '*.md' -print0 2>/dev/null || true; } | xargs -0 shasum 2>/dev/null || true)"
+after="$(cd "${PROJECT_ROOT}" && { find .adapter/wiki .shared-adapter/wiki -type f -name '*.md' -print0 2>/dev/null || true; } | xargs -0 shasum 2>/dev/null || true)"
 
 python3 - <<'PY' "${json_output}"
 import json, sys

@@ -59,22 +59,22 @@ assert_file_not_exists() {
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-mkdir -p "$TMP/.superpowers/wiki/frontend"
+mkdir -p "$TMP/.adapter/wiki/frontend"
 
-cat > "$TMP/.superpowers/wiki/index.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/index.md" << 'WIKI'
 # Project Wiki
 
 - [Frontend](frontend/)
 WIKI
 
-cat > "$TMP/.superpowers/wiki/frontend/index.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/index.md" << 'WIKI'
 # Frontend
 
 - [Hook Guidelines](hook-guidelines.md)
 - [Short Doc](short-doc.md)
 WIKI
 
-cat > "$TMP/.superpowers/wiki/frontend/hook-guidelines.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/hook-guidelines.md" << 'WIKI'
 # Hook Guidelines
 
 <!-- wiki-section:path-based-update -->
@@ -98,7 +98,7 @@ VERBOSE_BODY_THAT_SHOULD_NOT_APPEAR in the description because an authored summa
 <!-- /wiki-section:summary-demo -->
 WIKI
 
-cat > "$TMP/.superpowers/wiki/frontend/short-doc.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/short-doc.md" << 'WIKI'
 # Short Doc
 
 This document has no section markers.
@@ -113,7 +113,7 @@ python3 "$SCRIPTS/wiki_generate_section_index.py" \
   "frontend/hook-guidelines.md" \
   --wiki-root project --project-root "$TMP"
 
-INDEX_PATH="$TMP/.superpowers/wiki/frontend/hook-guidelines.index.md"
+INDEX_PATH="$TMP/.adapter/wiki/frontend/hook-guidelines.index.md"
 assert_file_exists "index file created" "$INDEX_PATH"
 
 INDEX_CONTENT="$(cat "$INDEX_PATH")"
@@ -137,7 +137,7 @@ python3 "$SCRIPTS/wiki_generate_section_index.py" \
   "frontend/short-doc.md" \
   --wiki-root project --project-root "$TMP"
 
-SHORT_INDEX="$TMP/.superpowers/wiki/frontend/short-doc.index.md"
+SHORT_INDEX="$TMP/.adapter/wiki/frontend/short-doc.index.md"
 assert_file_not_exists "no index for markerless file" "$SHORT_INDEX"
 
 printf '\nTest: --all mode\n'
@@ -224,10 +224,10 @@ printf '\nTest: project-root-relative path with wiki prefix resolves (no double-
 
 rm -f "$INDEX_PATH"
 # The path a user copies is usually project-root-relative and already carries the
-# .superpowers/wiki/ prefix; joining it onto the wiki root double-prefixed it into
-# .superpowers/wiki/.superpowers/wiki/… → "file not found". It must now resolve.
+# .adapter/wiki/ prefix; joining it onto the wiki root double-prefixed it into
+# .adapter/wiki/.adapter/wiki/… → "file not found". It must now resolve.
 python3 "$SCRIPTS/wiki_generate_section_index.py" \
-  ".superpowers/wiki/frontend/hook-guidelines.md" \
+  ".adapter/wiki/frontend/hook-guidelines.md" \
   --wiki-root project --project-root "$TMP"
 assert_file_exists "prefixed project-relative path resolved" "$INDEX_PATH"
 

@@ -252,7 +252,7 @@ function isExternalReference(target: string): boolean {
 }
 
 function isRootPrefixedDisplayPath(target: string): boolean {
-  return target === '.shared-superpowers/wiki' || target.startsWith('.shared-superpowers/wiki/');
+  return target === '.shared-adapter/wiki' || target.startsWith('.shared-adapter/wiki/');
 }
 
 function loadIgnoredDirectories(config: SharedWikiConfig): Set<string> {

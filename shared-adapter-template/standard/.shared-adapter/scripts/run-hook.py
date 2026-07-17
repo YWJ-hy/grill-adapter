@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run project-local shared-superpowers hooks from settings.json."""
+"""Run project-local shared-adapter hooks from settings.json."""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ from pathlib import Path
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Run a hook from .shared-superpowers/settings.json')
+    parser = argparse.ArgumentParser(description='Run a hook from .shared-adapter/settings.json')
     parser.add_argument('hook_name')
-    parser.add_argument('--settings', default='.shared-superpowers/settings.json')
+    parser.add_argument('--settings', default='.shared-adapter/settings.json')
     return parser.parse_args()
 
 

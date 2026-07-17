@@ -194,7 +194,7 @@ grill-adapter/
 - **8.1 skills**：`wiki-research`（薄 router 调 wiki-researcher agent）、`wiki-materialize`（薄 router 跑 wiki_materialize_task.py，含有界 1 跳 depends-on 闭包）。
 - **8.2 hooks**：`wiki-reread.sh`（UserPromptSubmit/SessionStart，`type: command`，检测 active `.wiki-context.json` → 跑 materialize → `hookSpecificOutput.additionalContext` 注入）、`wiki-capture-suggest.sh`（Stop → 提示 update-wiki）。
 - **8.3 host 适配器**：grill / plain 的 `CLAUDE.md` 约定块 + `settings.json` hook 片段，**零 skill patch**。
-- **8.4 install 模型（已定：用户级 skill + 项目级 config）**：`manage.sh install` 分两级——**用户级**（一次装、跨项目）：`skills/`+`agents/` → `~/.claude/skills`、shared-wiki MCP 通用注册（读 `CLAUDE_PROJECT_DIR` 自配置），替换占位符；**项目级**（每项目）：hook 片段写目标 `settings.json`（marker、幂等、只增）、选定 host 约定块写目标 `CLAUDE.md`、wiki 数据/绑定（`.superpowers/wiki/`、`.shared-superpowers/settings.json`）。`manifest.json` 两级都记账。
+- **8.4 install 模型（已定：用户级 skill + 项目级 config）**：`manage.sh install` 分两级——**用户级**（一次装、跨项目）：`skills/`+`agents/` → `~/.claude/skills`、shared-wiki MCP 通用注册（读 `CLAUDE_PROJECT_DIR` 自配置），替换占位符；**项目级**（每项目）：hook 片段写目标 `settings.json`（marker、幂等、只增）、选定 host 约定块写目标 `CLAUDE.md`、wiki 数据/绑定（`.adapter/wiki/`、`.shared-adapter/settings.json`）。`manifest.json` 两级都记账。
 
 ### 8.5 Lanhu（Intake 触点）
 

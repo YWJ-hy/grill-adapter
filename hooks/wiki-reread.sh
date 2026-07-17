@@ -5,7 +5,7 @@
 # path. Claude Code hooks have no native "current ticket" field, so this hook:
 #   1. detects an active `.wiki-context.json` sidecar in the project,
 #   2. resolves a ticket if one is discoverable (GRILL_CURRENT_TICKET env, or a
-#      `.superpowers/current-ticket` marker file), and
+#      `.adapter/current-ticket` marker file), and
 #   3. injects hard wiki constraints via hookSpecificOutput.additionalContext:
 #        - ticket known  -> full materialized rereads for that task (the fixed fetcher),
 #        - ticket unknown -> the reread-list summary + a nudge to run /wiki-materialize.
@@ -41,19 +41,16 @@ PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-}"
 [ -z "$PROJECT_ROOT" ] && exit 0
 [ -d "$PROJECT_ROOT" ] || exit 0
 
-# Find the most-recently-modified active sidecar. Common plan locations first, then anywhere.
+# Find the active sidecar in the canonical location. A project may carry several features'
+# sidecars at once, so the newest wins -- this hook is a coarse session-level guess, and the
+# precise path is the per-ticket /wiki-materialize call.
 SIDECAR=""
-for pat in \
-  "$PROJECT_ROOT"/docs/superpowers/plans/*.wiki-context.json \
-  "$PROJECT_ROOT"/docs/plans/*.wiki-context.json \
-  "$PROJECT_ROOT"/docs/*/plans/*.wiki-context.json; do
-  for f in $pat; do
-    [ -f "$f" ] || continue
-    if [ -z "$SIDECAR" ] || [ "$f" -nt "$SIDECAR" ]; then SIDECAR="$f"; fi
-  done
+for f in "$PROJECT_ROOT"/.adapter/context/*.wiki-context.json; do
+  [ -f "$f" ] || continue
+  if [ -z "$SIDECAR" ] || [ "$f" -nt "$SIDECAR" ]; then SIDECAR="$f"; fi
 done
 if [ -z "$SIDECAR" ]; then
-  # Fall back to a bounded search so unusual layouts still bind.
+  # Fall back to a bounded search so a non-standard layout still binds.
   SIDECAR="$(find "$PROJECT_ROOT" -maxdepth 4 -name '*.wiki-context.json' -not -path '*/.git/*' -type f 2>/dev/null | head -1)"
 fi
 [ -n "$SIDECAR" ] || exit 0
@@ -73,8 +70,8 @@ PY
 
 # Resolve a ticket if discoverable (marker/env — blueprint §14 option 2).
 TICKET="${GRILL_CURRENT_TICKET:-}"
-if [ -z "$TICKET" ] && [ -f "$PROJECT_ROOT/.superpowers/current-ticket" ]; then
-  TICKET="$(tr -d ' \t\r\n' < "$PROJECT_ROOT/.superpowers/current-ticket" 2>/dev/null || true)"
+if [ -z "$TICKET" ] && [ -f "$PROJECT_ROOT/.adapter/current-ticket" ]; then
+  TICKET="$(tr -d ' \t\r\n' < "$PROJECT_ROOT/.adapter/current-ticket" 2>/dev/null || true)"
 fi
 
 REL_SIDECAR="${SIDECAR#$PROJECT_ROOT/}"

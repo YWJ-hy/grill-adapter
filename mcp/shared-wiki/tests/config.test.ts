@@ -9,9 +9,9 @@ const createdDirs: string[] = [];
 function projectWithSettings(content: unknown): string {
   const projectDir = mkdtempSync(path.join(tmpdir(), 'swm-proj-'));
   createdDirs.push(projectDir);
-  mkdirSync(path.join(projectDir, '.shared-superpowers'), { recursive: true });
+  mkdirSync(path.join(projectDir, '.shared-adapter'), { recursive: true });
   const body = typeof content === 'string' ? content : JSON.stringify(content);
-  writeFileSync(path.join(projectDir, '.shared-superpowers', 'settings.json'), body, 'utf8');
+  writeFileSync(path.join(projectDir, '.shared-adapter', 'settings.json'), body, 'utf8');
   return projectDir;
 }
 
@@ -40,7 +40,7 @@ describe('loadConfig', () => {
     });
     expect(config.repoUrl).toBe('https://github.com/YWJ-hy/shared-wiki.git');
     expect(config.baseBranch).toBe('main');
-    expect(config.displayRoot).toBe('.shared-superpowers/wiki');
+    expect(config.displayRoot).toBe('.shared-adapter/wiki');
   });
 
   it('rejects absolute wiki roots', () => {
@@ -57,7 +57,7 @@ describe('loadConfig', () => {
           repoUrl: 'https://github.com/acme/platform-wiki.git',
           baseBranch: 'master',
           wikiRoot: 'docs',
-          displayRoot: '.shared-superpowers/wiki',
+          displayRoot: '.shared-adapter/wiki',
           draftPr: false,
         },
         // sibling governance keys must be tolerated and ignored here

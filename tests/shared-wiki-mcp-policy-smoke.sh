@@ -39,8 +39,8 @@ cat > "$WORK/guide.index.md" <<'MD'
 |---|---|---|
 | guide-rule | Guide rule | hard |
 MD
-mkdir -p "$WORK/.shared-superpowers"
-cat > "$WORK/.shared-superpowers/settings.json" <<'JSON'
+mkdir -p "$WORK/.shared-adapter"
+cat > "$WORK/.shared-adapter/settings.json" <<'JSON'
 {
   "wiki": {
     "updateAuthorization": {

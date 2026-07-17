@@ -252,8 +252,8 @@ def resolve_wiki_file(raw: str, wiki_root: Path, project_root: Path) -> Path | N
     """Resolve a user-given wiki file path to an existing file under the wiki root.
 
     The documented contract is "relative to the wiki root", but the path a user sees and
-    copies is usually project-root-relative (``.superpowers/wiki/foo/bar.md``). Joining that
-    onto the wiki root double-prefixes it into ``.superpowers/wiki/.superpowers/wiki/…`` →
+    copies is usually project-root-relative (``.adapter/wiki/foo/bar.md``). Joining that
+    onto the wiki root double-prefixes it into ``.adapter/wiki/.adapter/wiki/…`` →
     "file not found". So try the wiki-root-relative reading first (the contract), then fall
     back to project-root- and cwd-relative readings, and accept the first candidate that
     both exists AND resolves under the wiki root — an index is only meaningful for a file

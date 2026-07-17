@@ -153,7 +153,7 @@ python3 __GRILL_ADAPTER_ROOT__/scripts/update-wiki.py --wiki-root shared --autho
 
 Run only the command for the local root you changed. If the shared update went through the
 GitHub-backed MCP PR flow, use the MCP validation summary instead of refreshing local
-`.shared-superpowers/wiki/` (see `references/shared-wiki.md`). Optionally run the mechanical
+`.shared-adapter/wiki/` (see `references/shared-wiki.md`). Optionally run the mechanical
 validator across both local roots — it also reports dangling `[[page#section]]` edges:
 
 ```bash

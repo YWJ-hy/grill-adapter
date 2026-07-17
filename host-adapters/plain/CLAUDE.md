@@ -17,19 +17,23 @@ Run `/source-truth-check` to render the source-of-truth policy (`spec-pre` for a
 
 ### Carry — when writing an implementation plan
 
-Run `/wiki-research` (phase `plan`), then follow it to scaffold and finalize the `<plan-stem>.wiki-context.json` sidecar (`wiki_context_render.py --scaffold` → edit each section's `destination` once → `--finalize`). Link the sidecar from a `## Referenced Project Wiki` section and route each section to the numeric plan task ids in `destination.tasks`.
+Sidecars anchor on the feature, not on a plan file: they live in `.adapter/context/<feature-slug>.*`, and a ticket roster — not a plan's headings — carries the task identities.
 
-gitignore-aware: before committing a plan/spec + `.wiki-context.json`, run `git check-ignore -q <path>`; if ignored, do not commit and never `git add -f`. `.wiki-candidates.jsonl` is transient scratch, never committed.
+1. Run `/wiki-research` (phase `plan`), then follow it to scaffold `.adapter/context/<feature-slug>.wiki-context.json` (`wiki_context_render.py --scaffold … --feature-slug <feature-slug> --ticket-source manual`) and edit each section's `destination` once.
+2. Once the tasks are settled, write the ticket roster `.adapter/context/<feature-slug>.ticket-roster.json` (shape: `__GRILL_ADAPTER_ROOT__/contracts/ticket-roster-v1.example.jsonc`). There is no fixed tracker here, so use whatever the user points you at — a task list, issues, a plan document's sections. `taskId` is any stable id; `text` is that task's full text verbatim, since it is the fingerprint input.
+3. Run `--finalize` once with `--ticket-roster`, and route each section's `destination.tasks` to the roster's `taskId` values.
+
+The sidecar is the record of which wiki constrains this feature. Nothing under `.adapter/context/` is committed — sidecar, roster, and candidates are local working state that execution reads in place. Never `git add -f` them.
 
 ### Bind — before implementing each task
 
 Run `/wiki-materialize <task-id>` to reread that task's authoritative hard-constraint sections (local + `github_mcp`, bounded 1-hop `depends-on` closure); run `--fingerprint-preflight` once before the first task. The `wiki-reread` hook is a coarse session-level backstop; the per-task call is the precise path. The `source-truth-lint` hook lints real changed files; resolve any `block`/`ask` before completing the task.
 
-While implementing, append durable decisions/gotchas as JSONL lines to `<plan-stem>.wiki-candidates.jsonl` and keep going.
+While implementing, append durable decisions/gotchas as JSONL lines to `.adapter/context/<feature-slug>.wiki-candidates.jsonl` and keep going.
 
 ### Capture — after the work is reviewed/accepted
 
-1. If using grill-style knowledge files, convert the increment: `python3 __GRILL_ADAPTER_ROOT__/scripts/grill_context_to_candidates.py <repo-root> --since <branch-point> --out <plan-stem>.wiki-candidates.jsonl` (bridge, not `import-wiki`).
+1. If using grill-style knowledge files, convert the increment: `python3 __GRILL_ADAPTER_ROOT__/scripts/grill_context_to_candidates.py <repo-root> --since <branch-point> --out .adapter/context/<feature-slug>.wiki-candidates.jsonl` (bridge, not `import-wiki`).
 2. Run `/update-wiki`, consuming the candidates sidecar, to make the keep-or-skip determination. The `wiki-capture` hook (Stop) reminds you when candidates are still pending.
 
 ### Debug

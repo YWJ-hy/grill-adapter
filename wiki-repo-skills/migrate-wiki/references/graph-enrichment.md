@@ -19,7 +19,7 @@ TOOLS="$WIKI_DIR/.claude/wiki-tools/scripts"
 - Do **not** change the semantic content of pages. Node types and edges are additive
   metadata (a frontmatter `type:` line and `[[ ]]` links inside section bodies).
 - Respect the wiki's authorization policy: editing existing pages is governed by
-  `wiki.updateAuthorization.updateExistingPage` in `.shared-superpowers/settings.json`
+  `wiki.updateAuthorization.updateExistingPage` in `.shared-adapter/settings.json`
   (default `skip` = proceed after the proposal is confirmed, `ask` = get explicit
   approval, `refuse` = do not write). If the file is absent, treat it as `skip` but still
   confirm each batch.

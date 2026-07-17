@@ -111,10 +111,10 @@ def _configure_stdio() -> None:
 # Small helpers
 # --------------------------------------------------------------------------- #
 def resolve_project(args: argparse.Namespace) -> Path:
-    # Anchor to the enclosing project root (the directory holding `.superpowers` /
-    # `.shared-superpowers`), whether the path came from --project-root or CWD. A bare
+    # Anchor to the enclosing project root (the directory holding `.adapter` /
+    # `.shared-adapter`), whether the path came from --project-root or CWD. A bare
     # `--project-root .` run from inside `.claude/skills` would otherwise resolve there
-    # and let select_wiki_root(create=True) mint a stray `.superpowers/wiki` under it.
+    # and let select_wiki_root(create=True) mint a stray `.adapter/wiki` under it.
     # repo_root walks up to the real root, and falls back to the given path unchanged
     # when no marker exists (fresh project before bootstrap).
     start = Path(args.project_root).resolve() if getattr(args, "project_root", None) else Path.cwd()
@@ -616,7 +616,7 @@ def cmd_register_card(args: argparse.Namespace) -> None:
     project = resolve_project(args)
     name = require_name(args.name)
     # Do NOT create the wiki root here. The discovery card is registered into an existing
-    # project wiki (init-wiki / bootstrap-wiki runs first); creating `.superpowers/wiki`
+    # project wiki (init-wiki / bootstrap-wiki runs first); creating `.adapter/wiki`
     # as a side effect is how a mis-pointed --project-root silently spawns a stray wiki.
     root = select_wiki_root(project, args.wiki_root)
     if not (root.path / "index.md").is_file():

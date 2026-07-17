@@ -36,7 +36,7 @@ PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-}"
 
 # Fast bail-out if sourceOfTruth is not configured in either root (avoids a python spawn per tool call).
 CONFIGURED=""
-for s in "$PROJECT_ROOT/.superpowers/settings.json" "$PROJECT_ROOT/.shared-superpowers/settings.json"; do
+for s in "$PROJECT_ROOT/.adapter/settings.json" "$PROJECT_ROOT/.shared-adapter/settings.json"; do
   [ -f "$s" ] && grep -q '"sourceOfTruth"' "$s" 2>/dev/null && CONFIGURED=1
 done
 [ -n "$CONFIGURED" ] || exit 0

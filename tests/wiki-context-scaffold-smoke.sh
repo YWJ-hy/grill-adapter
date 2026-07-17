@@ -56,19 +56,30 @@ assert_not_contains "selection contract" '"taskWikiRefs"' "$SELECTION_TEXT"
 assert_not_contains "selection contract" '"taskFingerprint"' "$SELECTION_TEXT"
 assert_not_contains "selection contract" '"reread"' "$SELECTION_TEXT"
 
-PLAN="$TMP/plan.md"
-SEL="$TMP/plan.wiki-selection.json"
-CTX="$TMP/plan.wiki-context.json"
+ROSTER="$TMP/feature.ticket-roster.json"
+SEL="$TMP/feature.wiki-selection.json"
+CTX="$TMP/feature.wiki-context.json"
 
-cat > "$PLAN" <<'MD'
-# Example Plan
-
-### Task T1: Implement path-based form updates
-Update field writes to use path-based updates.
-
-### Task T2: Add contract coverage
-Cover the shared payload contract.
-MD
+# The host-produced ticket roster: the task identity + fingerprint source. Stands in for whatever
+# the host publishes (grill local-markdown .scratch/<slug>/issues/*.md, or tracker issues).
+cat > "$ROSTER" <<'JSON'
+{
+  "featureSlug": "example-feature",
+  "ticketSource": "manual",
+  "tickets": [
+    {
+      "taskId": "T1",
+      "taskTitle": "Implement path-based form updates",
+      "text": "# 01 — Implement path-based form updates\n\n**What to build:** field writes go through updateByPath(path, value).\n\n**Blocked by:** None — can start immediately."
+    },
+    {
+      "taskId": "T2",
+      "taskTitle": "Add contract coverage",
+      "text": "# 02 — Add contract coverage\n\n**What to build:** cover the shared payload contract.\n\n**Blocked by:** 01"
+    }
+  ]
+}
+JSON
 
 # A wiki-researcher selection: one local hard section, one local soft section, one github_mcp hard
 # section, plus the github_mcp shared wiki identity.
@@ -78,7 +89,7 @@ cat > "$SEL" <<'JSON'
   "phase": "plan",
   "sharedWikiSource": {
     "kind": "github_mcp",
-    "displayRoot": ".shared-superpowers/wiki",
+    "displayRoot": ".shared-adapter/wiki",
     "repoUrl": "https://github.com/acme/platform-wiki.git",
     "baseBranch": "master",
     "revision": { "ref": "master", "commitSha": "abcdef1234567890", "shortSha": "abcdef1" }
@@ -87,12 +98,12 @@ cat > "$SEL" <<'JSON'
     {
       "root": "project",
       "source": "local",
-      "displayPath": ".superpowers/wiki/frontend/hook-guidelines.md",
+      "displayPath": ".adapter/wiki/frontend/hook-guidelines.md",
       "localPath": "frontend/hook-guidelines.md",
       "documentContext": {
         "title": "Hook Guidelines",
         "overview": "Project-private hook rules for generated form adapters.",
-        "contextSource": ".superpowers/wiki/frontend/hook-guidelines.index.md"
+        "contextSource": ".adapter/wiki/frontend/hook-guidelines.index.md"
       },
       "sections": [
         {
@@ -133,7 +144,7 @@ cat > "$SEL" <<'JSON'
     {
       "root": "shared",
       "source": "github_mcp",
-      "displayPath": ".shared-superpowers/wiki/frontend/contracts.md",
+      "displayPath": ".shared-adapter/wiki/frontend/contracts.md",
       "wikiPath": "frontend/contracts.md",
       "revision": { "ref": "main", "commitSha": "abcdef1234567890", "shortSha": "abcdef1" },
       "documentContext": {
@@ -176,14 +187,14 @@ cp "$SEL" "$SEL_SRC"
 KEEP_CTX="$TMP/keep.wiki-context.json"
 KEEP_SEL="$TMP/keep.wiki-selection.json"
 cp "$SEL_SRC" "$KEEP_SEL"
-python3 "$SCRIPT" "$KEEP_CTX" --scaffold "$KEEP_SEL" --plan-path "$PLAN" --strict --keep-selection >/dev/null
+python3 "$SCRIPT" "$KEEP_CTX" --scaffold "$KEEP_SEL" --feature-slug example-feature --ticket-source manual --strict --keep-selection >/dev/null
 if [[ ! -f "$KEEP_SEL" ]]; then
   printf 'Expected --keep-selection to preserve the selection %s\n' "$KEEP_SEL" >&2
   exit 1
 fi
 
 # --- Pass 1: --scaffold builds a complete-shaped sidecar from the selection. ---
-SCAFFOLD_OUT="$(python3 "$SCRIPT" "$CTX" --scaffold "$SEL" --plan-path "$PLAN" --strict)"
+SCAFFOLD_OUT="$(python3 "$SCRIPT" "$CTX" --scaffold "$SEL" --feature-slug example-feature --ticket-source manual --strict)"
 assert_contains "scaffold output" 'scaffolded wiki context with 2 page(s)' "$SCAFFOLD_OUT"
 # The selection is a transient intermediate: scaffolding consumes and removes it on success, leaving only
 # the plan and its generated .wiki-context.json.
@@ -198,13 +209,13 @@ python3 "$SCRIPT" "$CTX" --validate-only --strict >/dev/null
 python3 - "$CTX" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1], encoding='utf-8'))
-assert d['schemaVersion'] == 4 and d['kind'] == 'grill-adapter.wiki-context'
+assert d['schemaVersion'] == 5 and d['kind'] == 'grill-adapter.wiki-context'
 assert d['generatedBy'] == 'grill-adapter', d.get('generatedBy')
 # taskRouting block is fully present and pre-confirmation.
 tr = d['taskRouting']
 assert tr['status'] == 'candidate_sections_only', tr['status']
 assert tr['selectedSectionsFrozen'] is False
-assert tr['planTaskFormat'] == 'grill-adapter-plan-task-heading-v1'
+assert tr['ticketRosterFormat'] == 'grill-adapter-ticket-roster-v1'
 assert tr['fingerprintAlgorithm'] == 'sha256:grill-adapter-task-text-v1'
 # Shared wiki identity captured because a github_mcp page was selected.
 assert d['sharedWiki']['repoUrl'] == 'https://github.com/acme/platform-wiki.git'
@@ -241,7 +252,7 @@ print('scaffold structure ok')
 PY
 
 # --- Pass 2: --scaffold-tasks adds one taskWikiRefs entry per stable plan task. ---
-TASKS_OUT="$(python3 "$SCRIPT" "$CTX" --scaffold-tasks --plan-path "$PLAN" --strict)"
+TASKS_OUT="$(python3 "$SCRIPT" "$CTX" --scaffold-tasks --ticket-roster "$ROSTER" --strict)"
 assert_contains "scaffold-tasks output" 'scaffolded 2 task(s): T1, T2' "$TASKS_OUT"
 python3 - "$CTX" <<'PY'
 import json, sys
@@ -278,9 +289,9 @@ json.dump(d, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
 PY
 
 # --- Mechanical tail (existing): stamp fingerprints + gate execution readiness, then preflight. ---
-BIND_OUT="$(python3 "$SCRIPT" "$CTX" --bind-fingerprints --strict --execution-ready --plan-path "$PLAN")"
+BIND_OUT="$(python3 "$SCRIPT" "$CTX" --bind-fingerprints --strict --execution-ready --ticket-roster "$ROSTER")"
 assert_contains "bind output" 'bound taskFingerprint for 2 task(s)' "$BIND_OUT"
-python3 "$SCRIPT" "$CTX" --fingerprint-preflight --strict --execution-ready --plan-path "$PLAN" >/dev/null
+python3 "$SCRIPT" "$CTX" --fingerprint-preflight --strict --execution-ready --ticket-roster "$ROSTER" >/dev/null
 # The fully routed sidecar renders task-scoped constraints for execution.
 T1_RENDER="$(python3 "$SCRIPT" "$CTX" --task-id T1 --role implementer --strict --execution-ready)"
 assert_contains "T1 render" 'Use updateByPath(path, value)' "$T1_RENDER"
@@ -288,7 +299,7 @@ assert_contains "T1 render" 'Keep shared payload names portable' "$T1_RENDER"
 assert_not_contains "T1 render" 'large-page thresholds' "$T1_RENDER"
 
 # --- Re-running --scaffold-tasks is idempotent: roster keeps taskFingerprint; section routing untouched. ---
-python3 "$SCRIPT" "$CTX" --scaffold-tasks --plan-path "$PLAN" --strict >/dev/null
+python3 "$SCRIPT" "$CTX" --scaffold-tasks --ticket-roster "$ROSTER" --strict >/dev/null
 python3 - "$CTX" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1], encoding='utf-8'))
@@ -301,15 +312,21 @@ assert s0['kind'] == 'task-bound' and s0['tasks'] == ['T1'], s0
 print('idempotent rescaffold ok')
 PY
 # Still execution-ready after the idempotent rescaffold.
-python3 "$SCRIPT" "$CTX" --fingerprint-preflight --strict --execution-ready --plan-path "$PLAN" >/dev/null
+python3 "$SCRIPT" "$CTX" --fingerprint-preflight --strict --execution-ready --ticket-roster "$ROSTER" >/dev/null
 
-# --- --scaffold-tasks drops (and reports) tasks no longer in the plan. ---
+# --- --scaffold-tasks drops (and reports) tasks no longer in the ticket roster. ---
 DROP_CTX="$TMP/drop.wiki-context.json"
 cp "$CTX" "$DROP_CTX"
-DROP_PLAN="$TMP/plan-drop.md"
-printf '# P\n\n### Task T1: Implement path-based form updates\nUpdate field writes to use path-based updates.\n' > "$DROP_PLAN"
-DROP_OUT="$(python3 "$SCRIPT" "$DROP_CTX" --scaffold-tasks --plan-path "$DROP_PLAN" --strict 2>&1)"
-assert_contains "drop drift" 'dropped taskWikiRefs entry no longer in plan: T2' "$DROP_OUT"
+DROP_ROSTER="$TMP/roster-drop.json"
+python3 - <<'PY' "$ROSTER" "$DROP_ROSTER"
+import json, sys
+src, dst = sys.argv[1:3]
+data = json.load(open(src, encoding='utf-8'))
+data['tickets'] = [t for t in data['tickets'] if t['taskId'] != 'T2']
+open(dst, 'w', encoding='utf-8').write(json.dumps(data))
+PY
+DROP_OUT="$(python3 "$SCRIPT" "$DROP_CTX" --scaffold-tasks --ticket-roster "$DROP_ROSTER" --strict 2>&1)"
+assert_contains "drop drift" 'dropped taskWikiRefs entry no longer in the ticket roster: T2' "$DROP_OUT"
 
 # --- Negative: a malformed selection fails at the shallow input, not deep in the sidecar. ---
 BAD_CAT_SEL="$TMP/bad-category.wiki-selection.json"
@@ -347,7 +364,7 @@ fi
 assert_contains "bad path" 'must include one of displayPath' "$(cat /tmp/wiki-scaffold-bad-path.out)"
 
 # --- Negative: combining the two scaffold passes in one invocation is rejected. ---
-if python3 "$SCRIPT" "$CTX" --scaffold "$SEL_SRC" --scaffold-tasks --plan-path "$PLAN" >/tmp/wiki-scaffold-combo.out 2>&1; then
+if python3 "$SCRIPT" "$CTX" --scaffold "$SEL_SRC" --scaffold-tasks --ticket-roster "$ROSTER" >/tmp/wiki-scaffold-combo.out 2>&1; then
   printf 'Expected --scaffold + --scaffold-tasks together to fail\n' >&2
   exit 1
 fi
@@ -359,7 +376,7 @@ assert_contains "combo guard" 'separate invocations' "$(cat /tmp/wiki-scaffold-c
 FIN_SEL="$TMP/finalize.wiki-selection.json"
 FIN_CTX="$TMP/finalize.wiki-context.json"
 cp "$SEL_SRC" "$FIN_SEL"
-python3 "$SCRIPT" "$FIN_CTX" --scaffold "$FIN_SEL" --plan-path "$PLAN" --strict >/dev/null
+python3 "$SCRIPT" "$FIN_CTX" --scaffold "$FIN_SEL" --feature-slug example-feature --ticket-source manual --strict >/dev/null
 # Author edits ONLY semantic routing, in a single pass, exactly as the reworked planning patch directs.
 python3 - "$FIN_CTX" <<'PY'
 import json, sys
@@ -378,25 +395,25 @@ d['taskRouting']['selectedSectionsFrozen'] = True
 json.dump(d, open(f, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
 PY
 # One call builds the roster, stamps fingerprints, gates execution readiness, and writes once.
-FIN_OUT="$(python3 "$SCRIPT" "$FIN_CTX" --finalize --strict --plan-path "$PLAN")"
+FIN_OUT="$(python3 "$SCRIPT" "$FIN_CTX" --finalize --strict --ticket-roster "$ROSTER")"
 assert_contains "finalize output" 'finalized 2 task(s) (2 updated): T1, T2' "$FIN_OUT"
 # A clean finalize guarantees the execution-side preflight passes and execution-ready render works.
-python3 "$SCRIPT" "$FIN_CTX" --fingerprint-preflight --strict --execution-ready --plan-path "$PLAN" >/dev/null
+python3 "$SCRIPT" "$FIN_CTX" --fingerprint-preflight --strict --execution-ready --ticket-roster "$ROSTER" >/dev/null
 FIN_RENDER="$(python3 "$SCRIPT" "$FIN_CTX" --task-id T1 --role implementer --strict --execution-ready)"
 assert_contains "finalize render" 'Use updateByPath(path, value)' "$FIN_RENDER"
 # Re-running --finalize is idempotent: fingerprints already current, still execution-ready.
-FIN_OUT2="$(python3 "$SCRIPT" "$FIN_CTX" --finalize --strict --plan-path "$PLAN")"
+FIN_OUT2="$(python3 "$SCRIPT" "$FIN_CTX" --finalize --strict --ticket-roster "$ROSTER")"
 assert_contains "finalize idempotent" 'finalized 2 task(s) (already current): T1, T2' "$FIN_OUT2"
 
-# --- Negative: --finalize requires --plan-path. ---
+# --- Negative: --finalize requires --ticket-roster. ---
 if python3 "$SCRIPT" "$FIN_CTX" --finalize --strict >/tmp/wiki-finalize-noplan.out 2>&1; then
-  printf 'Expected --finalize without --plan-path to fail\n' >&2
+  printf 'Expected --finalize without --ticket-roster to fail\n' >&2
   exit 1
 fi
-assert_contains "finalize needs plan" 'requires --plan-path' "$(cat /tmp/wiki-finalize-noplan.out)"
+assert_contains "finalize needs plan" 'requires --ticket-roster' "$(cat /tmp/wiki-finalize-noplan.out)"
 
 # --- Negative: --finalize must not be combined with the subcommands it already runs. ---
-if python3 "$SCRIPT" "$FIN_CTX" --finalize --scaffold-tasks --plan-path "$PLAN" >/tmp/wiki-finalize-combo.out 2>&1; then
+if python3 "$SCRIPT" "$FIN_CTX" --finalize --scaffold-tasks --ticket-roster "$ROSTER" >/tmp/wiki-finalize-combo.out 2>&1; then
   printf 'Expected --finalize + --scaffold-tasks together to fail\n' >&2
   exit 1
 fi

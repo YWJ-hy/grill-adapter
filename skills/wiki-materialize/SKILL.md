@@ -15,32 +15,32 @@ It does not patch any host skill. A host wires it in by convention:
 - **plain Claude Code**: run `/wiki-materialize <task-id>` yourself before implementing each task.
 - The session-level `wiki-reread` hook is a coarse backstop when a per-ticket call is skipped (see `hooks/wiki-reread.sh`); the explicit per-ticket call is the precise path.
 
-Map the ticket to the bare numeric plan task id used in the sidecar (the `### Task N` heading number). Resolve the plan and sidecar from the working tree (inside the final worktree if one is used).
+The ticket id is the `taskId` from the feature's ticket roster — the same id the sidecar's `destination.tasks` routes to. Your host's convention block says how its tickets are identified (grill local-markdown: the `NN` filename prefix; a real tracker: the issue number). Resolve the sidecar and roster from the working tree (inside the final worktree if one is used).
 
 ---
 
-## Once per plan — fingerprint preflight
+## Once per feature — fingerprint preflight
 
-Before the first ticket, run exactly one preflight so execution can only proceed against the reviewed plan text:
+Before the first ticket, run exactly one preflight so execution can only proceed against the reviewed ticket text:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_context_render.py <plan-stem>.wiki-context.json --fingerprint-preflight --strict --execution-ready --plan-path <plan>.md
+python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --fingerprint-preflight --strict --execution-ready --ticket-roster .adapter/context/<feature-slug>.ticket-roster.json
 ```
 
-If the preflight fails because task text changed after plan review, stop and refresh the binding on the planning side: confirm the selected wiki routing still applies to the changed task, re-run `wiki_context_render.py <sidecar> --bind-fingerprints --strict --execution-ready --plan-path <plan>` to re-stamp fingerprints, and resume only after it passes. Do not re-stamp to silence a mismatch without re-checking routing, and do not reselect wiki pages or rewrite the plan during execution.
+If the preflight fails because a ticket's text changed after the wiki was bound to it, stop and refresh the binding on the planning side: rebuild the roster from the current tickets, confirm the selected wiki routing still applies to the changed ticket, re-run `wiki_context_render.py <sidecar> --bind-fingerprints --strict --execution-ready --ticket-roster <roster>` to re-stamp fingerprints, and resume only after it passes. Do not re-stamp to silence a mismatch without re-checking routing, and do not reselect wiki pages or rewrite tickets during execution.
 
 ## Per ticket — render + materialize
 
 1. Render this ticket's task-scoped wiki constraints and inject stdout under `## Rendered Wiki Constraints for This Task`, alongside the ticket's full text under `## Assigned Task`:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_context_render.py <plan-stem>.wiki-context.json --task-id <ticket-id> --role implementer --strict --execution-ready
+python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --task-id <ticket-id> --role implementer --strict --execution-ready
 ```
 
 2. Materialize this ticket's hard-constraint full-section rereads — both local project wiki and `source: github_mcp` shared wiki — and inject stdout after the rendered constraints under `## Hard Wiki Constraint Rereads`:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_materialize_task.py <plan-stem>.wiki-context.json --task-id <ticket-id> --role implementer --project-root <project-root> --strict --execution-ready
+python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_materialize_task.py .adapter/context/<feature-slug>.wiki-context.json --task-id <ticket-id> --role implementer --project-root <project-root> --strict --execution-ready
 ```
 
 For a reviewer pass, use `--role reviewer`. To append directly into a handoff file the subagent Reads, add `--append-to <file>`.
@@ -54,6 +54,6 @@ It fails closed on shared-wiki rebinding drift (sidecar `sharedWiki.repoUrl` vs 
 ## Boundaries
 
 - The emitted rereads are authoritative **hard constraints**, not additional search results. Verify compliance against the full section text; do not apply sibling sections or whole-page body.
-- During execution/review do not call `wiki-researcher`, dispatch another wiki-selection subagent, manually reread wiki roots, or reselect wiki pages. If the rendered constraints or hard rereads are missing or clearly insufficient, pause and return to planning to repair `Referenced Project Wiki` and the linked `.wiki-context.json`.
+- During execution/review do not call `wiki-researcher`, dispatch another wiki-selection subagent, manually reread wiki roots, or reselect wiki pages. If the rendered constraints or hard rereads are missing or clearly insufficient, pause and return to planning to repair the feature's `.wiki-context.json` sidecar.
 - Do not persist rendered task-context Markdown files during normal execution unless using an explicit `--append-to` handoff file.
 - This is a standalone utility skill, not a host development workflow step; do not auto-invoke the host's completion or verification skills because it ran.

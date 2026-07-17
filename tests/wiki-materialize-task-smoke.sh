@@ -20,7 +20,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 PROJECT="$TMP/project"
-WIKI="$PROJECT/.superpowers/wiki"
+WIKI="$PROJECT/.adapter/wiki"
 mkdir -p "$WIKI"
 
 REPO_URL="https://github.com/YWJ-hy/shared-wiki.git"
@@ -49,11 +49,11 @@ MD
 CONTEXT="$TMP/plan.wiki-context.json"
 cat > "$CONTEXT" <<JSON
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "kind": "grill-adapter.wiki-context",
   "generatedBy": "grill-adapter",
   "sharedWiki": {"source": "github_mcp", "repoUrl": "${REPO_URL}", "revision": {"commitSha": "${REVISION}"}},
-  "taskRouting": {"status": "confirmed", "planTaskFormat": "grill-adapter-plan-task-heading-v1", "fingerprintAlgorithm": "sha256:grill-adapter-task-text-v1", "selectedSectionsFrozen": true, "refreshPolicy": "refresh-taskWikiRefs-and-fingerprints-only"},
+  "taskRouting": {"status": "confirmed", "ticketRosterFormat": "grill-adapter-ticket-roster-v1", "fingerprintAlgorithm": "sha256:grill-adapter-task-text-v1", "selectedSectionsFrozen": true, "refreshPolicy": "refresh-taskWikiRefs-and-fingerprints-only"},
   "wikiPages": [
     {
       "root": "project", "source": "local", "displayPath": "directory-structure.md", "localPath": "directory-structure.md", "wikiPath": "directory-structure.md",
@@ -66,7 +66,7 @@ cat > "$CONTEXT" <<JSON
       ]
     },
     {
-      "root": "shared", "source": "github_mcp", "displayPath": ".shared-superpowers/wiki/frontend/quality.md", "wikiPath": "frontend/quality.md", "revision": {"commitSha": "${REVISION}"},
+      "root": "shared", "source": "github_mcp", "displayPath": ".shared-adapter/wiki/frontend/quality.md", "wikiPath": "frontend/quality.md", "revision": {"commitSha": "${REVISION}"},
       "documentContext": {"title": "Quality Guidelines", "overview": "Quality gates."},
       "sections": [
         {"sectionId": "required-quality-patterns", "hardConstraint": true, "relevance": "supporting", "reason": "quality gate", "relevanceTo": "overall quality",
@@ -125,12 +125,12 @@ results = []
 for i, s in enumerate(req["sections"]):
     results.append({
         "index": i, "status": "ok", "path": s["path"], "section": s["section"],
-        "displayPath": ".shared-superpowers/wiki/" + s["path"],
+        "displayPath": ".shared-adapter/wiki/" + s["path"],
         "revision": revision,
         "content": "SHARED FULL TEXT: new code must pass TypeScript checks (" + s["section"] + ")",
         "documentContext": {"title": "Quality Guidelines", "overview": "Frontend quality gates.",
                             "contextSource": "frontend/quality.index.md",
-                            "displayPath": ".shared-superpowers/wiki/frontend/quality.index.md"},
+                            "displayPath": ".shared-adapter/wiki/frontend/quality.index.md"},
     })
 print(json.dumps({"status": "ok", "repoUrl": repo, "revision": revision,
                   "requestedCount": len(results), "results": results, "errors": []}))
@@ -159,7 +159,7 @@ for required in \
   '## Hard Wiki Constraint Rereads' \
   '### Reread: `directory-structure.md` # `service-layer`' \
   '消费端必须从 adapter.ts 导入' \
-  '### Reread: `.shared-superpowers/wiki/frontend/quality.md` # `required-quality-patterns`' \
+  '### Reread: `.shared-adapter/wiki/frontend/quality.md` # `required-quality-patterns`' \
   'SHARED FULL TEXT: new code must pass TypeScript checks' \
   "- Revision: \`${REVISION}\`" \
   '#### Full section text'
@@ -245,7 +245,7 @@ OUT6="$TMP/task-1-closure.md"
 : > "$OUT6"
 FAKE_DEPENDS_ON="$DEP" run_materialize --task-id 1 --shared-wiki-cmd "$FAKE_CMD" --append-to "$OUT6" 2> "$TMP/err6"
 for required in \
-  '### Reread: `.shared-superpowers/wiki/frontend/type-safety.md` # `type-organization`' \
+  '### Reread: `.shared-adapter/wiki/frontend/type-safety.md` # `type-organization`' \
   'Pulled in via: depends-on closure of `frontend/quality.md#required-quality-patterns`' \
   'SHARED FULL TEXT: new code must pass TypeScript checks (type-organization)'
 do

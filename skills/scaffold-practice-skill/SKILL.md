@@ -85,7 +85,7 @@ python3 __GRILL_ADAPTER_ROOT__/scripts/scaffold_practice_skill.py \
 
 ### Create
 
-1. Confirm the project root and that `.superpowers/wiki/index.md` exists. Run the script from the project root (or pass an absolute `--project-root`); `register-card` will NOT create a wiki, so a mis-pointed root fails loudly instead of spawning a stray `.superpowers/wiki/`.
+1. Confirm the project root and that `.adapter/wiki/index.md` exists. Run the script from the project root (or pass an absolute `--project-root`); `register-card` will NOT create a wiki, so a mis-pointed root fails loudly instead of spawning a stray `.adapter/wiki/`.
 2. Choose a kebab-case `name`, a trigger-rich `description`, and decide which sibling files the content actually needs (the open set).
 3. Run `scaffold` to write the skeleton, then author the real content into `SKILL.md` and each file. Keep `SKILL.md` thin; push heavy rules/examples into siblings.
 4. Run `register-card` (see authorization below) with an authored `--summary` — the theme abstraction described in the helper comment above (not the trigger keywords) — to create the discovery card and make it discoverable.
@@ -102,7 +102,7 @@ python3 __GRILL_ADAPTER_ROOT__/scripts/scaffold_practice_skill.py \
 
 ## Authorization
 
-`register-card` writes to an **existing** project wiki and respects the selected root's `wiki.updateAuthorization` policy (`.superpowers/settings.json`). It never creates the wiki root itself — if `.superpowers/wiki/index.md` is missing it errors (run init-wiki/bootstrap-wiki first, or fix the project root). Defaults: `createNewDocument` = `ask`, `updateExistingPage` = `skip`. When the policy is `ask`, get explicit user authorization first, then pass `--authorized-create` (first card / new `skills.md`) or `--authorized-update` (existing `skills.md`). When it is `refuse`, do not write; report it.
+`register-card` writes to an **existing** project wiki and respects the selected root's `wiki.updateAuthorization` policy (`.adapter/settings.json`). It never creates the wiki root itself — if `.adapter/wiki/index.md` is missing it errors (run init-wiki/bootstrap-wiki first, or fix the project root). Defaults: `createNewDocument` = `ask`, `updateExistingPage` = `skip`. When the policy is `ask`, get explicit user authorization first, then pass `--authorized-create` (first card / new `skills.md`) or `--authorized-update` (existing `skills.md`). When it is `refuse`, do not write; report it.
 
 ## Boundaries
 

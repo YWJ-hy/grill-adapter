@@ -138,7 +138,7 @@ def main() -> int:
     root_desc = roots[0] if roots else wiki_root_by_name(root, args.wiki_root if args.wiki_root != "all" else "project")
     entry = root_desc.path / "index.md"
     if not entry.is_file():
-        print("Missing wiki index. Expected .superpowers/wiki/index.md or .shared-superpowers/wiki/index.md", file=sys.stderr)
+        print("Missing wiki index. Expected .adapter/wiki/index.md or .shared-adapter/wiki/index.md", file=sys.stderr)
         return 1
     print(read_text(entry))
     return 0

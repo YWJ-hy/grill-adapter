@@ -3,10 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATE_ROOT="$SCRIPT_DIR/wiki-template"
-SHARED_TEMPLATE_ROOT="$SCRIPT_DIR/shared-superpowers-template"
+SHARED_TEMPLATE_ROOT="$SCRIPT_DIR/shared-adapter-template"
 TEMPLATE_NAME=""
 WIKI_ROOT_NAME="project"
-WIKI_ROOT_REL=".superpowers/wiki"
+WIKI_ROOT_REL=".adapter/wiki"
 
 usage() {
   printf 'Usage: %s <project-root> [--template name] [--wiki-root project|shared]\n' "$0" >&2
@@ -40,10 +40,10 @@ done
 
 case "$WIKI_ROOT_NAME" in
   project)
-    WIKI_ROOT_REL=".superpowers/wiki"
+    WIKI_ROOT_REL=".adapter/wiki"
     ;;
   shared)
-    WIKI_ROOT_REL=".shared-superpowers/wiki"
+    WIKI_ROOT_REL=".shared-adapter/wiki"
     ;;
   *)
     printf 'Invalid --wiki-root: %s\n' "$WIKI_ROOT_NAME" >&2
@@ -161,10 +161,10 @@ copy_shared_support_template() {
   if [[ "$WIKI_ROOT_NAME" != "shared" ]]; then
     return 0
   fi
-  local support_dir="$SHARED_TEMPLATE_ROOT/$SELECTED_TEMPLATE/.shared-superpowers"
-  copy_files_to_root "$support_dir" "$REPO_ROOT/.shared-superpowers" ".shared-superpowers"
-  if [[ -d "$REPO_ROOT/.shared-superpowers/scripts" ]]; then
-    chmod +x "$REPO_ROOT/.shared-superpowers/scripts"/*.sh "$REPO_ROOT/.shared-superpowers/scripts"/*.py
+  local support_dir="$SHARED_TEMPLATE_ROOT/$SELECTED_TEMPLATE/.shared-adapter"
+  copy_files_to_root "$support_dir" "$REPO_ROOT/.shared-adapter" ".shared-adapter"
+  if [[ -d "$REPO_ROOT/.shared-adapter/scripts" ]]; then
+    chmod +x "$REPO_ROOT/.shared-adapter/scripts"/*.sh "$REPO_ROOT/.shared-adapter/scripts"/*.py
   fi
 }
 

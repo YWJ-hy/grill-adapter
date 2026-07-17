@@ -4,7 +4,7 @@ set -euo pipefail
 # Smoke test for the section-level knowledge graph: typed [[type: page#section]] edge
 # parsing, .graph.json output, a plain (relationship-free) .index.md table, and dangling /
 # unknown-type lint. Exercises the installed Superpowers target scripts.
-# Usage: bash tests/wiki-section-graph-smoke.sh [superpowers-target] [project-root]
+# Usage: bash tests/wiki-section-graph-smoke.sh [adapter-target] [project-root]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -14,7 +14,7 @@ SCRIPTS="${TARGET_INPUT}/scripts"
 TMP_PROJECT="$(mktemp -d)"
 trap 'rm -rf "${TMP_PROJECT}"' EXIT
 
-W="${TMP_PROJECT}/.superpowers/wiki"
+W="${TMP_PROJECT}/.adapter/wiki"
 mkdir -p "${W}/backend"
 
 cat > "${W}/index.md" <<'MD'

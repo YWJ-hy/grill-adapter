@@ -15,7 +15,7 @@ const ConfigFileSchema = z.object({
 });
 
 // Per-project shared-wiki MCP connection block, read from
-// <CLAUDE_PROJECT_DIR>/.shared-superpowers/settings.json -> wiki.sharedMcp.
+// <CLAUDE_PROJECT_DIR>/.shared-adapter/settings.json -> wiki.sharedMcp.
 // cacheDir is intentionally NOT accepted here: it is a machine-local concern and
 // must not live in a committed project settings file. Governance (neutrality /
 // authorization) is also absent on purpose — that lives inside the shared wiki
@@ -65,7 +65,7 @@ function readConfigFile(configPath: string | undefined): Partial<z.infer<typeof 
 function readProjectMcpConfig(env: NodeJS.ProcessEnv): Partial<z.infer<typeof ProjectMcpSchema>> {
   const projectDir = env.CLAUDE_PROJECT_DIR;
   if (!projectDir) return {};
-  const settingsPath = path.join(path.resolve(expandHome(projectDir)), '.shared-superpowers', 'settings.json');
+  const settingsPath = path.join(path.resolve(expandHome(projectDir)), '.shared-adapter', 'settings.json');
   if (!existsSync(settingsPath)) return {};
   let parsed: unknown;
   try {
@@ -112,13 +112,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SharedWikiConf
   // unavailable. cacheDir is never taken from the project block (machine-local).
   const repoUrl = env.SHARED_WIKI_MCP_REPO_URL ?? fileConfig.repoUrl ?? projectConfig.repoUrl;
   if (!repoUrl) {
-    throw new Error('Missing shared wiki repo URL. Set wiki.sharedMcp.repoUrl in <project>/.shared-superpowers/settings.json (resolved from CLAUDE_PROJECT_DIR), or SHARED_WIKI_MCP_REPO_URL / repoUrl in SHARED_WIKI_MCP_CONFIG.');
+    throw new Error('Missing shared wiki repo URL. Set wiki.sharedMcp.repoUrl in <project>/.shared-adapter/settings.json (resolved from CLAUDE_PROJECT_DIR), or SHARED_WIKI_MCP_REPO_URL / repoUrl in SHARED_WIKI_MCP_CONFIG.');
   }
 
   const baseCacheDir = expandHome(env.SHARED_WIKI_MCP_CACHE_DIR ?? fileConfig.cacheDir ?? '~/.cache/grill-adapter/shared-wiki-mcp');
   const cacheDir = path.resolve(baseCacheDir);
   const wikiRoot = normalizeRelativeRoot(env.SHARED_WIKI_MCP_WIKI_ROOT ?? fileConfig.wikiRoot ?? projectConfig.wikiRoot ?? '.', 'wikiRoot');
-  const displayRoot = normalizeRelativeRoot(env.SHARED_WIKI_MCP_DISPLAY_ROOT ?? fileConfig.displayRoot ?? projectConfig.displayRoot ?? '.shared-superpowers/wiki', 'displayRoot');
+  const displayRoot = normalizeRelativeRoot(env.SHARED_WIKI_MCP_DISPLAY_ROOT ?? fileConfig.displayRoot ?? projectConfig.displayRoot ?? '.shared-adapter/wiki', 'displayRoot');
 
   return {
     repoUrl,

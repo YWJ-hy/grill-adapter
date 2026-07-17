@@ -13,15 +13,15 @@ echo "grill-adapter doctor"
 echo "===================="
 python3 "$SCRIPT_DIR/lib/install.py" status "$PROJECT_ROOT" || true
 echo ""
-echo "shared-wiki binding (per-project, .shared-superpowers/settings.json -> wiki.sharedMcp):"
+echo "shared-wiki binding (per-project, .shared-adapter/settings.json -> wiki.sharedMcp):"
 python3 - "$PROJECT_ROOT" <<'PY'
 import json, sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
-settings = root / ".shared-superpowers" / "settings.json"
+settings = root / ".shared-adapter" / "settings.json"
 if not settings.is_file():
-    print("  no .shared-superpowers/settings.json — no MCP shared wiki (fail-closed).")
+    print("  no .shared-adapter/settings.json — no MCP shared wiki (fail-closed).")
     raise SystemExit(0)
 try:
     data = json.loads(settings.read_text(encoding="utf-8"))

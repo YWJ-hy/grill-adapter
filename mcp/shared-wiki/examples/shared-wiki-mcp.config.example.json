@@ -3,7 +3,7 @@
   "baseBranch": "master",
   "remote": "origin",
   "wikiRoot": ".",
-  "displayRoot": ".shared-superpowers/wiki",
+  "displayRoot": ".shared-adapter/wiki",
   "cacheDir": "~/.cache/grill-adapter/shared-wiki-mcp",
   "draftPr": true
 }

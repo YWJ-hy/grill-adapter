@@ -56,8 +56,8 @@ assert_exit_code() {
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-mkdir -p "$TMP/.superpowers/wiki/frontend"
-cat > "$TMP/.superpowers/wiki/frontend/hook-guidelines.md" << 'WIKI'
+mkdir -p "$TMP/.adapter/wiki/frontend"
+cat > "$TMP/.adapter/wiki/frontend/hook-guidelines.md" << 'WIKI'
 # Hook Guidelines
 
 Introduction paragraph.
@@ -90,7 +90,7 @@ Parent outro.
 <!-- /wiki-section:parent-section -->
 WIKI
 
-cat > "$TMP/.superpowers/wiki/frontend/hook-guidelines.index.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/hook-guidelines.index.md" << 'WIKI'
 # Hook Guidelines
 
 > Project-private hook rules for form field updates and naming.
@@ -102,7 +102,7 @@ cat > "$TMP/.superpowers/wiki/frontend/hook-guidelines.index.md" << 'WIKI'
 | parent-section | Parent Section | soft |
 WIKI
 
-cat > "$TMP/.superpowers/wiki/frontend/type-safety.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/type-safety.md" << 'WIKI'
 # Type Safety
 
 <!-- wiki-section:type-imports -->
@@ -112,7 +112,7 @@ cat > "$TMP/.superpowers/wiki/frontend/type-safety.md" << 'WIKI'
 <!-- /wiki-section:type-imports -->
 WIKI
 
-cat > "$TMP/.superpowers/wiki/frontend/type-safety.index.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/type-safety.index.md" << 'WIKI'
 # Type Safety
 
 > 中文类型安全规则。
@@ -122,7 +122,7 @@ cat > "$TMP/.superpowers/wiki/frontend/type-safety.index.md" << 'WIKI'
 | type-imports | Type Imports | hard |
 WIKI
 
-cat > "$TMP/.superpowers/wiki/frontend/with-code-block.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/with-code-block.md" << 'WIKI'
 # Code Block Test
 
 ```markdown
@@ -138,7 +138,7 @@ This is the real section.
 <!-- /wiki-section:real-section -->
 WIKI
 
-cat > "$TMP/.superpowers/wiki/frontend/broken.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/broken.md" << 'WIKI'
 # Broken Markers
 
 <!-- wiki-section:unclosed -->
@@ -262,7 +262,7 @@ import sys
 text = Path(sys.argv[1]).read_text()
 errors = validate_section_markers(text)
 for e in errors: print(e)
-" "$TMP/.superpowers/wiki/frontend/broken.md")
+" "$TMP/.adapter/wiki/frontend/broken.md")
 assert_contains "reports unclosed" "unclosed" "$ERRORS"
 
 printf '\nTest: list_section_ids\n'
@@ -273,7 +273,7 @@ from pathlib import Path
 import sys
 text = Path(sys.argv[1]).read_text()
 for sid in list_section_ids(text): print(sid)
-" "$TMP/.superpowers/wiki/frontend/hook-guidelines.md")
+" "$TMP/.adapter/wiki/frontend/hook-guidelines.md")
 assert_contains "lists path-based-update" "path-based-update" "$IDS"
 assert_contains "lists deep-path" "deep-path" "$IDS"
 assert_contains "lists parent-section" "parent-section" "$IDS"
@@ -281,7 +281,7 @@ assert_contains "lists child-section" "child-section" "$IDS"
 
 printf '\nTest: authored section summaries\n'
 
-cat > "$TMP/.superpowers/wiki/frontend/summaries.md" <<'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/summaries.md" <<'WIKI'
 # Summaries
 <!-- wiki-section:with-summary summary="服务端数据走服务层，不当请求缓存" -->
 ## Server State
@@ -302,7 +302,7 @@ s = extract_section_summaries(text)
 print('IDS:', ','.join(list_section_ids(text)))
 print('WITH:', s.get('with-summary', ''))
 print('NO:', 'no-summary' in s)
-" "$TMP/.superpowers/wiki/frontend/summaries.md")
+" "$TMP/.adapter/wiki/frontend/summaries.md")
 # Backward compat: both ids still parse with the extended open-marker regex.
 assert_contains "summary marker still lists both ids" "IDS: with-summary,no-summary" "$SUMS"
 assert_contains "parses authored summary" "WITH: 服务端数据走服务层，不当请求缓存" "$SUMS"
@@ -310,7 +310,7 @@ assert_contains "section without summary absent from map" "NO: False" "$SUMS"
 
 printf '\nTest: malformed summary marker is reported (not silently dropped)\n'
 
-cat > "$TMP/.superpowers/wiki/frontend/bad-summary.md" <<'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/bad-summary.md" <<'WIKI'
 # Bad
 <!-- wiki-section:broken-sum summary="a > b" -->
 ## X
@@ -323,7 +323,7 @@ from wiki_section import validate_section_markers
 from pathlib import Path
 import sys
 for e in validate_section_markers(Path(sys.argv[1]).read_text(encoding='utf-8')): print(e)
-" "$TMP/.superpowers/wiki/frontend/bad-summary.md")
+" "$TMP/.adapter/wiki/frontend/bad-summary.md")
 assert_contains "malformed marker reported" "malformed wiki-section marker" "$BADSUM"
 
 # --- Summary ---

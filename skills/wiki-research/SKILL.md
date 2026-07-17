@@ -14,7 +14,7 @@ It does not patch any host skill. A host wires it in by convention:
 - **grill**: call it during `/grill-with-docs` (phase `brainstorm`) for lightweight disclosure, and during `/to-tickets` planning (phase `plan`) to select formal constraints and write the sidecar.
 - **plain Claude Code**: call `/wiki-research` yourself before proposing an approach, and again when writing the implementation plan.
 
-Project wiki is local `.superpowers/wiki/`; shared wiki may be local `.shared-superpowers/wiki/` or a configured GitHub-backed shared-wiki MCP source. Selection is strict and progressive: read directory `index.md` and companion `<stem>.index.md` files first, select only relevant sections, and never scan whole wiki trees without an explicit audit request.
+Project wiki is local `.adapter/wiki/`; shared wiki may be local `.shared-adapter/wiki/` or a configured GitHub-backed shared-wiki MCP source. Selection is strict and progressive: read directory `index.md` and companion `<stem>.index.md` files first, select only relevant sections, and never scan whole wiki trees without an explicit audit request.
 
 ---
 
@@ -26,8 +26,8 @@ During discovery, after you have explored project context and **before** proposi
 task: <user request and current understanding>
 phase: brainstorm
 wikiRoots:
-  - .superpowers/wiki
-  - .shared-superpowers/wiki
+  - .adapter/wiki
+  - .shared-adapter/wiki
 sharedWikiSource: auto
 focus: <module, workflow, or concern if known>
 ```
@@ -42,12 +42,12 @@ When writing the implementation plan, invoke the agent to formally select the se
 task: <confirmed spec or requirements summary>
 phase: plan
 wikiRoots:
-  - .superpowers/wiki
-  - .shared-superpowers/wiki
+  - .adapter/wiki
+  - .shared-adapter/wiki
 sharedWikiSource: auto
-planPath: <plan-file>.md
-planSummary: <plan goal and likely task areas>
-selectionOutputPath: <plan-stem>.wiki-selection.json
+featureSlug: <feature-slug>
+planSummary: <feature goal and likely task areas>
+selectionOutputPath: .adapter/context/<feature-slug>.wiki-selection.json
 ```
 
 At `plan` phase the agent writes the JSON **selection** object (shape in `__GRILL_ADAPTER_ROOT__/contracts/wiki-selection-v1.example.jsonc`) to `selectionOutputPath` itself and returns only a compact summary (selected pages + counts + caveats), so the large object stays out of context. The selection must not emit `destination`, `reread`, `taskRouting`, `taskWikiRefs`, `taskFingerprint`, or future task ids.
@@ -61,30 +61,34 @@ Generate the sidecar mechanically from the selection, then edit only the semanti
    - `missing_wiki_root`/`no_relevant_wiki`: no file was written — record the one-line N/A reason and plan without wiki context.
    - fallback (summary says the researcher returned the selection inline): save that inline JSON to `selectionOutputPath` yourself, then continue.
 
-2. Generate the sidecar skeleton (schemaVersion 4). This fills everything mechanical — schema constants, the `taskRouting` block, a `reread` block for every `hardConstraint` section, the top-level `sharedWiki` identity when any `github_mcp` page is selected, and a default `destination.kind` per section:
+2. Generate the sidecar skeleton (schemaVersion 5). This fills everything mechanical — schema constants, the `taskRouting` block, a `reread` block for every `hardConstraint` section, the top-level `sharedWiki` identity when any `github_mcp` page is selected, and a default `destination.kind` per section:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_context_render.py <plan-stem>.wiki-context.json --scaffold <plan-stem>.wiki-selection.json --strict --plan-path <plan>.md
+python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --scaffold .adapter/context/<feature-slug>.wiki-selection.json --strict --feature-slug <feature-slug> --ticket-source <source>
 ```
 
-3. Read the generated `.wiki-context.json` for its distilled constraints, use them like spec input while writing tasks, and add a lightweight `## Referenced Project Wiki` section to the plan that links the sidecar and summarizes selected pages/sections/counts.
+3. Read the generated `.wiki-context.json` for its distilled constraints and use them like spec input while shaping the work. The sidecar is itself the record of which wiki constrains this feature; tell the user what was selected and where it lives.
 
-4. After the plan and its task ids stabilize, edit each selected section's `destination` **once**:
+4. Once the host's tickets exist and their ids are stable, edit each selected section's `destination` **once**:
    - `destination.kind`: `planning-only` for soft context the task text already embodies (never for `hardConstraint`); `global` for rules every task and reviewer needs; else `task-bound`.
    - `destination.reason`: one line per section (the generator leaves it empty on purpose).
-   - For every `task-bound` section, list the bare numeric plan task ids in `destination.tasks` (e.g. `["1","3"]`).
+   - For every `task-bound` section, list the roster ticket ids in `destination.tasks` (e.g. `["01","03"]`).
    - Flip `taskRouting.status` to `confirmed` with `selectedSectionsFrozen: true`.
-   - Fold every `global` section's one-line summary into the plan's human-visible global-constraints surface.
+   - Surface every `global` section's one-line summary to the user as a feature-wide constraint.
 
-5. Finalize in one call — builds the `taskWikiRefs` roster, stamps each `taskFingerprint`, validates execution readiness, writes once:
+5. Build the ticket roster `.adapter/context/<feature-slug>.ticket-roster.json` from the host's real tickets (shape: `__GRILL_ADAPTER_ROOT__/contracts/ticket-roster-v1.example.jsonc`). Your host's convention block in the project `CLAUDE.md` says where its tickets live and which `ticketSource` applies — read it rather than guessing. Copy each ticket's `text` verbatim: it is the fingerprint input.
+
+6. Finalize in one call — builds the `taskWikiRefs` roster, stamps each `taskFingerprint`, validates execution readiness, writes once:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_context_render.py <plan-stem>.wiki-context.json --finalize --strict --plan-path <plan>.md
+python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --finalize --strict --ticket-roster .adapter/context/<feature-slug>.ticket-roster.json
 ```
 
 `--finalize` is the single source of truth for `taskFingerprint` and the roster; never compute the sha256 or build `taskWikiRefs` by hand. A clean finalize guarantees the execution-time `--fingerprint-preflight` (run by `wiki-materialize`) passes. Do not re-read the sidecar afterward to "verify" — the transactional write already validated it. If selected wiki conflicts with the confirmed spec, stop and ask the user to resolve it before finalizing.
 
-Only as a last resort (generator unavailable) hand-author the sidecar from `__GRILL_ADAPTER_ROOT__/contracts/wiki-context-v4.example.jsonc` and validate with `--validate-only --strict`.
+Nothing under `.adapter/context/` is committed — the sidecar, roster, and candidates are local working state that execution reads in place from the same working tree.
+
+Only as a last resort (generator unavailable) hand-author the sidecar from `__GRILL_ADAPTER_ROOT__/contracts/wiki-context-v5.example.jsonc` and validate with `--validate-only --strict`.
 
 ---
 

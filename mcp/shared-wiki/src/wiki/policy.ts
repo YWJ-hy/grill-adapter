@@ -49,8 +49,8 @@ export function loadPolicy(config: SharedWikiConfig): WikiPolicy {
 
 export function findSettingsPath(config: SharedWikiConfig): string | undefined {
   const candidates = [
-    path.join(config.cloneDir, config.wikiRoot, '.shared-superpowers/settings.json'),
-    path.join(config.cloneDir, '.shared-superpowers/settings.json'),
+    path.join(config.cloneDir, config.wikiRoot, '.shared-adapter/settings.json'),
+    path.join(config.cloneDir, '.shared-adapter/settings.json'),
     path.join(config.cloneDir, 'settings.json'),
   ];
   return candidates.find((candidate) => existsSync(candidate));

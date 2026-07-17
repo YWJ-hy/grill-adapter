@@ -53,7 +53,7 @@ def _roots_for(project_root: Path, wiki_root_selector: str, wiki_dir: str | None
 
     ``--wiki-dir`` wins: the wiki is rooted directly at that directory (repo-root
     wiki layout) and the selector is ignored. Otherwise fall back to the standard
-    .superpowers/.shared-superpowers project layout.
+    .adapter/.shared-adapter project layout.
     """
     if wiki_dir:
         return [wiki_root_from_dir(wiki_dir)]

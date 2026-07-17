@@ -11,8 +11,8 @@ This is a **batched, propose-then-confirm** pass — never a silent mass edit.
 - Do **not** change the semantic content of pages. Node types and edges are additive
   metadata (a frontmatter `type:` line and `[[ ]]` links inside section bodies).
 - Respect the per-root authorization policy: editing existing pages is governed by
-  `wiki.updateAuthorization.updateExistingPage` (`.superpowers/settings.json` for project,
-  `.shared-superpowers/settings.json` for shared; default `skip` = proceed after the
+  `wiki.updateAuthorization.updateExistingPage` (`.adapter/settings.json` for project,
+  `.shared-adapter/settings.json` for shared; default `skip` = proceed after the
   proposal is confirmed, `ask` = get explicit approval, `refuse` = do not write).
 - Do not invent relationships. Only add an edge when two sections genuinely relate; only
   set a non-default type when the page truly is domain/decision/guide.

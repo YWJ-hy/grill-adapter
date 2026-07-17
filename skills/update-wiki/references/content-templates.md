@@ -105,7 +105,7 @@ Before finishing the update:
 - [ ] Did you read relevant indexed wiki pages before writing?
 - [ ] Did you skip candidates that are already covered and tell the user where?
 - [ ] Did you choose target root and page ownership yourself rather than outsourcing it to a script?
-- [ ] If writing to `.shared-superpowers/wiki/`, did you neutralize system-specific identifiers and confirm the content is portable across sibling projects?
+- [ ] If writing to `.shared-adapter/wiki/`, did you neutralize system-specific identifiers and confirm the content is portable across sibling projects?
 - [ ] Did you verify the target page's ownership boundary with bounded signals instead of weak keyword overlap?
 - [ ] Did you avoid nearest-match fallback when no clear owner existed?
 - [ ] If the candidate concerns API/form payload or security-sensitive fields, did you avoid filing it under type-safety unless it is specifically about TypeScript modeling?

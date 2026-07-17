@@ -85,15 +85,18 @@ def build_mcp(root: Path) -> bool:
     mcp = root / "mcp" / "shared-wiki"
     if not (mcp / "package.json").is_file():
         return False
-    if shutil.which("npm") is None:
+    # Spawn the resolved path, not bare "npm": on Windows npm is npm.CMD and
+    # CreateProcess does not apply PATHEXT, so ["npm", ...] raises FileNotFoundError.
+    npm = shutil.which("npm")
+    if npm is None:
         _log("WARN: npm not found; shared-wiki MCP not built. Skills work; shared-wiki MCP unavailable until built.")
         return False
     try:
-        subprocess.run(["npm", "install", "--no-audit", "--no-fund"], cwd=mcp, check=True,
+        subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=mcp, check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-        subprocess.run(["npm", "run", "build"], cwd=mcp, check=True,
+        subprocess.run([npm, "run", "build"], cwd=mcp, check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, OSError):
         _log("WARN: shared-wiki MCP build failed; skills still work.")
         return False
     _log(f"payload: built shared-wiki MCP at {mcp / 'dist' / 'index.js'}")
@@ -280,7 +283,7 @@ def _register_mcp(root: Path) -> None:
     Registration is the user's explicit choice: auto-adding could clobber an existing
     `shared-wiki` server (e.g. from another adapter) and would ignore CLAUDE_CONFIG_DIR
     sandboxing. Register ONCE at user level; the server self-configures per project from
-    each project's `.shared-superpowers/settings.json` -> `wiki.sharedMcp`.
+    each project's `.shared-adapter/settings.json` -> `wiki.sharedMcp`.
     """
     reg = mcp_registration(root)
     entry = Path(reg["mcpServers"]["shared-wiki"]["args"][0])
@@ -288,7 +291,7 @@ def _register_mcp(root: Path) -> None:
         _log("shared-wiki MCP not built yet; build it, then run `manage.sh mcp-registration` for the JSON.")
         return
     _log("Register the shared-wiki MCP ONCE at user level (server reads CLAUDE_PROJECT_DIR and self-configures")
-    _log("from each project's .shared-superpowers/settings.json -> wiki.sharedMcp). Do NOT add SHARED_WIKI_MCP_* env.")
+    _log("from each project's .shared-adapter/settings.json -> wiki.sharedMcp). Do NOT add SHARED_WIKI_MCP_* env.")
     _log("Register with:  claude mcp add-json -s user shared-wiki '" + json.dumps(reg["mcpServers"]["shared-wiki"]) + "'")
     _log("or paste into your user MCP config:")
     print(json.dumps(reg, indent=2))

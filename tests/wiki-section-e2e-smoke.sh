@@ -62,28 +62,28 @@ assert_exit_code() {
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-mkdir -p "$TMP/.superpowers/wiki/frontend"
+mkdir -p "$TMP/.adapter/wiki/frontend"
 
-cat > "$TMP/.superpowers/wiki/index.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/index.md" << 'WIKI'
 # Project Wiki
 
 - [Frontend](frontend/)
 WIKI
 
-cat > "$TMP/.superpowers/wiki/frontend/index.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/index.md" << 'WIKI'
 # Frontend
 
 - [Hook Guidelines](hook-guidelines.md)
 WIKI
 
-cat > "$TMP/.superpowers/wiki/frontend/hook-guidelines.index.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/hook-guidelines.index.md" << 'WIKI'
 # Hook Guidelines
 
 > Project-private hook rules for generated form adapters.
 
 WIKI
 
-cat > "$TMP/.superpowers/wiki/frontend/hook-guidelines.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/hook-guidelines.md" << 'WIKI'
 # Hook Guidelines
 
 Overview of hook patterns.
@@ -130,7 +130,7 @@ printf '\nStep 2: Index generation\n'
 python3 "$SCRIPTS/wiki_generate_section_index.py" \
   --all --wiki-root project --project-root "$TMP" >/dev/null
 
-INDEX="$TMP/.superpowers/wiki/frontend/hook-guidelines.index.md"
+INDEX="$TMP/.adapter/wiki/frontend/hook-guidelines.index.md"
 assert_file_exists "index generated" "$INDEX"
 
 INDEX_CONTENT="$(cat "$INDEX")"
@@ -166,7 +166,7 @@ assert_contains "check status not invalid" '"status"' "$CHECK"
 
 printf '\nStep 6: Detect broken markers\n'
 
-cat > "$TMP/.superpowers/wiki/frontend/broken.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/broken.md" << 'WIKI'
 # Broken
 
 <!-- wiki-section:unclosed -->
@@ -176,7 +176,7 @@ No closing marker here.
 WIKI
 
 # Add to index
-cat > "$TMP/.superpowers/wiki/frontend/index.md" << 'WIKI'
+cat > "$TMP/.adapter/wiki/frontend/index.md" << 'WIKI'
 # Frontend
 
 - [Hook Guidelines](hook-guidelines.md)

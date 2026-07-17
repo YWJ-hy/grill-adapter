@@ -47,7 +47,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 用户流程模型
 
-见 `docs/USER_FLOW_CN.md`。要点：grill 是主工作流，grill-adapter 只在 grill 各阶段旁挂触点（Disclose/Verify/Carry/Bind/Capture），全靠 CLAUDE.md 约定 + hook，不动 grill 内部。执行阶段只消费 plan 的 `Referenced Project Wiki` + `.wiki-context.json` + 有界 1 跳 `depends-on` 闭包；任务完成后由 `update-wiki` 审查回写。
+见 `docs/USER_FLOW_CN.md`。要点：grill 是主工作流，grill-adapter 只在 grill 各阶段旁挂触点（Disclose/Verify/Carry/Bind/Capture），全靠 CLAUDE.md 约定 + hook，不动 grill 内部。执行阶段只消费 `.adapter/context/<feature-slug>.wiki-context.json` + 有界 1 跳 `depends-on` 闭包；任务完成后由 `update-wiki` 审查回写。
 
 不要把 `python3 scripts/*.py` 描述成普通用户主要入口；它们是 skill/hook 的执行层。
 
@@ -59,13 +59,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 改 hook / install / host 约定后，至少跑 `./manage.sh install`、`verify`、`bash tests/install-two-level-smoke.sh <root>`、`bash tests/host-conventions-smoke.sh <root>`，并对目标项目跑 `./manage.sh release-check`。
 - 改 Lanhu 分析规则：改 `agents/lanhu-requirements-analyst.common.md` 或 `role-prd/*.md` **源**，跑 `python3 lib/sync_role_prd.py sync <root>` 重新生成两个 analyst（生成物别手改），再跑 lanhu smoke。
 - 占位符只用 `__GRILL_ADAPTER_ROOT__`；禁止残留 `__SUPERPOWER_ADAPTER_*__`。
+- 改 Carry/Bind 数据流：引擎**不解析任何 plan/ticket 文档**——task 身份与指纹只来自 host 产出的 ticket roster（`contracts/ticket-roster-v1.example.jsonc`）。要支持新 host，写它的约定块说明 roster 怎么填，**别改引擎**。改完跑 `bash tests/ticket-roster-smoke.sh <root>` + `wiki-context-{scaffold,json-render}-smoke.sh`。
 
 ## 不变式（改引擎时逐条别破）
 
 - **markdown 唯一真相源**，`.graph.json` 派生物；不引外部图数据库。
 - **执行期不追链**：只消费 `.wiki-context.json` + 有界 1 跳 `depends-on` 闭包（不传递、去重、缺图静默 no-op）。
 - **section 级 `[[page#section]]` typed 边** + 渐进披露。
-- **shared wiki 每项目绑定**：目标项目 `.shared-superpowers/settings.json` 的 `wiki.sharedMcp` 声明连接；MCP 读 `CLAUDE_PROJECT_DIR` 自配置；未声明 fail-closed；换绑/revision 漂移 fail-closed。
+- **shared wiki 每项目绑定**：目标项目 `.shared-adapter/settings.json` 的 `wiki.sharedMcp` 声明连接；MCP 读 `CLAUDE_PROJECT_DIR` 自配置；未声明 fail-closed；换绑/revision 漂移 fail-closed。
 - **root-specific 写授权**（wiki 与 source-truth 同款）：`updateExistingPage` 默认 `skip`、`createNewDocument` 默认 `ask`；`--authorized-update`/`--authorized-create` 不绕 `refuse`。
 - **shared wiki 中性化**：`blockedTerms`/`blockedPatterns` 机械拒绝已知系统标识。
 - **Lanhu evidence-package 边界**：只作输入，不写进 wiki / 最终 spec / 验收。

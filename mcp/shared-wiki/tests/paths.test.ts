@@ -3,7 +3,7 @@ import { normalizeWikiRelativePath } from '../src/wiki/paths.js';
 
 describe('normalizeWikiRelativePath', () => {
   it('normalizes display paths', () => {
-    expect(normalizeWikiRelativePath('.shared-superpowers/wiki/contracts/api.md')).toBe('contracts/api.md');
+    expect(normalizeWikiRelativePath('.shared-adapter/wiki/contracts/api.md')).toBe('contracts/api.md');
   });
 
   it('defaults empty path to index', () => {

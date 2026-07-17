@@ -14,12 +14,12 @@ mkdir -p "${PARENT_REPO}" "${SOURCE_REPO}"
 git init -q "${PARENT_REPO}"
 git -C "${PARENT_REPO}" config user.name "Test User"
 git -C "${PARENT_REPO}" config user.email "test@example.com"
-mkdir -p "${PARENT_REPO}/.shared-superpowers/scripts"
-cp -R "${ROOT}/shared-superpowers-template/standard/.shared-superpowers/scripts/." "${PARENT_REPO}/.shared-superpowers/scripts/"
-cp "${ROOT}/shared-superpowers-template/standard/.shared-superpowers/settings.json" "${PARENT_REPO}/.shared-superpowers/settings.json"
-chmod +x "${PARENT_REPO}/.shared-superpowers/scripts/"*.sh "${PARENT_REPO}/.shared-superpowers/scripts/"*.py
+mkdir -p "${PARENT_REPO}/.shared-adapter/scripts"
+cp -R "${ROOT}/shared-adapter-template/standard/.shared-adapter/scripts/." "${PARENT_REPO}/.shared-adapter/scripts/"
+cp "${ROOT}/shared-adapter-template/standard/.shared-adapter/settings.json" "${PARENT_REPO}/.shared-adapter/settings.json"
+chmod +x "${PARENT_REPO}/.shared-adapter/scripts/"*.sh "${PARENT_REPO}/.shared-adapter/scripts/"*.py
 
-python3 - <<'PY' "${PARENT_REPO}/.shared-superpowers/settings.json"
+python3 - <<'PY' "${PARENT_REPO}/.shared-adapter/settings.json"
 import json
 import sys
 from pathlib import Path
@@ -47,26 +47,26 @@ git -C "${SOURCE_REPO}" remote add origin "${REMOTE_REPO}"
 git -C "${SOURCE_REPO}" branch -M main
 git -C "${SOURCE_REPO}" push -q -u origin main
 
-git -C "${PARENT_REPO}" -c protocol.file.allow=always submodule add -q -b main "${REMOTE_REPO}" .shared-superpowers/wiki
-git -C "${PARENT_REPO}" add .gitmodules .shared-superpowers/wiki .shared-superpowers/scripts .shared-superpowers/settings.json
+git -C "${PARENT_REPO}" -c protocol.file.allow=always submodule add -q -b main "${REMOTE_REPO}" .shared-adapter/wiki
+git -C "${PARENT_REPO}" add .gitmodules .shared-adapter/wiki .shared-adapter/scripts .shared-adapter/settings.json
 git -C "${PARENT_REPO}" commit -q -m 'chore: add shared wiki submodule'
 
-(cd "${PARENT_REPO}" && python3 ./.shared-superpowers/scripts/run-hook.py sharedWikiSubmodule:verify)
-(cd "${PARENT_REPO}" && python3 ./.shared-superpowers/scripts/run-hook.py sharedWikiSubmodule:status)
-(cd "${PARENT_REPO}" && python3 ./.shared-superpowers/scripts/run-hook.py sharedWikiSubmodule:sync)
+(cd "${PARENT_REPO}" && python3 ./.shared-adapter/scripts/run-hook.py sharedWikiSubmodule:verify)
+(cd "${PARENT_REPO}" && python3 ./.shared-adapter/scripts/run-hook.py sharedWikiSubmodule:status)
+(cd "${PARENT_REPO}" && python3 ./.shared-adapter/scripts/run-hook.py sharedWikiSubmodule:sync)
 
-printf 'more shared wiki\n' >> "${PARENT_REPO}/.shared-superpowers/wiki/README.md"
-(cd "${PARENT_REPO}" && python3 ./.shared-superpowers/scripts/run-hook.py sharedWikiSubmodule:publish)
+printf 'more shared wiki\n' >> "${PARENT_REPO}/.shared-adapter/wiki/README.md"
+(cd "${PARENT_REPO}" && python3 ./.shared-adapter/scripts/run-hook.py sharedWikiSubmodule:publish)
 
-if ! git -C "${PARENT_REPO}" diff --quiet HEAD -- .shared-superpowers/wiki; then
+if ! git -C "${PARENT_REPO}" diff --quiet HEAD -- .shared-adapter/wiki; then
   printf 'Expected parent repo submodule pointer to be clean after publish\n' >&2
   exit 1
 fi
-if ! grep -Fq 'more shared wiki' "${PARENT_REPO}/.shared-superpowers/wiki/README.md"; then
+if ! grep -Fq 'more shared wiki' "${PARENT_REPO}/.shared-adapter/wiki/README.md"; then
   printf 'Expected shared wiki content to remain after publish\n' >&2
   exit 1
 fi
-if ! git -C "${PARENT_REPO}/.shared-superpowers/wiki" log --oneline -1 | grep -Fq 'docs: update shared wiki'; then
+if ! git -C "${PARENT_REPO}/.shared-adapter/wiki" log --oneline -1 | grep -Fq 'docs: update shared wiki'; then
   printf 'Expected shared wiki commit to be created by publish\n' >&2
   exit 1
 fi

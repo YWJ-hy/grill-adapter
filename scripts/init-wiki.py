@@ -148,7 +148,7 @@ def build_inventory(project_root_arg: str, hint: str) -> dict:
     # what let `init-wiki .` resolve up to a marked ancestor (e.g. C:\projects) and
     # scan far more than intended.
     project_root = Path(project_root_arg).resolve()
-    project_wiki_root = project_root / ".superpowers" / "wiki"
+    project_wiki_root = project_root / ".adapter" / "wiki"
     files = run_find(project_root)
     package_json = read_package_json(project_root)
     languages = detect_languages(files)

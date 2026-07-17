@@ -39,8 +39,8 @@ for forbidden in ['nextSteps', 'signals', 'one-shot update runner']:
         raise SystemExit(f'Unexpected semantic recommendation output: {forbidden}')
 PY
 
-mkdir -p "${TMP_PROJECT}/.superpowers/wiki"
-python3 - <<'PY' "${TMP_PROJECT}/.superpowers/wiki"
+mkdir -p "${TMP_PROJECT}/.adapter/wiki"
+python3 - <<'PY' "${TMP_PROJECT}/.adapter/wiki"
 from pathlib import Path
 import sys
 wiki = Path(sys.argv[1])

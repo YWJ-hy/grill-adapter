@@ -91,7 +91,7 @@ def main() -> int:
     payload = {
         "decisionMade": False,
         "hint": args.hint,
-        "wikiRoot": str((root / ".superpowers" / "wiki")),
+        "wikiRoot": str((root / ".adapter" / "wiki")),
         "wikiRoots": wiki_roots,
         "candidates": candidates,
         "warnings": warnings,

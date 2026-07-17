@@ -18,7 +18,7 @@ Use the configured shared-wiki MCP tools to inspect indexed shared wiki pages, v
 - Treat this as a standalone adapter skill, not as a host development workflow step.
 - Treat the GitHub shared-wiki repo as the shared wiki source of truth for this MCP workflow.
 - Do not merge PRs from this skill.
-- Do not write directly to `.shared-superpowers/wiki/` when the user is using the GitHub MCP flow.
+- Do not write directly to `.shared-adapter/wiki/` when the user is using the GitHub MCP flow.
 - Do not let MCP decide whether knowledge is durable, shared-owned, or neutral; the agent must decide those before calling write tools.
 - Do not publish system-specific identifiers, internal URLs, environment names, local paths, deployment instance identifiers, or current-system-only business rules to shared wiki.
 - Do not mix this flow with the `publish-shared-wiki` skill; that skill is for local shared wiki submodule/repository publishing.
@@ -59,7 +59,7 @@ If the tools are unavailable, tell the user to build and configure the MCP serve
 4. Use `shared_wiki_read_section` for one selected section from a leaf `xxx.md` file. When multiple selected sections need to be read, prefer `shared_wiki_read_sections` with `includeDocumentContext: true`; keep strict/default error handling for hard constraints and use singular reads only for one section or older MCP servers without the batch tool. Do not read whole leaf documents unless the user explicitly asks for a manual audit.
 5. Use `shared_wiki_search` for a bounded keyword search when index navigation is insufficient.
 6. Do not scan the whole repo unless the user explicitly asks for an audit.
-7. Treat `displayPath` as a logical `.shared-superpowers/wiki/...` path, not a local file path outside this MCP workflow.
+7. Treat `displayPath` as a logical `.shared-adapter/wiki/...` path, not a local file path outside this MCP workflow.
 
 ## Write / PR workflow
 

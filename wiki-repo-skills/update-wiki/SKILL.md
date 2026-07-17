@@ -104,7 +104,7 @@ Summarize: which pages were created/edited, sections added, indexes/`.graph.json
 
 ## Authorization
 
-This repo's write policy lives in `.shared-superpowers/settings.json` under `wiki.updateAuthorization` (`updateExistingPage` default `skip`, `createNewDocument` default `ask`; values `skip` / `ask` / `refuse`) and `wiki.sharedNeutrality` (`blockedTerms` / `blockedPatterns` — mechanical neutrality guards enforced by `wiki_update_check.py`). If the file is absent, neutrality guards are empty (no mechanical blocklist) — you still apply neutrality judgment, and you may suggest the user add the file. Honor `refuse` by not writing.
+This repo's write policy lives in `.shared-adapter/settings.json` under `wiki.updateAuthorization` (`updateExistingPage` default `skip`, `createNewDocument` default `ask`; values `skip` / `ask` / `refuse`) and `wiki.sharedNeutrality` (`blockedTerms` / `blockedPatterns` — mechanical neutrality guards enforced by `wiki_update_check.py`). If the file is absent, neutrality guards are empty (no mechanical blocklist) — you still apply neutrality judgment, and you may suggest the user add the file. Honor `refuse` by not writing.
 
 ## Completion checklist
 

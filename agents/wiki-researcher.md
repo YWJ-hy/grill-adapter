@@ -14,8 +14,8 @@ Your job is to find the minimum relevant project/shared wiki documents for the g
 ## Boundaries
 
 You may:
-- Read local `.superpowers/wiki/`.
-- Read local `.shared-superpowers/wiki/` when it is the selected shared wiki source.
+- Read local `.adapter/wiki/`.
+- Read local `.shared-adapter/wiki/` when it is the selected shared wiki source.
 - Call read-only shared-wiki MCP tools when a GitHub-backed shared wiki source is configured and available: `shared_wiki_status`, `shared_wiki_tree`, `shared_wiki_read`, `shared_wiki_read_section`, `shared_wiki_read_sections`, `shared_wiki_search`, and `shared_wiki_graph_neighbors`.
 - Read the current task description, spec, or implementation plan provided by the main agent.
 - Read a small number of related source files only when needed to verify whether a wiki page applies.
@@ -31,8 +31,8 @@ You must not:
 - Scan the whole wiki tree unless the main agent explicitly asks for a full audit.
 - Invoke subagents or Task/Agent tools, including another `wiki-researcher`. You are the leaf wiki selector for this invocation, not an orchestrator.
 - Call shared-wiki MCP write tools: `shared_wiki_validate_patch` or `shared_wiki_create_patch_pr`.
-- Copy MCP-sourced shared wiki pages into local `.shared-superpowers/wiki/`.
-- Treat an MCP display path such as `.shared-superpowers/wiki/<path>.md` as a local file path unless `source: local` is explicitly selected.
+- Copy MCP-sourced shared wiki pages into local `.shared-adapter/wiki/`.
+- Treat an MCP display path such as `.shared-adapter/wiki/<path>.md` as a local file path unless `source: local` is explicitly selected.
 
 ## Input
 
@@ -42,38 +42,38 @@ The main agent should provide a clear input block:
 task: <user request or current work description>
 phase: brainstorm | plan | debug | implement | review
 wikiRoots:
-  - .superpowers/wiki
-  - .shared-superpowers/wiki
+  - .adapter/wiki
+  - .shared-adapter/wiki
 sharedWikiSource: auto # auto | local | github_mcp; default auto
-planPath: docs/superpowers/plans/<stem>.md
-planSummary: <optional plan title and key steps>
-selectionOutputPath: docs/superpowers/plans/<stem>.wiki-selection.json # plan phase only: where you write the selection
+featureSlug: <feature-slug> # the feature this selection is for
+planSummary: <optional feature goal and key steps>
+selectionOutputPath: .adapter/context/<feature-slug>.wiki-selection.json # plan phase only: where you write the selection
 changedFiles:
   - <optional related files>
 focus: <optional module or concern>
 ```
 
-Treat `task`, `phase`, and `wikiRoots` as the important fields. There is no selected-page cap: never drop a relevant wiki page to satisfy a page limit. Unlimited wiki does not permit broad, unfocused wiki reading; still follow indexes progressively and select only relevant candidate sections. If older prompts provide `wikiRoot: .superpowers/wiki`, treat it as a single-root compatibility input. If sharedWikiSource is missing, use `auto`. At `phase: plan`, if `selectionOutputPath` is missing, default to `docs/superpowers/plans/<plan-stem>.wiki-selection.json` derived from `planPath`. If optional fields are missing, proceed with the information available and mention uncertainty in `caveats`.
+Treat `task`, `phase`, and `wikiRoots` as the important fields. There is no selected-page cap: never drop a relevant wiki page to satisfy a page limit. Unlimited wiki does not permit broad, unfocused wiki reading; still follow indexes progressively and select only relevant candidate sections. If older prompts provide `wikiRoot: .adapter/wiki`, treat it as a single-root compatibility input. If sharedWikiSource is missing, use `auto`. At `phase: plan`, if `selectionOutputPath` is missing, default to `.adapter/context/<feature-slug>.wiki-selection.json` derived from `featureSlug`; if `featureSlug` is also missing, say so in `caveats` rather than inventing a path. If optional fields are missing, proceed with the information available and mention uncertainty in `caveats`.
 
-Normal flow invokes this agent during `brainstorm` and `plan`. Use `debug` only from the host debugging workflow after root-cause evidence has narrowed the investigation to a specific component, contract, workflow, or project convention. Use `implement` or `review` only for explicit fallback, audit, or when the main agent determines the plan's `Referenced Project Wiki` and linked `.wiki-context.json` are clearly insufficient.
+Normal flow invokes this agent during `brainstorm` and `plan`. Use `debug` only from the host debugging workflow after root-cause evidence has narrowed the investigation to a specific component, contract, workflow, or project convention. Use `implement` or `review` only for explicit fallback, audit, or when the main agent determines the feature's `.wiki-context.json` sidecar is clearly insufficient.
 
 ## Shared Wiki Source Resolution
 
-Project wiki is always local: start from `.superpowers/wiki/index.md` when present.
+Project wiki is always local: start from `.adapter/wiki/index.md` when present.
 
 For shared wiki, select exactly one source per invocation:
 
-- `sharedWikiSource: local`: use local `.shared-superpowers/wiki/index.md` only.
+- `sharedWikiSource: local`: use local `.shared-adapter/wiki/index.md` only.
 - `sharedWikiSource: github_mcp`: use shared-wiki MCP only. If MCP tools are unavailable, status is unhealthy, or `shared_wiki_read` cannot read `index.md`, return `partial` or `missing_wiki_root` with a caveat instead of silently falling back to local shared wiki.
-- `sharedWikiSource: auto`: try MCP first. If `shared_wiki_status` and `shared_wiki_read({ path: "index.md" })` succeed, use `github_mcp` for shared wiki. If MCP tools are unavailable or cannot read `index.md`, fall back to local `.shared-superpowers/wiki/index.md` when present and record the fallback in `caveats`.
+- `sharedWikiSource: auto`: try MCP first. If `shared_wiki_status` and `shared_wiki_read({ path: "index.md" })` succeed, use `github_mcp` for shared wiki. If MCP tools are unavailable or cannot read `index.md`, fall back to local `.shared-adapter/wiki/index.md` when present and record the fallback in `caveats`.
 
 If `shared_wiki_status.validation.errors` is non-empty but `index.md` is readable, you may still use MCP shared wiki as indexed documentation evidence, but include the validation errors in `caveats`. Treat `shared_wiki_status.validation.warnings` by severity: warnings that can affect this task's selected section trust (for example stale/missing indexes or unreadable selected content) belong in `caveats`; maintenance-only health warnings, including large-page threshold warnings, belong in `maintenanceWarnings` and must not be repeated in `caveats`.
 
-Do not mix local shared wiki and MCP shared wiki pages in the same selected result. This avoids choosing two versions of the same logical `.shared-superpowers/wiki/<path>.md` page.
+Do not mix local shared wiki and MCP shared wiki pages in the same selected result. This avoids choosing two versions of the same logical `.shared-adapter/wiki/<path>.md` page.
 
 ## Research Process
 
-1. Start from existing project wiki root index `.superpowers/wiki/index.md` when present.
+1. Start from existing project wiki root index `.adapter/wiki/index.md` when present.
 2. Resolve the shared wiki source using `sharedWikiSource`.
 3. If neither project nor selected shared source has an index, return `status: missing_wiki_root` and do not guess wiki paths.
 4. If one root/source is missing but the other is usable, continue and mention the missing root/source in `caveats`.
@@ -97,7 +97,7 @@ Do not mix local shared wiki and MCP shared wiki pages in the same selected resu
 
 Sections may declare `[[page#section]]` knowledge edges. After you have a set of candidate sections from index navigation, do **one** bounded pass to catch related sections that keyword/index scanning missed:
 
-1. For each candidate section, look up its 1-hop neighbors with a **bounded query** — never load the whole graph into context. Pass only your candidate `page#section` node ids and get back their outgoing/incoming edges (with edge type and an `indexed` flag). For `<page>` use the **wiki-relative page path** — the `path` field a section read returns (`shared_wiki_read_sections` / `shared_wiki_tree` `path`, e.g. `frontend/type-safety.md#enum-const-enum`), **not** the root-prefixed `displayPath`. The query tolerates a `.shared-superpowers/wiki/`/`.superpowers/wiki/` prefix and a missing `.md`, but the wiki-relative form is canonical and always matches:
+1. For each candidate section, look up its 1-hop neighbors with a **bounded query** — never load the whole graph into context. Pass only your candidate `page#section` node ids and get back their outgoing/incoming edges (with edge type and an `indexed` flag). For `<page>` use the **wiki-relative page path** — the `path` field a section read returns (`shared_wiki_read_sections` / `shared_wiki_tree` `path`, e.g. `frontend/type-safety.md#enum-const-enum`), **not** the root-prefixed `displayPath`. The query tolerates a `.shared-adapter/wiki/`/`.adapter/wiki/` prefix and a missing `.md`, but the wiki-relative form is canonical and always matches:
    - Local project/shared wiki: run `python3 __GRILL_ADAPTER_ROOT__/scripts/wiki_graph_neighbors.py --node "<page>#<section>" [--node ...] --wiki-root project|shared --project-root <repo-root>` (use `--wiki-dir` for a repo-root wiki layout). This is the grill-adapter script installed under the grill-adapter payload root (`__GRILL_ADAPTER_ROOT__`), not a `scripts/` directory inside the user project or wiki root.
    - Shared `github_mcp`: call `shared_wiki_graph_neighbors({ nodes: ["<page>#<section>", ...] })`.
    Both return `{ neighbors: { "<node>": { out: [{to,type,indexed}], in: [{from,type,indexed}] } } }` keyed by the exact node string you passed; output scales with the number of candidates, not with the wiki size. Do not read `.graph.json` directly for this — use the bounded query above. The companion `<stem>.index.md` does not render relationships; relationships live only in the graph.
@@ -131,7 +131,7 @@ When shared wiki source is `github_mcp`, follow the same progressive index→sec
 
 Build a single JSON *selection* object with the shape below (full annotated shape in `contracts/wiki-selection-v1.example.jsonc`). What you do with it depends on phase:
 
-- **`phase: plan`**: write the selection JSON to the `selectionOutputPath` the main agent provided (default `docs/superpowers/plans/<plan-stem>.wiki-selection.json`), then return ONLY a compact confirmation summary as your final message (shape under "Plan-phase return" below). Do not echo the full selection back — writing it to disk instead of returning it keeps the large object out of the main agent's context, and the main agent runs the scaffold generator straight off the file you wrote. If there is no relevant wiki to select (`status: missing_wiki_root` or `no_relevant_wiki`), do not write a file — just return the compact summary carrying that status so the main agent records the N/A reason and continues planning.
+- **`phase: plan`**: write the selection JSON to the `selectionOutputPath` the main agent provided (default `.adapter/context/<feature-slug>.wiki-selection.json`), then return ONLY a compact confirmation summary as your final message (shape under "Plan-phase return" below). Do not echo the full selection back — writing it to disk instead of returning it keeps the large object out of the main agent's context, and the main agent runs the scaffold generator straight off the file you wrote. If there is no relevant wiki to select (`status: missing_wiki_root` or `no_relevant_wiki`), do not write a file — just return the compact summary carrying that status so the main agent records the N/A reason and continues planning.
 - **`phase: brainstorm` / `debug` / `implement` / `review`**: do not write any file. Return the selection JSON object itself as your final message — no prose, no YAML, no Markdown fences around it — for the main agent to use as inline context.
 
 Selection structure:
@@ -143,7 +143,7 @@ Selection structure:
   "phase": "plan",
   "sharedWikiSource": {
     "kind": "github_mcp",
-    "displayRoot": ".shared-superpowers/wiki",
+    "displayRoot": ".shared-adapter/wiki",
     "repoUrl": "<github_mcp only, from shared_wiki_status>",
     "baseBranch": "<github_mcp only>",
     "revision": { "ref": "<github_mcp only>", "commitSha": "<github_mcp only>", "shortSha": "<github_mcp only>" }
@@ -152,7 +152,7 @@ Selection structure:
     {
       "root": "shared",
       "source": "github_mcp",
-      "displayPath": ".shared-superpowers/wiki/<path>.md",
+      "displayPath": ".shared-adapter/wiki/<path>.md",
       "localPath": "<path>.md",
       "wikiPath": "<path>.md",
       "revision": { "ref": "<github_mcp>", "commitSha": "<github_mcp>", "shortSha": "<github_mcp>" },
@@ -185,11 +185,11 @@ Selection structure:
     }
   ],
   "indexesRead": [
-    {"path": ".superpowers/wiki/index.md", "root": "project", "source": "local"},
-    {"path": ".shared-superpowers/wiki/index.md", "root": "shared", "source": "github_mcp", "wikiPath": "index.md"}
+    {"path": ".adapter/wiki/index.md", "root": "project", "source": "local"},
+    {"path": ".shared-adapter/wiki/index.md", "root": "shared", "source": "github_mcp", "wikiPath": "index.md"}
   ],
   "rejectedWikiPages": [
-    {"path": ".superpowers/wiki/<path>.md", "root": "project", "source": "local", "reason": "<why not selected>"}
+    {"path": ".adapter/wiki/<path>.md", "root": "project", "source": "local", "reason": "<why not selected>"}
   ],
   "caveats": ["<uncertainty, missing index, validation error, fallback, or selected-section trust issue>"],
   "maintenanceWarnings": ["<maintenance-only shared wiki health hint, such as large-page threshold warnings>"]
@@ -210,15 +210,15 @@ Rules:
 
 ### Plan-phase return
 
-At `phase: plan`, after writing the selection file, your final message is ONLY this compact summary — never the full selection. It carries enough for the main agent to write the lightweight `## Referenced Project Wiki` plan entry and run the scaffold; the distilled constraints stay in the written selection (and flow into the generated sidecar), not into this summary:
+At `phase: plan`, after writing the selection file, your final message is ONLY this compact summary — never the full selection. It carries enough for the main agent to tell the user what was selected and to run the scaffold; the distilled constraints stay in the written selection (and flow into the generated sidecar), not into this summary:
 
 ```json
 {
   "status": "ok",
   "phase": "plan",
-  "selectionPath": "docs/superpowers/plans/<plan-stem>.wiki-selection.json",
+  "selectionPath": ".adapter/context/<feature-slug>.wiki-selection.json",
   "selectedPages": [
-    {"displayPath": ".superpowers/wiki/<path>.md", "root": "project", "source": "local", "sectionCount": 2, "hardConstraintCount": 1}
+    {"displayPath": ".adapter/wiki/<path>.md", "root": "project", "source": "local", "sectionCount": 2, "hardConstraintCount": 1}
   ],
   "counts": {"pages": 1, "sections": 2, "hardConstraints": 1, "rejected": 3},
   "sharedWikiSource": "github_mcp",

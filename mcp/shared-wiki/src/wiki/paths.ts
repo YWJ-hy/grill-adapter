@@ -14,7 +14,7 @@ export function toPosixPath(input: string): string {
 }
 
 export function normalizeWikiRelativePath(input: string): string {
-  const normalizedInput = toPosixPath(input).replace(/^\.shared-superpowers\/wiki\//, '').replace(/^\.\//, '');
+  const normalizedInput = toPosixPath(input).replace(/^\.shared-adapter\/wiki\//, '').replace(/^\.\//, '');
   if (!normalizedInput || normalizedInput === '.') {
     return 'index.md';
   }

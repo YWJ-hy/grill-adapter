@@ -46,13 +46,13 @@ assert_not_contains() {
 CTX="$TMP/render.wiki-context.json"
 cat > "$CTX" <<'JSON'
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "kind": "grill-adapter.wiki-context",
   "generatedBy": "grill-adapter",
   "wikiPages": [
     {
       "root": "project", "source": "local",
-      "displayPath": ".superpowers/wiki/guides/skills.md", "localPath": "guides/skills.md",
+      "displayPath": ".adapter/wiki/guides/skills.md", "localPath": "guides/skills.md",
       "documentContext": {"title": "Skills", "overview": "discovery directory"},
       "sections": [
         {
@@ -114,8 +114,8 @@ printf 'Part A (render/reread role filter) ok\n'
 # Run register-card and --scaffold from the project root so displayPath resolves.
 # ---------------------------------------------------------------------------
 PROJ="$TMP/project"
-mkdir -p "$PROJ/.superpowers/wiki"
-printf '# Project Wiki\n' > "$PROJ/.superpowers/wiki/index.md"
+mkdir -p "$PROJ/.adapter/wiki"
+printf '# Project Wiki\n' > "$PROJ/.adapter/wiki/index.md"
 
 (
   cd "$PROJ"
@@ -129,7 +129,7 @@ printf '# Project Wiki\n' > "$PROJ/.superpowers/wiki/index.md"
     --summary "列表页生成模板" --authorized-update >/dev/null
 )
 
-SKILLS_MD="$PROJ/.superpowers/wiki/guides/skills.md"
+SKILLS_MD="$PROJ/.adapter/wiki/guides/skills.md"
 SKILLS_TEXT="$(cat "$SKILLS_MD")"
 # Review-only card carries the roles attr and the review-only body sentence.
 assert_contains "review card marker" 'roles="review"'           "$SKILLS_TEXT"
@@ -146,7 +146,7 @@ cat > "$SEL" <<'JSON'
   "wikiPages": [
     {
       "root": "project", "source": "local",
-      "displayPath": ".superpowers/wiki/guides/skills.md", "localPath": "guides/skills.md",
+      "displayPath": ".adapter/wiki/guides/skills.md", "localPath": "guides/skills.md",
       "documentContext": {"title": "Skills", "overview": "discovery"},
       "sections": [
         {"sectionId": "perm-review", "readDepth": "full", "relevance": "direct", "confidence": "high",
@@ -161,11 +161,9 @@ cat > "$SEL" <<'JSON'
   "caveats": []
 }
 JSON
-printf '# P\n\n### Task T1: build\nstuff\n' > "$PROJ/plan.md"
-
 (
   cd "$PROJ"
-  python3 "$RENDER" ctx.json --scaffold sel.json --plan-path plan.md --strict >/dev/null
+  python3 "$RENDER" ctx.json --scaffold sel.json --feature-slug example-feature --ticket-source manual --strict >/dev/null
 )
 
 python3 - "$PROJ/ctx.json" <<'PY'

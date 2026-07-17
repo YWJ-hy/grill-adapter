@@ -29,19 +29,28 @@ Run `/source-truth-check` (renders `spec-pre`). If it emits a policy block, hono
 
 ### Disclose + Carry — during `/to-tickets`
 
-1. Run `/wiki-research` (phase `plan`) to formally select the wiki sections that constrain this plan; the `wiki-researcher` agent writes `<plan-stem>.wiki-selection.json`.
-2. Follow `/wiki-research` to scaffold and finalize the `<plan-stem>.wiki-context.json` sidecar (`wiki_context_render.py --scaffold` → edit each section's `destination` once → `--finalize`). Add a `## Referenced Project Wiki` section to the plan that links the sidecar and summarizes selected pages/sections/counts. Map grill tickets to the bare numeric plan task ids in each `destination.tasks`.
-3. Run `/source-truth-check` (renders `plan-pre`, and `plan-review` during review) and apply any policy output to the plan.
+grill publishes tickets to the tracker configured by `/setup-matt-pocock-skills` and recorded in `docs/agents/issue-tracker.md`; it produces **no plan document**. So grill-adapter anchors on the feature, not on a plan file: all sidecars live in `.adapter/context/<feature-slug>.*`, and the ticket roster — not a plan's headings — is the task identity.
 
-**gitignore-aware commit policy**: before committing a spec, ticket, or plan file with a `.wiki-context.json` sidecar, check `git check-ignore -q <path>`. If ignored (exit 0), do not commit and never `git add -f` — leave it on disk (execution reads it in place) and tell the user it was not committed. The `.wiki-candidates.jsonl` sidecar is transient scratch and is never committed.
+1. Run `/wiki-research` (phase `plan`) to formally select the wiki sections that constrain this feature; the `wiki-researcher` agent writes `.adapter/context/<feature-slug>.wiki-selection.json`.
+2. Follow `/wiki-research` to scaffold the `.adapter/context/<feature-slug>.wiki-context.json` sidecar (`wiki_context_render.py --scaffold … --feature-slug <feature-slug> --ticket-source <source>`), then edit each section's `destination` once.
+3. **After the tickets are published**, build the ticket roster `.adapter/context/<feature-slug>.ticket-roster.json` (shape: `__GRILL_ADAPTER_ROOT__/contracts/ticket-roster-v1.example.jsonc`). Read `docs/agents/issue-tracker.md` to know which form applies — do not guess:
+   - **Local markdown** (`ticketSource: grill-local-scratch`) — one roster entry per `.scratch/<feature-slug>/issues/<NN>-<slug>.md`. `taskId` is the `NN` prefix; `text` is the whole file body, verbatim.
+   - **GitHub / Linear** (`ticketSource: github-issues`) — one roster entry per ticket issue (`gh issue view <n> --json body,title`). `taskId` is the issue number; `text` is the issue body, verbatim.
+   Never summarize or reformat ticket text: `text` is the fingerprint input, and a rewritten body reads as ticket drift at execution.
+4. Run `--finalize` once with `--ticket-roster` to build the taskWikiRefs roster, stamp fingerprints, and validate execution readiness. Route each section's `destination.tasks` to the roster's `taskId` values.
+5. Run `/source-truth-check` (renders `plan-pre`, and `plan-review` during review) and apply any policy output.
+
+The sidecar **is** the record of which wiki constrains this feature — there is no plan document to add a `## Referenced Project Wiki` section to. Tell the user which pages/sections were selected and where the sidecar lives.
+
+**Commit policy**: nothing under `.adapter/context/` is committed — not the sidecar, not the roster, not the candidates. They are local working state that execution reads in place from the same working tree. Never `git add -f` them.
 
 ### Bind — during `/implement`
 
-Before touching code for each ticket, run `/wiki-materialize <ticket-id>` to reread that ticket's authoritative hard-constraint wiki sections (local + `github_mcp`, with the bounded 1-hop `depends-on` closure). Run the one-time `--fingerprint-preflight` before the first ticket. The `wiki-reread` hook (UserPromptSubmit/SessionStart) is a coarse session-level backstop only; the per-ticket call is the precise path. Verify compliance against the full section text; do not reselect wiki or reread whole roots during execution.
+Before touching code for each ticket, run `/wiki-materialize <ticket-id>` to reread that ticket's authoritative hard-constraint wiki sections (local + `github_mcp`, with the bounded 1-hop `depends-on` closure). `<ticket-id>` is the roster `taskId` — the `NN` prefix for local-markdown tickets, the issue number for a real tracker. Run the one-time `--fingerprint-preflight` (with `--ticket-roster`) before the first ticket; it fails closed if a ticket's text changed after the wiki sections were bound to it, which means re-running `--finalize` before implementing. The `wiki-reread` hook (UserPromptSubmit/SessionStart) is a coarse session-level backstop only; the per-ticket call is the precise path. Verify compliance against the full section text; do not reselect wiki or reread whole roots during execution.
 
 The `source-truth-lint` hook (PostToolUse/Stop) lints the real changed files during implementation. If it reports `block`, revert the `truth/edit: never` edit or route it upstream before completing the ticket; if `ask`, get explicit authorization or revert. Authorization never bypasses `truth/edit: never`.
 
-While implementing, if you make a hard-to-reverse or surprising decision, resolve a non-obvious trade-off, or hit a durable gotcha not already captured, append one JSONL line to `<plan-stem>.wiki-candidates.jsonl` (`taskId`, `kind`, `claim`, `why` incl. rejected alternatives, `sourceRefs`, `carveOut`) and keep coding. Capture cheaply; the end-of-flow gate is the strict filter.
+While implementing, if you make a hard-to-reverse or surprising decision, resolve a non-obvious trade-off, or hit a durable gotcha not already captured, append one JSONL line to `.adapter/context/<feature-slug>.wiki-candidates.jsonl` (`taskId`, `kind`, `claim`, `why` incl. rejected alternatives, `sourceRefs`, `carveOut`) and keep coding. Capture cheaply; the end-of-flow gate is the strict filter.
 
 ### Capture — after `/code-review`
 
@@ -50,18 +59,18 @@ Once the work is reviewed and accepted, run the Capture gate:
 1. Convert grill's own knowledge increment into wiki candidates:
 
 ```bash
-python3 __GRILL_ADAPTER_ROOT__/scripts/grill_context_to_candidates.py <repo-root> --since <branch-point> --out <plan-stem>.wiki-candidates.jsonl
+python3 __GRILL_ADAPTER_ROOT__/scripts/grill_context_to_candidates.py <repo-root> --since <branch-point> --out .adapter/context/<feature-slug>.wiki-candidates.jsonl
 ```
 
 This diffs grill's `CONTEXT.md`/`docs/adr` increment into candidate rows (grill's glossary/ADRs are tier-1; the wiki is tier-2). Do **not** route grill knowledge through `import-wiki` — that is a flat structural copy; day-to-day increments go through this bridge → `update-wiki`.
 
-2. Run `/update-wiki`, consuming the `<plan-stem>.wiki-candidates.jsonl` sidecar as candidate input, to make the keep-or-skip determination about durable knowledge. Reach it by actually invoking the skill; skipping is valid only as the skill's own conclusion with a stated reason. `/update-wiki` owns the durable gate, sectionizing, `type:`, `[[page#section]]` edges, dedup, neutralization, and authorization.
+2. Run `/update-wiki`, consuming the `.adapter/context/<feature-slug>.wiki-candidates.jsonl` sidecar as candidate input, to make the keep-or-skip determination about durable knowledge. Reach it by actually invoking the skill; skipping is valid only as the skill's own conclusion with a stated reason. `/update-wiki` owns the durable gate, sectionizing, `type:`, `[[page#section]]` edges, dedup, neutralization, and authorization.
 
 The `wiki-capture` hook (Stop) is a non-blocking backstop that reminds you when a non-empty `.wiki-candidates.jsonl` is still pending.
 
 ### Debug — during `/diagnosing-bugs`
 
-Do not call `/wiki-research` at the start of debugging. After Phase-1 evidence narrows the failure to a specific component, contract, workflow, or convention, you may run `/wiki-research` (phase `debug`, ≤2 sections) for a targeted lookup; verify every wiki-derived idea against code/logs/tests. If the bug is happening during execution of a plan, prefer that plan's `Referenced Project Wiki` + linked `.wiki-context.json` instead of reselecting. Do not write wiki or run `update-wiki` during debugging. After the fix is verified, run `/break-loop` when a retrospective is warranted; it hands durable candidates to `/update-wiki`.
+Do not call `/wiki-research` at the start of debugging. After Phase-1 evidence narrows the failure to a specific component, contract, workflow, or convention, you may run `/wiki-research` (phase `debug`, ≤2 sections) for a targeted lookup; verify every wiki-derived idea against code/logs/tests. If the bug is happening while implementing a feature's tickets, prefer that feature's `.adapter/context/<feature-slug>.wiki-context.json` sidecar instead of reselecting. Do not write wiki or run `update-wiki` during debugging. After the fix is verified, run `/break-loop` when a retrospective is warranted; it hands durable candidates to `/update-wiki`.
 
 ### Boundary
 

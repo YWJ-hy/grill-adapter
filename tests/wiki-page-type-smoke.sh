@@ -4,7 +4,7 @@ set -euo pipefail
 # Smoke test for axis-B typed nodes: page-level `type:` frontmatter flows into
 # .graph.json pageTypes and the .index.md Type line; an unknown type is linted.
 # Exercises the installed Superpowers target scripts.
-# Usage: bash tests/wiki-page-type-smoke.sh [superpowers-target]
+# Usage: bash tests/wiki-page-type-smoke.sh [adapter-target]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -15,7 +15,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 git -C "${TMP}" init -q
 
-W="${TMP}/.superpowers/wiki"
+W="${TMP}/.adapter/wiki"
 mkdir -p "${W}"
 printf '# W\n- `constraints.md`\n- `glossary.md`\n- `adr.md`\n- `legacy.md`\n' > "${W}/index.md"
 # constraint: no frontmatter (default)

@@ -23,8 +23,8 @@ OUT="$(printf '{"cwd":"%s","hook_event_name":"Stop"}' "$T" | CLAUDE_PROJECT_DIR=
 rm -rf "$T"
 
 # --- source-truth-lint: block on a changed truth/edit:never path ---
-T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.superpowers" "$T/src/generated"
-cat > "$T/.superpowers/settings.json" <<'JSON'
+T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.adapter" "$T/src/generated"
+cat > "$T/.adapter/settings.json" <<'JSON'
 { "sourceOfTruth": { "sources": [ {"paths": ["src/generated/**"], "role": "truth", "edit": "never"} ] } }
 JSON
 ( cd "$T" && git add -A && git -c user.email=t@t -c user.name=t commit -qm base )

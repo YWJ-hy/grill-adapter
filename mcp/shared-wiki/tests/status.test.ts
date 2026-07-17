@@ -15,7 +15,7 @@ function config(repoUrl: string, cacheDir: string): SharedWikiConfig {
     baseBranch: 'main',
     remote: 'origin',
     wikiRoot: '.',
-    displayRoot: '.shared-superpowers/wiki',
+    displayRoot: '.shared-adapter/wiki',
     cacheDir,
     cloneDir: path.join(cacheDir, 'clone'),
     draftPr: true,

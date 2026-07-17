@@ -28,11 +28,11 @@ build 后用 `dist/index.js` 作为 MCP server 入口。
 }
 ```
 
-server 启动时读取 Claude Code 注入的 `CLAUDE_PROJECT_DIR`，再从该项目的 `.shared-superpowers/settings.json` 的 `wiki.sharedMcp` 块自我配置。因此**一份注册服务所有项目**，不同项目可指向不同 shared wiki。**不要**在注册里加 `SHARED_WIKI_MCP_*` 环境变量——它们会覆盖每项目设置，把所有项目都钉到同一个 repo。
+server 启动时读取 Claude Code 注入的 `CLAUDE_PROJECT_DIR`，再从该项目的 `.shared-adapter/settings.json` 的 `wiki.sharedMcp` 块自我配置。因此**一份注册服务所有项目**，不同项目可指向不同 shared wiki。**不要**在注册里加 `SHARED_WIKI_MCP_*` 环境变量——它们会覆盖每项目设置，把所有项目都钉到同一个 repo。
 
 ## 每个项目绑定 shared wiki
 
-在使用 shared wiki 的项目里写 `.shared-superpowers/settings.json`（见 `examples/project-shared-superpowers-settings.example.json`）：
+在使用 shared wiki 的项目里写 `.shared-adapter/settings.json`（见 `examples/project-shared-adapter-settings.example.json`）：
 
 ```json
 {
@@ -42,19 +42,19 @@ server 启动时读取 Claude Code 注入的 `CLAUDE_PROJECT_DIR`，再从该项
       "baseBranch": "master",
       "remote": "origin",
       "wikiRoot": ".",
-      "displayRoot": ".shared-superpowers/wiki",
+      "displayRoot": ".shared-adapter/wiki",
       "draftPr": true
     }
   }
 }
 ```
 
-没有声明 `wiki.sharedMcp` 的项目拿不到 MCP shared wiki（**fail-closed**：server 起不来 / `shared_wiki_status` unhealthy，`wiki-researcher` 当它不可用并回退本地 `.shared-superpowers/wiki/` 或继续）。`cacheDir` 是机器本地项，不要放进项目配置（用 `SHARED_WIKI_MCP_CACHE_DIR` 或默认值）。
+没有声明 `wiki.sharedMcp` 的项目拿不到 MCP shared wiki（**fail-closed**：server 起不来 / `shared_wiki_status` unhealthy，`wiki-researcher` 当它不可用并回退本地 `.shared-adapter/wiki/` 或继续）。`cacheDir` 是机器本地项，不要放进项目配置（用 `SHARED_WIKI_MCP_CACHE_DIR` 或默认值）。
 
 ## 两个 settings.json 的辖域（勿混淆）
 
-- **消费项目的** `.shared-superpowers/settings.json` → `wiki.sharedMcp`：本项目连哪个 shared wiki（这个 server 启动时读它）。
-- **shared wiki 仓库内的** `.shared-superpowers/settings.json` → `wiki.updateAuthorization` / `wiki.sharedNeutrality`：该 shared wiki 自身的写入治理（server 从 clone 出的仓库读，见“写入策略”）。在消费项目里写治理键不会作用于远端 shared wiki。
+- **消费项目的** `.shared-adapter/settings.json` → `wiki.sharedMcp`：本项目连哪个 shared wiki（这个 server 启动时读它）。
+- **shared wiki 仓库内的** `.shared-adapter/settings.json` → `wiki.updateAuthorization` / `wiki.sharedNeutrality`：该 shared wiki 自身的写入治理（server 从 clone 出的仓库读，见“写入策略”）。在消费项目里写治理键不会作用于远端 shared wiki。
 
 ## 可选：全局 / 测试覆盖
 
@@ -93,8 +93,8 @@ echo '{"nodes":["frontend/quality.md#required-quality-patterns"]}' \
 
 server 会从 clone 后的仓库按以下顺序读取 wiki 策略：
 
-1. `<repo>/<wikiRoot>/.shared-superpowers/settings.json`
-2. `<repo>/.shared-superpowers/settings.json`
+1. `<repo>/<wikiRoot>/.shared-adapter/settings.json`
+2. `<repo>/.shared-adapter/settings.json`
 3. `<repo>/settings.json`
 4. 默认值
 

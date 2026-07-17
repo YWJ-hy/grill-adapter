@@ -157,7 +157,7 @@ def aggregate_status(roots: list[dict], warnings: list[str], errors: list[str]) 
 def check_wiki_tree(selector: str, wiki_dir: str | None = None) -> dict:
     if wiki_dir:
         # Repo-root wiki layout: the wiki lives directly at wiki_dir; settings /
-        # neutrality resolve from <wiki_dir>/.shared-superpowers/settings.json.
+        # neutrality resolve from <wiki_dir>/.shared-adapter/settings.json.
         root = Path(wiki_dir).resolve()
         root_desc = wiki_root_from_dir(root)
         missing_warnings: list[str] = []
@@ -186,13 +186,13 @@ def check_wiki_tree(selector: str, wiki_dir: str | None = None) -> dict:
         root_desc = wiki_root_by_name(root, selector)
         root_descs = [root_desc]
     elif selector == "all" and not root_descs:
-        missing_warnings.append("No wiki indexes found under .superpowers/wiki or .shared-superpowers/wiki")
+        missing_warnings.append("No wiki indexes found under .adapter/wiki or .shared-adapter/wiki")
 
     root_results = [check_root(root, root_desc) for root_desc in root_descs]
     warnings = [*missing_warnings, *(warning for item in root_results for warning in item["warnings"])]
     errors = [error for item in root_results for error in item["errors"]]
     status = aggregate_status(root_results, missing_warnings, errors)
-    project_wiki_root = root / ".superpowers" / "wiki"
+    project_wiki_root = root / ".adapter" / "wiki"
     return {
         "status": status,
         "wikiRoot": str(project_wiki_root),

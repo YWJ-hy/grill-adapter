@@ -13,10 +13,10 @@ from wiki_section import KNOWN_EDGE_TYPES, extract_section_links, list_section_i
 DEFAULT_IGNORED_DIR_NAMES = {"draft", "archive", "examples"}
 AUTO_START = "<!-- grill-adapter:auto:start -->"
 AUTO_END = "<!-- grill-adapter:auto:end -->"
-PROJECT_WIKI_REL = Path(".superpowers") / "wiki"
-SHARED_WIKI_REL = Path(".shared-superpowers") / "wiki"
-PROJECT_SETTINGS_REL = Path(".superpowers") / "settings.json"
-SHARED_SETTINGS_REL = Path(".shared-superpowers") / "settings.json"
+PROJECT_WIKI_REL = Path(".adapter") / "wiki"
+SHARED_WIKI_REL = Path(".shared-adapter") / "wiki"
+PROJECT_SETTINGS_REL = Path(".adapter") / "settings.json"
+SHARED_SETTINGS_REL = Path(".shared-adapter") / "settings.json"
 WIKI_POLICY_SKIP = "skip"
 WIKI_POLICY_ASK = "ask"
 WIKI_POLICY_REFUSE = "refuse"
@@ -31,7 +31,7 @@ DEFAULT_SHARED_WIKI_NEUTRALITY = {
     "blockedTerms": [],
     "blockedPatterns": [],
 }
-# Per-project shared-wiki MCP connection block (.shared-superpowers/settings.json
+# Per-project shared-wiki MCP connection block (.shared-adapter/settings.json
 # -> wiki.sharedMcp). This is the same block the MCP server self-configures from
 # via CLAUDE_PROJECT_DIR; the adapter reads it only to report binding state.
 # cacheDir is intentionally not a project-level field (machine-local).
@@ -117,7 +117,7 @@ def write_text_lf(path: Path, content: str) -> None:
 def repo_root(start: Path) -> Path:
     current = start.resolve()
     for candidate in (current, *current.parents):
-        if (candidate / ".superpowers").exists() or (candidate / ".shared-superpowers").exists() or (candidate / "superpowers").exists():
+        if (candidate / ".adapter").exists() or (candidate / ".shared-adapter").exists():
             return candidate
         if (candidate / ".git").exists():
             # Stop at the enclosing git repository root. A project's wiki lives
@@ -139,13 +139,13 @@ def known_wiki_roots(project_root: Path) -> list[WikiRoot]:
 def wiki_root_from_dir(wiki_dir: Path, kind: str = "shared") -> WikiRoot:
     """A WikiRoot whose content is rooted directly at ``wiki_dir``.
 
-    The standard layout nests the wiki under ``.superpowers/wiki`` or
-    ``.shared-superpowers/wiki`` inside a project root. A standalone wiki
+    The standard layout nests the wiki under ``.adapter/wiki`` or
+    ``.shared-adapter/wiki`` inside a project root. A standalone wiki
     repository instead keeps ``index.md`` and the page tree at the repository
     root, so the repo-local author/migrate skills point the CLI at the repo with
     ``--wiki-dir``. The display prefix is empty (display == the page's rel path),
     and ``kind`` defaults to ``shared`` so neutrality guards apply and settings
-    resolve to ``<wiki_dir>/.shared-superpowers/settings.json`` when the caller
+    resolve to ``<wiki_dir>/.shared-adapter/settings.json`` when the caller
     passes ``wiki_dir`` as the project root.
     """
     return WikiRoot(kind, Path(wiki_dir).resolve(), "")
@@ -286,7 +286,7 @@ def load_shared_wiki_neutrality_policy(project_root: Path, root: WikiRoot) -> di
 def load_shared_wiki_mcp_binding(project_root: Path) -> dict[str, object] | None:
     """Read the per-project shared-wiki MCP connection block.
 
-    Returns None when `.shared-superpowers/settings.json` declares no
+    Returns None when `.shared-adapter/settings.json` declares no
     `wiki.sharedMcp` block (the project binds no shared wiki MCP -> fail-closed,
     no MCP shared wiki for this project), otherwise a dict of the recognized
     connection fields. This is the same block the MCP server self-configures from
@@ -763,7 +763,7 @@ def build_section_graph(wiki_root: Path) -> SectionGraph:
     return graph
 
 
-_WIKI_DISPLAY_PREFIXES = (".shared-superpowers/wiki/", ".superpowers/wiki/")
+_WIKI_DISPLAY_PREFIXES = (".shared-adapter/wiki/", ".adapter/wiki/")
 _WIKI_MD_SUFFIXES = (".md", ".markdown", ".mdx")
 
 
@@ -773,7 +773,7 @@ def normalize_graph_node(node: str) -> str:
     The graph keys a page wiki-root-relative and with a ``.md`` suffix
     (``frontend/type-safety.md#enum-const-enum``). Callers, however, routinely hold a page
     in the shape the *read* path accepts instead: display-root-prefixed
-    (``.shared-superpowers/wiki/…`` / ``.superpowers/wiki/…``), ``./``-prefixed, or the
+    (``.shared-adapter/wiki/…`` / ``.adapter/wiki/…``), ``./``-prefixed, or the
     ``.md``-less form that ``[[page#section]]`` link text and companion index tables show.
     Those forms all resolve for read-sections (via ``normalizeWikiRelativePath``) but, before
     this, silently missed every graph lookup and returned empty edges. Mirror that read-path

@@ -5,7 +5,7 @@
       "baseBranch": "master",
       "remote": "origin",
       "wikiRoot": ".",
-      "displayRoot": ".shared-superpowers/wiki",
+      "displayRoot": ".shared-adapter/wiki",
       "draftPr": true
     }
   }

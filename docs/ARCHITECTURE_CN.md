@@ -30,7 +30,7 @@ grill-adapter 是 host 无关的 Claude Code adapter。它把 wiki / Lanhu / sou
 | 触点 | 机制 | 落到 grill |
 |---|---|---|
 | **Disclose** 选 wiki | 独立 `/wiki-research` skill（驱动 `wiki-researcher` agent），任何 host 都能调 | grill-with-docs 质询期 |
-| **Carry** 带约束 | `.wiki-context.json` sidecar = 中立载体（选中 section 的 source-aware 引用 + `sharedWiki` 身份） | to-tickets 据 selection 写 |
+| **Carry** 带约束 | `.adapter/context/<feature-slug>.wiki-context.json` sidecar = 中立载体（选中 section 的 source-aware 引用 + `sharedWiki` 身份）；task 身份/指纹来自 host 产出的 ticket roster，锚点是 feature 不是 plan 文件 | to-tickets 据 selection 写 |
 | **Bind** 执行期 reread | ① 精确：每 ticket `/wiki-materialize <ticket>` ② 粗兜底：`wiki-reread` hook 检测 active sidecar 注入（会话级） | implement 逐 ticket |
 | **Capture** 回写 | `/update-wiki`（语义门），经 `grill_context_to_candidates.py` 吃 grill CONTEXT.md/ADR 增量 | code-review 后 |
 
@@ -44,9 +44,9 @@ grill-adapter 是 host 无关的 Claude Code adapter。它把 wiki / Lanhu / sou
 
 ## 引擎组件
 
-- **执行层脚本 `scripts/*.py`**：`wiki_common`（1 跳邻居、depends-on 闭包等共享逻辑）、`wiki_context_render`（schemaVersion 4 sidecar 校验/渲染/scaffold/finalize）、`wiki_materialize_task`（单一固定取数器：本地 + github_mcp reread + 1 跳闭包）、`wiki_generate_section_index` / `wiki_update_check` / `wiki_migrate_helper`（支持 `--wiki-dir`，仓库根即 wiki）、`wiki_graph_neighbors`（有界 1 跳邻居查询）、`wiki_section` / `wiki_read_section` / `wiki_select_target` / `wiki_apply_update` / `wiki_import` / `init-wiki` / `update-wiki`；`source_truth_settings` / `source_truth_common`；`lanhu_settings`；`scaffold_practice_skill`；`grill_context_to_candidates`（grill→wiki 桥）。
-- **shared-wiki MCP `mcp/shared-wiki/`**：TypeScript MCP server，启动读 Claude Code 注入的 `CLAUDE_PROJECT_DIR`，从该项目 `.shared-superpowers/settings.json` 的 `wiki.sharedMcp` 自我配置；提供 `shared_wiki_read` / `read-section(s)` / `graph-neighbors` / PR 等工具；`read-sections` / `graph-neighbors` 也以 CLI 子命令暴露给执行层（`wiki_materialize_task.py` 硬约束 reread 唯一走这条，不在别处用 python 重新 clone）。
-- **模板与导出**：`wiki-template/`（bootstrap 到目标项目 `.superpowers/wiki/`）、`wiki-repo-skills/` + `wiki-repo-ci/`（`export-wiki-skills` 钉版本写入独立 wiki 仓库 `.claude/` 的作者侧 skill + 图重建 Action）、`contracts/`（`wiki-context-v4` / `wiki-selection-v1` schema 示例）。
+- **执行层脚本 `scripts/*.py`**：`wiki_common`（1 跳邻居、depends-on 闭包等共享逻辑）、`wiki_context_render`（schemaVersion 5 sidecar 校验/渲染/scaffold/finalize，task 身份与指纹来自 host 产出的 ticket roster）、`wiki_materialize_task`（单一固定取数器：本地 + github_mcp reread + 1 跳闭包）、`wiki_generate_section_index` / `wiki_update_check` / `wiki_migrate_helper`（支持 `--wiki-dir`，仓库根即 wiki）、`wiki_graph_neighbors`（有界 1 跳邻居查询）、`wiki_section` / `wiki_read_section` / `wiki_select_target` / `wiki_apply_update` / `wiki_import` / `init-wiki` / `update-wiki`；`source_truth_settings` / `source_truth_common`；`lanhu_settings`；`scaffold_practice_skill`；`grill_context_to_candidates`（grill→wiki 桥）。
+- **shared-wiki MCP `mcp/shared-wiki/`**：TypeScript MCP server，启动读 Claude Code 注入的 `CLAUDE_PROJECT_DIR`，从该项目 `.shared-adapter/settings.json` 的 `wiki.sharedMcp` 自我配置；提供 `shared_wiki_read` / `read-section(s)` / `graph-neighbors` / PR 等工具；`read-sections` / `graph-neighbors` 也以 CLI 子命令暴露给执行层（`wiki_materialize_task.py` 硬约束 reread 唯一走这条，不在别处用 python 重新 clone）。
+- **模板与导出**：`wiki-template/`（bootstrap 到目标项目 `.adapter/wiki/`）、`wiki-repo-skills/` + `wiki-repo-ci/`（`export-wiki-skills` 钉版本写入独立 wiki 仓库 `.claude/` 的作者侧 skill + 图重建 Action）、`contracts/`（`wiki-context-v5` / `wiki-selection-v1` / `ticket-roster-v1` schema 示例）。
 
 ## section 图
 
@@ -54,7 +54,7 @@ wiki 页被 `<!-- wiki-section:xxx summary="..." -->` 标记切成 section；sec
 
 ## shared MCP（跨 repo 共享）
 
-连接是**每项目**的：消费项目在自己的 `.shared-superpowers/settings.json` 的 `wiki.sharedMcp`（`repoUrl`/`baseBranch`/`remote`/`wikiRoot`/`displayRoot`/`draftPr`）声明连哪个 shared wiki。MCP server 注册为**一份通用、不含 repo 的注册**，启动读 `CLAUDE_PROJECT_DIR` 从该项目 settings 自配置。没声明的项目 fail-closed（无 MCP shared wiki）。注意区分：消费项目的 `wiki.sharedMcp` 是「连接」，shared wiki 仓库内的 `.shared-superpowers/settings.json` 才是该 wiki 的「治理」（policy）。
+连接是**每项目**的：消费项目在自己的 `.shared-adapter/settings.json` 的 `wiki.sharedMcp`（`repoUrl`/`baseBranch`/`remote`/`wikiRoot`/`displayRoot`/`draftPr`）声明连哪个 shared wiki。MCP server 注册为**一份通用、不含 repo 的注册**，启动读 `CLAUDE_PROJECT_DIR` 从该项目 settings 自配置。没声明的项目 fail-closed（无 MCP shared wiki）。注意区分：消费项目的 `wiki.sharedMcp` 是「连接」，shared wiki 仓库内的 `.shared-adapter/settings.json` 才是该 wiki 的「治理」（policy）。
 
 ## 执行期闭包
 

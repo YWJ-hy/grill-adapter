@@ -47,7 +47,7 @@ need "$PLAIN" '/break-loop'
 need "$PLAIN" 'no host skill is patched'
 
 # no residual Superpowers host references in the host blocks
-if grep -nE 'Superpowers' "$GRILL" "$PLAIN" | grep -vE '\.superpowers/'; then
+if grep -nE 'Superpowers' "$GRILL" "$PLAIN" | grep -vE '\.adapter/'; then
   fail "host blocks still reference Superpowers"
 fi
 
