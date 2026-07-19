@@ -28,8 +28,8 @@ grill-adapter 本身是一个 Claude Code 插件：skills、agents、hooks、两
 | （前置）给了 Lanhu 链接 | 先 `/grill-adapter:lanhu-requirements <link> frontend\|backend`，确认 `.lanhu/.../index.md`，再喂给 grill-with-docs（**只作输入**） |
 | `/grill-with-docs` | **Disclose**：`/grill-adapter:wiki-research`（phase brainstorm）披露相关 wiki |
 | `/to-spec` | source-truth **Verify**：`/grill-adapter:source-truth-check`（spec-pre） |
-| `/to-tickets` | **Disclose+Carry**：`/grill-adapter:wiki-research`（phase plan）→ `wiki_context_render.py --scaffold` → 编辑 `destination`（一次）→ `--finalize`；`/grill-adapter:source-truth-check`（plan-pre/plan-review） |
-| `/implement`（每 ticket） | **Bind**：首 ticket 前 `--fingerprint-preflight`；每 ticket `/grill-adapter:wiki-materialize <ticket>`；`source-truth-lint` hook；涌现追加 `.wiki-candidates.jsonl` |
+| `/to-tickets` | **Disclose+Carry**：`/grill-adapter:wiki-research`（phase plan）选 bound Obsidian Notes/Skill Cards → `wiki_context_render.py --scaffold` 生成 schema-v6 → 编辑 `destination`（一次）→ `--finalize`；`/grill-adapter:source-truth-check`（plan-pre/plan-review） |
+| `/implement`（每 ticket） | **Bind**：首 ticket 前 `--fingerprint-preflight`；schema-v5 才能每 ticket `/grill-adapter:wiki-materialize <ticket>`；schema-v6 的权威 Note reread 由后续 Bind 切片提供；`source-truth-lint` hook；涌现追加 `.wiki-candidates.jsonl` |
 | `/code-review` 后 | **Capture**：`/grill-adapter:update-wiki`（内含 grill 增量桥接的可选前置步） |
 | `/diagnosing-bugs` | 根因收窄后可 `/grill-adapter:wiki-research`（phase debug，≤2 节）；修复验证后 `/grill-adapter:break-loop` → `/grill-adapter:update-wiki` |
 
@@ -45,7 +45,7 @@ hook 随插件自动注册——**不再往任何项目的 `.claude/settings.jso
 
 | 事件 | hook | 作用 |
 |---|---|---|
-| `SessionStart` / `UserPromptSubmit` | `wiki-reread.sh` | Bind 粗兜底：检测 active `.wiki-context.json` → materialize → `hookSpecificOutput.additionalContext` 注入 |
+| `SessionStart` / `UserPromptSubmit` | `wiki-reread.sh` | schema-v5 Bind 粗兜底：检测 active sidecar → materialize → `hookSpecificOutput.additionalContext` 注入；schema-v6 在权威 Note reread 上线前不注入摘要 |
 | `PostToolUse`（Write/Edit/MultiEdit/Bash） | `source-truth-lint.sh` | 对真实 changed files 跑 source-truth lint，`block`/`ask` 注入提醒 |
 | `Stop` | `wiki-capture-suggest.sh` + `source-truth-lint.sh` | Capture 兜底（有 pending `.wiki-candidates.jsonl` 才提醒）+ 收尾 lint |
 

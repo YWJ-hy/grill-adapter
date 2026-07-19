@@ -22272,7 +22272,8 @@ var NoteSchema = object({
   depends_on: array(string2()).optional(),
   see_also: array(string2()).optional(),
   supersedes: array(string2()).optional(),
-  contradicts: array(string2()).optional()
+  contradicts: array(string2()).optional(),
+  skill_roles: array(_enum(["implementer", "reviewer"])).optional()
 });
 function parseScalar2(raw) {
   const value = raw.trim();
@@ -22330,6 +22331,7 @@ function parseAtomicNote(contents, description = "Note") {
     agentVisible: note.agent_visible ?? true,
     summary: note.summary,
     constraintStrength: note.constraint_strength,
+    skillRoles: note.skill_roles ?? [],
     edges: {
       dependsOn: note.depends_on ?? [],
       seeAlso: note.see_also ?? [],
@@ -22485,6 +22487,8 @@ function searchTool(input, env = process.env) {
       path: note.path,
       wikiId: note.wikiId,
       type: note.type,
+      constraintStrength: note.constraintStrength,
+      skillRoles: note.skillRoles,
       summary: note.summary,
       contentHash: note.contentHash,
       bindingDigest: note.bindingDigest
@@ -22516,6 +22520,8 @@ function readNotesTool(input, env = process.env) {
       status: note.status,
       agentVisible: note.agentVisible,
       summary: note.summary,
+      constraintStrength: note.constraintStrength,
+      skillRoles: note.skillRoles,
       content: note.content,
       contentHash: note.contentHash,
       bindingDigest: note.bindingDigest

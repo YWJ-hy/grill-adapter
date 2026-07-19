@@ -138,44 +138,9 @@ assert_contains "review card body"   '审查相关产物时'            "$SKILLS
 assert_contains     "both card body" '实现或审查相关产物时'      "$SKILLS_TEXT"
 assert_not_contains "both card marker" 'roles="implement,review"' "$SKILLS_TEXT"
 
-# A selection that picks both cards; --scaffold must stamp roles from the marker, not the selection.
-SEL="$PROJ/sel.json"
-cat > "$SEL" <<'JSON'
-{
-  "status": "ok", "phase": "plan",
-  "wikiPages": [
-    {
-      "root": "project", "source": "local",
-      "displayPath": ".adapter/wiki/guides/skills.md", "localPath": "guides/skills.md",
-      "documentContext": {"title": "Skills", "overview": "discovery"},
-      "sections": [
-        {"sectionId": "perm-review", "readDepth": "full", "relevance": "direct", "confidence": "high",
-         "reason": "task touches permissions", "hardConstraint": true,
-         "constraints": {"implementation": [], "test": [], "review": [], "general": []}},
-        {"sectionId": "list-page", "readDepth": "full", "relevance": "direct", "confidence": "high",
-         "reason": "task builds a list page", "hardConstraint": true,
-         "constraints": {"implementation": [], "test": [], "review": [], "general": []}}
-      ]
-    }
-  ],
-  "caveats": []
-}
-JSON
-(
-  cd "$PROJ"
-  python3 "$RENDER" ctx.json --scaffold sel.json --feature-slug example-feature --ticket-source manual --strict >/dev/null
-)
-
-python3 - "$PROJ/ctx.json" <<'PY'
-import json, sys
-d = json.load(open(sys.argv[1], encoding='utf-8'))
-secs = {s['sectionId']: s for s in d['wikiPages'][0]['sections']}
-assert secs['perm-review'].get('roles') == ['review'], secs['perm-review'].get('roles')
-assert 'roles' not in secs['list-page'], secs['list-page'].get('roles')
-print('scaffold stamp ok: perm-review->[review], list-page->(unrestricted)')
-PY
-
-# validate reports the pack/card cleanly for the both-role card; then a hand-corrupted
+# New schema-v5 scaffolds are intentionally disabled. The card marker remains the source of
+# truth for the legacy card validator, while v6 Skill Card roles are carried from Obsidian metadata.
+# Validate reports the pack/card cleanly for the both-role card; then a hand-corrupted
 # roles token must make validate fail (the silent-widening guard).
 (
   cd "$PROJ"
@@ -199,5 +164,5 @@ fi
 assert_contains "validate bad roles" "section 'perm-review' has roles=" "$(cat "$TMP/validate-bad.out")"
 assert_contains "validate bad roles" 'expected a non-empty subset' "$(cat "$TMP/validate-bad.out")"
 
-printf 'Part B (marker -> scaffold stamp + validate guard) ok\n'
+printf 'Part B (marker + validate guard) ok\n'
 printf 'wiki-card-roles smoke test complete\n'

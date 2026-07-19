@@ -19,15 +19,15 @@ Run `/grill-adapter:source-truth-check` to render the source-of-truth policy (`s
 
 Sidecars anchor on the feature, not on a plan file: they live in `.adapter/context/<feature-slug>.*`, and a ticket roster — not a plan's headings — carries the task identities.
 
-1. Run `/grill-adapter:wiki-research` (phase `plan`), then follow it to scaffold `.adapter/context/<feature-slug>.wiki-context.json` (`wiki_context_render.py --scaffold … --feature-slug <feature-slug> --ticket-source manual`) and edit each section's `destination` once.
+1. Run `/grill-adapter:wiki-research` (phase `plan`), then follow it to scaffold the schema-v6 `.adapter/context/<feature-slug>.wiki-context.json` from its bound Obsidian Note/Skill Card selection (`wiki_context_render.py --scaffold … --feature-slug <feature-slug> --ticket-source manual`) and edit each Note/Card's `destination` once. The sidecar must not contain Note bodies.
 2. Once the tasks are settled, write the ticket roster `.adapter/context/<feature-slug>.ticket-roster.json` (`/grill-adapter:wiki-research` carries the roster shape). There is no fixed tracker here, so use whatever the user points you at — a task list, issues, a plan document's sections. `taskId` is any stable id; `text` is that task's full text verbatim, since it is the fingerprint input.
-3. Run `--finalize` once with `--ticket-roster`, and route each section's `destination.tasks` to the roster's `taskId` values.
+3. Run `--finalize` once with `--ticket-roster`, route each Note/Card's `destination.tasks` to the roster's `taskId` values, and preserve the Skill Card roles selected from their reviewed metadata.
 
 The sidecar is the record of which wiki constrains this feature. Nothing under `.adapter/context/` is committed — sidecar, roster, and candidates are local working state that execution reads in place. Never `git add -f` them.
 
 ### Bind — before implementing each task
 
-Run `/grill-adapter:wiki-materialize <task-id>` to reread that task's authoritative hard-constraint sections (local + `github_mcp`, bounded 1-hop `depends-on` closure); run `--fingerprint-preflight` once before the first task. The `wiki-reread` hook is a coarse session-level backstop; the per-task call is the precise path. The `source-truth-lint` hook lints real changed files; resolve any `block`/`ask` before completing the task.
+Existing schema-v5 sidecars use `/grill-adapter:wiki-materialize <task-id>` to reread hard local + `github_mcp` sections with a bounded 1-hop `depends-on` closure; run `--fingerprint-preflight` once before the first task. Schema-v6 Obsidian sidecars currently carry reviewed metadata only, and their authoritative stable-ID reread path lands in the next Bind slice, so do not treat summaries as executable full-text constraints. The `source-truth-lint` hook lints real changed files; resolve any `block`/`ask` before completing the task.
 
 While implementing, append durable decisions/gotchas as JSONL lines to `.adapter/context/<feature-slug>.wiki-candidates.jsonl` and keep going.
 

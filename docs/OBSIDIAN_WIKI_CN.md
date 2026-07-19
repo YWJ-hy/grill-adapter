@@ -1,6 +1,6 @@
 # Obsidian Wiki Source 绑定
 
-本页描述 Obsidian Wiki 运行时的第一阶段：项目只能解析它明确绑定的 Source。它不改变当前 section Wiki 的检索、sidecar、materialize 或回写路径；这些能力会在后续切片迁移到 `obsidian-wiki` MCP。
+本页描述 Obsidian Wiki 运行时的前两个切片：项目只能解析它明确绑定的 Source；规划期将受绑定限制的 atomic Note 和 Skill Card 选择承载为 schema-v6 sidecar。schema-v5 sidecar 在过渡期只读，不能再由新规划生成；权威 Note reread、写入、发布和迁移仍在后续切片完成。
 
 ## 运行边界
 
@@ -86,7 +86,7 @@ Shared Source 必须声明 `blocked_terms` 与 `blocked_patterns`。manifest 的
 
 `obsidian_wiki_search`、`obsidian_wiki_read_note`、`obsidian_wiki_read_notes` 与 `obsidian_wiki_graph_neighbors` 只操作当前项目可读 binding 下的 atomic Note。每次 Obsidian CLI 调用都带 resolver 得到的 Vault selector；调用者只能提供搜索语句、Vault 相对 Note 路径或 `wiki_id`，不能指定 Vault、Source 或 root。
 
-- 搜索结果会机械排除 `_meta/`、未绑定路径、`status` 非 `active` 与 `agent_visible: false` 的 Note。
+- 搜索结果会机械排除 `_meta/`、未绑定路径、`status` 非 `active` 与 `agent_visible: false` 的 Note；同时返回 `constraintStrength` 与可选 `skillRoles`，供规划期独立挑选约束 Note 和 Skill Card。
 - 批量读取经两轮 Obsidian CLI 重读，返回每条 Note 的 canonical `contentHash` 及整批稳定 `snapshotHash`；读取期间内容、路径或 ID 改变，以及重复 `wiki_id`，都会 fail-closed。
 - typed neighbor 查询仅解析请求 Note 的 `depends_on`、`see_also`、`supersedes`、`contradicts` 一跳目标，去重且不递归跟随 target 的边。
 
@@ -119,6 +119,6 @@ node mcp/obsidian-wiki/dist/index.js status
 
 以下条件均为 fail-closed 错误：缺少项目配置、缺少 registry entry、重复 Source/root、多个 project Source、缺失或不匹配 manifest、路径逃逸或 Source root 的符号链接逃逸、Obsidian CLI 未安装或无法列出 Vault selector、带凭据或不匹配的 repository remote、非 `baseBranch`、脏 worktree，以及未解决的 merge/rebase/cherry-pick 等 Git 操作。`obsidian_wiki_sources` 在任一 binding 错误时拒绝列出 Source；`obsidian_wiki_status` 返回结构化错误以及已验证的 Vault/repository 健康摘要以便修复配置。
 
-每个成功 binding 有 canonical `bindingDigest`，由 vault reference、Source identity、role、root、publishing mode、repository reference、base branch 与 effective read policy 计算。后续 schema-v6 sidecar 将保存它，用于执行期检测换绑。
+每个成功 binding 有 canonical `bindingDigest`，由 vault reference、Source identity、role、root、publishing mode、repository reference、base branch 与 effective read policy 计算。schema-v6 sidecar 保存它、每个 Note 的 `wikiId`/path/`contentHash`/summary，以及批量读取的 `snapshotHash`，但不保存 Note body；这些字段为后续执行期检测换绑和内容漂移提供身份快照。
 
 正式读取默认会在 registry 的 `syncBeforeResearch` 未显式关闭时 fetch 并 `--ff-only` 对齐 `remote/baseBranch`；无法证明 freshness 时仅在 `allowStaleRead: true` 时可继续。repository 根的 `.grill-adapter-wiki.publish.lock` 存在时所有读取都会拒绝，以防发布分支切换期间让 Obsidian 索引暴露混合内容。

@@ -58,7 +58,9 @@ JSON
 # the per-module dist/*.js files this used to import no longer exist.
 (cd "$ROOT_DIR/mcp/shared-wiki" && npm install >/dev/null)
 
-SHARED_WIKI_MCP_CONFIG="$CONFIG" "$ROOT_DIR/mcp/shared-wiki/node_modules/.bin/tsx" --input-type=module <<'JS'
+(
+  cd "$ROOT_DIR"
+  SHARED_WIKI_MCP_CONFIG="$CONFIG" "$ROOT_DIR/mcp/shared-wiki/node_modules/.bin/tsx" --input-type=module <<'JS'
 import { loadConfig } from './mcp/shared-wiki/src/config.js';
 import { validatePatchTool } from './mcp/shared-wiki/src/tools/validatePatch.js';
 import { applyPatch, commitAll, createBranch, fetchBase, pushBranch } from './mcp/shared-wiki/src/git.js';
@@ -82,6 +84,7 @@ await applyPatch(config, patch);
 await commitAll(config, 'Test shared wiki MCP branch flow');
 await pushBranch(config, 'shared-wiki/test-smoke');
 JS
+)
 
 git clone "$REMOTE" "$TMP_DIR/check" >/dev/null
 git -C "$TMP_DIR/check" fetch origin shared-wiki/test-smoke >/dev/null

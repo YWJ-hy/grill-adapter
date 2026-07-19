@@ -50,4 +50,11 @@ OUT="$(printf '{"cwd":"%s","hook_event_name":"UserPromptSubmit"}' "$T" | CLAUDE_
 [[ -z "$OUT" ]] || fail "wiki-reread not silent with no sidecar"
 rm -rf "$T"
 
+# --- wiki-reread: must not inject schema-v6 summaries before stable-ID Bind exists ---
+T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.adapter/context"
+printf '{"schemaVersion":6,"kind":"grill-adapter.wiki-context"}\n' > "$T/.adapter/context/feature.wiki-context.json"
+OUT="$(printf '{"cwd":"%s","hook_event_name":"UserPromptSubmit"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-reread.sh")"
+[[ -z "$OUT" ]] || fail "wiki-reread injected an unsupported schema-v6 sidecar"
+rm -rf "$T"
+
 printf 'hooks smoke OK\n'

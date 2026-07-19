@@ -14,7 +14,7 @@ It does not patch any host skill. A host wires it in by convention:
 - **grill**: call it during `/grill-with-docs` (phase `brainstorm`) for lightweight disclosure, and during `/to-tickets` planning (phase `plan`) to select formal constraints and write the sidecar.
 - **plain Claude Code**: call `/grill-adapter:wiki-research` yourself before proposing an approach, and again when writing the implementation plan.
 
-Project wiki is local `.adapter/wiki/`; shared wiki may be local `.shared-adapter/wiki/` or a configured GitHub-backed shared-wiki MCP source. Selection is strict and progressive: read directory `index.md` and companion `<stem>.index.md` files first, select only relevant sections, and never scan whole wiki trees without an explicit audit request.
+Formal planning uses only the bound Obsidian Sources exposed by `obsidian_wiki_*`. Select the smallest relevant atomic Notes from project and Shared Sources, and select applicable Skill Cards independently. Read search results and stable batch-read metadata; do not copy Note bodies into a selection or sidecar.
 
 ---
 
@@ -25,14 +25,10 @@ During discovery, after you have explored project context and **before** proposi
 ```yaml
 task: <user request and current understanding>
 phase: brainstorm
-wikiRoots:
-  - .adapter/wiki
-  - .shared-adapter/wiki
-sharedWikiSource: auto
 focus: <module, workflow, or concern if known>
 ```
 
-Use the returned selection as lightweight context while shaping the spec. Do not write any sidecar (`.wiki-context.json`, `.wiki-selection.json`) at this phase. If no relevant wiki exists, MCP is unavailable, or root indexes are missing, record a one-line N/A reason and continue — never block discovery.
+Use the returned metadata as lightweight context while shaping the spec. Do not write any sidecar at this phase. If bound Obsidian Sources are unavailable or no Note applies, record a one-line N/A reason and continue — never fall back to legacy wiki roots.
 
 ## Phase `plan` — formal selection + sidecar
 
@@ -41,16 +37,12 @@ When writing the implementation plan, invoke the `grill-adapter:wiki-researcher`
 ```yaml
 task: <confirmed spec or requirements summary>
 phase: plan
-wikiRoots:
-  - .adapter/wiki
-  - .shared-adapter/wiki
-sharedWikiSource: auto
 featureSlug: <feature-slug>
-planSummary: <feature goal and likely task areas>
-selectionOutputPath: .adapter/context/<feature-slug>.wiki-selection.json
+focus: <feature goal and likely task areas>
+selectionOutputPath: .adapter/context/<feature-slug>.obsidian-wiki-selection.json
 ```
 
-At `plan` phase the agent writes the JSON **selection** object (shape in `${CLAUDE_PLUGIN_ROOT}/contracts/wiki-selection-v1.example.jsonc`) to `selectionOutputPath` itself and returns only a compact summary (selected pages + counts + caveats), so the large object stays out of context. The selection must not emit `destination`, `reread`, `taskRouting`, `taskWikiRefs`, `taskFingerprint`, or future task ids.
+At `plan` phase the agent writes the JSON **selection** object (shape in `${CLAUDE_PLUGIN_ROOT}/contracts/obsidian-wiki-selection-v1.example.jsonc`) to `selectionOutputPath` itself and returns only a compact summary. It must contain bounded `wikiBindings`, metadata-only `wikiNotes`, independent `requiredSkills`, and the stable `snapshotHash` returned by `obsidian_wiki_read_notes`. The selection must not emit Note bodies, `destination`, `taskRouting`, `taskWikiRefs`, `taskFingerprint`, or future task ids.
 
 ### Author the sidecar (Carry) — do not hand-write it
 
@@ -61,20 +53,21 @@ Generate the sidecar mechanically from the selection, then edit only the semanti
    - `missing_wiki_root`/`no_relevant_wiki`: no file was written — record the one-line N/A reason and plan without wiki context.
    - fallback (summary says the researcher returned the selection inline): save that inline JSON to `selectionOutputPath` yourself, then continue.
 
-2. Generate the sidecar skeleton (schemaVersion 5). This fills everything mechanical — schema constants, the `taskRouting` block, a `reread` block for every `hardConstraint` section, the top-level `sharedWiki` identity when any `github_mcp` page is selected, and a default `destination.kind` per section:
+2. Generate the schemaVersion 6 sidecar skeleton. This copies only bound Source identity, Note ID/path/hash/summary metadata, the independent Skill Card selection, and the stable batch `snapshotHash`; it adds the `taskRouting` block and default `destination.kind` for every Note/Card. It never embeds a Note body:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --scaffold .adapter/context/<feature-slug>.wiki-selection.json --strict --feature-slug <feature-slug> --ticket-source <source>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --scaffold .adapter/context/<feature-slug>.obsidian-wiki-selection.json --strict --feature-slug <feature-slug> --ticket-source <source>
 ```
 
-3. Read the generated `.wiki-context.json` for its distilled constraints and use them like spec input while shaping the work. The sidecar is itself the record of which wiki constrains this feature; tell the user what was selected and where it lives.
+3. Read the generated `.wiki-context.json` for its Note summaries and use them like spec input while shaping the work. The sidecar is the record of which bound Notes and Skill Cards constrain this feature; tell the user what was selected and where it lives.
 
-4. Once the host's tickets exist and their ids are stable, edit each selected section's `destination` **once**:
-   - `destination.kind`: `planning-only` for soft context the task text already embodies (never for `hardConstraint`); `global` for rules every task and reviewer needs; else `task-bound`.
-   - `destination.reason`: one line per section (the generator leaves it empty on purpose).
-   - For every `task-bound` section, list the roster ticket ids in `destination.tasks` (e.g. `["01","03"]`).
+4. Once the host's tickets exist and their ids are stable, edit each selected Note/Card's `destination` **once**:
+   - `destination.kind`: `planning-only` for soft Notes the task text already embodies (never for a hard Note); `global` for rules every task and reviewer needs; else `task-bound`.
+   - `destination.reason`: one line per Note/Card (the generator leaves it empty on purpose).
+   - For every `task-bound` Note/Card, list the roster ticket ids in `destination.tasks` (e.g. `["01","03"]`).
+   - Do not change `requiredSkills[].requiredFor`; it is copied from the reviewed Skill Card's `skill_roles` property.
    - Flip `taskRouting.status` to `confirmed` with `selectedSectionsFrozen: true`.
-   - Surface every `global` section's one-line summary to the user as a feature-wide constraint.
+   - Surface every global Note/Card summary to the user as a feature-wide constraint.
 
 5. Build the ticket roster `.adapter/context/<feature-slug>.ticket-roster.json` from the host's real tickets (shape: `${CLAUDE_PLUGIN_ROOT}/contracts/ticket-roster-v1.example.jsonc`). Your host's convention block in the project `CLAUDE.md` says where its tickets live and which `ticketSource` applies — read it rather than guessing. Copy each ticket's `text` verbatim: it is the fingerprint input.
 
@@ -88,7 +81,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .adapter/context/<f
 
 Nothing under `.adapter/context/` is committed — the sidecar, roster, and candidates are local working state that execution reads in place from the same working tree.
 
-Only as a last resort (generator unavailable) hand-author the sidecar from `${CLAUDE_PLUGIN_ROOT}/contracts/wiki-context-v5.example.jsonc` and validate with `--validate-only --strict`.
+Only as a last resort (generator unavailable) hand-author a new sidecar from `${CLAUDE_PLUGIN_ROOT}/contracts/wiki-context-v6.example.jsonc` and validate with `--validate-only --strict`. SchemaVersion 5 sidecars remain readable only during transition; never create a new one.
 
 ---
 

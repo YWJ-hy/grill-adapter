@@ -500,6 +500,11 @@ def main() -> int:
 
     try:
         data = _load_context(Path(args.context_path))
+        if data.get("schemaVersion") == 6:
+            raise ValidationError(
+                "schemaVersion 6 Obsidian Note materialization is not available yet; "
+                "Issue #5 must provide authoritative stable-ID rereads before this sidecar can be bound."
+            )
         _validate_context(data, args.strict, args.execution_ready)
         entries = reread_entries(data, args.role, args.task_id)
     except ValidationError as exc:

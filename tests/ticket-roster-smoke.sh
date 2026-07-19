@@ -132,17 +132,28 @@ for case in cases:
 print(f'{len(cases)} malformed-roster cases fail closed ok')
 PY
 
-# --- --scaffold stamps the feature identity with no plan file anywhere. ---
-SEL="$TMP/feature.wiki-selection.json"
+# --- --scaffold stamps feature identity from a v6 Obsidian selection with no plan file anywhere. ---
+SEL="$TMP/feature.obsidian-wiki-selection.json"
 CTX="$TMP/feature.wiki-context.json"
-printf '{"status":"ok","phase":"plan","wikiPages":[],"caveats":[]}' > "$SEL"
-python3 "$SCRIPT" "$CTX" --scaffold "$SEL" --feature-slug example-feature --ticket-source grill-local-scratch --strict >/dev/null
+cat > "$SEL" <<'JSON'
+{
+  "status": "ok",
+  "phase": "plan",
+  "snapshotHash": "sha256:6240d8cadfd2df3df96ee005f0349145191b5b219b922c3c93aab9c7f2bd2e6e",
+  "wikiBindings": [{"sourceId": "project", "role": "project", "bindingDigest": "d44631c6c041e294a6823d3986d7195e517e84038cfad4f2f78ee71d4a1e8798"}],
+  "wikiNotes": [],
+  "requiredSkills": [],
+  "caveats": []
+}
+JSON
+python3 "$SCRIPT" "$CTX" --scaffold "$SEL" --feature-slug example-feature --ticket-source grill-local-scratch --strict --keep-selection >/dev/null
 python3 - "$CTX" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1], encoding='utf-8'))
+assert d['schemaVersion'] == 6, d.get('schemaVersion')
 assert d['featureSlug'] == 'example-feature', d.get('featureSlug')
 assert d['ticketSource'] == 'grill-local-scratch', d.get('ticketSource')
-assert 'planPath' not in d, 'planPath must not survive into a schemaVersion 5 sidecar'
+assert 'planPath' not in d, 'planPath must not survive into a schemaVersion 6 sidecar'
 assert d['taskRouting']['ticketRosterFormat'] == 'grill-adapter-ticket-roster-v1'
 print('scaffold feature identity ok')
 PY
@@ -152,5 +163,6 @@ if python3 "$SCRIPT" "$TMP/bad-src.json" --scaffold "$SEL" --feature-slug x --ti
   printf 'Expected an unknown --ticket-source to be refused\n' >&2
   exit 1
 fi
+assert_contains "scaffold ticketSource" 'invalid choice' "$(cat /tmp/roster-bad-src.out)"
 
 printf 'ticket-roster smoke test complete\n'

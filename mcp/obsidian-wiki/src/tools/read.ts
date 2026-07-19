@@ -26,6 +26,8 @@ export function readNotesTool(input: { paths: string[] }, env: NodeJS.ProcessEnv
       status: note.status,
       agentVisible: note.agentVisible,
       summary: note.summary,
+      constraintStrength: note.constraintStrength,
+      skillRoles: note.skillRoles,
       content: note.content,
       contentHash: note.contentHash,
       bindingDigest: note.bindingDigest,

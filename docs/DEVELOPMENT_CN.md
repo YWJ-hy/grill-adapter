@@ -39,7 +39,7 @@
 
 `tests/` 下近 40 个脚本，`self-test.sh` 一次跑全套。按子系统速查：
 
-- **wiki 引擎 / section 图 / 执行期闭包**：`test-wiki-section.sh`、`wiki-section-{e2e,graph,index}-smoke.sh`、`wiki-context-{json-render,scaffold}-smoke.sh`、`ticket-roster-smoke.sh`（host 无关 ticket roster 边界 + fail-closed）、`wiki-materialize-task-smoke.sh`、`wiki-depends-on-closure-smoke.sh`、`wiki-graph-neighbors-smoke.sh`、`wiki-index-graph-smoke.sh`、`wiki-update-check-smoke.sh`、`wiki-page-type-smoke.sh`、`wiki-card-roles-smoke.sh`、`wiki-summary-backfill-smoke.sh`。
+- **wiki 引擎 / section 图 / 执行期闭包**：`test-wiki-section.sh`、`wiki-section-{e2e,graph,index}-smoke.sh`、`wiki-context-{json-render,scaffold}-smoke.sh`、`obsidian-wiki-context-v6-smoke.sh`（metadata-only Obsidian Carry + v6 materialize fail-closed）、`ticket-roster-smoke.sh`（host 无关 ticket roster 边界 + fail-closed）、`wiki-materialize-task-smoke.sh`、`wiki-depends-on-closure-smoke.sh`、`wiki-graph-neighbors-smoke.sh`、`wiki-index-graph-smoke.sh`、`wiki-update-check-smoke.sh`、`wiki-page-type-smoke.sh`、`wiki-card-roles-smoke.sh`、`wiki-summary-backfill-smoke.sh`。
 - **wiki 授权 / 导入 / 导出 / 模板 / scaffold**：`wiki-authorization-policy-smoke.sh`、`wiki-import-skill-path-smoke.sh`、`export-wiki-skills-smoke.sh`、`bootstrap-wiki-template-import.sh`、`init-wiki-inventory-smoke.sh`、`scaffold-practice-skill-smoke.sh`。
 - **shared wiki（MCP / 绑定 / 中性化）**：`shared-wiki-mcp-{copyable,policy,pr}-smoke.sh`、`shared-wiki-{neutrality,submodule}-smoke.sh`。Obsidian Source bindings 的 MCP contract 在 `mcp/obsidian-wiki/tests/` 中覆盖。
 - **Lanhu 录入**：`lanhu-{confirmation-gate,contradiction-detection,effective-prd-sanitization,html-settings,scoped-evidence,selective-image-analysis,tree-prd-guardrails,url-root-selection}-smoke.sh`。

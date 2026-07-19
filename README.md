@@ -14,9 +14,9 @@ A code assistant forgets your project's durable rules between sessions and acros
 
 | Touchpoint | Mechanism | grill stage |
 |---|---|---|
-| **Disclose** | `/grill-adapter:wiki-research` skill → `wiki-researcher` agent selects relevant sections | `/grill-with-docs` |
-| **Carry** | `.wiki-context.json` sidecar records the selection (source-aware refs + `sharedWiki` identity) | `/to-tickets` |
-| **Bind** | `/grill-adapter:wiki-materialize <ticket>` re-reads hard-constraint sections (+ bounded 1-hop `depends-on` closure); a session-level hook is the coarse backstop | `/implement` |
+| **Disclose** | `/grill-adapter:wiki-research` skill → `wiki-researcher` selects relevant bound Obsidian atomic Notes and Skill Cards | `/grill-with-docs` |
+| **Carry** | schema-v6 `.wiki-context.json` records bound Source digests and metadata-only Note/Card identity, routing, and ticket fingerprints | `/to-tickets` |
+| **Bind** | Existing schema-v5 sidecars use `/grill-adapter:wiki-materialize <ticket>` to re-read hard sections (+ bounded 1-hop `depends-on` closure); schema-v6 stable-ID rereads arrive in the next Bind slice | `/implement` |
 | **Capture** | `/grill-adapter:update-wiki` writes durable knowledge back (its own optional pre-step converts grill's `CONTEXT.md`/ADR increment into candidates) | after `/code-review` |
 
 Plus **Lanhu intake** (`/grill-adapter:lanhu-requirements`), **source-of-truth** verify (`/grill-adapter:source-truth-check`) + lint hook, and **break-loop** debugging retrospective (`/grill-adapter:break-loop`).

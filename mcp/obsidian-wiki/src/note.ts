@@ -13,6 +13,7 @@ const NoteSchema = z.object({
   see_also: z.array(z.string()).optional(),
   supersedes: z.array(z.string()).optional(),
   contradicts: z.array(z.string()).optional(),
+  skill_roles: z.array(z.enum(['implementer', 'reviewer'])).optional(),
 });
 
 export type AtomicNote = {
@@ -22,6 +23,7 @@ export type AtomicNote = {
   agentVisible: boolean;
   summary: string;
   constraintStrength: 'hard' | 'soft' | undefined;
+  skillRoles: ('implementer' | 'reviewer')[];
   edges: Record<'dependsOn' | 'seeAlso' | 'supersedes' | 'contradicts', string[]>;
   content: string;
   contentHash: string;
@@ -88,6 +90,7 @@ export function parseAtomicNote(contents: string, description = 'Note'): AtomicN
     agentVisible: note.agent_visible ?? true,
     summary: note.summary,
     constraintStrength: note.constraint_strength,
+    skillRoles: note.skill_roles ?? [],
     edges: {
       dependsOn: note.depends_on ?? [],
       seeAlso: note.see_also ?? [],

@@ -31,13 +31,13 @@ Run `/grill-adapter:source-truth-check` (renders `spec-pre`). If it emits a poli
 
 grill publishes tickets to the tracker configured by `/setup-matt-pocock-skills` and recorded in `docs/agents/issue-tracker.md`; it produces **no plan document**. So grill-adapter anchors on the feature, not on a plan file: all sidecars live in `.adapter/context/<feature-slug>.*`, and the ticket roster — not a plan's headings — is the task identity.
 
-1. Run `/grill-adapter:wiki-research` (phase `plan`) to formally select the wiki sections that constrain this feature; the `wiki-researcher` agent writes `.adapter/context/<feature-slug>.wiki-selection.json`.
-2. Follow `/grill-adapter:wiki-research` to scaffold the `.adapter/context/<feature-slug>.wiki-context.json` sidecar (`wiki_context_render.py --scaffold … --feature-slug <feature-slug> --ticket-source <source>`), then edit each section's `destination` once.
+1. Run `/grill-adapter:wiki-research` (phase `plan`) to formally select bound atomic Obsidian Notes and reviewed Skill Cards; the `wiki-researcher` agent writes `.adapter/context/<feature-slug>.obsidian-wiki-selection.json`.
+2. Follow `/grill-adapter:wiki-research` to scaffold the schema-v6 `.adapter/context/<feature-slug>.wiki-context.json` sidecar (`wiki_context_render.py --scaffold … --feature-slug <feature-slug> --ticket-source <source>`), then edit each Note/Card's `destination` once. The sidecar carries no Note bodies.
 3. **After the tickets are published**, build the ticket roster `.adapter/context/<feature-slug>.ticket-roster.json` (`/grill-adapter:wiki-research` carries the roster shape). Read `docs/agents/issue-tracker.md` to know which form applies — do not guess:
    - **Local markdown** (`ticketSource: grill-local-scratch`) — one roster entry per `.scratch/<feature-slug>/issues/<NN>-<slug>.md`. `taskId` is the `NN` prefix; `text` is the whole file body, verbatim.
    - **GitHub / Linear** (`ticketSource: github-issues`) — one roster entry per ticket issue (`gh issue view <n> --json body,title`). `taskId` is the issue number; `text` is the issue body, verbatim.
    Never summarize or reformat ticket text: `text` is the fingerprint input, and a rewritten body reads as ticket drift at execution.
-4. Run `--finalize` once with `--ticket-roster` to build the taskWikiRefs roster, stamp fingerprints, and validate execution readiness. Route each section's `destination.tasks` to the roster's `taskId` values.
+4. Run `--finalize` once with `--ticket-roster` to build the taskWikiRefs roster, stamp fingerprints, and validate execution readiness. Route each Note/Card's `destination.tasks` to the roster's `taskId` values; preserve every Skill Card's mechanically selected role binding.
 5. Run `/grill-adapter:source-truth-check` (renders `plan-pre`, and `plan-review` during review) and apply any policy output.
 
 The sidecar **is** the record of which wiki constrains this feature — there is no plan document to add a `## Referenced Project Wiki` section to. Tell the user which pages/sections were selected and where the sidecar lives.
@@ -46,7 +46,7 @@ The sidecar **is** the record of which wiki constrains this feature — there is
 
 ### Bind — during `/implement`
 
-Before touching code for each ticket, run `/grill-adapter:wiki-materialize <ticket-id>` to reread that ticket's authoritative hard-constraint wiki sections (local + `github_mcp`, with the bounded 1-hop `depends-on` closure). `<ticket-id>` is the roster `taskId` — the `NN` prefix for local-markdown tickets, the issue number for a real tracker. Run the one-time `--fingerprint-preflight` (with `--ticket-roster`) before the first ticket; it fails closed if a ticket's text changed after the wiki sections were bound to it, which means re-running `--finalize` before implementing. The `wiki-reread` hook (UserPromptSubmit/SessionStart) is a coarse session-level backstop only; the per-ticket call is the precise path. Verify compliance against the full section text; do not reselect wiki or reread whole roots during execution.
+Existing schema-v5 sidecars continue to use `/grill-adapter:wiki-materialize <ticket-id>` for authoritative local + `github_mcp` section rereads with the bounded 1-hop `depends-on` closure. Schema-v6 Obsidian sidecars currently carry only reviewed metadata; their authoritative stable-ID reread path lands in the next Bind slice, so do not treat summaries as executable full-text constraints. In both cases `<ticket-id>` is the roster `taskId` — the `NN` prefix for local-markdown tickets, the issue number for a real tracker. Run the one-time `--fingerprint-preflight` (with `--ticket-roster`) before the first ticket; it fails closed if a ticket's text changed after the wiki selection was bound, which means re-running `--finalize` before implementing.
 
 The `source-truth-lint` hook (PostToolUse/Stop) lints the real changed files during implementation. If it reports `block`, revert the `truth/edit: never` edit or route it upstream before completing the ticket; if `ask`, get explicit authorization or revert. Authorization never bypasses `truth/edit: never`.
 

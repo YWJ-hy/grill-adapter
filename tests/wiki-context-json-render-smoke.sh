@@ -242,7 +242,8 @@ import sys
 print(Path(sys.argv[1]).read_text(encoding='utf-8'))
 PY
 )"
-assert_contains "example contract" 'AI-facing authoring contract' "$EXAMPLE_TEXT"
+assert_contains "example contract" 'Historical schemaVersion 5 compatibility reference' "$EXAMPLE_TEXT"
+assert_contains "example contract" 'must not be authored anew' "$EXAMPLE_TEXT"
 assert_contains "example contract" 'Do not inspect <plugin-root>/scripts/wiki_context_render.py to infer this format' "$EXAMPLE_TEXT"
 assert_contains "example contract" '--bind-fingerprints --strict' "$EXAMPLE_TEXT"
 assert_contains "example contract" '--execution-ready --ticket-roster' "$EXAMPLE_TEXT"
@@ -391,7 +392,7 @@ if python3 "$SCRIPT" "$BAD_SCHEMA" --validate-only >/tmp/wiki-context-bad-schema
   printf 'Expected bad schema to fail\n' >&2
   exit 1
 fi
-assert_contains "bad schema failure" 'schemaVersion must be 5' "$(cat /tmp/wiki-context-bad-schema.out)"
+assert_contains "bad schema failure" 'schemaVersion must be one of 5, 6' "$(cat /tmp/wiki-context-bad-schema.out)"
 
 BAD_CATEGORY="$TMP/bad-category.wiki-context.json"
 python3 - <<'PY' "$CONTEXT" "$BAD_CATEGORY"

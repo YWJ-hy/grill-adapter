@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Any
 
 KIND = "grill-adapter.wiki-context"
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
+LEGACY_SCHEMA_VERSION = 5
+SUPPORTED_SCHEMA_VERSIONS = {LEGACY_SCHEMA_VERSION, SCHEMA_VERSION}
 CONSTRAINT_CATEGORIES = ("implementation", "test", "review", "general")
 ROLE_CATEGORIES = {
     "implementer": ("implementation", "test", "general"),
@@ -37,12 +39,16 @@ SCAFFOLD_TASK_ROUTING = {
     "ticketRosterFormat": "grill-adapter-ticket-roster-v1",
     "fingerprintAlgorithm": "sha256:grill-adapter-task-text-v1",
     "selectedSectionsFrozen": False,
-    "refreshPolicy": "refresh-taskWikiRefs-and-fingerprints-only",
+    "refreshPolicy": "refresh-taskWikiRefs-and-fingerprints-only",  # Note bindings, hashes, and routing are frozen.
 }
 # Declared ticket sources. Audit metadata only: the engine fingerprints whatever text the roster
 # hands it and never branches on this value, reads a tracker, or touches the network.
 TICKET_SOURCES = {"grill-local-scratch", "github-issues", "manual"}
 HEX_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+V6_NOTE_TYPES = {"constraint", "domain", "decision", "guide"}
+V6_ROLES = {"project", "shared"}
+V6_REQUIRED_SKILL_ROLES = {"implementer", "reviewer"}
 # A digest of 64 identical hex chars (0000…, 1111…, ffff…) is an authoring placeholder, never a
 # real sha256. Rejecting it stops copy-pasted skeleton fingerprints from passing validation and
 # only blowing up later at the execution-side --fingerprint-preflight.
@@ -95,7 +101,7 @@ def _load_json(path: Path, label: str) -> dict[str, Any]:
 
 def _load_context(path: Path) -> dict[str, Any]:
     if path.suffix == ".md":
-        raise ValidationError("Legacy .wiki-context.md is not supported for selected wiki context rendering; regenerate a schemaVersion 5 .wiki-context.json during planning.")
+        raise ValidationError("Legacy .wiki-context.md is not supported; schemaVersion 5 JSON is read-only compatibility and new planning must create a schemaVersion 6 Obsidian sidecar.")
     return _load_json(path, "wiki context")
 
 
@@ -132,7 +138,86 @@ def _validate_task_fingerprint(task_ref: dict[str, Any], field: str) -> None:
         )
 
 
+def _validate_v6_note(
+    note: Any,
+    field: str,
+    require_skill: bool = False,
+    allow_destination: bool = False,
+) -> dict[str, Any]:
+    value = _as_dict(note, field)
+    allowed_fields = {
+        "sourceId", "role", "path", "wikiId", "type", "summary", "bindingDigest", "contentHash",
+        *( ("requiredFor",) if require_skill else ("constraintStrength",) ),
+        *( ("destination",) if allow_destination else () ),
+    }
+    unknown_fields = sorted(set(value) - allowed_fields)
+    if unknown_fields:
+        raise ValidationError(f"{field} contains unsupported fields: {', '.join(unknown_fields)}")
+    for key in ("sourceId", "path", "wikiId", "summary", "bindingDigest", "contentHash"):
+        if not isinstance(value.get(key), str) or not value[key].strip():
+            raise ValidationError(f"{field}.{key} must be a non-empty string")
+    if value.get("role") not in V6_ROLES:
+        raise ValidationError(f"{field}.role must be one of {', '.join(sorted(V6_ROLES))}")
+    if value.get("type") not in V6_NOTE_TYPES:
+        raise ValidationError(f"{field}.type must be one of {', '.join(sorted(V6_NOTE_TYPES))}")
+    if not HEX_SHA256_RE.match(value["bindingDigest"]):
+        raise ValidationError(f"{field}.bindingDigest must be a 64-character sha256 digest")
+    if not SHA256_RE.match(value["contentHash"]):
+        raise ValidationError(f"{field}.contentHash must be a sha256 digest")
+    if "content" in value:
+        raise ValidationError(f"{field}.content is not allowed; schemaVersion 6 carries Note metadata only")
+    if require_skill:
+        roles = _as_list(value.get("requiredFor"), f"{field}.requiredFor")
+        if not roles or any(role not in V6_REQUIRED_SKILL_ROLES for role in roles):
+            raise ValidationError(f"{field}.requiredFor must be a non-empty subset of {sorted(V6_REQUIRED_SKILL_ROLES)}")
+    elif value.get("constraintStrength") not in ("hard", "soft", None):
+        raise ValidationError(f"{field}.constraintStrength must be hard or soft when present")
+    return value
+
+
+def _validate_v6_execution_ready(data: dict[str, Any]) -> None:
+    task_routing = _as_dict(data.get("taskRouting"), "taskRouting")
+    if task_routing.get("status") != "confirmed":
+        raise ValidationError("taskRouting.status must be confirmed for execution-ready wiki context")
+    if task_routing.get("selectedSectionsFrozen") is not True:
+        raise ValidationError("taskRouting.selectedSectionsFrozen must be true for execution-ready wiki context")
+    task_refs = _as_list(data.get("taskWikiRefs"), "taskWikiRefs")
+    task_ids: set[str] = set()
+    for index, task_ref in enumerate(task_refs):
+        task = _as_dict(task_ref, f"taskWikiRefs[{index}]")
+        task_id = task.get("taskId")
+        if not isinstance(task_id, str) or not task_id.strip() or task_id in task_ids:
+            raise ValidationError(f"taskWikiRefs[{index}].taskId must be a unique non-empty task id")
+        task_ids.add(task_id)
+        if not isinstance(task.get("taskTitle"), str) or not task["taskTitle"].strip():
+            raise ValidationError(f"taskWikiRefs[{index}].taskTitle is required")
+        _validate_task_fingerprint(task, f"taskWikiRefs[{index}]")
+    for collection in ("wikiNotes", "requiredSkills"):
+        for index, raw_note in enumerate(_as_list(data.get(collection), collection)):
+            note = _as_dict(raw_note, f"{collection}[{index}]")
+            destination = _as_dict(note.get("destination"), f"{collection}[{index}].destination")
+            kind = destination.get("kind")
+            if kind not in DESTINATION_KINDS:
+                raise ValidationError(f"{collection}[{index}].destination.kind must be one of {', '.join(sorted(DESTINATION_KINDS))}")
+            if not isinstance(destination.get("reason"), str) or not destination["reason"].strip():
+                raise ValidationError(f"{collection}[{index}].destination.reason is required")
+            if collection == "wikiNotes" and note.get("constraintStrength") == "hard" and kind == "planning-only":
+                raise ValidationError(f"hard Note {note.get('wikiId')} cannot have planning-only destination")
+            tasks = destination.get("tasks")
+            if kind == "task-bound":
+                task_list = _as_list(tasks, f"{collection}[{index}].destination.tasks")
+                if not task_list or any(not isinstance(task_id, str) or not task_id.strip() or task_id not in task_ids for task_id in task_list):
+                    raise ValidationError(f"{collection}[{index}].destination.tasks must name known task ids")
+                if len(set(task_list)) != len(task_list):
+                    raise ValidationError(f"{collection}[{index}].destination.tasks must not duplicate task ids")
+            elif tasks:
+                raise ValidationError(f"{collection}[{index}].destination.tasks is only valid for task-bound routing")
+
+
 def _validate_execution_ready(data: dict[str, Any]) -> None:
+    if data.get("schemaVersion") == SCHEMA_VERSION:
+        _validate_v6_execution_ready(data)
+        return
     task_routing = _as_dict(data.get("taskRouting"), "taskRouting")
     if task_routing.get("status") != "confirmed":
         raise ValidationError("taskRouting.status must be confirmed for execution-ready wiki context")
@@ -198,10 +283,67 @@ def _validate_execution_ready(data: dict[str, Any]) -> None:
             raise ValidationError(f"{kind} section {key} must not set destination.tasks")
 
 
+def _validate_v6_context(data: dict[str, Any], execution_ready: bool) -> list[str]:
+    if data.get("kind") != KIND:
+        raise ValidationError(f"kind must be {KIND}")
+    if not isinstance(data.get("featureSlug"), str) or not data["featureSlug"].strip():
+        raise ValidationError("schemaVersion 6 wiki context requires a non-empty featureSlug")
+    snapshot = data.get("snapshotHash")
+    if not isinstance(snapshot, str) or not SHA256_RE.match(snapshot):
+        raise ValidationError("snapshotHash must be a sha256 digest")
+    bindings = _as_list(data.get("wikiBindings"), "wikiBindings")
+    binding_digests: dict[str, str] = {}
+    binding_roles: dict[str, str] = {}
+    for index, raw_binding in enumerate(bindings):
+        binding = _as_dict(raw_binding, f"wikiBindings[{index}]")
+        source_id = binding.get("sourceId")
+        if not isinstance(source_id, str) or not source_id.strip() or source_id in binding_digests:
+            raise ValidationError(f"wikiBindings[{index}].sourceId must be a unique non-empty string")
+        if binding.get("role") not in V6_ROLES:
+            raise ValidationError(f"wikiBindings[{index}].role must be one of {', '.join(sorted(V6_ROLES))}")
+        digest = binding.get("bindingDigest")
+        if not isinstance(digest, str) or not HEX_SHA256_RE.match(digest):
+            raise ValidationError(f"wikiBindings[{index}].bindingDigest must be a 64-character sha256 digest")
+        binding_digests[source_id] = digest
+        binding_roles[source_id] = binding["role"]
+    if not binding_digests:
+        raise ValidationError("wikiBindings must contain one or more bound Sources")
+    seen_ids: set[str] = set()
+    for collection, is_skill in (("wikiNotes", False), ("requiredSkills", True)):
+        for index, raw_note in enumerate(_as_list(data.get(collection), collection)):
+            note = _validate_v6_note(
+                raw_note,
+                f"{collection}[{index}]",
+                require_skill=is_skill,
+                allow_destination=True,
+            )
+            if note["wikiId"] in seen_ids:
+                raise ValidationError(f"{collection}[{index}] duplicates wikiId {note['wikiId']}")
+            seen_ids.add(note["wikiId"])
+            if binding_digests.get(note["sourceId"]) != note["bindingDigest"]:
+                raise ValidationError(f"{collection}[{index}] does not match a declared Source binding digest")
+            if binding_roles.get(note["sourceId"]) != note["role"]:
+                raise ValidationError(f"{collection}[{index}] does not match the declared Source binding role")
+    if "wikiPages" in data or "sharedWiki" in data:
+        raise ValidationError("schemaVersion 6 uses wikiNotes/wikiBindings, not wikiPages/sharedWiki")
+    _as_list(data.get("taskWikiRefs"), "taskWikiRefs")
+    _as_dict(data.get("taskRouting"), "taskRouting")
+    if "caveats" in data:
+        _as_list(data.get("caveats"), "caveats")
+    if "maintenanceWarnings" in data:
+        _as_list(data.get("maintenanceWarnings"), "maintenanceWarnings")
+    if execution_ready:
+        _validate_execution_ready(data)
+    return []
+
+
 def _validate_context(data: dict[str, Any], strict: bool, execution_ready: bool = False) -> list[str]:
     caveats: list[str] = []
-    if data.get("schemaVersion") != SCHEMA_VERSION:
-        raise ValidationError(f"schemaVersion must be {SCHEMA_VERSION}")
+    schema_version = data.get("schemaVersion")
+    if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
+        raise ValidationError(f"schemaVersion must be one of {', '.join(str(version) for version in sorted(SUPPORTED_SCHEMA_VERSIONS))}")
+    if schema_version == SCHEMA_VERSION:
+        return _validate_v6_context(data, execution_ready)
     if data.get("kind") != KIND:
         raise ValidationError(f"kind must be {KIND}")
 
@@ -392,7 +534,64 @@ def _append_source_anchors(lines: list[str], anchors: Any) -> None:
             lines.append(f"- {_truncate_excerpt(anchor)}")
 
 
+def _v6_task_notes(data: dict[str, Any], task_id: str | None, role: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if task_id:
+        matches = [
+            _as_dict(task_ref, "taskWikiRefs[]")
+            for task_ref in _as_list(data.get("taskWikiRefs"), "taskWikiRefs")
+            if _as_dict(task_ref, "taskWikiRefs[]").get("taskId") == task_id
+        ]
+        if len(matches) != 1:
+            raise ValidationError(f"taskWikiRefs must contain exactly one entry for taskId {task_id}")
+
+    def routed(note: dict[str, Any]) -> bool:
+        destination = _as_dict(note.get("destination"), "Note destination")
+        if destination.get("kind") == "global":
+            return True
+        return task_id is not None and destination.get("kind") == "task-bound" and task_id in _as_list(destination.get("tasks"), "destination.tasks")
+
+    notes = [
+        _as_dict(note, "wikiNotes[]")
+        for note in _as_list(data.get("wikiNotes"), "wikiNotes")
+        if routed(_as_dict(note, "wikiNotes[]"))
+    ]
+    skills = [
+        _as_dict(skill, "requiredSkills[]")
+        for skill in _as_list(data.get("requiredSkills"), "requiredSkills")
+        if role in _as_list(_as_dict(skill, "requiredSkills[]").get("requiredFor"), "requiredSkills[].requiredFor")
+        and routed(_as_dict(skill, "requiredSkills[]"))
+    ]
+    return notes, skills
+
+
+def _render_v6_markdown(data: dict[str, Any], role: str, task_id: str | None) -> str:
+    notes, skills = _v6_task_notes(data, task_id, role)
+    if not notes and not skills:
+        if task_id:
+            return f"No selected wiki constraints for task `{task_id}` and role `{role}`."
+        return "No selected wiki constraints for this role."
+    lines = ["## Wiki Constraints", ""]
+    if task_id:
+        lines.extend([f"- Task ID: `{task_id}`", ""])
+    for note in notes:
+        strength = note.get("constraintStrength") or "context"
+        lines.append(f"### `{note['wikiId']}` · {strength}")
+        lines.append(f"- Summary: {note['summary']}")
+        lines.append(f"- Note: `{note['path']}`")
+        lines.append("")
+    if skills:
+        lines.extend(["### Required Skill Cards", ""])
+        for skill in skills:
+            lines.append(f"- `{skill['wikiId']}`: {skill['summary']} (`{skill['path']}`)")
+        lines.append("")
+    for caveat in _as_list(data.get("caveats"), "caveats"):
+        lines.append(f"- Context caveat: {caveat}")
+    return "\n".join(lines).rstrip()
+
+
 def render_markdown(data: dict[str, Any], role: str, task_id: str | None = None) -> str:
+    if data.get("schemaVersion") == SCHEMA_VERSION:
+        return _render_v6_markdown(data, role, task_id)
     section_keys = _task_section_keys(data, task_id) if task_id else None
     pages = _selected_pages(data, section_keys)
     if not pages:
@@ -542,6 +741,21 @@ def reread_entries(data: dict[str, Any], role: str = "implementer", task_id: str
     sections additionally seed the 1-hop depends-on closure appended at the end. A github_mcp
     shared section's closure is computed downstream by wiki_materialize_task.py (remote graph).
     """
+    if data.get("schemaVersion") == SCHEMA_VERSION:
+        notes, _ = _v6_task_notes(data, task_id, role)
+        return [
+            {
+                "sourceId": note["sourceId"],
+                "role": note["role"],
+                "path": note["path"],
+                "wikiId": note["wikiId"],
+                "contentHash": note["contentHash"],
+                "bindingDigest": note["bindingDigest"],
+                "summary": note["summary"],
+            }
+            for note in notes
+            if note.get("constraintStrength") == "hard"
+        ]
     section_keys = _task_section_keys(data, task_id) if task_id else None
     entries: list[dict[str, Any]] = []
     emitted_keys: set[tuple[str, str]] = set()
@@ -606,7 +820,10 @@ def _task_fingerprint(task_text: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def load_ticket_roster(roster_path: Path) -> dict[str, dict[str, str]]:
+def load_ticket_roster(
+    roster_path: Path,
+    expected_feature_slug: str | None = None,
+) -> dict[str, dict[str, str]]:
     """Load the host-produced ticket roster: the task identity + fingerprint source of truth.
 
     This is the host-agnostic boundary. The engine never reads a tracker, a plan document, or the
@@ -622,6 +839,16 @@ def load_ticket_roster(roster_path: Path) -> dict[str, dict[str, str]]:
     source = raw.get("ticketSource")
     if source is not None and source not in TICKET_SOURCES:
         raise FingerprintError(f"Unknown ticketSource {source!r}; expected one of {', '.join(sorted(TICKET_SOURCES))}")
+    roster_feature_slug = raw.get("featureSlug")
+    if expected_feature_slug is not None:
+        if not isinstance(expected_feature_slug, str) or not expected_feature_slug.strip():
+            raise FingerprintError("wiki context requires a non-empty featureSlug to bind a ticket roster")
+        if not isinstance(roster_feature_slug, str) or not roster_feature_slug.strip():
+            raise FingerprintError("ticket roster requires a non-empty featureSlug matching the wiki context")
+        if roster_feature_slug != expected_feature_slug:
+            raise FingerprintError(
+                f"ticket roster featureSlug {roster_feature_slug!r} does not match wiki context featureSlug {expected_feature_slug!r}"
+            )
     entries = raw.get("tickets")
     if not isinstance(entries, list) or not entries:
         raise FingerprintError("Ticket roster has no tickets; expected a non-empty `tickets` array")
@@ -646,7 +873,7 @@ def load_ticket_roster(roster_path: Path) -> dict[str, dict[str, str]]:
 
 
 def fingerprint_preflight(data: dict[str, Any], roster_path: Path) -> str:
-    roster_tasks = load_ticket_roster(roster_path)
+    roster_tasks = load_ticket_roster(roster_path, data.get("featureSlug"))
     sidecar_tasks: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
     for index, task_ref in enumerate(_as_list(data.get("taskWikiRefs"), "taskWikiRefs")):
@@ -685,7 +912,7 @@ def bind_fingerprints(data: dict[str, Any], roster_path: Path) -> tuple[int, int
     module. Mirrors fingerprint_preflight's structural checks and refuses to write on any mismatch,
     so a successful bind guarantees the execution-side --fingerprint-preflight will pass.
     """
-    roster_tasks = load_ticket_roster(roster_path)
+    roster_tasks = load_ticket_roster(roster_path, data.get("featureSlug"))
     sidecar_tasks: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
     for index, task_ref in enumerate(_as_list(data.get("taskWikiRefs"), "taskWikiRefs")):
@@ -864,43 +1091,64 @@ def _scaffold_shared_wiki(selection: dict[str, Any], pages: list[dict[str, Any]]
     return shared
 
 
-def scaffold_from_selection(
-    selection: dict[str, Any], feature_slug: str | None, ticket_source: str | None
-) -> dict[str, Any]:
-    """Mechanically turn a wiki-researcher selection JSON into a complete-shaped sidecar skeleton.
+def _scaffold_v6_destination(note: dict[str, Any], is_skill: bool = False) -> None:
+    hard = not is_skill and note.get("constraintStrength") == "hard"
+    note["destination"] = {"kind": "task-bound" if hard or is_skill else "planning-only", "reason": ""}
+    if note["destination"]["kind"] == "task-bound":
+        note["destination"]["tasks"] = []
 
-    Copies the researcher's page/section selection verbatim and fills everything mechanical: schema
-    constants, the taskRouting block, an auto reread block for each hard section, shared-wiki identity,
-    and default destination kinds (task-bound defaults also get an empty destination.tasks). The author
-    then edits only the semantic routing on each section's destination (reason, kind, and the tasks list
-    for task-bound) plus taskRouting.status. taskWikiRefs are intentionally empty here; --scaffold-tasks
-    adds them once the ticket roster exists.
 
-    featureSlug is the sidecar's identity: hosts that produce no plan document (grill publishes tickets
-    to an issue tracker or to .scratch/<slug>/issues/) still have a feature to anchor on, so the sidecar
-    is named for the feature rather than for a plan file that may not exist.
-    """
-    if ticket_source is not None and ticket_source not in TICKET_SOURCES:
-        raise ValidationError(f"Unknown ticketSource {ticket_source!r}; expected one of {', '.join(sorted(TICKET_SOURCES))}")
-    raw_pages = _as_list(selection.get("wikiPages"), "selection.wikiPages")
-    pages = [_scaffold_page(raw_page, page_index) for page_index, raw_page in enumerate(raw_pages)]
-
-    data: dict[str, Any] = {"schemaVersion": SCHEMA_VERSION, "kind": KIND, "generatedBy": SCAFFOLD_GENERATED_BY}
+def _scaffold_v6_from_selection(selection: dict[str, Any], feature_slug: str | None, ticket_source: str | None) -> dict[str, Any]:
+    bindings = [_as_dict(binding, "selection.wikiBindings[]") for binding in _as_list(selection.get("wikiBindings"), "selection.wikiBindings")]
+    notes = [_validate_v6_note(note, "selection.wikiNotes[]") for note in _as_list(selection.get("wikiNotes"), "selection.wikiNotes")]
+    skills = [_validate_v6_note(skill, "selection.requiredSkills[]", require_skill=True) for skill in _as_list(selection.get("requiredSkills"), "selection.requiredSkills")]
+    data: dict[str, Any] = {
+        "schemaVersion": SCHEMA_VERSION,
+        "kind": KIND,
+        "generatedBy": SCAFFOLD_GENERATED_BY,
+        "snapshotHash": selection.get("snapshotHash"),
+        "wikiBindings": bindings,
+        "wikiNotes": [dict(note) for note in notes],
+        "requiredSkills": [dict(skill) for skill in skills],
+        "taskRouting": dict(SCAFFOLD_TASK_ROUTING),
+        "taskWikiRefs": [],
+        "caveats": _as_list(selection.get("caveats"), "selection.caveats") if "caveats" in selection else [],
+        "maintenanceWarnings": _as_list(selection.get("maintenanceWarnings"), "selection.maintenanceWarnings") if "maintenanceWarnings" in selection else [],
+    }
     if feature_slug:
         data["featureSlug"] = feature_slug
     if ticket_source:
         data["ticketSource"] = ticket_source
-    shared = _scaffold_shared_wiki(selection, pages)
-    if shared:
-        data["sharedWiki"] = shared
-    data["taskRouting"] = dict(SCAFFOLD_TASK_ROUTING)
-    data["wikiPages"] = pages
-    data["taskWikiRefs"] = []
-    data["caveats"] = _as_list(selection.get("caveats"), "selection.caveats") if "caveats" in selection else []
-    data["maintenanceWarnings"] = _as_list(selection.get("maintenanceWarnings"), "selection.maintenanceWarnings") if "maintenanceWarnings" in selection else []
+    for note in data["wikiNotes"]:
+        _scaffold_v6_destination(note)
+    for skill in data["requiredSkills"]:
+        _scaffold_v6_destination(skill, is_skill=True)
     return data
 
 
+def scaffold_from_selection(
+    selection: dict[str, Any], feature_slug: str | None, ticket_source: str | None
+) -> dict[str, Any]:
+    """Build a schema-v6 sidecar skeleton from a bound Obsidian metadata selection.
+
+    The generator carries only binding, Note identity, path, hash, summary, and declared Skill Card
+    roles. It adds task routing plus default destinations; the author then supplies routing reasons and
+    task-bound task ids. taskWikiRefs remain empty until the host-produced ticket roster is finalized.
+    Legacy section selections cannot create a new schema-v5 sidecar during this transition.
+    """
+    if ticket_source is not None and ticket_source not in TICKET_SOURCES:
+        raise ValidationError(f"Unknown ticketSource {ticket_source!r}; expected one of {', '.join(sorted(TICKET_SOURCES))}")
+    if selection.get("phase") != "plan":
+        raise ValidationError("Obsidian selection.phase must be plan before Carry can scaffold a sidecar")
+    if selection.get("status") not in {"ok", "partial"}:
+        raise ValidationError("Obsidian selection.status must be ok or partial before Carry can scaffold a sidecar")
+    if "wikiNotes" in selection or "wikiBindings" in selection or "requiredSkills" in selection:
+        return _scaffold_v6_from_selection(selection, feature_slug, ticket_source)
+    raise ValidationError(
+        "Legacy section selection cannot create a new schemaVersion 5 sidecar. "
+        "schemaVersion 5 is read-only during the Obsidian transition; run wiki-research against bound "
+        "Obsidian Sources and scaffold contracts/obsidian-wiki-selection-v1.example.jsonc into schemaVersion 6."
+    )
 def scaffold_tasks(data: dict[str, Any], roster_path: Path) -> tuple[list[str], list[str]]:
     """Scaffold one taskWikiRefs entry per roster ticket (the task roster + fingerprint anchor).
 
@@ -910,7 +1158,7 @@ def scaffold_tasks(data: dict[str, Any], roster_path: Path) -> tuple[list[str], 
     here -- that stays --bind-fingerprints' single responsibility. Section->task routing is NOT touched
     here: it lives on each section's destination.tasks, independent of this roster.
     """
-    roster_tasks = load_ticket_roster(roster_path)
+    roster_tasks = load_ticket_roster(roster_path, data.get("featureSlug"))
     existing: dict[str, dict[str, Any]] = {}
     for index, raw_ref in enumerate(_as_list(data.get("taskWikiRefs"), "taskWikiRefs")):
         ref = _as_dict(raw_ref, f"taskWikiRefs[{index}]")
@@ -934,6 +1182,7 @@ def scaffold_tasks(data: dict[str, Any], roster_path: Path) -> tuple[list[str], 
 
 
 def _write_context(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
     tmp = path.with_name(path.name + ".tmp")
     # Pin LF so the sidecar is byte-deterministic across platforms (Windows text mode
@@ -945,7 +1194,7 @@ def _write_context(path: Path, data: dict[str, Any]) -> None:
 
 def main() -> int:
     _configure_stdio()
-    parser = argparse.ArgumentParser(description="Validate and render schemaVersion 5 selected wiki context JSON.")
+    parser = argparse.ArgumentParser(description="Validate and render schemaVersion 5 compatibility or schemaVersion 6 Obsidian wiki context JSON.")
     parser.add_argument("context_path", help="Path to .adapter/context/<feature-slug>.wiki-context.json")
     parser.add_argument("--task", action="append", default=[], help="Deprecated compatibility option; selected wiki context is not filtered by task string")
     parser.add_argument("--task-id", help="Render only wiki refs bound to the finalized ticket id, plus global refs")
@@ -978,7 +1227,9 @@ def main() -> int:
             _validate_context(data, args.strict, execution_ready=False)
             context_path = Path(args.context_path)
             _write_context(context_path, data)
-            summary = f"scaffolded wiki context with {len(data['wikiPages'])} page(s) -> {args.context_path}"
+            selected_count = len(data["wikiNotes"]) if data.get("schemaVersion") == SCHEMA_VERSION else len(data["wikiPages"])
+            selected_label = "Note(s)" if data.get("schemaVersion") == SCHEMA_VERSION else "page(s)"
+            summary = f"scaffolded wiki context with {selected_count} {selected_label} -> {args.context_path}"
             # The selection is a transient intermediate: scaffolding is its only consumer (execution reads
             # the generated sidecar, never the selection). Remove it on success so only the plan and its
             # .wiki-context.json persist. A malformed selection raises above before this write, so a failed
@@ -1057,6 +1308,11 @@ def main() -> int:
                 print(f"Warning: {caveat}", file=sys.stderr)
             print("wiki context JSON is valid")
             return 0
+        if data.get("schemaVersion") == SCHEMA_VERSION and (args.reread_list or args.execution_ready):
+            raise ValidationError(
+                "schemaVersion 6 Obsidian Note execution rendering is not available yet; "
+                "Issue #5 must provide authoritative stable-ID rereads before this sidecar can be bound."
+            )
         if args.reread_list:
             print(render_reread_list(data, args.role, args.task_id))
             return 0

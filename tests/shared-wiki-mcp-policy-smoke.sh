@@ -73,7 +73,9 @@ JSON
 # the per-module dist/*.js files this used to import no longer exist.
 (cd "$ROOT_DIR/mcp/shared-wiki" && npm install >/dev/null)
 
-SHARED_WIKI_MCP_CONFIG="$CONFIG" "$ROOT_DIR/mcp/shared-wiki/node_modules/.bin/tsx" --input-type=module <<'JS'
+(
+  cd "$ROOT_DIR"
+  SHARED_WIKI_MCP_CONFIG="$CONFIG" "$ROOT_DIR/mcp/shared-wiki/node_modules/.bin/tsx" --input-type=module <<'JS'
 import { loadConfig } from './mcp/shared-wiki/src/config.js';
 import { treeTool } from './mcp/shared-wiki/src/tools/tree.js';
 import { validatePatchTool } from './mcp/shared-wiki/src/tools/validatePatch.js';
@@ -95,5 +97,6 @@ const result = await validatePatchTool(config, { patch, authorizedUpdate: true }
 if (result.ok) throw new Error('neutrality violation was not rejected');
 if (!result.errors.some((error) => error.includes('blocked shared-wiki term'))) throw new Error(`unexpected errors: ${result.errors.join('\n')}`);
 JS
+)
 
 printf 'shared-wiki MCP policy smoke passed\n'

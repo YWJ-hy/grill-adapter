@@ -18,9 +18,10 @@ function sourceManifest(sourceId: string): string {
   return `---\nwiki_schema: grill-adapter.obsidian-source/v1\nwiki_source_id: ${sourceId}\nscope: project\nupdate_existing: confirm\ncreate_note: confirm\n---\n\n# ${sourceId}\n`;
 }
 
-function note(wikiId: string, summary: string, options: { status?: string; agentVisible?: boolean; dependsOn?: string[] } = {}): string {
+function note(wikiId: string, summary: string, options: { status?: string; agentVisible?: boolean; dependsOn?: string[]; skillRoles?: string[] } = {}): string {
   const dependsOn = options.dependsOn?.length ? `depends_on:\n${options.dependsOn.map((value) => `  - "${value}"`).join('\n')}\n` : '';
-  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: constraint\nstatus: ${options.status ?? 'active'}\nagent_visible: ${options.agentVisible ?? true}\nsummary: ${summary}\nconstraint_strength: hard\n${dependsOn}---\n\n# ${wikiId}\n\nRule body.\n`;
+  const skillRoles = options.skillRoles?.length ? `skill_roles:\n${options.skillRoles.map((value) => `  - ${value}`).join('\n')}\n` : '';
+  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: constraint\nstatus: ${options.status ?? 'active'}\nagent_visible: ${options.agentVisible ?? true}\nsummary: ${summary}\nconstraint_strength: hard\n${dependsOn}${skillRoles}---\n\n# ${wikiId}\n\nRule body.\n`;
 }
 
 function fixture() {
@@ -38,6 +39,7 @@ function fixture() {
   writeFileSync(path.join(sourceRoot, 'Transitive.md'), note('project/example/transitive', 'Transitive note'), 'utf8');
   writeFileSync(path.join(sourceRoot, 'Archived.md'), note('project/example/archived', 'Archived note', { status: 'archived' }), 'utf8');
   writeFileSync(path.join(sourceRoot, 'Private.md'), note('project/example/private', 'Private note', { agentVisible: false }), 'utf8');
+  writeFileSync(path.join(sourceRoot, 'ReviewSkill.md'), note('project/example/review-skill', 'Review Skill Card', { skillRoles: ['reviewer'] }), 'utf8');
   mkdirSync(path.join(vaultRoot, 'Projects', 'other'), { recursive: true });
   writeFileSync(path.join(vaultRoot, 'Projects', 'other', 'Other.md'), note('project/other/private', 'Other project note'), 'utf8');
   execFileSync('git', ['init', '--initial-branch=main', vaultRoot]);
@@ -59,6 +61,7 @@ else if (args.includes('search')) process.stdout.write(JSON.stringify([
   { path: 'Projects/example/Transitive.md' },
   { path: 'Projects/example/Archived.md' },
   { path: 'Projects/example/Private.md' },
+  { path: 'Projects/example/ReviewSkill.md' },
   { path: 'Projects/other/Other.md' },
 ]));
 else if (args.includes('read')) {
@@ -114,6 +117,19 @@ describe('Obsidian Wiki retrieval', () => {
     expect(result.notes.map((note) => note.wikiId)).not.toContain('project/example/archived');
     expect(result.notes.map((note) => note.wikiId)).not.toContain('project/example/private');
     expect(result.notes.map((note) => note.wikiId)).not.toContain('project/other/private');
+  });
+
+  it('exposes declared Skill Card roles without returning Note content from search', () => {
+    const { env } = fixture();
+    const result = searchTool({ query: 'skill' }, env);
+
+    const skill = result.notes.find((note) => note.wikiId === 'project/example/review-skill');
+    expect(skill).toMatchObject({
+      wikiId: 'project/example/review-skill',
+      skillRoles: ['reviewer'],
+      constraintStrength: 'hard',
+    });
+    expect(skill).not.toHaveProperty('content');
   });
 
   it('targets the binding Vault explicitly for Obsidian search and reads', () => {

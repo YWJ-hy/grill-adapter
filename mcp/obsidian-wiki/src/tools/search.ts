@@ -13,6 +13,8 @@ export function searchTool(input: { query: string }, env: NodeJS.ProcessEnv = pr
       path: note.path,
       wikiId: note.wikiId,
       type: note.type,
+      constraintStrength: note.constraintStrength,
+      skillRoles: note.skillRoles,
       summary: note.summary,
       contentHash: note.contentHash,
       bindingDigest: note.bindingDigest,

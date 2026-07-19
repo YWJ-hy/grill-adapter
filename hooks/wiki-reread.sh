@@ -55,6 +55,18 @@ if [ -z "$SIDECAR" ]; then
 fi
 [ -n "$SIDECAR" ] || exit 0
 
+# schema-v6 currently carries Obsidian metadata only. Do not inject its summaries as if they were
+# authoritative full-text rereads; the stable-ID Bind path intentionally lands in the next slice.
+SIDECAR_SCHEMA="$(python3 - "$SIDECAR" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    print(json.load(open(sys.argv[1], encoding='utf-8')).get('schemaVersion', ''))
+except Exception:
+    pass
+PY
+)"
+[ "$SIDECAR_SCHEMA" = "6" ] && exit 0
+
 emit() {
   # $1 = additionalContext text. Emitted as UserPromptSubmit/SessionStart context.
   python3 - "$HOOK_EVENT" "$1" <<'PY' 2>/dev/null || true
