@@ -28,7 +28,14 @@ pass=0; fail=0; failed_names=()
 shopt -s nullglob
 for t in "$TESTS_DIR"/*.sh; do
   name="$(basename "$t")"
-  if bash "$t" "$SCRIPT_DIR" "$PROJECT_ROOT" >/tmp/grill-selftest-$$.log 2>&1; then
+  executable="$t"
+  normalized=""
+  if LC_ALL=C grep -q $'\r' "$t"; then
+    normalized="$(mktemp "$TESTS_DIR/.self-test.XXXXXX.sh")"
+    tr -d '\r' < "$t" > "$normalized"
+    executable="$normalized"
+  fi
+  if bash "$executable" "$SCRIPT_DIR" "$PROJECT_ROOT" >/tmp/grill-selftest-$$.log 2>&1; then
     printf 'PASS  %s\n' "$name"
     pass=$((pass+1))
   else
@@ -37,6 +44,7 @@ for t in "$TESTS_DIR"/*.sh; do
     fail=$((fail+1))
     failed_names+=("$name")
   fi
+  [[ -z "$normalized" ]] || rm -f "$normalized"
 done
 rm -f /tmp/grill-selftest-$$.log
 

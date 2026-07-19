@@ -1,0 +1,30 @@
+{
+  "name": "@grill-adapter/obsidian-wiki-mcp",
+  "version": "0.1.0",
+  "description": "Bound Obsidian Wiki Source resolver for grill-adapter.",
+  "type": "module",
+  "bin": {
+    "obsidian-wiki-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "esbuild": "^0.28.1",
+    "tsx": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -44,28 +44,40 @@ if grep -rn '__GRILL_ADAPTER_ROOT__' "$SCRIPT_DIR/skills" "$SCRIPT_DIR/agents" "
 fi
 [[ $residue -eq 0 ]] && echo "  OK" || fail=1
 
-step "4. shared-wiki MCP typecheck + build + tests"
-# `build` is esbuild (a bundler, not a typechecker), so typecheck explicitly -- dropping it
-# here would let type errors ship in a green bundle.
+step "4. MCP typecheck + build + tests"
+# `build` is esbuild (a bundler, not a typechecker), so typecheck explicitly for every
+# plugin-bundled MCP. The plugin cache has no install-time build step.
 if command -v npm >/dev/null 2>&1; then
-  ( cd "$SCRIPT_DIR/mcp/shared-wiki" && npm install --no-audit --no-fund >/dev/null 2>&1 && npm run typecheck >/dev/null 2>&1 && npm run build >/dev/null 2>&1 && npm test >/dev/null 2>&1 )
-  check test $? -eq 0
+  mcp_fail=0
+  for mcp in shared-wiki obsidian-wiki; do
+    if ( cd "$SCRIPT_DIR/mcp/$mcp" && npm install --no-audit --no-fund >/dev/null 2>&1 && npm run typecheck >/dev/null 2>&1 && npm run build >/dev/null 2>&1 && npm test >/dev/null 2>&1 ); then
+      echo "  OK ($mcp)"
+    else
+      echo "  FAIL ($mcp)"; mcp_fail=1
+    fi
+  done
+  [[ $mcp_fail -eq 0 ]] || fail=1
 else
   echo "  SKIP (npm not found)"
 fi
 
-step "5. shared-wiki MCP bundle is committed and matches src"
-# The plugin cache has no install-time build step: the plugin's .mcp.json starts dist/index.js
-# exactly as committed. A bundle left stale would ship src changes that never reach users.
-# Relies on step 4 having just rebuilt it.
-if [[ ! -f "$SCRIPT_DIR/mcp/shared-wiki/dist/index.js" ]]; then
-  echo "  FAIL (no bundle; run 'npm run build' in mcp/shared-wiki and commit dist/index.js)"; fail=1
-elif ! git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+step "5. MCP bundles are committed and match src"
+# .mcp.json starts each dist/index.js exactly as committed. A stale bundle would ship old code.
+if ! git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   echo "  SKIP (not a git repo)"
-elif [[ -n "$(git -C "$SCRIPT_DIR" status --porcelain -- mcp/shared-wiki/dist)" ]]; then
-  echo "  FAIL (bundle drifted from src; commit the rebuilt mcp/shared-wiki/dist/index.js)"; fail=1
 else
-  echo "  OK (bundle matches src)"
+  bundle_fail=0
+  for mcp in shared-wiki obsidian-wiki; do
+    bundle="$SCRIPT_DIR/mcp/$mcp/dist/index.js"
+    if [[ ! -f "$bundle" ]]; then
+      echo "  FAIL ($mcp has no bundle; run npm run build and commit dist/index.js)"; bundle_fail=1
+    elif [[ -n "$(git -C "$SCRIPT_DIR" status --porcelain -- "mcp/$mcp/dist")" ]]; then
+      echo "  FAIL ($mcp bundle drifted from src; commit dist/index.js)"; bundle_fail=1
+    else
+      echo "  OK ($mcp bundle matches src)"
+    fi
+  done
+  [[ $bundle_fail -eq 0 ]] || fail=1
 fi
 
 step "6. Plugin loads with its full component inventory"
@@ -75,12 +87,12 @@ step "6. Plugin loads with its full component inventory"
 if command -v claude >/dev/null 2>&1; then
   inventory="$(claude --plugin-dir "$SCRIPT_DIR" plugin details grill-adapter 2>&1 || true)"
   inv_fail=0
-  for expected in "Skills (12)" "Agents (3)" "Hooks (4)" "MCP servers (1)"; do
+  for expected in "Skills (12)" "Agents (3)" "Hooks (4)" "MCP servers (2)"; do
     if ! grep -qF "$expected" <<<"$inventory"; then
       echo "  FAIL (expected '$expected' in plugin inventory)"; inv_fail=1
     fi
   done
-  if [[ $inv_fail -eq 0 ]]; then echo "  OK (12 skills, 3 agents, 4 hooks, 1 MCP)"; else
+  if [[ $inv_fail -eq 0 ]]; then echo "  OK (12 skills, 3 agents, 4 hooks, 2 MCP servers)"; else
     sed 's/^/    /' <<<"$inventory" | head -12; fail=1
   fi
 else

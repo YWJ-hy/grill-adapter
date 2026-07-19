@@ -41,7 +41,7 @@
 
 - **wiki 引擎 / section 图 / 执行期闭包**：`test-wiki-section.sh`、`wiki-section-{e2e,graph,index}-smoke.sh`、`wiki-context-{json-render,scaffold}-smoke.sh`、`ticket-roster-smoke.sh`（host 无关 ticket roster 边界 + fail-closed）、`wiki-materialize-task-smoke.sh`、`wiki-depends-on-closure-smoke.sh`、`wiki-graph-neighbors-smoke.sh`、`wiki-index-graph-smoke.sh`、`wiki-update-check-smoke.sh`、`wiki-page-type-smoke.sh`、`wiki-card-roles-smoke.sh`、`wiki-summary-backfill-smoke.sh`。
 - **wiki 授权 / 导入 / 导出 / 模板 / scaffold**：`wiki-authorization-policy-smoke.sh`、`wiki-import-skill-path-smoke.sh`、`export-wiki-skills-smoke.sh`、`bootstrap-wiki-template-import.sh`、`init-wiki-inventory-smoke.sh`、`scaffold-practice-skill-smoke.sh`。
-- **shared wiki（MCP / 绑定 / 中性化）**：`shared-wiki-mcp-{copyable,policy,pr}-smoke.sh`、`shared-wiki-{neutrality,submodule}-smoke.sh`。
+- **shared wiki（MCP / 绑定 / 中性化）**：`shared-wiki-mcp-{copyable,policy,pr}-smoke.sh`、`shared-wiki-{neutrality,submodule}-smoke.sh`。Obsidian Source bindings 的 MCP contract 在 `mcp/obsidian-wiki/tests/` 中覆盖。
 - **Lanhu 录入**：`lanhu-{confirmation-gate,contradiction-detection,effective-prd-sanitization,html-settings,scoped-evidence,selective-image-analysis,tree-prd-guardrails,url-root-selection}-smoke.sh`。
 - **source-of-truth**：`source-truth-settings-smoke.sh`。
 
@@ -56,7 +56,7 @@ grill-adapter **本身是一个 Claude Code plugin**：skills / agents / `hooks/
 开发期不必安装即可加载 plugin 并核对组件清单：
 
 ```bash
-claude --plugin-dir "$PWD" plugin details grill-adapter   # 应报 12 skills / 3 agents / 4 hooks / 1 MCP server
+claude --plugin-dir "$PWD" plugin details grill-adapter   # 应报 12 skills / 3 agents / 4 hooks / 2 MCP servers
 ```
 
 在 grill-adapter 源码根目录运行：
@@ -95,9 +95,9 @@ bash tests/host-conventions-smoke.sh "$PWD"
   1. **py_compile**：`scripts/*.py` + `lib/*.py` 全编译。
   2. **role-prd sync 幂等**：跑 `lib/sync_role_prd.py sync`，再查 `agents/lanhu-*-requirements-analyst.md` 是否有 git 漂移（有漂移即 FAIL，提示提交重新生成的 analyst）。
   3. **占位符残留检查**：机械 `grep` `__SUPERPOWER_ADAPTER` 残留，以及 `skills/`、`agents/`、`role-prd/`、`host-adapters/` 里已作废的 `__GRILL_ADAPTER_ROOT__`。
-  4. **shared-wiki MCP typecheck + build + test**：`mcp/shared-wiki` 里 `npm install && npm run typecheck && npm run build && npm test`（无 npm 则 SKIP）。`build` 是 esbuild 打包、**不做类型检查**，所以 `typecheck` 必须单独跑。
-  5. **MCP bundle 已提交且与 src 一致**：`mcp/shared-wiki/dist/index.js` 必须存在且在步骤 4 重新构建后无 git 漂移。
-  6. **plugin 组件清单**：`claude --plugin-dir <root> plugin details grill-adapter` 必须报满 12 skills / 3 agents / 4 hooks / 1 MCP server（无 `claude` CLI 则 SKIP）。
+  4. **所有 MCP typecheck + build + test**：每个 `mcp/*` 包运行 `npm install && npm run typecheck && npm run build && npm test`（无 npm 则 SKIP）。`build` 是 esbuild 打包、**不做类型检查**，所以 `typecheck` 必须单独跑。
+  5. **MCP bundle 已提交且与 src 一致**：每个插件注册 MCP 的 `dist/index.js` 必须存在且在步骤 4 重新构建后无 git 漂移。
+  6. **plugin 组件清单**：`claude --plugin-dir <root> plugin details grill-adapter` 必须报满 12 skills / 3 agents / 4 hooks / 2 MCP servers（无 `claude` CLI 则 SKIP）。
   7. **沙盒项目接线 + verify**：对临时项目 `install --host grill` 后 `verify`。
   8. **全套 smoke**：跑 `self-test.sh`。
   9. **doctor**：对传入项目只读诊断。

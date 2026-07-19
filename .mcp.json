@@ -1,9 +1,13 @@
 {
-  "_comment": "grill-adapter plugin MCP servers. Auto-started when the plugin is enabled — no `claude mcp add-json` step. Scope follows the plugin's install scope (`claude plugin install grill-adapter --scope project|user`); a plugin-bundled server cannot be scoped independently. The server self-configures per project by reading CLAUDE_PROJECT_DIR -> <project>/.shared-adapter/settings.json -> wiki.sharedMcp, and fails closed when that is absent. Tools are namespaced mcp__plugin_grill-adapter_shared-wiki__*.",
+  "_comment": "grill-adapter plugin MCP servers. Both start with the plugin and share its scope. shared-wiki remains the legacy schema-v5 server. obsidian-wiki resolves only Sources bound in CLAUDE_PROJECT_DIR/.shared-adapter/settings.json and its machine-local registry, then fails closed when configuration is invalid. Tools are namespaced mcp__plugin_grill-adapter_<server>__*.",
   "mcpServers": {
     "shared-wiki": {
       "command": "node",
       "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/shared-wiki/dist/index.js"]
+    },
+    "obsidian-wiki": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/obsidian-wiki/dist/index.js"]
     }
   }
 }

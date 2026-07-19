@@ -44,3 +44,11 @@ print(f"  displayRoot:  {shared.get('displayRoot', '(default)')}")
 print(f"  draftPr:      {shared.get('draftPr', False)}")
 print("  binding OK.")
 PY
+
+echo ""
+echo "Obsidian Wiki Source bindings (read-only diagnostic):"
+if [[ -f "$SCRIPT_DIR/mcp/obsidian-wiki/dist/index.js" ]] && command -v node >/dev/null 2>&1; then
+  CLAUDE_PROJECT_DIR="$PROJECT_ROOT" node "$SCRIPT_DIR/mcp/obsidian-wiki/dist/index.js" status || true
+else
+  echo "  unavailable: obsidian-wiki bundle or node is missing."
+fi

@@ -13,7 +13,7 @@ claude plugin marketplace add YWJ-hy/grill-adapter
 claude plugin install grill-adapter@grill-adapter --scope project
 ```
 
-12 个 skill、3 个 agent、4 个 hook、shared-wiki MCP **一起注册、自动生效**——不拷文件进 `~/.claude`，不动你项目的 `.claude/settings.json`。MCP 装好即自动启动，**无需手工注册**；它们共用 plugin 的 scope（`--scope project` = 只在本项目起；`--scope user` = 跨项目）。
+12 个 skill、3 个 agent、4 个 hook、两个 MCP（legacy `shared-wiki` 与 Source-binding `obsidian-wiki`）**一起注册、自动生效**——不拷文件进 `~/.claude`，不动你项目的 `.claude/settings.json`。MCP 装好即自动启动，**无需手工注册**；它们共用 plugin 的 scope（`--scope project` = 只在本项目起；`--scope user` = 跨项目）。
 
 **② 给项目写约定块**（plugin 唯一管不到的东西）：
 

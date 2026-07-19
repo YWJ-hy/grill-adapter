@@ -211,7 +211,7 @@ grill-adapter 以 **Claude Code plugin** 形式发布：`claude plugin install g
 
 **Agents（3）**：`wiki-researcher`、`lanhu-frontend-requirements-analyst`、`lanhu-backend-requirements-analyst`。
 
-**MCP servers（1）**：`shared-wiki`——随 plugin 自动启动（工具名前缀 `mcp__plugin_grill-adapter_shared-wiki__`），无需手工注册；连不连得上取决于项目自己的 `.shared-adapter/settings.json` 绑定声明。
+**MCP servers（2）**：`shared-wiki` 保留 schema-v5 shared Wiki 路径；`obsidian-wiki` 解析受约束的 Obsidian Source binding，并提供状态与 Source 清单。两者随 plugin 自动启动，无需手工注册；`obsidian-wiki` 只读取当前项目 `.shared-adapter/settings.json` 声明的 binding，未绑定、Vault/仓库不健康或 policy 不兼容时 fail-closed。
 
 **Hooks（4 个事件）**：随 plugin 启用**自动注册**，不往任何项目的 `.claude/settings.json` 里并片段。
 

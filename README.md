@@ -30,9 +30,9 @@ claude plugin marketplace add YWJ-hy/grill-adapter
 claude plugin install grill-adapter@grill-adapter --scope project
 ```
 
-Claude Code discovers the whole component inventory from the plugin layout — **12 skills, 3 agents, 4 hooks, and the shared-wiki MCP server**, all registered together, nothing copied into `~/.claude`, nothing merged into your project's `.claude/settings.json`. The MCP starts automatically; no manual registration.
+Claude Code discovers the whole component inventory from the plugin layout — **12 skills, 3 agents, 4 hooks, and 2 MCP servers**. The legacy `shared-wiki` server and the new `obsidian-wiki` Source-binding server are registered together; nothing is copied into `~/.claude` or merged into your project's `.claude/settings.json`. MCP servers start automatically; no manual registration.
 
-> **Scope is shared.** Skills, agents, hooks, and the bundled MCP all take the plugin's scope — a plugin-bundled MCP cannot be scoped separately. Use `--scope project` for a project-scoped shared-wiki MCP, `--scope user` to share it across projects.
+> **Scope is shared.** Skills, agents, hooks, and bundled MCP servers all take the plugin's scope — a plugin-bundled MCP cannot be scoped separately. Use `--scope project` for project-scoped Wiki access, `--scope user` to share it across projects.
 
 **2. Wire the project** — the one thing a plugin cannot touch is your project's `CLAUDE.md`:
 
@@ -74,6 +74,7 @@ grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe 
 | [`docs/SETUP_AND_USAGE_CN.md`](docs/SETUP_AND_USAGE_CN.md) | 从未装过 grill 的用户：装 grill + 装 grill-adapter + 端到端走一遍 |
 | [`QUICKSTART_CN.md`](QUICKSTART_CN.md) | 已装过 grill：5 分钟跑通 |
 | [`docs/ARCHITECTURE_CN.md`](docs/ARCHITECTURE_CN.md) | 三层架构、4 触点、引擎、section 图、shared MCP、执行期闭包 |
+| [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md) | Obsidian Source binding、machine registry、manifest 与 fail-closed 诊断 |
 | [`docs/HOST_INTEGRATION_CN.md`](docs/HOST_INTEGRATION_CN.md) | host 适配器模型、grill/plain 约定块全文、plugin 安装模型 |
 | [`docs/USER_FLOW_CN.md`](docs/USER_FLOW_CN.md) | 最终用户端到端流程 |
 | [`docs/LANHU_CN.md`](docs/LANHU_CN.md) | Lanhu 需求录入专章 |
@@ -85,7 +86,7 @@ grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe 
 
 - Claude Code (CLI, desktop, or IDE extension)
 - Python 3.9+
-- Node.js ≥ 20 (only to run the shared-wiki MCP server; the plugin ships a prebuilt bundle — nothing to build)
+- Node.js ≥ 20 (to run the bundled Wiki MCP servers; the plugin ships prebuilt bundles — nothing to build)
 
 ## License
 
