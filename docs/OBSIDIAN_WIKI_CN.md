@@ -7,7 +7,7 @@
 插件同时发货两个 MCP：
 
 - `shared-wiki`：现有 schema-v5 shared Wiki 路径，保持不变。
-- `obsidian-wiki`：只解析当前项目的 Obsidian Source bindings，并提供 `obsidian_wiki_status` 与 `obsidian_wiki_sources`。
+- `obsidian-wiki`：解析当前项目的 Obsidian Source bindings，并提供 Source/status、受绑定限制的 Note 搜索/读取，以及一跳 typed neighbor 查询。
 
 `obsidian-wiki` 只从 `CLAUDE_PROJECT_DIR` 指向项目的 `.shared-adapter/settings.json` 读取 bindings。工具不接受 Vault、Source 或 root 路径参数，因此调用方不能扩大到未绑定内容。
 
@@ -36,7 +36,7 @@
 }
 ```
 
-每个项目最多一个 `role: project` binding，可有多个 `role: shared` binding。`sourceId` 与 `(vaultRef, root)` 均不可重复。`root` 必须是 Vault 内相对目录，不能包含绝对路径或 `..`。
+每个项目最多一个 `role: project` binding，可有多个 `role: shared` binding。`sourceId` 与 `(vaultRef, root)` 均不可重复，同一 Vault 内的 root 也不得互为父子，避免较宽 root 覆盖较窄 Source 的访问策略。`root` 必须是 Vault 内相对目录，不能包含绝对路径或 `..`。
 
 ## 本机 Registry
 
@@ -82,6 +82,26 @@ Shared Source 必须声明 `blocked_terms` 与 `blocked_patterns`。manifest 的
 
 `access.update` 是 binding 层对所有写操作的上限；它与 manifest 的 `update_existing`、`create_note` 分别按更严格的结果生效：`deny` 高于 `confirm`，高于 `direct`。因此 binding 只能收紧、不能放宽 Source 的创建或更新治理。`access.read: false` 使该 Source 不可读，且不会出现在 `obsidian_wiki_sources` 的可用清单中。
 
+## 只读检索
+
+`obsidian_wiki_search`、`obsidian_wiki_read_note`、`obsidian_wiki_read_notes` 与 `obsidian_wiki_graph_neighbors` 只操作当前项目可读 binding 下的 atomic Note。每次 Obsidian CLI 调用都带 resolver 得到的 Vault selector；调用者只能提供搜索语句、Vault 相对 Note 路径或 `wiki_id`，不能指定 Vault、Source 或 root。
+
+- 搜索结果会机械排除 `_meta/`、未绑定路径、`status` 非 `active` 与 `agent_visible: false` 的 Note。
+- 批量读取经两轮 Obsidian CLI 重读，返回每条 Note 的 canonical `contentHash` 及整批稳定 `snapshotHash`；读取期间内容、路径或 ID 改变，以及重复 `wiki_id`，都会 fail-closed。
+- typed neighbor 查询仅解析请求 Note 的 `depends_on`、`see_also`、`supersedes`、`contradicts` 一跳目标，去重且不递归跟随 target 的边。
+
+执行层可使用 bundle 的固定 JSON 子命令，避免另写一套 Vault reader：
+
+```bash
+printf '%s' '{"paths":["Projects/grill-adapter/Architecture/runtime.md"]}' \
+  | node mcp/obsidian-wiki/dist/index.js read-notes
+
+printf '%s' '{"wikiIds":["project/grill-adapter/architecture/runtime"]}' \
+  | node mcp/obsidian-wiki/dist/index.js graph-neighbors
+```
+
+这些命令从 stdin 接收一个 JSON object，在 stdout 输出单行 JSON；不合法请求与任何 binding/一致性错误都以非零退出。
+
 ## 诊断与失败模式
 
 运行：
@@ -100,3 +120,5 @@ node mcp/obsidian-wiki/dist/index.js status
 以下条件均为 fail-closed 错误：缺少项目配置、缺少 registry entry、重复 Source/root、多个 project Source、缺失或不匹配 manifest、路径逃逸或 Source root 的符号链接逃逸、Obsidian CLI 未安装或无法列出 Vault selector、带凭据或不匹配的 repository remote、非 `baseBranch`、脏 worktree，以及未解决的 merge/rebase/cherry-pick 等 Git 操作。`obsidian_wiki_sources` 在任一 binding 错误时拒绝列出 Source；`obsidian_wiki_status` 返回结构化错误以及已验证的 Vault/repository 健康摘要以便修复配置。
 
 每个成功 binding 有 canonical `bindingDigest`，由 vault reference、Source identity、role、root、publishing mode、repository reference、base branch 与 effective read policy 计算。后续 schema-v6 sidecar 将保存它，用于执行期检测换绑。
+
+正式读取默认会在 registry 的 `syncBeforeResearch` 未显式关闭时 fetch 并 `--ff-only` 对齐 `remote/baseBranch`；无法证明 freshness 时仅在 `allowStaleRead: true` 时可继续。repository 根的 `.grill-adapter-wiki.publish.lock` 存在时所有读取都会拒绝，以防发布分支切换期间让 Obsidian 索引暴露混合内容。

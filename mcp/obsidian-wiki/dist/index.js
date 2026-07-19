@@ -3229,8 +3229,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path2) {
-      let input = path2;
+    function removeDotSegments(path3) {
+      let input = path3;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3482,8 +3482,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path2, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path2 && path2 !== "/" ? path2 : void 0;
+        const [path3, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -7132,10 +7132,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path2) {
-  if (!path2)
+function getElementAtPath(obj, path3) {
+  if (!path3)
     return obj;
-  return path2.reduce((acc, key) => acc?.[key], obj);
+  return path3.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7544,11 +7544,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path2, issues) {
+function prefixIssues(path3, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path2);
+    iss.path.unshift(path3);
     return iss;
   });
 }
@@ -7695,16 +7695,16 @@ function flattenError(error2, mapper = (issue2) => issue2.message) {
 }
 function formatError(error2, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error3, path2 = []) => {
+  const processError = (error3, path3 = []) => {
     for (const issue2 of error3.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path2, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path3, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
       } else {
-        const fullpath = [...path2, ...issue2.path];
+        const fullpath = [...path3, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -14291,8 +14291,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path2, errorMaps, issueData } = params;
-  const fullPath = [...path2, ...issueData.path || []];
+  const { data, path: path3, errorMaps, issueData } = params;
+  const fullPath = [...path3, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -14407,11 +14407,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path2, key) {
+  constructor(parent, value, path3, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path2;
+    this._path = path3;
     this._key = key;
   }
   get path() {
@@ -22071,6 +22071,9 @@ function validateRepository(repository) {
   if (currentBranch !== repository.baseBranch) {
     throw new Error(`repository must be on baseBranch ${repository.baseBranch}, found ${currentBranch || "detached HEAD"}`);
   }
+  if (existsSync(path.join(worktreeRoot, ".grill-adapter-wiki.publish.lock"))) {
+    throw new Error("repository has an active Obsidian Wiki publish lock");
+  }
   const operationMarkers = ["MERGE_HEAD", "REBASE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG"];
   for (const marker of operationMarkers) {
     const markerPath = commandOutput("git", ["-C", worktreeRoot, "rev-parse", "--git-path", marker]);
@@ -22078,6 +22081,20 @@ function validateRepository(repository) {
   }
   if (commandOutput("git", ["-C", worktreeRoot, "status", "--porcelain=v1", "--untracked-files=all"])) {
     throw new Error("repository worktree must be clean");
+  }
+  if (repository.syncBeforeResearch !== false) {
+    try {
+      const remoteBase = `${repository.remote}/${repository.baseBranch}`;
+      commandOutput("git", ["-C", worktreeRoot, "fetch", "--quiet", repository.remote, repository.baseBranch]);
+      commandOutput("git", ["-C", worktreeRoot, "merge", "--ff-only", remoteBase]);
+      const localRevision = commandOutput("git", ["-C", worktreeRoot, "rev-parse", "HEAD"]);
+      const remoteRevision = commandOutput("git", ["-C", worktreeRoot, "rev-parse", remoteBase]);
+      if (localRevision !== remoteRevision) throw new Error(`local ${repository.baseBranch} is not current with ${remoteBase}`);
+    } catch (error2) {
+      if (!repository.allowStaleRead) {
+        throw new Error(`repository cannot prove a fresh baseBranch: ${error2 instanceof Error ? error2.message : String(error2)}`);
+      }
+    }
   }
   return {
     remote: repository.remote,
@@ -22116,6 +22133,11 @@ function resolveBindings(env = process.env) {
       const rootIdentity = `${candidate.vaultRef}
 ${root}`;
       if (roots.has(rootIdentity)) throw new Error(`duplicate root for vault ${candidate.vaultRef}: ${root}`);
+      const overlappingRoot = [...roots].find((identity) => {
+        const [vaultRef, existingRoot] = identity.split("\n", 2);
+        return vaultRef === candidate.vaultRef && (root.startsWith(`${existingRoot}/`) || existingRoot.startsWith(`${root}/`));
+      });
+      if (overlappingRoot) throw new Error(`overlapping root for vault ${candidate.vaultRef}: ${root}`);
       roots.add(rootIdentity);
       const vault = registry2.vaults[candidate.vaultRef];
       if (!vault) throw new Error(`unresolved vaultRef: ${candidate.vaultRef}`);
@@ -22234,6 +22256,322 @@ function sourcesTool(env = process.env) {
   };
 }
 
+// src/retrieval.ts
+import path2 from "node:path";
+
+// src/note.ts
+import { createHash as createHash2 } from "node:crypto";
+var NoteSchema = object({
+  wiki_schema: literal("grill-adapter.obsidian-note/v1"),
+  wiki_id: string2().min(1),
+  type: _enum(["constraint", "domain", "decision", "guide"]),
+  status: _enum(["active", "draft", "archived"]),
+  agent_visible: boolean2().optional(),
+  summary: string2().min(1),
+  constraint_strength: _enum(["hard", "soft"]).optional(),
+  depends_on: array(string2()).optional(),
+  see_also: array(string2()).optional(),
+  supersedes: array(string2()).optional(),
+  contradicts: array(string2()).optional()
+});
+function parseScalar2(raw) {
+  const value = raw.trim();
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return value.replace(/^['"]|['"]$/g, "");
+}
+function parseStringList2(lines, start) {
+  const values = [];
+  let index = start;
+  while (index < lines.length && /^\s+-\s+/.test(lines[index])) {
+    values.push(String(parseScalar2(lines[index].replace(/^\s+-\s+/, ""))));
+    index += 1;
+  }
+  return { values, end: index };
+}
+function parseFrontmatter(contents) {
+  const normalized = canonicalContent(contents);
+  if (!normalized.startsWith("---\n")) throw new Error("Note must start with YAML frontmatter");
+  const closing = normalized.indexOf("\n---\n", 4);
+  if (closing === -1) throw new Error("Note frontmatter is not terminated");
+  const values = {};
+  const lines = normalized.slice(4, closing).split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = /^([a-z_]+):\s*(.*)$/.exec(lines[index]);
+    if (!match) throw new Error(`Note has unsupported frontmatter syntax on line ${index + 2}`);
+    const [, key, raw] = match;
+    if (raw === "") {
+      const list = parseStringList2(lines, index + 1);
+      values[key] = list.values;
+      index = list.end - 1;
+    } else {
+      values[key] = parseScalar2(raw);
+    }
+  }
+  return values;
+}
+function canonicalContent(contents) {
+  return contents.replaceAll("\r\n", "\n");
+}
+function contentHash(contents) {
+  return `sha256:${createHash2("sha256").update(canonicalContent(contents), "utf8").digest("hex")}`;
+}
+function parseAtomicNote(contents, description = "Note") {
+  const raw = parseFrontmatter(contents);
+  const parsed = NoteSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(`${description} has invalid atomic Note properties: ${parsed.error.issues.map((issue2) => issue2.message).join("; ")}`);
+  }
+  const note = parsed.data;
+  return {
+    wikiId: note.wiki_id,
+    type: note.type,
+    status: note.status,
+    agentVisible: note.agent_visible ?? true,
+    summary: note.summary,
+    constraintStrength: note.constraint_strength,
+    edges: {
+      dependsOn: note.depends_on ?? [],
+      seeAlso: note.see_also ?? [],
+      supersedes: note.supersedes ?? [],
+      contradicts: note.contradicts ?? []
+    },
+    content: canonicalContent(contents),
+    contentHash: contentHash(contents)
+  };
+}
+
+// src/obsidian-cli.ts
+import { execFileSync as execFileSync2 } from "node:child_process";
+function runCli(args, env) {
+  const executable = env.OBSIDIAN_WIKI_OBSIDIAN_CLI || "obsidian";
+  try {
+    return String(execFileSync2(executable, args, {
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+      stdio: ["ignore", "pipe", "pipe"]
+    })).trim();
+  } catch (error2) {
+    const message = error2 instanceof Error ? error2.message : String(error2);
+    throw new Error(`Obsidian CLI ${args.join(" ")} failed: ${message}`);
+  }
+}
+function parseJson(value, operation) {
+  try {
+    return JSON.parse(value);
+  } catch (error2) {
+    throw new Error(`Obsidian CLI ${operation} did not return JSON: ${error2 instanceof Error ? error2.message : String(error2)}`);
+  }
+}
+function searchNotes(vaultSelector, query, env) {
+  const value = parseJson(runCli([`vault=${vaultSelector}`, "search", query, "format=json"], env), "search");
+  if (!Array.isArray(value)) throw new Error("Obsidian CLI search JSON must be an array");
+  return value.map((entry, index) => {
+    if (!entry || typeof entry !== "object" || typeof entry.path !== "string") {
+      throw new Error(`Obsidian CLI search result ${index + 1} is missing path`);
+    }
+    return { path: entry.path };
+  });
+}
+function readNote(vaultSelector, notePath, env) {
+  const value = parseJson(runCli([`vault=${vaultSelector}`, "read", notePath, "format=json"], env), "read");
+  if (!value || typeof value !== "object") throw new Error("Obsidian CLI read JSON must be an object");
+  const record2 = value;
+  if (typeof record2.path !== "string" || typeof record2.content !== "string") {
+    throw new Error("Obsidian CLI read JSON must contain path and content strings");
+  }
+  return { path: record2.path, content: record2.content };
+}
+
+// src/retrieval.ts
+function normalizeVaultPath(value) {
+  if (path2.posix.isAbsolute(value)) throw new Error("Obsidian Note path must be Vault-relative");
+  const normalized = path2.posix.normalize(value.replaceAll("\\", "/"));
+  if (normalized === "." || normalized === ".." || normalized.startsWith("../")) {
+    throw new Error("Obsidian Note path escapes its Vault");
+  }
+  return normalized.replace(/^\.\//, "");
+}
+function noteIsWithinBinding(notePath, binding) {
+  return notePath === binding.root || notePath.startsWith(`${binding.root}/`);
+}
+function assertPathWithinBinding(notePath, binding) {
+  const normalized = normalizeVaultPath(notePath);
+  if (!noteIsWithinBinding(normalized, binding)) {
+    throw new Error(`Obsidian Note path is outside bound Source ${binding.sourceId}: ${normalized}`);
+  }
+  if (normalized === `${binding.root}/_meta` || normalized.startsWith(`${binding.root}/_meta/`)) {
+    throw new Error(`Obsidian Note path is metadata and cannot be read: ${normalized}`);
+  }
+  return normalized;
+}
+function bindingForPath(notePath, bindings) {
+  return bindings.find((binding) => noteIsWithinBinding(notePath, binding));
+}
+function retrieved(binding, notePath, note) {
+  return {
+    ...note,
+    sourceId: binding.sourceId,
+    role: binding.role,
+    path: notePath,
+    bindingDigest: binding.bindingDigest
+  };
+}
+function readBoundNote(notePath, bindings, env, requireActiveAndVisible = true) {
+  const normalizedPath = normalizeVaultPath(notePath);
+  const binding = bindingForPath(normalizedPath, bindings);
+  if (!binding || binding.effectiveReadPolicy !== "allow") {
+    throw new Error(`Obsidian Note is not within a readable bound Source: ${normalizedPath}`);
+  }
+  assertPathWithinBinding(normalizedPath, binding);
+  const result = readNote(binding.vaultSelector, normalizedPath, env);
+  const returnedPath = assertPathWithinBinding(result.path, binding);
+  if (returnedPath !== normalizedPath) throw new Error(`Obsidian CLI returned a different Note path: ${returnedPath}`);
+  const note = retrieved(binding, normalizedPath, parseAtomicNote(result.content, normalizedPath));
+  if (requireActiveAndVisible && (note.status !== "active" || !note.agentVisible)) {
+    throw new Error(`Obsidian Note is not active and agent-visible: ${normalizedPath}`);
+  }
+  return note;
+}
+function readBoundNotes(notePaths, bindings, env) {
+  const requestedPaths = [...new Set(notePaths.map(normalizeVaultPath))];
+  const initial = requestedPaths.map((notePath) => readBoundNote(notePath, bindings, env));
+  const reread = requestedPaths.map((notePath) => readBoundNote(notePath, bindings, env));
+  const seenIds = /* @__PURE__ */ new Set();
+  for (let index = 0; index < initial.length; index += 1) {
+    const first = initial[index];
+    const second = reread[index];
+    if (first.path !== second.path || first.wikiId !== second.wikiId || first.contentHash !== second.contentHash) {
+      throw new Error(`Obsidian Note changed during stable batch read: ${first.path}`);
+    }
+    if (seenIds.has(first.wikiId)) throw new Error(`Duplicate wiki_id in readable bound Sources: ${first.wikiId}`);
+    seenIds.add(first.wikiId);
+  }
+  return initial;
+}
+function searchBoundNotes(query, bindings, env) {
+  const readableBindings = bindings.filter((binding) => binding.effectiveReadPolicy === "allow");
+  const notes = [];
+  const seenPaths = /* @__PURE__ */ new Set();
+  const seenIds = /* @__PURE__ */ new Set();
+  for (const binding of readableBindings) {
+    const scopedQuery = `${query} path:"${binding.root}"`;
+    for (const entry of searchNotes(binding.vaultSelector, scopedQuery, env)) {
+      const notePath = normalizeVaultPath(entry.path);
+      if (seenPaths.has(notePath)) continue;
+      seenPaths.add(notePath);
+      if (!noteIsWithinBinding(notePath, binding)) continue;
+      if (notePath === `${binding.root}/_meta` || notePath.startsWith(`${binding.root}/_meta/`)) continue;
+      const note = readBoundNote(notePath, [binding], env, false);
+      if (note.status !== "active" || !note.agentVisible) continue;
+      if (seenIds.has(note.wikiId)) throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
+      seenIds.add(note.wikiId);
+      notes.push(note);
+    }
+  }
+  return notes;
+}
+
+// src/tools/search.ts
+function searchTool(input, env = process.env) {
+  const resolution = resolveBindings(env);
+  if (resolution.errors.length > 0) {
+    throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
+  }
+  return {
+    notes: searchBoundNotes(input.query, resolution.bindings, env).map((note) => ({
+      sourceId: note.sourceId,
+      role: note.role,
+      path: note.path,
+      wikiId: note.wikiId,
+      type: note.type,
+      summary: note.summary,
+      contentHash: note.contentHash,
+      bindingDigest: note.bindingDigest
+    }))
+  };
+}
+
+// src/tools/read.ts
+import { createHash as createHash3 } from "node:crypto";
+function snapshotHash(notes) {
+  const canonical = notes.map((note) => `${note.sourceId}
+${note.wikiId}
+${note.contentHash}`).sort().join("\n");
+  return `sha256:${createHash3("sha256").update(canonical, "utf8").digest("hex")}`;
+}
+function readNotesTool(input, env = process.env) {
+  const resolution = resolveBindings(env);
+  if (resolution.errors.length > 0) {
+    throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
+  }
+  const notes = readBoundNotes(input.paths, resolution.bindings, env);
+  return {
+    notes: notes.map((note) => ({
+      sourceId: note.sourceId,
+      role: note.role,
+      path: note.path,
+      wikiId: note.wikiId,
+      type: note.type,
+      status: note.status,
+      agentVisible: note.agentVisible,
+      summary: note.summary,
+      content: note.content,
+      contentHash: note.contentHash,
+      bindingDigest: note.bindingDigest
+    })),
+    snapshotHash: snapshotHash(notes)
+  };
+}
+function readNoteTool(input, env = process.env) {
+  const result = readNotesTool({ paths: [input.path] }, env);
+  return { note: result.notes[0], snapshotHash: result.snapshotHash };
+}
+
+// src/tools/graph.ts
+var edgeTypes = [
+  ["depends_on", "dependsOn"],
+  ["see_also", "seeAlso"],
+  ["supersedes", "supersedes"],
+  ["contradicts", "contradicts"]
+];
+function linkPath(value) {
+  const target = /^\[\[([^#|\]]+)/.exec(value)?.[1]?.trim();
+  if (!target) throw new Error(`Typed edge must use an Obsidian link: ${value}`);
+  return target.endsWith(".md") ? target : `${target}.md`;
+}
+function exactlyOne(notes, description) {
+  if (notes.length !== 1) throw new Error(`${description} resolved ${notes.length} readable active Notes`);
+  return notes[0];
+}
+function resolveByWikiId(wikiId, env, bindings) {
+  return exactlyOne(searchBoundNotes(`[wiki_id:${wikiId}]`, bindings, env).filter((note) => note.wikiId === wikiId), `wiki_id ${wikiId}`);
+}
+function resolveByLink(link, env, bindings) {
+  const targetPath = linkPath(link);
+  return exactlyOne(searchBoundNotes(`path:"${targetPath}"`, bindings, env).filter((note) => note.path === targetPath), `typed edge ${link}`);
+}
+function graphNeighborsTool(input, env = process.env) {
+  const resolution = resolveBindings(env);
+  if (resolution.errors.length > 0) {
+    throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
+  }
+  const neighbors = {};
+  for (const wikiId of [...new Set(input.wikiIds)]) {
+    const source = resolveByWikiId(wikiId, env, resolution.bindings);
+    const direct = /* @__PURE__ */ new Map();
+    for (const [type, property] of edgeTypes) {
+      for (const link of source.edges[property]) {
+        const target = resolveByLink(link, env, resolution.bindings);
+        direct.set(`${type}
+${target.wikiId}`, { type, wikiId: target.wikiId, path: target.path });
+      }
+    }
+    neighbors[wikiId] = [...direct.values()];
+  }
+  return { neighbors };
+}
+
 // src/server.ts
 function toResult(value) {
   return {
@@ -22253,10 +22591,41 @@ function createServer(env = process.env) {
     inputSchema: object({}),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async () => toResult(sourcesTool(env)));
+  server.registerTool("obsidian_wiki_search", {
+    description: "Search active, agent-visible atomic Notes only within the current project\u2019s readable bound Sources.",
+    inputSchema: object({ query: string2().min(1) }),
+    annotations: { readOnlyHint: true, idempotentHint: true }
+  }, async (input) => toResult(searchTool(input, env)));
+  server.registerTool("obsidian_wiki_read_note", {
+    description: "Read one atomic Note only when its Vault-relative path is under a readable bound Source.",
+    inputSchema: object({ path: string2().min(1) }),
+    annotations: { readOnlyHint: true, idempotentHint: true }
+  }, async (input) => toResult(readNoteTool(input, env)));
+  server.registerTool("obsidian_wiki_read_notes", {
+    description: "Batch read atomic Notes with stable content hashes and a snapshot hash, failing closed on inconsistency.",
+    inputSchema: object({ paths: array(string2().min(1)).min(1) }),
+    annotations: { readOnlyHint: true, idempotentHint: true }
+  }, async (input) => toResult(readNotesTool(input, env)));
+  server.registerTool("obsidian_wiki_graph_neighbors", {
+    description: "Return de-duplicated direct typed neighbors for bound atomic Note wiki IDs without recursive traversal.",
+    inputSchema: object({ wikiIds: array(string2().min(1)).min(1) }),
+    annotations: { readOnlyHint: true, idempotentHint: true }
+  }, async (input) => toResult(graphNeighborsTool(input, env)));
   return server;
 }
 
 // src/index.ts
+async function readJsonRequest() {
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  try {
+    const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("request must be a JSON object");
+    return value;
+  } catch (error2) {
+    throw new Error(`Invalid JSON request: ${error2 instanceof Error ? error2.message : String(error2)}`);
+  }
+}
 async function main() {
   const subcommand = process.argv[2];
   if (subcommand === "status") {
@@ -22264,8 +22633,20 @@ async function main() {
 `);
     return;
   }
+  if (subcommand === "read-notes" || subcommand === "graph-neighbors") {
+    const request = await readJsonRequest();
+    const field = subcommand === "read-notes" ? "paths" : "wikiIds";
+    const values = request[field];
+    if (!Array.isArray(values) || values.length === 0 || values.some((value) => typeof value !== "string" || !value)) {
+      throw new Error(`${field} must be a non-empty array of non-empty strings`);
+    }
+    const result = subcommand === "read-notes" ? readNotesTool({ paths: values }) : graphNeighborsTool({ wikiIds: values });
+    process.stdout.write(`${JSON.stringify(result)}
+`);
+    return;
+  }
   if (subcommand !== void 0) {
-    throw new Error("Unknown subcommand. Run with no arguments for MCP stdio, or status for binding health JSON.");
+    throw new Error("Unknown subcommand. Run with no arguments for MCP stdio, or status, read-notes, or graph-neighbors for JSON CLI.");
   }
   const server = createServer();
   await server.connect(new StdioServerTransport());

@@ -52,6 +52,7 @@ function fixture(bindings: unknown[], manifests: Array<{ root: string; sourceId:
         remote: 'origin',
         expectedRemote: 'github.com/acme/knowledge',
         baseBranch: 'main',
+        syncBeforeResearch: false,
       },
     },
   });
@@ -97,11 +98,12 @@ describe('Obsidian Wiki Source bindings', () => {
     expect(status.errors.join(' ')).toMatch(/unresolved vaultRef/);
   });
 
-  it('rejects duplicate IDs, duplicate roots, extra project roles, and root escapes', () => {
+  it('rejects duplicate IDs, duplicate roots, overlapping roots, extra project roles, and root escapes', () => {
     const input = fixture([
       { sourceId: 'project', role: 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: 'Projects/example', access: { read: true } },
       { sourceId: 'project', role: 'shared', vaultRef: 'knowledge', repositoryRef: 'wiki', root: 'Projects/other', access: { read: true } },
       { sourceId: 'second-project', role: 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: 'Projects/example', access: { read: true } },
+      { sourceId: 'nested', role: 'shared', vaultRef: 'knowledge', repositoryRef: 'wiki', root: 'Projects/example/restricted', access: { read: false } },
       { sourceId: 'escape', role: 'shared', vaultRef: 'knowledge', repositoryRef: 'wiki', root: '../outside', access: { read: true } },
     ], [
       { root: 'Projects/example', sourceId: 'project', scope: 'project' },
@@ -110,6 +112,7 @@ describe('Obsidian Wiki Source bindings', () => {
     const result = resolveBindings(testEnvironment(input));
     expect(result.errors.join(' ')).toMatch(/duplicate sourceId/);
     expect(result.errors.join(' ')).toMatch(/at most one binding may have role/);
+    expect(result.errors.join(' ')).toMatch(/overlapping root for vault/);
     expect(result.errors.join(' ')).toMatch(/binding root must name a directory/);
   });
 
@@ -181,6 +184,10 @@ describe('Obsidian Wiki Source bindings', () => {
     writeFileSync(missingVault.obsidianCli, '#!/usr/bin/env sh\nprintf "Different Vault\\n"\n', 'utf8');
     chmodSync(missingVault.obsidianCli, 0o755);
     expect(resolveBindings(testEnvironment(missingVault)).errors.join(' ')).toMatch(/Vault selector is not available/);
+
+    const locked = fixture([validBinding], [{ root: 'Projects/example', sourceId: 'project', scope: 'project' }]);
+    writeFileSync(path.join(locked.vaultRoot, '.grill-adapter-wiki.publish.lock'), 'active\n', 'utf8');
+    expect(resolveBindings(testEnvironment(locked)).errors.join(' ')).toMatch(/active Obsidian Wiki publish lock/);
   });
 
   it('lists only readable bound Sources and never accepts a caller supplied Vault path', () => {

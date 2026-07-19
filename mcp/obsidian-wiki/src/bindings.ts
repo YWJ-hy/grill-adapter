@@ -258,6 +258,9 @@ function validateRepository(repository: Repository): RepositoryHealth {
   if (currentBranch !== repository.baseBranch) {
     throw new Error(`repository must be on baseBranch ${repository.baseBranch}, found ${currentBranch || 'detached HEAD'}`);
   }
+  if (existsSync(path.join(worktreeRoot, '.grill-adapter-wiki.publish.lock'))) {
+    throw new Error('repository has an active Obsidian Wiki publish lock');
+  }
 
   const operationMarkers = ['MERGE_HEAD', 'REBASE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'BISECT_LOG'];
   for (const marker of operationMarkers) {
@@ -267,6 +270,20 @@ function validateRepository(repository: Repository): RepositoryHealth {
 
   if (commandOutput('git', ['-C', worktreeRoot, 'status', '--porcelain=v1', '--untracked-files=all'])) {
     throw new Error('repository worktree must be clean');
+  }
+  if (repository.syncBeforeResearch !== false) {
+    try {
+      const remoteBase = `${repository.remote}/${repository.baseBranch}`;
+      commandOutput('git', ['-C', worktreeRoot, 'fetch', '--quiet', repository.remote, repository.baseBranch]);
+      commandOutput('git', ['-C', worktreeRoot, 'merge', '--ff-only', remoteBase]);
+      const localRevision = commandOutput('git', ['-C', worktreeRoot, 'rev-parse', 'HEAD']);
+      const remoteRevision = commandOutput('git', ['-C', worktreeRoot, 'rev-parse', remoteBase]);
+      if (localRevision !== remoteRevision) throw new Error(`local ${repository.baseBranch} is not current with ${remoteBase}`);
+    } catch (error) {
+      if (!repository.allowStaleRead) {
+        throw new Error(`repository cannot prove a fresh baseBranch: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
   }
 
   return {
@@ -308,6 +325,11 @@ export function resolveBindings(env: NodeJS.ProcessEnv = process.env): BindingRe
       const root = normalizeRoot(candidate.root);
       const rootIdentity = `${candidate.vaultRef}\n${root}`;
       if (roots.has(rootIdentity)) throw new Error(`duplicate root for vault ${candidate.vaultRef}: ${root}`);
+      const overlappingRoot = [...roots].find((identity) => {
+        const [vaultRef, existingRoot] = identity.split('\n', 2);
+        return vaultRef === candidate.vaultRef && (root.startsWith(`${existingRoot}/`) || existingRoot.startsWith(`${root}/`));
+      });
+      if (overlappingRoot) throw new Error(`overlapping root for vault ${candidate.vaultRef}: ${root}`);
       roots.add(rootIdentity);
       const vault = registry.vaults[candidate.vaultRef];
       if (!vault) throw new Error(`unresolved vaultRef: ${candidate.vaultRef}`);
