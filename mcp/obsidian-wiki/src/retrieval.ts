@@ -48,10 +48,9 @@ function retrieved(binding: ResolvedBinding, notePath: string, note: AtomicNote)
   };
 }
 
-export function readBoundNote(notePath: string, bindings: ResolvedBinding[], env: NodeJS.ProcessEnv, requireActiveAndVisible = true): RetrievedNote {
+function readBoundNoteFromBinding(notePath: string, binding: ResolvedBinding, env: NodeJS.ProcessEnv, requireActiveAndVisible = true): RetrievedNote {
   const normalizedPath = normalizeVaultPath(notePath);
-  const binding = bindingForPath(normalizedPath, bindings);
-  if (!binding || binding.effectiveReadPolicy !== 'allow') {
+  if (binding.effectiveReadPolicy !== 'allow') {
     throw new Error(`Obsidian Note is not within a readable bound Source: ${normalizedPath}`);
   }
   assertPathWithinBinding(normalizedPath, binding);
@@ -65,10 +64,18 @@ export function readBoundNote(notePath: string, bindings: ResolvedBinding[], env
   return note;
 }
 
-export function readBoundNotes(notePaths: string[], bindings: ResolvedBinding[], env: NodeJS.ProcessEnv): RetrievedNote[] {
-  const requestedPaths = [...new Set(notePaths.map(normalizeVaultPath))];
-  const initial = requestedPaths.map((notePath) => readBoundNote(notePath, bindings, env));
-  const reread = requestedPaths.map((notePath) => readBoundNote(notePath, bindings, env));
+export function readBoundNote(notePath: string, bindings: ResolvedBinding[], env: NodeJS.ProcessEnv, requireActiveAndVisible = true): RetrievedNote {
+  const normalizedPath = normalizeVaultPath(notePath);
+  const binding = bindingForPath(normalizedPath, bindings);
+  if (!binding) throw new Error(`Obsidian Note is not within a readable bound Source: ${normalizedPath}`);
+  return readBoundNoteFromBinding(normalizedPath, binding, env, requireActiveAndVisible);
+}
+
+type BoundPath = { notePath: string; binding: ResolvedBinding };
+
+function stableBatchRead(notePaths: BoundPath[], env: NodeJS.ProcessEnv): RetrievedNote[] {
+  const initial = notePaths.map(({ notePath, binding }) => readBoundNoteFromBinding(notePath, binding, env));
+  const reread = notePaths.map(({ notePath, binding }) => readBoundNoteFromBinding(notePath, binding, env));
   const seenIds = new Set<string>();
   for (let index = 0; index < initial.length; index += 1) {
     const first = initial[index];
@@ -82,6 +89,27 @@ export function readBoundNotes(notePaths: string[], bindings: ResolvedBinding[],
   return initial;
 }
 
+export function readBoundNotes(notePaths: string[], bindings: ResolvedBinding[], env: NodeJS.ProcessEnv): RetrievedNote[] {
+  const uniquePaths = [...new Set(notePaths.map(normalizeVaultPath))];
+  return stableBatchRead(uniquePaths.map((notePath) => {
+    const binding = bindingForPath(notePath, bindings);
+    if (!binding) throw new Error(`Obsidian Note is not within a readable bound Source: ${notePath}`);
+    return { notePath, binding };
+  }), env);
+}
+
+export function readBoundNotesByWikiIds(wikiIds: string[], bindings: ResolvedBinding[], env: NodeJS.ProcessEnv): RetrievedNote[] {
+  const uniqueIds = [...new Set(wikiIds)];
+  if (uniqueIds.length !== wikiIds.length) throw new Error('Duplicate wiki_id requested for stable batch read');
+  const resolved = uniqueIds.map((wikiId) => {
+    const matches = searchBoundNotes(`[wiki_id:${wikiId}]`, bindings, env).filter((note) => note.wikiId === wikiId);
+    if (matches.length !== 1) throw new Error(`wiki_id ${wikiId} resolved ${matches.length} readable active Notes`);
+    return { notePath: matches[0].path, binding: bindings.find((binding) => binding.bindingDigest === matches[0].bindingDigest) };
+  });
+  if (resolved.some(({ binding }) => !binding)) throw new Error('Obsidian Note resolved without its bound Source');
+  return stableBatchRead(resolved as BoundPath[], env);
+}
+
 export function searchBoundNotes(query: string, bindings: ResolvedBinding[], env: NodeJS.ProcessEnv): RetrievedNote[] {
   const readableBindings = bindings.filter((binding) => binding.effectiveReadPolicy === 'allow');
   const notes: RetrievedNote[] = [];
@@ -91,8 +119,9 @@ export function searchBoundNotes(query: string, bindings: ResolvedBinding[], env
     const scopedQuery = `${query} path:"${binding.root}"`;
     for (const entry of searchNotes(binding.vaultSelector, scopedQuery, env)) {
       const notePath = normalizeVaultPath(entry.path);
-      if (seenPaths.has(notePath)) continue;
-      seenPaths.add(notePath);
+      const pathKey = `${binding.bindingDigest}\n${notePath}`;
+      if (seenPaths.has(pathKey)) continue;
+      seenPaths.add(pathKey);
       if (!noteIsWithinBinding(notePath, binding)) continue;
       if (notePath === `${binding.root}/_meta` || notePath.startsWith(`${binding.root}/_meta/`)) continue;
       const note = readBoundNote(notePath, [binding], env, false);

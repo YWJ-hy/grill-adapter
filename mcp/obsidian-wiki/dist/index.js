@@ -22419,10 +22419,9 @@ function retrieved(binding, notePath, note) {
     bindingDigest: binding.bindingDigest
   };
 }
-function readBoundNote(notePath, bindings, env, requireActiveAndVisible = true) {
+function readBoundNoteFromBinding(notePath, binding, env, requireActiveAndVisible = true) {
   const normalizedPath = normalizeVaultPath(notePath);
-  const binding = bindingForPath(normalizedPath, bindings);
-  if (!binding || binding.effectiveReadPolicy !== "allow") {
+  if (binding.effectiveReadPolicy !== "allow") {
     throw new Error(`Obsidian Note is not within a readable bound Source: ${normalizedPath}`);
   }
   assertPathWithinBinding(normalizedPath, binding);
@@ -22435,10 +22434,15 @@ function readBoundNote(notePath, bindings, env, requireActiveAndVisible = true) 
   }
   return note;
 }
-function readBoundNotes(notePaths, bindings, env) {
-  const requestedPaths = [...new Set(notePaths.map(normalizeVaultPath))];
-  const initial = requestedPaths.map((notePath) => readBoundNote(notePath, bindings, env));
-  const reread = requestedPaths.map((notePath) => readBoundNote(notePath, bindings, env));
+function readBoundNote(notePath, bindings, env, requireActiveAndVisible = true) {
+  const normalizedPath = normalizeVaultPath(notePath);
+  const binding = bindingForPath(normalizedPath, bindings);
+  if (!binding) throw new Error(`Obsidian Note is not within a readable bound Source: ${normalizedPath}`);
+  return readBoundNoteFromBinding(normalizedPath, binding, env, requireActiveAndVisible);
+}
+function stableBatchRead(notePaths, env) {
+  const initial = notePaths.map(({ notePath, binding }) => readBoundNoteFromBinding(notePath, binding, env));
+  const reread = notePaths.map(({ notePath, binding }) => readBoundNoteFromBinding(notePath, binding, env));
   const seenIds = /* @__PURE__ */ new Set();
   for (let index = 0; index < initial.length; index += 1) {
     const first = initial[index];
@@ -22451,6 +22455,25 @@ function readBoundNotes(notePaths, bindings, env) {
   }
   return initial;
 }
+function readBoundNotes(notePaths, bindings, env) {
+  const uniquePaths = [...new Set(notePaths.map(normalizeVaultPath))];
+  return stableBatchRead(uniquePaths.map((notePath) => {
+    const binding = bindingForPath(notePath, bindings);
+    if (!binding) throw new Error(`Obsidian Note is not within a readable bound Source: ${notePath}`);
+    return { notePath, binding };
+  }), env);
+}
+function readBoundNotesByWikiIds(wikiIds, bindings, env) {
+  const uniqueIds = [...new Set(wikiIds)];
+  if (uniqueIds.length !== wikiIds.length) throw new Error("Duplicate wiki_id requested for stable batch read");
+  const resolved = uniqueIds.map((wikiId) => {
+    const matches = searchBoundNotes(`[wiki_id:${wikiId}]`, bindings, env).filter((note) => note.wikiId === wikiId);
+    if (matches.length !== 1) throw new Error(`wiki_id ${wikiId} resolved ${matches.length} readable active Notes`);
+    return { notePath: matches[0].path, binding: bindings.find((binding) => binding.bindingDigest === matches[0].bindingDigest) };
+  });
+  if (resolved.some(({ binding }) => !binding)) throw new Error("Obsidian Note resolved without its bound Source");
+  return stableBatchRead(resolved, env);
+}
 function searchBoundNotes(query, bindings, env) {
   const readableBindings = bindings.filter((binding) => binding.effectiveReadPolicy === "allow");
   const notes = [];
@@ -22460,8 +22483,10 @@ function searchBoundNotes(query, bindings, env) {
     const scopedQuery = `${query} path:"${binding.root}"`;
     for (const entry of searchNotes(binding.vaultSelector, scopedQuery, env)) {
       const notePath = normalizeVaultPath(entry.path);
-      if (seenPaths.has(notePath)) continue;
-      seenPaths.add(notePath);
+      const pathKey = `${binding.bindingDigest}
+${notePath}`;
+      if (seenPaths.has(pathKey)) continue;
+      seenPaths.add(pathKey);
       if (!noteIsWithinBinding(notePath, binding)) continue;
       if (notePath === `${binding.root}/_meta` || notePath.startsWith(`${binding.root}/_meta/`)) continue;
       const note = readBoundNote(notePath, [binding], env, false);
@@ -22510,6 +22535,31 @@ function readNotesTool(input, env = process.env) {
     throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
   }
   const notes = readBoundNotes(input.paths, resolution.bindings, env);
+  return {
+    notes: notes.map((note) => ({
+      sourceId: note.sourceId,
+      role: note.role,
+      path: note.path,
+      wikiId: note.wikiId,
+      type: note.type,
+      status: note.status,
+      agentVisible: note.agentVisible,
+      summary: note.summary,
+      constraintStrength: note.constraintStrength,
+      skillRoles: note.skillRoles,
+      content: note.content,
+      contentHash: note.contentHash,
+      bindingDigest: note.bindingDigest
+    })),
+    snapshotHash: snapshotHash(notes)
+  };
+}
+function readNotesByWikiIdsTool(input, env = process.env) {
+  const resolution = resolveBindings(env);
+  if (resolution.errors.length > 0) {
+    throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
+  }
+  const notes = readBoundNotesByWikiIds(input.wikiIds, resolution.bindings, env);
   return {
     notes: notes.map((note) => ({
       sourceId: note.sourceId,
@@ -22612,6 +22662,11 @@ function createServer(env = process.env) {
     inputSchema: object({ paths: array(string2().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input) => toResult(readNotesTool(input, env)));
+  server.registerTool("obsidian_wiki_read_notes_by_wiki_ids", {
+    description: "Batch read atomic Notes by stable wiki_id, resolving exactly one readable active Note per ID.",
+    inputSchema: object({ wikiIds: array(string2().min(1)).min(1) }),
+    annotations: { readOnlyHint: true, idempotentHint: true }
+  }, async (input) => toResult(readNotesByWikiIdsTool(input, env)));
   server.registerTool("obsidian_wiki_graph_neighbors", {
     description: "Return de-duplicated direct typed neighbors for bound atomic Note wiki IDs without recursive traversal.",
     inputSchema: object({ wikiIds: array(string2().min(1)).min(1) }),
@@ -22639,20 +22694,20 @@ async function main() {
 `);
     return;
   }
-  if (subcommand === "read-notes" || subcommand === "graph-neighbors") {
+  if (subcommand === "read-notes" || subcommand === "read-notes-by-wiki-ids" || subcommand === "graph-neighbors") {
     const request = await readJsonRequest();
     const field = subcommand === "read-notes" ? "paths" : "wikiIds";
     const values = request[field];
     if (!Array.isArray(values) || values.length === 0 || values.some((value) => typeof value !== "string" || !value)) {
       throw new Error(`${field} must be a non-empty array of non-empty strings`);
     }
-    const result = subcommand === "read-notes" ? readNotesTool({ paths: values }) : graphNeighborsTool({ wikiIds: values });
+    const result = subcommand === "read-notes" ? readNotesTool({ paths: values }) : subcommand === "read-notes-by-wiki-ids" ? readNotesByWikiIdsTool({ wikiIds: values }) : graphNeighborsTool({ wikiIds: values });
     process.stdout.write(`${JSON.stringify(result)}
 `);
     return;
   }
   if (subcommand !== void 0) {
-    throw new Error("Unknown subcommand. Run with no arguments for MCP stdio, or status, read-notes, or graph-neighbors for JSON CLI.");
+    throw new Error("Unknown subcommand. Run with no arguments for MCP stdio, or status, read-notes, read-notes-by-wiki-ids, or graph-neighbors for JSON CLI.");
   }
   const server = createServer();
   await server.connect(new StdioServerTransport());

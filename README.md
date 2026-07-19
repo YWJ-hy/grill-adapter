@@ -16,7 +16,7 @@ A code assistant forgets your project's durable rules between sessions and acros
 |---|---|---|
 | **Disclose** | `/grill-adapter:wiki-research` skill → `wiki-researcher` selects relevant bound Obsidian atomic Notes and Skill Cards | `/grill-with-docs` |
 | **Carry** | schema-v6 `.wiki-context.json` records bound Source digests and metadata-only Note/Card identity, routing, and ticket fingerprints | `/to-tickets` |
-| **Bind** | Existing schema-v5 sidecars use `/grill-adapter:wiki-materialize <ticket>` to re-read hard sections (+ bounded 1-hop `depends-on` closure); schema-v6 stable-ID rereads arrive in the next Bind slice | `/implement` |
+| **Bind** | `/grill-adapter:wiki-materialize <ticket>` rereads schema-v5 hard sections or schema-v6 routed hard Obsidian Notes, required Skill Cards, and a bounded 1-hop `depends_on` closure; all drift gates fail closed | `/implement` |
 | **Capture** | `/grill-adapter:update-wiki` writes durable knowledge back (its own optional pre-step converts grill's `CONTEXT.md`/ADR increment into candidates) | after `/code-review` |
 
 Plus **Lanhu intake** (`/grill-adapter:lanhu-requirements`), **source-of-truth** verify (`/grill-adapter:source-truth-check`) + lint hook, and **break-loop** debugging retrospective (`/grill-adapter:break-loop`).
@@ -30,7 +30,7 @@ claude plugin marketplace add YWJ-hy/grill-adapter
 claude plugin install grill-adapter@grill-adapter --scope project
 ```
 
-Claude Code discovers the whole component inventory from the plugin layout — **12 skills, 3 agents, 4 hooks, and 2 MCP servers**. The legacy `shared-wiki` server and the new `obsidian-wiki` Source-binding server are registered together; nothing is copied into `~/.claude` or merged into your project's `.claude/settings.json`. MCP servers start automatically; no manual registration.
+Claude Code discovers the whole component inventory from the plugin layout — **12 skills, 3 agents, 3 hooks, and 2 MCP servers**. The legacy `shared-wiki` server and the new `obsidian-wiki` Source-binding server are registered together; nothing is copied into `~/.claude` or merged into your project's `.claude/settings.json`. MCP servers start automatically; no manual registration.
 
 > **Scope is shared.** Skills, agents, hooks, and bundled MCP servers all take the plugin's scope — a plugin-bundled MCP cannot be scoped separately. Use `--scope project` for project-scoped Wiki access, `--scope user` to share it across projects.
 

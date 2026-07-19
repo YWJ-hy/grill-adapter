@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { searchTool } from '../src/tools/search.js';
-import { readNotesTool } from '../src/tools/read.js';
+import { readNotesByWikiIdsTool, readNotesTool } from '../src/tools/read.js';
 import { graphNeighborsTool } from '../src/tools/graph.js';
 
 const createdDirectories: string[] = [];
@@ -173,6 +173,29 @@ describe('Obsidian Wiki retrieval', () => {
       snapshotHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     });
     expect(readNotesTool({ paths: ['Projects/example/Visible.md'] }, env).snapshotHash).toBe(result.snapshotHash);
+  });
+
+  it('resolves batch reads by stable wiki ID through the built JSON CLI seam', () => {
+    const { env } = fixture();
+    const bundle = path.resolve(import.meta.dirname, '..', 'dist', 'index.js');
+
+    const output = execFileSync('node', [bundle, 'read-notes-by-wiki-ids'], {
+      encoding: 'utf8',
+      input: JSON.stringify({ wikiIds: ['project/example/visible'] }),
+      env: { ...process.env, ...env },
+    });
+
+    expect(JSON.parse(output)).toMatchObject({
+      notes: [expect.objectContaining({ wikiId: 'project/example/visible', path: 'Projects/example/Visible.md' })],
+      snapshotHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+    });
+  });
+
+  it('fails closed when a stable wiki ID is missing or duplicated', () => {
+    const { env } = fixture();
+
+    expect(() => readNotesByWikiIdsTool({ wikiIds: ['project/example/missing'] }, env)).toThrow(/resolved 0 readable active Notes/);
+    expect(() => readNotesByWikiIdsTool({ wikiIds: ['project/example/visible', 'project/example/visible'] }, env)).toThrow(/Duplicate wiki_id requested/);
   });
 
   it('fails closed for requests outside bound Sources', () => {

@@ -2,7 +2,7 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createServer } from './server.js';
 import { statusTool } from './tools/status.js';
-import { readNotesTool } from './tools/read.js';
+import { readNotesByWikiIdsTool, readNotesTool } from './tools/read.js';
 import { graphNeighborsTool } from './tools/graph.js';
 
 async function readJsonRequest(): Promise<Record<string, unknown>> {
@@ -23,7 +23,7 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify(statusTool())}\n`);
     return;
   }
-  if (subcommand === 'read-notes' || subcommand === 'graph-neighbors') {
+  if (subcommand === 'read-notes' || subcommand === 'read-notes-by-wiki-ids' || subcommand === 'graph-neighbors') {
     const request = await readJsonRequest();
     const field = subcommand === 'read-notes' ? 'paths' : 'wikiIds';
     const values = request[field];
@@ -32,12 +32,14 @@ async function main(): Promise<void> {
     }
     const result = subcommand === 'read-notes'
       ? readNotesTool({ paths: values })
-      : graphNeighborsTool({ wikiIds: values });
+      : subcommand === 'read-notes-by-wiki-ids'
+        ? readNotesByWikiIdsTool({ wikiIds: values })
+        : graphNeighborsTool({ wikiIds: values });
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
   }
   if (subcommand !== undefined) {
-    throw new Error('Unknown subcommand. Run with no arguments for MCP stdio, or status, read-notes, or graph-neighbors for JSON CLI.');
+    throw new Error('Unknown subcommand. Run with no arguments for MCP stdio, or status, read-notes, read-notes-by-wiki-ids, or graph-neighbors for JSON CLI.');
   }
   const server = createServer();
   await server.connect(new StdioServerTransport());

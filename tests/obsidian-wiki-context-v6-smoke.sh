@@ -158,20 +158,19 @@ if ! grep -q 'does not match wiki context featureSlug' /tmp/obsidian-v6-feature-
   exit 1
 fi
 
+# Schema-v6 execution rendering is metadata-only; authoritative Note bodies are emitted only by
+# wiki-materialize through the bound Obsidian MCP. A missing configured runtime must fail closed.
 if python3 "$TARGET_INPUT/scripts/wiki_materialize_task.py" "$CONTEXT" --task-id T1 --strict --execution-ready >/tmp/obsidian-v6-materialize.out 2>&1; then
-  printf 'Expected legacy materializer to reject schemaVersion 6 before Issue #5\n' >&2
+  printf 'Expected unconfigured Obsidian runtime materialization to fail closed\n' >&2
   exit 1
 fi
-if ! grep -q 'schemaVersion 6 Obsidian Note materialization is not available yet' /tmp/obsidian-v6-materialize.out; then
+if ! grep -q 'Obsidian Wiki MCP CLI failed\|Obsidian Wiki MCP CLI could not be resolved' /tmp/obsidian-v6-materialize.out; then
   cat /tmp/obsidian-v6-materialize.out >&2
   exit 1
 fi
 
-if python3 "$SCRIPT" "$CONTEXT" --task-id T1 --role implementer --strict --execution-ready >/tmp/obsidian-v6-render.out 2>&1; then
-  printf 'Expected execution rendering to reject schemaVersion 6 before Issue #5\n' >&2
-  exit 1
-fi
-if ! grep -q 'schemaVersion 6 Obsidian Note execution rendering is not available yet' /tmp/obsidian-v6-render.out; then
+python3 "$SCRIPT" "$CONTEXT" --task-id T1 --role implementer --strict --execution-ready >/tmp/obsidian-v6-render.out
+if ! grep -q 'Runtime writes must preserve' /tmp/obsidian-v6-render.out; then
   cat /tmp/obsidian-v6-render.out >&2
   exit 1
 fi

@@ -1308,11 +1308,6 @@ def main() -> int:
                 print(f"Warning: {caveat}", file=sys.stderr)
             print("wiki context JSON is valid")
             return 0
-        if data.get("schemaVersion") == SCHEMA_VERSION and (args.reread_list or args.execution_ready):
-            raise ValidationError(
-                "schemaVersion 6 Obsidian Note execution rendering is not available yet; "
-                "Issue #5 must provide authoritative stable-ID rereads before this sidecar can be bound."
-            )
         if args.reread_list:
             print(render_reread_list(data, args.role, args.task_id))
             return 0

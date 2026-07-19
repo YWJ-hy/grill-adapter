@@ -3,7 +3,7 @@ import * as z from 'zod/v4';
 import { statusTool } from './tools/status.js';
 import { sourcesTool } from './tools/sources.js';
 import { searchTool } from './tools/search.js';
-import { readNoteTool, readNotesTool } from './tools/read.js';
+import { readNoteTool, readNotesByWikiIdsTool, readNotesTool } from './tools/read.js';
 import { graphNeighborsTool } from './tools/graph.js';
 
 function toResult(value: unknown) {
@@ -40,6 +40,11 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     inputSchema: z.object({ paths: z.array(z.string().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input) => toResult(readNotesTool(input, env)));
+  server.registerTool('obsidian_wiki_read_notes_by_wiki_ids', {
+    description: 'Batch read atomic Notes by stable wiki_id, resolving exactly one readable active Note per ID.',
+    inputSchema: z.object({ wikiIds: z.array(z.string().min(1)).min(1) }),
+    annotations: { readOnlyHint: true, idempotentHint: true },
+  }, async (input) => toResult(readNotesByWikiIdsTool(input, env)));
   server.registerTool('obsidian_wiki_graph_neighbors', {
     description: 'Return de-duplicated direct typed neighbors for bound atomic Note wiki IDs without recursive traversal.',
     inputSchema: z.object({ wikiIds: z.array(z.string().min(1)).min(1) }),

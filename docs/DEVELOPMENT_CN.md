@@ -56,7 +56,7 @@ grill-adapter **本身是一个 Claude Code plugin**：skills / agents / `hooks/
 开发期不必安装即可加载 plugin 并核对组件清单：
 
 ```bash
-claude --plugin-dir "$PWD" plugin details grill-adapter   # 应报 12 skills / 3 agents / 4 hooks / 2 MCP servers
+claude --plugin-dir "$PWD" plugin details grill-adapter   # 应报 12 skills / 3 agents / 3 hooks / 2 MCP servers
 ```
 
 在 grill-adapter 源码根目录运行：
@@ -97,7 +97,7 @@ bash tests/host-conventions-smoke.sh "$PWD"
   3. **占位符残留检查**：机械 `grep` `__SUPERPOWER_ADAPTER` 残留，以及 `skills/`、`agents/`、`role-prd/`、`host-adapters/` 里已作废的 `__GRILL_ADAPTER_ROOT__`。
   4. **所有 MCP typecheck + build + test**：每个 `mcp/*` 包运行 `npm install && npm run typecheck && npm run build && npm test`（无 npm 则 SKIP）。`build` 是 esbuild 打包、**不做类型检查**，所以 `typecheck` 必须单独跑。
   5. **MCP bundle 已提交且与 src 一致**：每个插件注册 MCP 的 `dist/index.js` 必须存在且在步骤 4 重新构建后无 git 漂移。
-  6. **plugin 组件清单**：`claude --plugin-dir <root> plugin details grill-adapter` 必须报满 12 skills / 3 agents / 4 hooks / 2 MCP servers（无 `claude` CLI 则 SKIP）。
+  6. **plugin 组件清单**：`claude --plugin-dir <root> plugin details grill-adapter` 必须报满 12 skills / 3 agents / 3 hooks / 2 MCP servers（无 `claude` CLI 则 SKIP）。
   7. **沙盒项目接线 + verify**：对临时项目 `install --host grill` 后 `verify`。
   8. **全套 smoke**：跑 `self-test.sh`。
   9. **doctor**：对传入项目只读诊断。
@@ -109,7 +109,7 @@ bash tests/host-conventions-smoke.sh "$PWD"
 ## 5. 改不同层的验证要求
 
 - **改 skill**（`skills/*/SKILL.md`）→ 加载 plugin 后，在 Claude Code 里**从该 skill 的入口**真正走一遍用户路径验证；不要只跑它背后的 Python。
-- **改 hook**（`hooks/*.sh`、`hooks/hooks.json`）→ 跑 `tests/hooks-smoke.sh`，并用 `claude --plugin-dir "$PWD" plugin details grill-adapter` 确认 4 个 hook 仍被发现。hook 随 plugin 启用**自动注册**，不再往任何项目的 `.claude/settings.json` 里并片段。
+- **改 hook**（`hooks/*.sh`、`hooks/hooks.json`）→ 跑 `tests/hooks-smoke.sh`，并用 `claude --plugin-dir "$PWD" plugin details grill-adapter` 确认 3 个 hook 仍被发现。hook 随 plugin 启用**自动注册**，不再往任何项目的 `.claude/settings.json` 里并片段。
 - **改接线逻辑**（`lib/install.py`、`manifest.json`）→ 跑 `tests/install-project-wiring-smoke.sh`，并 `./manage.sh install <project>` + `./manage.sh verify <project>` 走一遍。
 - **改引擎脚本**（`scripts/wiki_*.py`、`scripts/source_truth_*.py`）→ 跑相关 `tests/wiki-*.sh` / `tests/source-truth-*.sh` smoke，再 `./manage.sh release-check <project>` 兜底。
 - **改 host 约定块**（`host-adapters/grill/CLAUDE.md`、`host-adapters/plain/CLAUDE.md`）→ 跑 `tests/host-conventions-smoke.sh`，并**手动把约定块粘进目标项目的 `CLAUDE.md`** 在真实宿主下验证触点措辞可用。约定块写进的是**目标项目**的 `CLAUDE.md`（不是 plugin 内容），所以块里**不许出现任何安装路径**：`${CLAUDE_PLUGIN_ROOT}` 在那儿不会被替换，写死绝对路径又会随 plugin 版本目录被回收而失效。块只**点名 skill**，且 grill-adapter 自己的 skill 一律带命名空间（`/grill-adapter:wiki-research` 等）；grill 自带的 `/grill-with-docs`、`/to-spec`、`/implement` 等**不加**命名空间。

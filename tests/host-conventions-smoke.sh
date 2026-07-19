@@ -74,7 +74,7 @@ python3 - "$HOOKS_JSON" <<'PY' || exit 1
 import json, sys
 h = json.load(open(sys.argv[1], encoding='utf-8'))["hooks"]
 def cmds(ev): return [x["command"] for g in h.get(ev, []) for x in g["hooks"]]
-assert any("wiki-reread.sh" in c for c in cmds("UserPromptSubmit")), "wiki-reread not on UserPromptSubmit"
+assert not cmds("UserPromptSubmit"), "UserPromptSubmit must not reread wiki constraints"
 assert any("wiki-reread.sh" in c for c in cmds("SessionStart")), "wiki-reread not on SessionStart"
 assert any("source-truth-lint.sh" in c for c in cmds("PostToolUse")), "source-truth-lint not on PostToolUse"
 assert any("wiki-capture-suggest.sh" in c for c in cmds("Stop")), "wiki-capture-suggest not on Stop"

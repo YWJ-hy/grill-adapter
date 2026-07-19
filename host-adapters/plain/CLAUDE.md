@@ -27,7 +27,7 @@ The sidecar is the record of which wiki constrains this feature. Nothing under `
 
 ### Bind — before implementing each task
 
-Existing schema-v5 sidecars use `/grill-adapter:wiki-materialize <task-id>` to reread hard local + `github_mcp` sections with a bounded 1-hop `depends-on` closure; run `--fingerprint-preflight` once before the first task. Schema-v6 Obsidian sidecars currently carry reviewed metadata only, and their authoritative stable-ID reread path lands in the next Bind slice, so do not treat summaries as executable full-text constraints. The `source-truth-lint` hook lints real changed files; resolve any `block`/`ask` before completing the task.
+Run `/grill-adapter:wiki-materialize <task-id>` before every implementation or review task and `--fingerprint-preflight` once before the first task. Schema-v5 rereads hard local + `github_mcp` sections; schema-v6 rereads only the routed hard Obsidian Notes, reviewer/implementer-required Skill Cards, and their bounded de-duplicated 1-hop `depends_on` closure. Schema-v6 metadata summaries are never executable constraints. The command fails closed on binding, Note identity/content, or Skill Card role-policy drift; repair Carry rather than bypassing it. The `source-truth-lint` hook lints real changed files; resolve any `block`/`ask` before completing the task.
 
 While implementing, append durable decisions/gotchas as JSONL lines to `.adapter/context/<feature-slug>.wiki-candidates.jsonl` and keep going.
 
