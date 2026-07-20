@@ -4,7 +4,9 @@ type BridgeRoute = 'validate' | 'apply';
 
 export type BridgeChangeRequest = {
   vaultSelector: string;
+  projectDir: string;
   sourceId: string;
+  vaultRef: string;
   sourceRoot: string;
   operation: 'create' | 'update';
   path: string;

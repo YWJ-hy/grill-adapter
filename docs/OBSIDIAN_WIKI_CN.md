@@ -121,14 +121,17 @@ export OBSIDIAN_WIKI_BRIDGE_TOKEN='<machine-local-random-token>'
 export OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT='/Users/me/Knowledge/Engineering-Knowledge'
 export OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR='Engineering-Knowledge'
 export OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS='["Projects/grill-adapter","Shared/Engineering"]'
+export OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS='["/Users/me/dev/grill-adapter"]'
 node mcp/obsidian-wiki/dist/index.js serve-write-bridge
 ```
+
+`PROJECT_DIRS` 是 bridge 启动时的项目白名单。每个 proposal/apply 都携带 MCP 已解析的当前项目根；bridge 只接受白名单成员，并在**每次请求**重新读取该项目 `.shared-adapter/settings.json` 与 Source manifest，重新计算 binding + manifest 的 effective policy 和 neutrality，运行中收紧治理无需重启。一个 bridge 可列出多个明确项目，但请求不能提供白名单之外的任意项目路径。
 
 `update-wiki` 的固定写路径是：
 
 1. `obsidian_wiki_propose_note_change` 接受已绑定 `sourceId`、Vault 相对 `.md` 路径、完整 atomic Note 内容、`create|update` 和 expected hash（create 为 `null`），完成 schema、stable ID、typed links、root、effective policy 与 Shared neutrality 校验，返回 structured diff，但不写。
 2. agent 向用户展示 diff。effective policy 为 `confirm` 时必须获得明确授权；`deny` 永远不能被 `authorized: true` 绕过。
-3. `obsidian_wiki_apply_note_change` 把同一输入交给 bridge。bridge 再独立校验 Bearer token、Source manifest policy、identity/typed links、允许 root、`_meta` 禁写与 Shared neutrality，并在写入瞬间重查 expected hash；冲突返回 409，不覆盖并发修改。
+3. `obsidian_wiki_apply_note_change` 把同一输入交给 bridge。bridge 再独立校验 Bearer token、项目 binding + Source manifest effective policy、identity/typed links、允许 root、`_meta` 禁写与 Shared neutrality，并以每 Note 独占写锁串行 bridge 请求，在临时文件准备完毕后紧邻替换动作重查 expected hash；create 使用 no-replace 原子 link。冲突返回 409，不覆盖已检测到的并发修改。
 4. bridge 在目标目录内写临时文件并 atomic rename，随后返回 `wikiId`、path、content hash。成功只表示工作树中的 staged knowledge state；合并、base 同步与正式 runtime 可见性由后续 Git PR publishing 流程负责。
 
 JSON CLI 同样暴露 `propose-note-change` / `apply-note-change`，请求从 stdin 读取；它们仍从当前项目 binding 解析 Source，不能接受任意 Vault/root 覆盖。

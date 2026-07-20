@@ -14,12 +14,12 @@ export type NoteChangeInput = {
   authorized?: boolean;
 };
 
-function healthyBindings(env: NodeJS.ProcessEnv): ResolvedBinding[] {
-  const resolution = resolveBindings(env);
+function healthyBindings(env: NodeJS.ProcessEnv): ReturnType<typeof resolveBindings> {
+  const resolution = resolveBindings(env, process.cwd(), { allowStagedWikiChanges: true });
   if (resolution.errors.length > 0) {
     throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join('; ')}`);
   }
-  return resolution.bindings;
+  return resolution;
 }
 
 function selectedBinding(input: NoteChangeInput, bindings: ResolvedBinding[]): ResolvedBinding {
@@ -94,7 +94,8 @@ type PreparedChange = {
 };
 
 function prepareChange(input: NoteChangeInput, env: NodeJS.ProcessEnv): PreparedChange {
-  const bindings = healthyBindings(env);
+  const resolution = healthyBindings(env);
+  const bindings = resolution.bindings;
   const binding = selectedBinding(input, bindings);
   const notePath = assertPathWithinBinding(input.path, binding);
   const proposed = parseAtomicNote(input.content, notePath);
@@ -107,7 +108,9 @@ function prepareChange(input: NoteChangeInput, env: NodeJS.ProcessEnv): Prepared
     policy,
     request: {
       vaultSelector: binding.vaultSelector,
+      projectDir: resolution.projectDir,
       sourceId: binding.sourceId,
+      vaultRef: binding.vaultRef,
       sourceRoot: binding.root,
       operation: input.operation,
       path: notePath,
@@ -152,5 +155,13 @@ export async function applyNoteChangeTool(input: NoteChangeInput, env: NodeJS.Pr
   if (prepared.policy === 'confirm' && input.authorized !== true) {
     throw new Error(`Obsidian Wiki Source policy requires explicit authorization for ${input.operation}`);
   }
-  return decorate(await callWriteBridge(prepared.binding, 'apply', prepared.request, env), prepared);
+  const result = decorate(await callWriteBridge(prepared.binding, 'apply', prepared.request, env), prepared);
+  const postWrite = result.postWrite;
+  if (!postWrite
+    || postWrite.wikiId !== prepared.request.expectedWikiId
+    || postWrite.path !== prepared.request.path
+    || postWrite.contentHash !== result.diff.afterHash) {
+    throw new Error('Obsidian Wiki write bridge returned mismatched post-write identity');
+  }
+  return result;
 }

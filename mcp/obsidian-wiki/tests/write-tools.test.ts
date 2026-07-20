@@ -41,7 +41,8 @@ async function fixture(options: { shared?: boolean; update?: string } = {}) {
   writeFileSync(path.join(sourcePath, '_meta', 'wiki-source.md'), manifest(sourceId, options.shared ? 'shared' : 'project', options.update), 'utf8');
   const initial = note(`${sourceId}/existing`, 'Initial body.', `${sourceRoot}/Dependency`);
   writeFileSync(path.join(sourcePath, 'Existing.md'), initial, 'utf8');
-  writeFileSync(path.join(sourcePath, 'Dependency.md'), note(`${sourceId}/dependency`, 'Dependency body.'), 'utf8');
+  const dependency = note(`${sourceId}/dependency`, 'Dependency body.');
+  writeFileSync(path.join(sourcePath, 'Dependency.md'), dependency, 'utf8');
   execFileSync('git', ['init', '--initial-branch=main', vaultRoot]);
   execFileSync('git', ['-C', vaultRoot, 'config', 'user.name', 'Test User']);
   execFileSync('git', ['-C', vaultRoot, 'config', 'user.email', 'test@example.invalid']);
@@ -65,17 +66,17 @@ else if (args.includes('search')) {
 } else process.exit(2);
 `, 'utf8');
   chmodSync(obsidianCli, 0o755);
-  const bridge = await startWriteBridge({ vaultRoot, vaultSelector: 'Knowledge', allowedRoots: [sourceRoot], token: 'bridge-token', port: 0 });
-  bridges.push(bridge);
   writeJson(path.join(projectDir, '.shared-adapter', 'settings.json'), {
     wiki: { provider: 'obsidian', publishing: { mode: 'git-pr' }, obsidian: { bindings: [{ sourceId, role: options.shared ? 'shared' : 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: sourceRoot, access: { read: true, update: options.update ?? 'confirm' } }] } },
   });
+  const bridge = await startWriteBridge({ vaultRoot, vaultSelector: 'Knowledge', allowedRoots: [sourceRoot], projectDirs: [projectDir], token: 'bridge-token', port: 0 });
+  bridges.push(bridge);
   writeJson(registryPath, {
     vaults: { knowledge: { selector: 'Knowledge', bridgeUrl: bridge.url, bridgeTokenEnv: 'TEST_BRIDGE_TOKEN' } },
     repositories: { wiki: { worktreeRoot: vaultRoot, remote: 'origin', expectedRemote: 'github.com/acme/knowledge', baseBranch: 'main', syncBeforeResearch: false } },
   });
   const env = { CLAUDE_PROJECT_DIR: projectDir, OBSIDIAN_WIKI_REGISTRY: registryPath, OBSIDIAN_WIKI_OBSIDIAN_CLI: obsidianCli, FAKE_OBSIDIAN_VAULT_ROOT: vaultRoot, TEST_BRIDGE_TOKEN: 'bridge-token' };
-  return { env, vaultRoot, sourceRoot, sourceId, initial };
+  return { env, vaultRoot, projectDir, sourceRoot, sourceId, initial, dependency };
 }
 
 afterEach(async () => {
@@ -108,6 +109,17 @@ describe('bound Obsidian Note writes', () => {
     const applied = await applyNoteChangeTool(input, env);
     expect(applied.postWrite).toMatchObject({ wikiId: `${sourceId}/new`, path: `${sourceRoot}/Guides/New.md`, contentHash: contentHash(content) });
     expect(readFileSync(path.join(vaultRoot, sourceRoot, 'Guides', 'New.md'), 'utf8')).toBe(content);
+  });
+
+  it('continues proposing and applying bound Notes after earlier bridge writes stage the worktree', async () => {
+    const { env, sourceRoot, sourceId, initial, dependency } = await fixture({ update: 'direct' });
+    const first = note(`${sourceId}/existing`, 'First staged update.', `${sourceRoot}/Dependency`);
+    await applyNoteChangeTool({ sourceId, operation: 'update', path: `${sourceRoot}/Existing.md`, content: first, expectedHash: contentHash(initial) }, env);
+
+    const second = note(`${sourceId}/dependency`, 'Second staged update.');
+    const input = { sourceId, operation: 'update' as const, path: `${sourceRoot}/Dependency.md`, content: second, expectedHash: contentHash(dependency) };
+    await expect(proposeNoteChangeTool(input, env)).resolves.toMatchObject({ diff: { afterHash: contentHash(second) } });
+    await expect(applyNoteChangeTool(input, env)).resolves.toMatchObject({ postWrite: { wikiId: `${sourceId}/dependency` } });
   });
 
   it('fails closed on identity drift, broken typed links, denied policy, and a stale bridge token', async () => {

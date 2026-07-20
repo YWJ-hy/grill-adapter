@@ -4,6 +4,7 @@ import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import * as z from 'zod/v4';
 import { normalizeWritePolicy, stricterPolicy, type WritePolicy } from './policy.js';
+import { isLoopbackHost } from './loopback.js';
 
 const BindingSchema = z.object({
   sourceId: z.string().min(1),
@@ -278,7 +279,28 @@ function normalizeRemoteIdentity(value: string, field: string): string {
   return trimmed.replace(/^git@/, '').replace(/\/+$/, '').replace(/\.git$/, '').toLowerCase();
 }
 
-function validateRepository(repository: Repository): RepositoryHealth {
+function stagedWikiChangesAreAllowed(worktreeRoot: string, roots: string[]): boolean {
+  const tracked = commandOutput('git', ['-C', worktreeRoot, 'diff', 'HEAD', '--name-status', '--'])
+    .split(/\r?\n/).filter(Boolean).map((entry) => {
+      const match = /^([MA])\t(.+)$/.exec(entry);
+      return match ? match[2] : undefined;
+    });
+  const untracked = commandOutput('git', ['-C', worktreeRoot, 'ls-files', '--others', '--exclude-standard'])
+    .split(/\r?\n/).filter(Boolean);
+  const entries = [...tracked, ...untracked];
+  return entries.length > 0 && entries.every((entry) => {
+    if (entry === undefined) return false;
+    const changedPath = entry.replace(/^"|"$/g, '').replaceAll('\\', '/');
+    if (!changedPath.endsWith('.md')) return false;
+    return roots.some((root) => (
+      changedPath.startsWith(`${root}/`)
+      && changedPath !== `${root}/_meta`
+      && !changedPath.startsWith(`${root}/_meta/`)
+    ));
+  });
+}
+
+function validateRepository(repository: Repository, allowedStagedRoots: string[] = []): RepositoryHealth {
   if (!existsSync(repository.worktreeRoot)) {
     throw new Error(`repository worktree not found: ${repository.worktreeRoot}`);
   }
@@ -306,10 +328,12 @@ function validateRepository(repository: Repository): RepositoryHealth {
     if (existsSync(path.resolve(worktreeRoot, markerPath))) throw new Error(`repository has an active Git operation: ${marker}`);
   }
 
-  if (commandOutput('git', ['-C', worktreeRoot, 'status', '--porcelain=v1', '--untracked-files=all'])) {
-    throw new Error('repository worktree must be clean');
+  const worktreeStatus = commandOutput('git', ['-C', worktreeRoot, 'status', '--porcelain=v1', '--untracked-files=all']);
+  const hasAllowedStagedChanges = worktreeStatus !== '' && stagedWikiChangesAreAllowed(worktreeRoot, allowedStagedRoots);
+  if (worktreeStatus && !hasAllowedStagedChanges) {
+    throw new Error('repository worktree must be clean or contain only staged Obsidian Note changes under bound Source roots');
   }
-  if (repository.syncBeforeResearch !== false) {
+  if (!hasAllowedStagedChanges && repository.syncBeforeResearch !== false) {
     try {
       const remoteBase = `${repository.remote}/${repository.baseBranch}`;
       commandOutput('git', ['-C', worktreeRoot, 'fetch', '--quiet', repository.remote, repository.baseBranch]);
@@ -338,8 +362,7 @@ function validateVault(vault: Vault, env: NodeJS.ProcessEnv): VaultHealth {
   }
   if (vault.bridgeUrl) {
     const url = new URL(vault.bridgeUrl);
-    const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
-    if (url.protocol !== 'http:' || !(hostname === 'localhost' || hostname === '::1' || /^127(?:\.\d{1,3}){3}$/.test(hostname))) {
+    if (url.protocol !== 'http:' || !isLoopbackHost(url.hostname)) {
       throw new Error('Vault bridgeUrl must use HTTP on a loopback host');
     }
     if (url.username || url.password || (url.pathname !== '/' && url.pathname !== '')) {
@@ -357,6 +380,7 @@ function validateVault(vault: Vault, env: NodeJS.ProcessEnv): VaultHealth {
 export function resolveBindings(
   env: NodeJS.ProcessEnv = process.env,
   workingDirectory: string = process.cwd(),
+  options: { allowStagedWikiChanges?: boolean } = {},
 ): BindingResolution {
   const projectDir = path.resolve(env.CLAUDE_PROJECT_DIR ?? workingDirectory);
   const settingsPath = path.join(projectDir, '.shared-adapter', 'settings.json');
@@ -389,7 +413,12 @@ export function resolveBindings(
       const repository = registry.repositories[candidate.repositoryRef];
       if (!repository) throw new Error(`unresolved repositoryRef: ${candidate.repositoryRef}`);
       const vaultHealth = validateVault(vault, env);
-      const repositoryHealth = validateRepository(repository);
+      const stagedRoots = options.allowStagedWikiChanges
+        ? settings.wiki.obsidian.bindings
+          .filter((binding) => binding.repositoryRef === candidate.repositoryRef)
+          .map((binding) => normalizeRoot(binding.root))
+        : [];
+      const repositoryHealth = validateRepository(repository, stagedRoots);
       const worktreeRoot = realpathSync(repository.worktreeRoot);
       const configuredRoot = path.join(worktreeRoot, root);
       if (!existsSync(configuredRoot)) {

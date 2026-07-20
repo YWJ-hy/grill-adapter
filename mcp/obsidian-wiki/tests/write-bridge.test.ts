@@ -34,6 +34,7 @@ async function bridgeRequest(
 async function fixture(shared = false) {
   const vaultRoot = mkdtempSync(path.join(tmpdir(), 'obsidian-write-bridge-'));
   roots.push(vaultRoot);
+  const projectDir = path.join(vaultRoot, shared ? 'shared-project' : 'project');
   const sourceRoot = shared ? 'Shared/Engineering' : 'Projects/example';
   const sourceId = shared ? 'engineering-shared' : 'project';
   const wikiId = shared ? 'engineering-shared/bridge' : 'project/example/bridge';
@@ -42,16 +43,21 @@ async function fixture(shared = false) {
   writeFileSync(path.join(vaultRoot, sourceRoot, '_meta', 'wiki-source.md'), manifest(sourceId, shared ? 'shared' : 'project'), 'utf8');
   const initial = note(wikiId, 'Initial body.');
   writeFileSync(path.join(vaultRoot, sourceRoot, 'Bridge.md'), initial, 'utf8');
+  mkdirSync(path.join(projectDir, '.shared-adapter'), { recursive: true });
+  writeFileSync(path.join(projectDir, '.shared-adapter', 'settings.json'), JSON.stringify({
+    wiki: { provider: 'obsidian', obsidian: { bindings: [{ sourceId, role: shared ? 'shared' : 'project', vaultRef: 'knowledge', root: sourceRoot, access: { read: true, update: 'confirm' } }] } },
+  }), 'utf8');
   const bridge = await startWriteBridge({
     vaultRoot,
     vaultSelector: 'Knowledge',
     allowedRoots: [sourceRoot],
+    projectDirs: [projectDir],
     token: 'test-token',
     host: '127.0.0.1',
     port: 0,
   });
   bridges.push(bridge);
-  return { vaultRoot, sourceRoot, sourceId, wikiId, initial, bridge };
+  return { vaultRoot, projectDir, sourceRoot, sourceId, wikiId, initial, bridge };
 }
 
 afterEach(async () => {
@@ -61,11 +67,13 @@ afterEach(async () => {
 
 describe('Obsidian Wiki loopback write bridge', () => {
   it('validates without writing, then atomically applies an expected-hash update', async () => {
-    const { vaultRoot, sourceRoot, initial, bridge } = await fixture();
+    const { vaultRoot, projectDir, sourceRoot, initial, bridge } = await fixture();
     const proposed = note('project/example/bridge', 'Updated body.');
     const request = {
       vaultSelector: 'Knowledge',
+      projectDir,
       sourceId: 'project',
+      vaultRef: 'knowledge',
       sourceRoot,
       operation: 'update',
       path: `${sourceRoot}/Bridge.md`,
@@ -103,10 +111,12 @@ describe('Obsidian Wiki loopback write bridge', () => {
   });
 
   it('rejects invalid tokens, stale hashes, metadata paths, unbound roots, and non-loopback binding', async () => {
-    const { sourceRoot, initial, bridge } = await fixture();
+    const { projectDir, sourceRoot, initial, bridge } = await fixture();
     const base = {
       vaultSelector: 'Knowledge',
+      projectDir,
       sourceId: 'project',
+      vaultRef: 'knowledge',
       sourceRoot,
       operation: 'update',
       path: `${sourceRoot}/Bridge.md`,
@@ -126,6 +136,7 @@ describe('Obsidian Wiki loopback write bridge', () => {
       vaultRoot: path.dirname(sourceRoot),
       vaultSelector: 'Knowledge',
       allowedRoots: [sourceRoot],
+      projectDirs: [projectDir],
       token: 'test-token',
       host: '0.0.0.0',
       port: 0,
@@ -133,10 +144,12 @@ describe('Obsidian Wiki loopback write bridge', () => {
   });
 
   it('enforces Shared neutrality inside the bridge so direct callers cannot bypass it', async () => {
-    const { sourceRoot, sourceId, wikiId, initial, bridge } = await fixture(true);
+    const { projectDir, sourceRoot, sourceId, wikiId, initial, bridge } = await fixture(true);
     const request = {
       vaultSelector: 'Knowledge',
+      projectDir,
       sourceId,
+      vaultRef: 'knowledge',
       sourceRoot,
       operation: 'update',
       path: `${sourceRoot}/Bridge.md`,
@@ -148,5 +161,54 @@ describe('Obsidian Wiki loopback write bridge', () => {
 
     expect((await bridgeRequest(bridge, 'validate', request)).status).toBe(403);
     expect((await bridgeRequest(bridge, 'apply', request)).status).toBe(403);
+  });
+
+  it('rereads Source and project governance for every request', async () => {
+    const { vaultRoot, projectDir, sourceRoot, initial, bridge } = await fixture();
+    const request = {
+      vaultSelector: 'Knowledge',
+      projectDir,
+      sourceId: 'project',
+      vaultRef: 'knowledge',
+      sourceRoot,
+      operation: 'update',
+      path: `${sourceRoot}/Bridge.md`,
+      content: note('project/example/bridge', 'Updated body.'),
+      expectedHash: contentHash(initial),
+      expectedWikiId: 'project/example/bridge',
+      authorized: true,
+    };
+    writeFileSync(path.join(vaultRoot, sourceRoot, '_meta', 'wiki-source.md'), manifest('project', 'project').replace('update_existing: confirm', 'update_existing: deny'), 'utf8');
+    expect((await bridgeRequest(bridge, 'validate', request)).status).toBe(403);
+
+    writeFileSync(path.join(vaultRoot, sourceRoot, '_meta', 'wiki-source.md'), manifest('project', 'project'), 'utf8');
+    const settingsPath = path.join(projectDir, '.shared-adapter', 'settings.json');
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+    settings.wiki.obsidian.bindings[0].access.update = 'deny';
+    writeFileSync(settingsPath, JSON.stringify(settings), 'utf8');
+    expect((await bridgeRequest(bridge, 'apply', request)).status).toBe(403);
+  });
+
+  it('serializes concurrent bridge updates and lets only one expected hash win', async () => {
+    const { projectDir, sourceRoot, initial, bridge } = await fixture();
+    const request = {
+      vaultSelector: 'Knowledge',
+      projectDir,
+      sourceId: 'project',
+      vaultRef: 'knowledge',
+      sourceRoot,
+      operation: 'update',
+      path: `${sourceRoot}/Bridge.md`,
+      content: note('project/example/bridge', 'One winner.'),
+      expectedHash: contentHash(initial),
+      expectedWikiId: 'project/example/bridge',
+      authorized: true,
+    };
+
+    const responses = await Promise.all([
+      bridgeRequest(bridge, 'apply', request),
+      bridgeRequest(bridge, 'apply', request),
+    ]);
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
   });
 });

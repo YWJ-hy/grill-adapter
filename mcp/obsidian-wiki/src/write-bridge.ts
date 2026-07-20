@@ -2,6 +2,7 @@ import { timingSafeEqual, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import {
   existsSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   readFileSync,
@@ -15,13 +16,17 @@ import path from 'node:path';
 import * as z from 'zod/v4';
 import { contentHash, parseAtomicNote } from './note.js';
 import { parseSourceManifest, type SourceManifest } from './bindings.js';
+import { isLoopbackHost } from './loopback.js';
+import { normalizeWritePolicy, stricterPolicy, type WritePolicy } from './policy.js';
 
 const HASH = /^sha256:[a-f0-9]{64}$/;
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 
 const ChangeSchema = z.object({
   vaultSelector: z.string().min(1),
+  projectDir: z.string().min(1),
   sourceId: z.string().min(1),
+  vaultRef: z.string().min(1),
   sourceRoot: z.string().min(1),
   operation: z.enum(['create', 'update']),
   path: z.string().min(1),
@@ -37,6 +42,7 @@ export type WriteBridgeOptions = {
   vaultRoot: string;
   vaultSelector: string;
   allowedRoots: string[];
+  projectDirs: string[];
   token: string;
   host?: string;
   port?: number;
@@ -51,11 +57,6 @@ class BridgeError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
   }
-}
-
-export function isLoopbackHost(hostname: string): boolean {
-  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  return host === 'localhost' || host === '::1' || /^127(?:\.\d{1,3}){3}$/.test(host);
 }
 
 function normalizeRelativePath(value: string, description: string): string {
@@ -100,8 +101,23 @@ function nearestExistingDirectory(directory: string): string {
 
 type GovernedRoot = {
   resolvedRoot: string;
-  manifest: SourceManifest;
+  manifestPath: string;
 };
+
+const BridgeSettingsSchema = z.object({
+  wiki: z.object({
+    provider: z.literal('obsidian'),
+    obsidian: z.object({
+      bindings: z.array(z.object({
+        sourceId: z.string().min(1),
+        role: z.enum(['project', 'shared']),
+        vaultRef: z.string().min(1),
+        root: z.string().min(1),
+        access: z.object({ read: z.boolean(), update: z.string().optional() }),
+      })),
+    }),
+  }),
+});
 
 function atomicNoteFiles(root: GovernedRoot): string[] {
   const files: string[] = [];
@@ -154,17 +170,53 @@ function enforceGovernance(
   apply: boolean,
   vaultRoot: string,
   roots: Map<string, GovernedRoot>,
+  allowedProjects: Set<string>,
 ): void {
   const { request } = change;
-  if (root.manifest.sourceId !== request.sourceId) throw new BridgeError(403, 'Source identity does not match the allowed root manifest');
-  const policy = request.operation === 'create' ? root.manifest.createNote : root.manifest.updateExisting;
-  if (apply && policy === 'deny') throw new BridgeError(403, `Source manifest denies ${request.operation} operations`);
-  if (apply && policy === 'confirm' && !request.authorized) throw new BridgeError(403, `Source manifest requires explicit authorization for ${request.operation}`);
-  if (root.manifest.scope === 'shared') {
+  let projectDir: string;
+  try {
+    projectDir = realpathSync(request.projectDir);
+  } catch {
+    throw new BridgeError(403, 'Project is not allowed by this bridge');
+  }
+  if (!allowedProjects.has(projectDir)) throw new BridgeError(403, 'Project is not allowed by this bridge');
+  const settingsPath = path.join(projectDir, '.shared-adapter', 'settings.json');
+  let settings: z.infer<typeof BridgeSettingsSchema>;
+  try {
+    settings = BridgeSettingsSchema.parse(JSON.parse(readFileSync(settingsPath, 'utf8')));
+  } catch (error) {
+    throw new BridgeError(403, `Project binding cannot be validated: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const binding = settings.wiki.obsidian.bindings.find((candidate) => (
+    candidate.sourceId === request.sourceId
+    && candidate.vaultRef === request.vaultRef
+    && path.posix.normalize(candidate.root.replaceAll('\\', '/')).replace(/^\.\//, '') === request.sourceRoot
+  ));
+  if (!binding || !binding.access.read) throw new BridgeError(403, 'Source is not a readable binding of the allowed project');
+  let manifest: SourceManifest;
+  try {
+    manifest = parseSourceManifest(readFileSync(root.manifestPath, 'utf8'), root.manifestPath);
+  } catch (error) {
+    throw new BridgeError(403, `Source manifest cannot be validated: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (manifest.sourceId !== request.sourceId || manifest.scope !== binding.role) {
+    throw new BridgeError(403, 'Source identity does not match the current project binding and manifest');
+  }
+  let bindingPolicy: WritePolicy;
+  try {
+    bindingPolicy = normalizeWritePolicy(binding.access.update, `binding ${request.sourceId} access.update`);
+  } catch (error) {
+    throw new BridgeError(403, `Project binding policy cannot be validated: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const manifestPolicy: WritePolicy = request.operation === 'create' ? manifest.createNote : manifest.updateExisting;
+  const policy = stricterPolicy(bindingPolicy, manifestPolicy);
+  if (policy === 'deny') throw new BridgeError(403, `Effective Source policy denies ${request.operation} operations`);
+  if (apply && policy === 'confirm' && !request.authorized) throw new BridgeError(403, `Effective Source policy requires explicit authorization for ${request.operation}`);
+  if (manifest.scope === 'shared') {
     const candidate = `${request.path}\n${request.content}`;
-    const blockedTerm = root.manifest.blockedTerms.find((term) => term && candidate.includes(term));
+    const blockedTerm = manifest.blockedTerms.find((term) => term && candidate.includes(term));
     if (blockedTerm) throw new BridgeError(403, `Shared Source neutrality validation failed for blocked term ${JSON.stringify(blockedTerm)}`);
-    for (const pattern of root.manifest.blockedPatterns) {
+    for (const pattern of manifest.blockedPatterns) {
       try {
         if (pattern && new RegExp(pattern).test(candidate)) {
           throw new BridgeError(403, `Shared Source neutrality validation failed for blocked pattern ${JSON.stringify(pattern)}`);
@@ -276,14 +328,6 @@ function respond(response: ServerResponse, status: number, body: unknown): void 
 }
 
 function applyValidated(change: ValidatedChange): { wikiId: string; path: string; contentHash: string } {
-  // Re-run all CAS checks immediately before the atomic rename.
-  if (change.request.operation === 'create') {
-    if (existsSync(change.targetPath)) throw new BridgeError(409, 'Expected hash conflict: Note was created concurrently');
-  } else {
-    if (!existsSync(change.targetPath) || contentHash(readFileSync(change.targetPath, 'utf8')) !== change.request.expectedHash) {
-      throw new BridgeError(409, 'Expected hash conflict: Note changed concurrently');
-    }
-  }
   if (change.request.operation === 'create') {
     mkdirSync(path.dirname(change.targetPath), { recursive: true, mode: 0o700 });
     if (!inside(realpathSync(path.dirname(change.targetPath)), change.resolvedSourceRoot)) {
@@ -291,11 +335,32 @@ function applyValidated(change: ValidatedChange): { wikiId: string; path: string
     }
   }
   const temporaryPath = path.join(path.dirname(change.targetPath), `.${path.basename(change.targetPath)}.${randomUUID()}.tmp`);
+  const lockPath = `${change.targetPath}.grill-adapter-write.lock`;
+  let ownsLock = false;
   try {
+    try {
+      writeFileSync(lockPath, `${process.pid}\n`, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+      ownsLock = true;
+    } catch (error) {
+      throw new BridgeError(409, `Note has another active bridge write: ${error instanceof Error ? error.message : String(error)}`);
+    }
     writeFileSync(temporaryPath, change.diff.afterContent, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
-    renameSync(temporaryPath, change.targetPath);
+    // The final expected-state check happens after all preparation, immediately before replacement.
+    if (change.request.operation === 'create') {
+      try {
+        linkSync(temporaryPath, change.targetPath);
+      } catch (error) {
+        throw new BridgeError(409, `Expected hash conflict: Note was created concurrently: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    } else {
+      if (!existsSync(change.targetPath) || contentHash(readFileSync(change.targetPath, 'utf8')) !== change.request.expectedHash) {
+        throw new BridgeError(409, 'Expected hash conflict: Note changed concurrently');
+      }
+      renameSync(temporaryPath, change.targetPath);
+    }
   } finally {
     rmSync(temporaryPath, { force: true });
+    if (ownsLock) rmSync(lockPath, { force: true });
   }
   const written = readFileSync(change.targetPath, 'utf8');
   const note = parseAtomicNote(written, change.request.path);
@@ -311,6 +376,11 @@ export async function startWriteBridge(options: WriteBridgeOptions): Promise<Wri
   if (!options.token) throw new Error('Obsidian Wiki write bridge token must not be empty');
   if (!path.isAbsolute(options.vaultRoot)) throw new Error('Obsidian Wiki write bridge Vault root must be absolute');
   const vaultRoot = realpathSync(options.vaultRoot);
+  const allowedProjects = new Set(options.projectDirs.map((projectDir) => {
+    if (!path.isAbsolute(projectDir)) throw new Error('Obsidian Wiki write bridge project directories must be absolute');
+    return realpathSync(projectDir);
+  }));
+  if (allowedProjects.size === 0) throw new Error('Obsidian Wiki write bridge requires at least one allowed project directory');
   const allowedRoots = new Map<string, GovernedRoot>();
   for (const rawRoot of options.allowedRoots) {
     const root = normalizeRelativePath(rawRoot, 'Allowed Source root');
@@ -318,10 +388,8 @@ export async function startWriteBridge(options: WriteBridgeOptions): Promise<Wri
     if (!inside(resolved, vaultRoot)) throw new Error(`Allowed Source root escapes the Vault: ${root}`);
     const manifestPath = path.join(resolved, '_meta', 'wiki-source.md');
     if (!existsSync(manifestPath) || !lstatSync(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
-    allowedRoots.set(root, {
-      resolvedRoot: resolved,
-      manifest: parseSourceManifest(readFileSync(manifestPath, 'utf8'), manifestPath),
-    });
+    parseSourceManifest(readFileSync(manifestPath, 'utf8'), manifestPath);
+    allowedRoots.set(root, { resolvedRoot: resolved, manifestPath });
   }
   if (allowedRoots.size === 0) throw new Error('Obsidian Wiki write bridge requires at least one allowed Source root');
 
@@ -332,7 +400,7 @@ export async function startWriteBridge(options: WriteBridgeOptions): Promise<Wri
       if (route !== '/v1/notes/validate' && route !== '/v1/notes/apply') throw new BridgeError(404, 'Unknown write bridge route');
       authenticate(request, options.token);
       const change = validateChange(await readJson(request), options, vaultRoot, allowedRoots);
-      enforceGovernance(change, allowedRoots.get(change.request.sourceRoot)!, route.endsWith('/apply'), vaultRoot, allowedRoots);
+      enforceGovernance(change, allowedRoots.get(change.request.sourceRoot)!, route.endsWith('/apply'), vaultRoot, allowedRoots, allowedProjects);
       const base = { ok: true, operation: change.request.operation, sourceRoot: change.request.sourceRoot, path: change.request.path, diff: change.diff };
       respond(response, 200, route.endsWith('/apply') ? { ...base, postWrite: applyValidated(change) } : base);
     } catch (error) {
@@ -358,17 +426,23 @@ export async function runWriteBridgeFromEnvironment(env: NodeJS.ProcessEnv = pro
   const tokenEnv = env.OBSIDIAN_WIKI_BRIDGE_TOKEN_ENV ?? 'OBSIDIAN_WIKI_BRIDGE_TOKEN';
   const token = env[tokenEnv];
   const rootsRaw = env.OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS;
-  if (!env.OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT || !env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR || !rootsRaw || !token) {
-    throw new Error('Write bridge requires OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT, OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR, OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS, and its token environment variable');
+  const projectsRaw = env.OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS;
+  if (!env.OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT || !env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR || !rootsRaw || !projectsRaw || !token) {
+    throw new Error('Write bridge requires OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT, OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR, OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS, OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS, and its token environment variable');
   }
   const roots = JSON.parse(rootsRaw);
   if (!Array.isArray(roots) || roots.some((value) => typeof value !== 'string')) {
     throw new Error('OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS must be a JSON array of strings');
   }
+  const projects = JSON.parse(projectsRaw);
+  if (!Array.isArray(projects) || projects.some((value) => typeof value !== 'string')) {
+    throw new Error('OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS must be a JSON array of strings');
+  }
   const bridge = await startWriteBridge({
     vaultRoot: env.OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT,
     vaultSelector: env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR,
     allowedRoots: roots,
+    projectDirs: projects,
     token,
     host: env.OBSIDIAN_WIKI_BRIDGE_HOST ?? '127.0.0.1',
     port: Number(env.OBSIDIAN_WIKI_BRIDGE_PORT ?? '27124'),
