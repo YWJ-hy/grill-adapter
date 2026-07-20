@@ -22931,11 +22931,29 @@ import {
   readFileSync as readFileSync2,
   readdirSync,
   realpathSync as realpathSync2,
-  renameSync,
   rmSync,
   writeFileSync
 } from "node:fs";
 import path4 from "node:path";
+
+// src/atomic-exchange.ts
+import { execFileSync as execFileSync3 } from "node:child_process";
+import { fileURLToPath } from "node:url";
+var scriptPath = fileURLToPath(new URL("../scripts/atomic_swap.py", import.meta.url));
+function atomicExchange(firstPath, secondPath, env = process.env) {
+  const python = env.OBSIDIAN_WIKI_PYTHON ?? "python3";
+  try {
+    execFileSync3(python, [scriptPath, firstPath, secondPath], {
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+  } catch (error2) {
+    throw new Error(`Atomic Note exchange failed: ${error2 instanceof Error ? error2.message : String(error2)}`);
+  }
+}
+
+// src/write-bridge.ts
 var HASH = /^sha256:[a-f0-9]{64}$/;
 var MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 var ChangeSchema = object({
@@ -23171,7 +23189,7 @@ function respond(response, status, body) {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   response.end(JSON.stringify(body));
 }
-function applyValidated(change) {
+function applyValidated(change, beforeAtomicExchange) {
   if (change.request.operation === "create") {
     mkdirSync(path4.dirname(change.targetPath), { recursive: true, mode: 448 });
     if (!inside(realpathSync2(path4.dirname(change.targetPath)), change.resolvedSourceRoot)) {
@@ -23200,7 +23218,14 @@ function applyValidated(change) {
       if (!existsSync2(change.targetPath) || contentHash(readFileSync2(change.targetPath, "utf8")) !== change.request.expectedHash) {
         throw new BridgeError(409, "Expected hash conflict: Note changed concurrently");
       }
-      renameSync(temporaryPath, change.targetPath);
+      beforeAtomicExchange?.(change.targetPath);
+      atomicExchange(change.targetPath, temporaryPath);
+      const swappedOutHash = contentHash(readFileSync2(temporaryPath, "utf8"));
+      const writtenHash = contentHash(readFileSync2(change.targetPath, "utf8"));
+      if (swappedOutHash !== change.request.expectedHash || writtenHash !== change.diff.afterHash) {
+        if (writtenHash === change.diff.afterHash) atomicExchange(change.targetPath, temporaryPath);
+        throw new BridgeError(409, "Expected hash conflict: Note changed during atomic exchange");
+      }
     }
   } finally {
     rmSync(temporaryPath, { force: true });
@@ -23244,7 +23269,7 @@ async function startWriteBridge(options) {
       const change = validateChange(await readJson(request), options, vaultRoot, allowedRoots);
       enforceGovernance(change, allowedRoots.get(change.request.sourceRoot), route.endsWith("/apply"), vaultRoot, allowedRoots, allowedProjects);
       const base = { ok: true, operation: change.request.operation, sourceRoot: change.request.sourceRoot, path: change.request.path, diff: change.diff };
-      respond(response, 200, route.endsWith("/apply") ? { ...base, postWrite: applyValidated(change) } : base);
+      respond(response, 200, route.endsWith("/apply") ? { ...base, postWrite: applyValidated(change, options.beforeAtomicExchange) } : base);
     } catch (error2) {
       const status = error2 instanceof BridgeError ? error2.status : 500;
       respond(response, status, { ok: false, error: error2 instanceof Error ? error2.message : String(error2) });

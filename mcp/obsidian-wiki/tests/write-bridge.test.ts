@@ -31,7 +31,7 @@ async function bridgeRequest(
   });
 }
 
-async function fixture(shared = false) {
+async function fixture(shared = false, beforeAtomicExchange?: (targetPath: string) => void) {
   const vaultRoot = mkdtempSync(path.join(tmpdir(), 'obsidian-write-bridge-'));
   roots.push(vaultRoot);
   const projectDir = path.join(vaultRoot, shared ? 'shared-project' : 'project');
@@ -55,6 +55,7 @@ async function fixture(shared = false) {
     token: 'test-token',
     host: '127.0.0.1',
     port: 0,
+    beforeAtomicExchange,
   });
   bridges.push(bridge);
   return { vaultRoot, projectDir, sourceRoot, sourceId, wikiId, initial, bridge };
@@ -210,5 +211,26 @@ describe('Obsidian Wiki loopback write bridge', () => {
       bridgeRequest(bridge, 'apply', request),
     ]);
     expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+  });
+
+  it('atomically rolls back when an external editor wins the final update race', async () => {
+    const external = note('project/example/bridge', 'External editor body.');
+    const result = await fixture(false, (targetPath) => writeFileSync(targetPath, external, 'utf8'));
+    const request = {
+      vaultSelector: 'Knowledge',
+      projectDir: result.projectDir,
+      sourceId: 'project',
+      vaultRef: 'knowledge',
+      sourceRoot: result.sourceRoot,
+      operation: 'update',
+      path: `${result.sourceRoot}/Bridge.md`,
+      content: note('project/example/bridge', 'Bridge body.'),
+      expectedHash: contentHash(result.initial),
+      expectedWikiId: 'project/example/bridge',
+      authorized: true,
+    };
+
+    expect((await bridgeRequest(result.bridge, 'apply', request)).status).toBe(409);
+    expect(readFileSync(path.join(result.vaultRoot, result.sourceRoot, 'Bridge.md'), 'utf8')).toBe(external);
   });
 });
