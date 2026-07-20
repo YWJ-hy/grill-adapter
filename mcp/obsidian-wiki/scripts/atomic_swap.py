@@ -49,7 +49,14 @@ def _windows(first: str, second: str) -> None:
     replace_file.restype = ctypes.c_int
     if replace_file(first, second, backup, 0, None, None) == 0:
         raise ctypes.WinError()
-    os.replace(backup, second)
+    try:
+        os.replace(backup, second)
+    except OSError:
+        # Restore the original target atomically if materializing the swapped-out
+        # path fails; use `second` as the backup of the proposed replacement.
+        if replace_file(first, backup, second, 0, None, None) == 0:
+            raise ctypes.WinError()
+        raise
 
 
 def main() -> int:

@@ -31,7 +31,11 @@ async function bridgeRequest(
   });
 }
 
-async function fixture(shared = false, beforeAtomicExchange?: (targetPath: string) => void) {
+async function fixture(
+  shared = false,
+  beforeAtomicExchange?: (targetPath: string) => void,
+  afterAtomicExchange?: (targetPath: string) => void,
+) {
   const vaultRoot = mkdtempSync(path.join(tmpdir(), 'obsidian-write-bridge-'));
   roots.push(vaultRoot);
   const projectDir = path.join(vaultRoot, shared ? 'shared-project' : 'project');
@@ -56,6 +60,7 @@ async function fixture(shared = false, beforeAtomicExchange?: (targetPath: strin
     host: '127.0.0.1',
     port: 0,
     beforeAtomicExchange,
+    afterAtomicExchange,
   });
   bridges.push(bridge);
   return { vaultRoot, projectDir, sourceRoot, sourceId, wikiId, initial, bridge };
@@ -214,8 +219,13 @@ describe('Obsidian Wiki loopback write bridge', () => {
   });
 
   it('atomically rolls back when an external editor wins the final update race', async () => {
-    const external = note('project/example/bridge', 'External editor body.');
-    const result = await fixture(false, (targetPath) => writeFileSync(targetPath, external, 'utf8'));
+    const firstExternal = note('project/example/bridge', 'First external editor body.');
+    const latestExternal = note('project/example/bridge', 'Latest external editor body.');
+    const result = await fixture(
+      false,
+      (targetPath) => writeFileSync(targetPath, firstExternal, 'utf8'),
+      (targetPath) => writeFileSync(targetPath, latestExternal, 'utf8'),
+    );
     const request = {
       vaultSelector: 'Knowledge',
       projectDir: result.projectDir,
@@ -231,6 +241,6 @@ describe('Obsidian Wiki loopback write bridge', () => {
     };
 
     expect((await bridgeRequest(result.bridge, 'apply', request)).status).toBe(409);
-    expect(readFileSync(path.join(result.vaultRoot, result.sourceRoot, 'Bridge.md'), 'utf8')).toBe(external);
+    expect(readFileSync(path.join(result.vaultRoot, result.sourceRoot, 'Bridge.md'), 'utf8')).toBe(latestExternal);
   });
 });

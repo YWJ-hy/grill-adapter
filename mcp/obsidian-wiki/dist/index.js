@@ -23189,7 +23189,7 @@ function respond(response, status, body) {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   response.end(JSON.stringify(body));
 }
-function applyValidated(change, beforeAtomicExchange) {
+function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
   if (change.request.operation === "create") {
     mkdirSync(path4.dirname(change.targetPath), { recursive: true, mode: 448 });
     if (!inside(realpathSync2(path4.dirname(change.targetPath)), change.resolvedSourceRoot)) {
@@ -23220,10 +23220,17 @@ function applyValidated(change, beforeAtomicExchange) {
       }
       beforeAtomicExchange?.(change.targetPath);
       atomicExchange(change.targetPath, temporaryPath);
+      afterAtomicExchange?.(change.targetPath);
       const swappedOutHash = contentHash(readFileSync2(temporaryPath, "utf8"));
       const writtenHash = contentHash(readFileSync2(change.targetPath, "utf8"));
       if (swappedOutHash !== change.request.expectedHash || writtenHash !== change.diff.afterHash) {
-        if (writtenHash === change.diff.afterHash) atomicExchange(change.targetPath, temporaryPath);
+        let expectedTargetHash = change.diff.afterHash;
+        while (contentHash(readFileSync2(change.targetPath, "utf8")) === expectedTargetHash) {
+          atomicExchange(change.targetPath, temporaryPath);
+          const displacedHash = contentHash(readFileSync2(temporaryPath, "utf8"));
+          if (displacedHash === expectedTargetHash) break;
+          expectedTargetHash = contentHash(readFileSync2(change.targetPath, "utf8"));
+        }
         throw new BridgeError(409, "Expected hash conflict: Note changed during atomic exchange");
       }
     }
@@ -23269,7 +23276,7 @@ async function startWriteBridge(options) {
       const change = validateChange(await readJson(request), options, vaultRoot, allowedRoots);
       enforceGovernance(change, allowedRoots.get(change.request.sourceRoot), route.endsWith("/apply"), vaultRoot, allowedRoots, allowedProjects);
       const base = { ok: true, operation: change.request.operation, sourceRoot: change.request.sourceRoot, path: change.request.path, diff: change.diff };
-      respond(response, 200, route.endsWith("/apply") ? { ...base, postWrite: applyValidated(change, options.beforeAtomicExchange) } : base);
+      respond(response, 200, route.endsWith("/apply") ? { ...base, postWrite: applyValidated(change, options.beforeAtomicExchange, options.afterAtomicExchange) } : base);
     } catch (error2) {
       const status = error2 instanceof BridgeError ? error2.status : 500;
       respond(response, status, { ok: false, error: error2 instanceof Error ? error2.message : String(error2) });
