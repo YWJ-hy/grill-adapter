@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Exercises scripts/grill_context_to_candidates.py: the grill -> wiki authoring bridge that
-# converts CONTEXT.md glossary + docs/adr increments into update-wiki candidate rows (§9).
+# converts CONTEXT.md glossary + docs/adr increments into candidate journal events (§9).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${1:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
@@ -27,8 +27,8 @@ Write events to an outbox in the same transaction.
 At-least-once delivery.
 MD
 
-# --all mode: 2 glossary conventions + 1 ADR decision
-OUT="$(python3 "$BRIDGE" "$T" --all --stdout)"
+# --all mode: 2 glossary conventions + 1 ADR decision, all wrapped as journal events.
+OUT="$(python3 "$BRIDGE" "$T" --feature-slug feature-a --all --stdout)"
 CONV=$(printf '%s\n' "$OUT" | grep -c '"kind": "convention"' || true)
 DEC=$(printf '%s\n' "$OUT" | grep -c '"kind": "decision"' || true)
 [[ "$CONV" == "2" ]] || fail "expected 2 glossary conventions, got $CONV"
@@ -44,20 +44,52 @@ for line in sys.stdin:
     line = line.strip()
     if not line: continue
     d = json.loads(line)
-    for k in ("taskId","kind","claim","why","sourceRefs","carveOut"):
+    for k in ("schemaVersion","eventType","eventId","featureSlug","candidateId","stage","candidateType","taskId","kind","claim","why","sourceRefs","carveOut"):
         assert k in d, f"missing candidate key {k}"
-' || fail "candidate rows are not valid schema JSON"
+    assert d["schemaVersion"] == 1
+    assert d["eventType"] == "candidate"
+    assert d["featureSlug"] == "feature-a"
+    assert d["stage"] == "capture"
+    assert d["candidateType"] == "wiki_note"
+' || fail "candidate events are not valid schema JSON"
 
 # git-increment mode: only newly added glossary lines
 ( cd "$T" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm base )
 printf -- '- **Retry Budget** — max attempts before dead-letter.\n' >> "$T/CONTEXT.md"
-OUT2="$(python3 "$BRIDGE" "$T" --stdout 2>/dev/null)"
+OUT2="$(python3 "$BRIDGE" "$T" --feature-slug feature-a --stdout 2>/dev/null)"
 N=$(printf '%s\n' "$OUT2" | grep -c 'Retry Budget' || true)
 [[ "$N" == "1" ]] || fail "increment mode did not isolate the new term (got $N)"
 printf '%s' "$OUT2" | grep -q 'Idempotency Key' && fail "increment mode leaked pre-existing terms"
 
-# append mode writes to the sidecar
-python3 "$BRIDGE" "$T" --all >/dev/null 2>&1 || fail "append mode failed"
-[[ -f "$T/.wiki-candidates.jsonl" ]] || fail "append did not create .wiki-candidates.jsonl"
+# append mode writes one feature-scoped journal that validates through the shared helper.
+python3 "$BRIDGE" "$T" --feature-slug feature-a --all >/dev/null 2>&1 || fail "append mode failed"
+JOURNAL="$T/.adapter/context/feature-a.wiki-candidates.jsonl"
+[[ -f "$JOURNAL" ]] || fail "append did not create the feature journal"
+python3 "$ROOT/scripts/wiki_candidate_journal.py" validate \
+  --journal "$JOURNAL" --feature-slug feature-a >/dev/null || fail "bridge journal did not validate"
+
+# Replaying the same increment is an idempotent recovery no-op.
+BEFORE="$(shasum -a 256 "$JOURNAL" | awk '{print $1}')"
+python3 "$BRIDGE" "$T" --feature-slug feature-a --all >/dev/null 2>&1 \
+  || fail "bridge could not resume after its candidates were already appended"
+AFTER="$(shasum -a 256 "$JOURNAL" | awk '{print $1}')"
+[[ "$BEFORE" == "$AFTER" ]] || fail "identical bridge replay mutated the journal"
+
+# A stable bridge identity with different payload is a conflict, not an idempotent replay.
+CONFLICT_JOURNAL="$T/.adapter/context/conflict.wiki-candidates.jsonl"
+cp "$JOURNAL" "$CONFLICT_JOURNAL"
+python3 - "$CONFLICT_JOURNAL" <<'PY'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+events = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+events[0]["claim"] += " conflicting edit"
+path.write_text("".join(json.dumps(event, separators=(",", ":")) + "\n" for event in events), encoding="utf-8")
+PY
+BEFORE="$(shasum -a 256 "$CONFLICT_JOURNAL" | awk '{print $1}')"
+if python3 "$BRIDGE" "$T" --feature-slug feature-a --all --out "$CONFLICT_JOURNAL" >/dev/null 2>&1; then
+  fail "bridge treated conflicting candidate content as an identical replay"
+fi
+AFTER="$(shasum -a 256 "$CONFLICT_JOURNAL" | awk '{print $1}')"
+[[ "$BEFORE" == "$AFTER" ]] || fail "rejected bridge conflict mutated the journal"
 
 printf 'grill bridge smoke OK\n'

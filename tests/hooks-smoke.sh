@@ -11,15 +11,25 @@ HOOKS="$ROOT/hooks"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
-# --- wiki-capture-suggest: fires only when candidates pending ---
-T="$(mktemp -d)"; ( cd "$T" && git init -q )
-printf '{"kind":"decision","claim":"x"}\n' > "$T/.wiki-candidates.jsonl"
+# --- wiki-capture-suggest: fires only when journal candidates are unresolved ---
+T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.adapter/context"
+JOURNAL="$T/.adapter/context/feature-a.wiki-candidates.jsonl"
+python3 "$ROOT/scripts/wiki_candidate_journal.py" append \
+  --journal "$JOURNAL" --feature-slug feature-a --event-id evt-1 --candidate-id cand-1 \
+  --stage implementation --candidate-type wiki_note --kind decision \
+  --claim x --why y --source-ref z >/dev/null
 OUT="$(printf '{"cwd":"%s","hook_event_name":"Stop"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-capture-suggest.sh")"
 printf '%s' "$OUT" | grep -q 'systemMessage' || fail "capture-suggest did not fire on pending candidates"
 printf '%s' "$OUT" | grep -q 'update-wiki' || fail "capture-suggest missing update-wiki nudge"
-rm -f "$T/.wiki-candidates.jsonl"
+python3 "$ROOT/scripts/wiki_candidate_journal.py" outcome \
+  --journal "$JOURNAL" --feature-slug feature-a --event-id evt-2 --candidate-id cand-1 \
+  --status skipped --reason 'not durable' >/dev/null
 OUT="$(printf '{"cwd":"%s","hook_event_name":"Stop"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-capture-suggest.sh")"
-[[ -z "$OUT" ]] || fail "capture-suggest fired with no candidates"
+[[ -z "$OUT" ]] || fail "capture-suggest fired when every candidate was terminal"
+
+printf '%s\n' '{not-json}' > "$JOURNAL"
+OUT="$(printf '{"cwd":"%s","hook_event_name":"Stop"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-capture-suggest.sh")"
+printf '%s' "$OUT" | grep -q 'invalid candidate journal' || fail "capture-suggest hid a corrupt journal"
 rm -rf "$T"
 
 # --- source-truth-lint: block on a changed truth/edit:never path ---

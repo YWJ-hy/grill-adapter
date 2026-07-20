@@ -1,0 +1,4 @@
+interface:
+  display_name: "Candidate Journal"
+  short_description: "Record durable Wiki and Skill Card candidates"
+  default_prompt: "Use $candidate-journal to record a durable candidate for this feature."

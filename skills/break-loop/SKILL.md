@@ -181,6 +181,6 @@ Skip `update-wiki` when the finding is only:
 
 If the decision is `skip update-wiki`, stop after reporting the analysis.
 
-If the decision is `run update-wiki`, use the `update-wiki` skill next and pass the handoff packet as input context. Do not edit `.adapter/wiki/` from this skill.
+If the decision is `run update-wiki`, invoke `candidate-journal` once per atomic durable finding with stage `debugging`, then use the `update-wiki` skill. Do not edit `.adapter/wiki/` or Obsidian from this skill. The journal, rather than conversation-only handoff text, is the recoverable input to Capture.
 
 `update-wiki` must still make its own decisions: whether each candidate is durable, how to split candidates atomically, which indexed wiki pages to read, whether the idea is already covered, which leaf wiki page owns the rule, and how to refresh and validate the wiki index.

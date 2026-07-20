@@ -4,34 +4,33 @@
 grill writes its knowledge as a flat glossary in `CONTEXT.md` and decision records
 under `docs/adr/`. Those are grill's tier-1 knowledge; the wiki is tier-2 (sectioned,
 typed, cross-repo). This bridge does NOT do the semantic upgrade — it only converts the
-*increment* in CONTEXT.md / ADRs into candidate rows appended to a `.wiki-candidates.jsonl`
-sidecar. `update-wiki` then consumes those rows exactly like any other candidate input:
+*increment* in CONTEXT.md / ADRs into candidate events appended to a feature-scoped
+`.wiki-candidates.jsonl` journal. `update-wiki` then consumes those events like any other
+candidate input:
 it applies the durable gate, sectionizes, sets `type:`, adds `[[page#section]]` edges,
-dedups, neutralizes, and authorizes. `update-wiki` only ever sees candidate rows and never
+dedups, neutralizes, and authorizes. `update-wiki` only ever sees candidate events and never
 learns about CONTEXT.md, so it stays grill-agnostic (blueprint §9).
 
 Do NOT route grill knowledge through `import-wiki` — that is a flat structural copy and
 would land a graph-less flat page. Bulk one-time backfill goes import-wiki -> migrate-wiki;
 day-to-day increments go through this bridge -> update-wiki.
 
-Candidate row schema (one JSON object per line), matching the update-wiki candidate input:
-  { "taskId": null,
-    "kind": "decision|gotcha|contract|convention",
-    "claim": "<one line>",
-    "why": "<one line, include rejected alternatives when known>",
-    "sourceRefs": ["CONTEXT.md" | "docs/adr/0007-....md"],
-    "carveOut": "",
-    "origin": "grill-context" }
+Each candidate is wrapped in the schema-v1 event contract owned by
+`wiki_candidate_journal.py`. Stable candidate IDs make identical replay an idempotent no-op
+while conflicting content fails closed, and a batch is validated before any event is appended.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+from wiki_candidate_journal import append_events, new_event
 
 
 # --- glossary parsing -------------------------------------------------------
@@ -240,17 +239,50 @@ def _configure_stdio() -> None:
             pass
 
 
+def _candidate_id(candidate: dict) -> str:
+    identity = json.dumps(
+        {
+            "kind": candidate["kind"],
+            "claim": candidate["claim"],
+            "sourceRefs": candidate["sourceRefs"],
+            "origin": candidate["origin"],
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return "grill-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+
+
+def _candidate_event(candidate: dict, feature_slug: str) -> dict:
+    return new_event(
+        "candidate",
+        feature_slug,
+        candidateId=_candidate_id(candidate),
+        stage="capture",
+        candidateType="wiki_note",
+        kind=candidate["kind"],
+        claim=candidate["claim"],
+        why=candidate["why"],
+        sourceRefs=candidate["sourceRefs"],
+        taskId=candidate["taskId"],
+        carveOut=bool(candidate["carveOut"]),
+        origin=candidate["origin"],
+    )
+
+
 def main() -> int:
     _configure_stdio()
     parser = argparse.ArgumentParser(
-        description="Convert grill CONTEXT.md / docs/adr increments into wiki update candidate rows.")
+        description="Convert grill CONTEXT.md / docs/adr increments into candidate journal events.")
     parser.add_argument("repo_root", help="Repo root containing CONTEXT.md and docs/adr/")
+    parser.add_argument("--feature-slug", required=True, help="Feature identity shared by the workflow journal")
     parser.add_argument("--context", default="CONTEXT.md", help="Path to the grill glossary, relative to repo root")
     parser.add_argument("--adr-dir", default="docs/adr", help="ADR directory, relative to repo root")
     parser.add_argument("--since", default=None, help="Git ref to diff against (default: working tree vs HEAD)")
     parser.add_argument("--all", action="store_true", help="Convert the entire current CONTEXT.md + all ADRs, ignoring git diff (backfill/testing)")
-    parser.add_argument("--out", default=None, help="Append candidate rows to this JSONL file (default: <repo-root>/.wiki-candidates.jsonl)")
-    parser.add_argument("--stdout", action="store_true", help="Write rows to stdout instead of appending to a file")
+    parser.add_argument("--out", default=None, help="Journal path (default: <repo-root>/.adapter/context/<feature-slug>.wiki-candidates.jsonl)")
+    parser.add_argument("--stdout", action="store_true", help="Write events to stdout instead of appending to a journal")
     args = parser.parse_args()
 
     repo_root = Path(args.repo_root).expanduser().resolve()
@@ -258,15 +290,28 @@ def main() -> int:
         raise SystemExit(f"Not a directory: {repo_root}")
 
     candidates = collect(repo_root, args.context, args.adr_dir, args.since, args.all)
+    events = [_candidate_event(candidate, args.feature_slug) for candidate in candidates]
 
-    lines = "".join(json.dumps(c, ensure_ascii=False) + "\n" for c in candidates)
+    lines = "".join(json.dumps(event, ensure_ascii=False) + "\n" for event in events)
     if args.stdout:
         sys.stdout.write(lines)
     else:
-        out_path = Path(args.out).expanduser().resolve() if args.out else (repo_root / ".wiki-candidates.jsonl")
-        with out_path.open("a", encoding="utf-8") as fh:
-            fh.write(lines)
-        print(f"Appended {len(candidates)} candidate row(s) to {out_path}", file=sys.stderr)
+        out_path = (
+            Path(args.out).expanduser().resolve()
+            if args.out
+            else repo_root / ".adapter" / "context" / f"{args.feature_slug}.wiki-candidates.jsonl"
+        )
+        appended, skipped = append_events(
+            out_path,
+            events,
+            args.feature_slug,
+            allow_identical_candidates=True,
+        )
+        print(
+            f"Appended {appended} candidate event(s) to {out_path}; "
+            f"skipped {skipped} identical event(s)",
+            file=sys.stderr,
+        )
 
     if not candidates:
         print("No CONTEXT.md/ADR increment found to convert (this is fine — nothing durable to hand off).", file=sys.stderr)

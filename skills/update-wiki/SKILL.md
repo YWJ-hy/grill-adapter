@@ -38,22 +38,20 @@ If the break-loop handoff says no durable knowledge should persist, skip wiki ed
 
 ### Input from execution candidates
 
-When a `.adapter/context/<feature-slug>.wiki-candidates.jsonl` sidecar exists, read it as candidate input. It is a transient, liberally-captured scratch log written during execution/SDD so durable knowledge surfaced mid-flow is not lost to context compaction before this review — it is NOT a list of decisions to write. Each line is one raw, unverified candidate, for example:
+When a `.adapter/context/<feature-slug>.wiki-candidates.jsonl` journal exists, invoke `candidate-journal` to validate and fold it before reading candidate input. It is an append-only, liberally-captured workflow journal so durable knowledge surfaced in discovery, specification, tickets, implementation, review, or debugging is not lost to interruption — it is NOT a list of decisions to write. Stop Capture on corrupt, truncated, duplicate, or illegal lifecycle events.
 
-```jsonl
-{"taskId":"3","kind":"decision","claim":"List pagination uses a cursor, not offset","why":"offset skips/dupes rows under concurrent inserts; offset was considered and rejected","sourceRefs":["src/list/api.ts"],"carveOut":true}
-```
+Apply this skill's normal responsibilities to every folded `pending` or `deferred` candidate: decide whether it is durable, split into atomic candidates, read indexed wiki progressively, check semantic duplicates, choose target ownership, neutralize for shared wiki, and respect update authorization. Ignore `superseded`, `kept`, and `skipped` candidates. Expect to skip many candidates because the journal over-captures by design. Reconcile each candidate against the final code/spec/review evidence so the outcome reflects how the work actually settled.
 
-Apply this skill's normal responsibilities to every line: decide whether it is durable, split into atomic candidates, read indexed wiki progressively, check semantic duplicates, choose target ownership, neutralize for shared wiki, and respect update authorization. Expect to skip many lines — the sidecar over-captures by design. Reconcile each candidate against the plan and the final code so you record the decision as it actually settled, not a superseded mid-flow version.
-
-The sidecar is scratch: after consuming it, delete it, and never commit it. If it is missing, proceed with the normal end-of-flow review.
+For each candidate, invoke `candidate-journal outcome`: record `kept` only after the proposed Note/Card change succeeds, `skipped` with the durable-gate reason, or `deferred` while a conflict, authorization question, or later publishing step remains recoverable. Never delete or rewrite the journal; retain it as the lifecycle receipt and never commit it. If it is missing, proceed with the normal end-of-flow review.
 
 ### Optional pre-step — convert a grill knowledge increment
 
-Only when the project keeps grill-style knowledge files (`CONTEXT.md`, `docs/adr/`): diff that increment into candidate rows first, appending to the same sidecar, then consume the sidecar as above.
+Only when the project keeps grill-style knowledge files (`CONTEXT.md`, `docs/adr/`): diff that increment into candidate events first, appending to the same feature journal, then fold the journal as above.
+
+This pre-step is interruption-safe: rerunning it skips a candidate only when its stable bridge identity and full candidate payload are identical. The same identity with different content remains an error. Do not delete the journal to make a retry pass.
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/grill_context_to_candidates.py <repo-root> --since <branch-point> --out .adapter/context/<feature-slug>.wiki-candidates.jsonl
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/grill_context_to_candidates.py <repo-root> --feature-slug <feature-slug> --since <branch-point>
 ```
 
 grill's glossary/ADRs are tier-1 and the wiki is tier-2, so this bridge is how a day-to-day increment reaches the wiki. Do **not** route grill knowledge through `import-wiki` — that is a flat structural copy, not an increment. No grill knowledge files → skip this entirely.

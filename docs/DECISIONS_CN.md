@@ -287,3 +287,26 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 **代价（已知并接受）**
 - Codex 当前没有 Claude 的 plugin project/user scope；隔离依赖项目绑定与 fail-closed policy。
 - 两端的 skill 引用语法不同：Claude 用 `/grill-adapter:<skill>`，Codex 用 `$grill-adapter:<skill>`，因此 host 约定块必须各有一份薄模板。
+
+---
+
+## 决策 14：候选输入升级为 feature-scoped append-only event journal
+
+**背景**
+旧 `.wiki-candidates.jsonl` 是 implementation 阶段随手写的裸 candidate rows，`update-wiki` 消费后删除。它不能覆盖 discovery/spec/tickets/review/debugging 的候选，不能表达 supersede/outcome，也无法区分「已处理」与「文件还在」；坏 JSON、重复 candidate 或中断写入只能拖到 Capture 时由 agent 偶然发现。
+
+**决策**
+- 保留 `.adapter/context/<feature-slug>.wiki-candidates.jsonl` 路径，但内容升级为 schema-v1 `candidate` / `supersede` / `outcome` events。
+- 新增 `/grill-adapter:candidate-journal` 稳定入口；host convention 只点名 skill，不携带插件路径。所有知识生产阶段都追加到同一 feature journal，中间阶段不写 Obsidian。
+- `wiki_candidate_journal.py` 在文件锁内先完整 replay，再单次 append + fsync。损坏、尾部缺换行、重复 event/candidate ID、跨 feature、未知引用与非法终态转换一律拒绝且不修改 journal。唯一幂等入口是 grill bridge：稳定 candidate ID 与完整 payload 都相同才跳过，使 Capture 中断后可重跑；同 ID 不同内容仍拒绝。
+- fold 状态为 `pending` / `superseded` / `kept` / `skipped` / `deferred`。kept/skipped/superseded 为终态；deferred 可在恢复后转 kept/skipped。
+- journal 不删除，保留为中断恢复 receipt；Stop hook 根据 fold 结果提醒 pending/deferred，全终态静默，invalid 单独报警。
+
+**理由**
+- append-only event history 同时保住原始候选、替代关系和 Capture 决策，不靠覆写恢复状态。
+- 机械 helper 只保证数据完整性，不替代 `update-wiki` 的 durable/ownership/policy 语义门。
+- 同一 feature identity 与 Carry/Bind sidecar 对齐，host 不需要暴露 plan 文档或引擎路径。
+
+**代价（已知并接受）**
+- 插件组件从 12 增至 13 skills；release inventory 与双 runtime smoke 必须同步。
+- 旧裸 candidate rows 不兼容新 journal，过渡中的活动 feature 必须重新经 skill 追加，不能混写或自动猜测迁移。

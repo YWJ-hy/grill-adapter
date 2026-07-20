@@ -20,7 +20,7 @@ for server in manifest["mcpServers"].values():
     assert server["cwd"] == "."
     assert server["args"][0].startswith("./mcp/")
 assert manifest["interface"]["displayName"] == "Grill Adapter"
-assert len(list((root / "skills").glob("*/SKILL.md"))) == 12
+assert len(list((root / "skills").glob("*/SKILL.md"))) == 13
 
 hooks = json.loads((root / "hooks/hooks.json").read_text(encoding="utf-8"))
 assert set(hooks) == {"hooks"}, "Codex rejects unknown top-level hook fields"

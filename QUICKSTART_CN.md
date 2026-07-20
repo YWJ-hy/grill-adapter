@@ -20,7 +20,7 @@ codex plugin marketplace add YWJ-hy/grill-adapter
 codex plugin add grill-adapter@grill-adapter
 ```
 
-12 个 skill、3 个 hook 事件、两个 MCP **一起注册、自动生效**。Claude 直接注册 3 个 agent；Codex 由入口 skill 派生同角色 sub-agent。MCP 装好即自动启动，无需手工注册。
+13 个 skill、3 个 hook 事件、两个 MCP **一起注册、自动生效**。Claude 直接注册 3 个 agent；Codex 由入口 skill 派生同角色 sub-agent。MCP 装好即自动启动，无需手工注册。
 
 **② 给项目写约定块**（plugin 唯一管不到的东西）：
 
@@ -49,7 +49,7 @@ cd grill-adapter
 1. `/grill-with-docs`：描述需求。约定会在质询期自动提示调 `/grill-adapter:wiki-research` 披露相关 wiki。
 2. `/to-tickets`：规划期 `/grill-adapter:wiki-research`（plan）正式选 wiki → 生成 `.adapter/context/<feature-slug>.wiki-context.json` sidecar；ticket 发布后由真实 ticket 建 roster，再 `--finalize` 盖指纹。
 3. `/implement`：每个 ticket 前跑 `/grill-adapter:wiki-materialize <ticket>`，把该 ticket 的硬约束 wiki section 整段 reread 进上下文。改到 source-of-truth 保护路径时 `source-truth-lint` hook 会提醒。
-4. `/code-review` 后：跑 `/grill-adapter:update-wiki` 审查是否有 durable 知识回写（它自己会先把 grill 的 CONTEXT.md/ADR 增量转成候选行）。
+4. 各阶段发现 durable 候选时跑 `/grill-adapter:candidate-journal` 追加到同一 feature journal；`/code-review` 后跑 `/grill-adapter:update-wiki`，先校验/折叠 journal，再记录 keep/skip/defer 并处理回写。
 
 ## 4. 验证
 

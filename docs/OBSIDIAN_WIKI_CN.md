@@ -1,6 +1,6 @@
 # Obsidian Wiki Source 绑定
 
-本页描述 Obsidian Wiki 运行时的前两个切片：项目只能解析它明确绑定的 Source；规划期将受绑定限制的 atomic Note 和 Skill Card 选择承载为 schema-v6 sidecar。schema-v5 sidecar 在过渡期只读，不能再由新规划生成；权威 Note reread、写入、发布和迁移仍在后续切片完成。
+本页描述 Obsidian Wiki 的只读运行边界：项目只能解析它明确绑定的 Source；规划期将受绑定限制的 atomic Note 和 Skill Card 选择承载为 schema-v6 sidecar；执行期按 stable ID reread 权威 Note。schema-v5 sidecar 在过渡期只读，不能再由新规划生成；普通 Note 写入、发布和迁移仍由后续切片完成。
 
 ## 运行边界
 
@@ -10,6 +10,12 @@
 - `obsidian-wiki`：解析当前项目的 Obsidian Source bindings，并提供 Source/status、受绑定限制的 Note 搜索/读取，以及一跳 typed neighbor 查询。
 
 `obsidian-wiki` 只从宿主确定的项目根下 `.shared-adapter/settings.json` 读取 bindings：Claude Code 使用 `CLAUDE_PROJECT_DIR`，Codex 使用受控 MCP request 的 Git workspace metadata，直接 CLI 可使用进程 cwd。工具不接受 Vault、Source 或 root 路径参数，因此调用方不能扩大到未绑定内容；多个 Codex workspace 同时声明 settings 时按歧义 fail-closed。
+
+## Candidate Journal 边界
+
+`grill-with-docs`、specification、tickets、implementation、review 与 debugging 阶段发现的 Wiki Note / Skill Card 候选，只能经 `/grill-adapter:candidate-journal` 追加到 `.adapter/context/<feature-slug>.wiki-candidates.jsonl`，不能写 Obsidian。journal 事件只有 `candidate`、`supersede`、`outcome`；每次追加前完整 replay，并对损坏、截断、重复 identity、未知引用和非法状态转换 fail-closed。
+
+review 后 `update-wiki` 先 validate/fold，再对 pending/deferred 候选做语义审查并追加 keep/skip/defer outcome。journal 是本地、不可提交的恢复 receipt，保留而不删除；它既不包含权威 Note body，也不是绕过 Source policy、write bridge 或后续 PR publishing 的写通道。
 
 ## 项目配置
 

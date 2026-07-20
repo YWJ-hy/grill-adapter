@@ -29,7 +29,7 @@
 | ① 脚本级 smoke / regression | `tests/wiki-*.sh`、`tests/source-truth-*.sh`、`tests/lanhu-*.sh`、`tests/shared-wiki-*.sh` 等 | 执行层（引擎脚本）行为正确 | **否**，不能替代集成路径 |
 | ② 项目接线测试 | `tests/install-project-wiring-smoke.sh` | `install` 只写/剥 `<project>/CLAUDE.md`、`AGENTS.md` 的约定块；覆盖 runtime/host 切换、幂等、干净卸载与零路径 | 否 |
 | ③ hook 行为测试 | `tests/hooks-smoke.sh` | 三个 host 无关 hook（wiki-reread / wiki-capture-suggest / source-truth-lint）在事件 JSON 驱动下的注入与静默路径 | 否 |
-| ④ 桥测试 | `tests/grill-bridge-smoke.sh` | `scripts/grill_context_to_candidates.py` 把 grill `CONTEXT.md` / `docs/adr` 增量转成 update-wiki 候选行（由 `skills/update-wiki` 的可选前置步骤调用） | 否 |
+| ④ 桥测试 | `tests/wiki-candidate-journal-smoke.sh`、`tests/grill-bridge-smoke.sh` | journal append/supersede/outcome/fold 的公开 CLI 契约；grill `CONTEXT.md` / `docs/adr` 增量批量转成标准 candidate events | 否 |
 | ⑤ host 约定测试 | `tests/host-conventions-smoke.sh` | grill / plain 约定块含全部触点、零 patch 不变式、skill 调用带 `grill-adapter:` 命名空间、块内零安装路径 | 否 |
 | ⑥ 集成验收 | 安装后 Claude Code/Codex 真跑 | 铁律那条端到端流真正跑通 | 这是**最终门** |
 
@@ -56,7 +56,7 @@ grill-adapter 同时提供 Claude Code 与 Codex plugin manifest。共享 skills
 开发期不必安装即可加载 plugin 并核对组件清单：
 
 ```bash
-claude --plugin-dir "$PWD" plugin details grill-adapter   # 应报 12 skills / 3 agents / 3 hooks / 2 MCP servers
+claude --plugin-dir "$PWD" plugin details grill-adapter   # 应报 13 skills / 3 agents / 3 hooks / 2 MCP servers
 codex plugin marketplace add "$PWD"                       # 开发期本地 marketplace
 codex plugin add grill-adapter@grill-adapter
 ```
@@ -99,7 +99,7 @@ bash tests/host-conventions-smoke.sh "$PWD"
   3. **占位符残留检查**：机械 `grep` `__SUPERPOWER_ADAPTER` 残留，以及 `skills/`、`agents/`、`role-prd/`、`host-adapters/` 里已作废的 `__GRILL_ADAPTER_ROOT__`。
   4. **所有 MCP typecheck + build + test**：每个 `mcp/*` 包运行 `npm install && npm run typecheck && npm run build && npm test`（无 npm 则 SKIP）。`build` 是 esbuild 打包、**不做类型检查**，所以 `typecheck` 必须单独跑。
   5. **MCP bundle 已提交且与 src 一致**：每个插件注册 MCP 的 `dist/index.js` 必须存在且在步骤 4 重新构建后无 git 漂移。
-  6. **plugin 组件清单**：Claude 必须报满 12 skills / 3 agents / 3 hooks / 2 MCP；`tests/codex-plugin-smoke.sh` 必须通过 manifest 校验与隔离 marketplace 安装。
+  6. **plugin 组件清单**：Claude 必须报满 13 skills / 3 agents / 3 hooks / 2 MCP；`tests/codex-plugin-smoke.sh` 必须通过 manifest 校验与隔离 marketplace 安装。
   7. **沙盒项目接线 + verify**：对临时项目 `install --host grill` 后 `verify`。
   8. **全套 smoke**：跑 `self-test.sh`。
   9. **doctor**：对传入项目只读诊断。

@@ -15,6 +15,10 @@ grill stage → grill-adapter touchpoint:
 | `/code-review` | Capture (update-wiki) |
 | `/diagnosing-bugs` | conditional Disclose, then break-loop→Capture |
 
+### Candidate journal — throughout the workflow
+
+Whenever a stage surfaces a possible durable Wiki Note or executable Skill Card registration, run `/grill-adapter:candidate-journal append <feature-slug> <stage>` instead of writing Obsidian or hand-editing JSONL. Every stage targets the same `.adapter/context/<feature-slug>.wiki-candidates.jsonl` append-only journal. Use these stage values: `grill-with-docs`, `specification`, `tickets`, `implementation`, `review`, and `debugging`. Capture liberally; `/grill-adapter:update-wiki` remains the only semantic keep-or-skip gate.
+
 ### Intake — Lanhu requirements (only when a Lanhu link is given)
 
 If the user provides a Lanhu URL/invite link or asks for Lanhu, before `/grill-with-docs` run `/grill-adapter:lanhu-requirements <link> frontend|backend <optional name>`, confirm the generated `.lanhu/.../index.md` evidence package, then feed that package to `/grill-with-docs` as requirements input. The evidence package is **input only**: never copy Lanhu content into wiki, spec, tickets, acceptance criteria, or tests. No Lanhu link → skip this entirely.
@@ -50,17 +54,17 @@ Run `/grill-adapter:wiki-materialize <ticket-id>` for every ticket. Schema-v5 re
 
 The `source-truth-lint` hook (PostToolUse/Stop) lints the real changed files during implementation. If it reports `block`, revert the `truth/edit: never` edit or route it upstream before completing the ticket; if `ask`, get explicit authorization or revert. Authorization never bypasses `truth/edit: never`.
 
-While implementing, if you make a hard-to-reverse or surprising decision, resolve a non-obvious trade-off, or hit a durable gotcha not already captured, append one JSONL line to `.adapter/context/<feature-slug>.wiki-candidates.jsonl` (`taskId`, `kind`, `claim`, `why` incl. rejected alternatives, `sourceRefs`, `carveOut`) and keep coding. Capture cheaply; the end-of-flow gate is the strict filter.
+While implementing, if you make a hard-to-reverse or surprising decision, resolve a non-obvious trade-off, or hit a durable gotcha not already captured, invoke `/grill-adapter:candidate-journal` with stage `implementation` and keep coding.
 
 ### Capture — after `/code-review`
 
 Once the work is reviewed and accepted, run the Capture gate:
 
-Run `/grill-adapter:update-wiki` to make the keep-or-skip determination about durable knowledge. It consumes the `.adapter/context/<feature-slug>.wiki-candidates.jsonl` sidecar as candidate input, and — because this project keeps grill's `CONTEXT.md`/`docs/adr` — first converts that knowledge increment into candidate rows via its own grill bridge (grill's glossary/ADRs are tier-1; the wiki is tier-2). Do **not** route grill knowledge through `import-wiki`: that is a flat structural copy, not an increment.
+Run `/grill-adapter:update-wiki` to validate/fold the `.adapter/context/<feature-slug>.wiki-candidates.jsonl` journal and make a recorded keep/skip/defer determination for every unresolved candidate. Because this project keeps grill's `CONTEXT.md`/`docs/adr`, the skill first converts that knowledge increment into journal events via its own grill bridge (grill's glossary/ADRs are tier-1; the wiki is tier-2). Do **not** route grill knowledge through `import-wiki`: that is a flat structural copy, not an increment.
 
 Reach the gate by actually invoking the skill; skipping is valid only as the skill's own conclusion with a stated reason. `/grill-adapter:update-wiki` owns the durable gate, sectionizing, `type:`, `[[page#section]]` edges, dedup, neutralization, and authorization.
 
-The `wiki-capture` hook (Stop) is a non-blocking backstop that reminds you when a non-empty `.wiki-candidates.jsonl` is still pending.
+The `wiki-capture` hook (Stop) is a non-blocking backstop that reminds on pending/deferred candidates, stays silent for a fully terminal retained journal, and reports an invalid journal.
 
 ### Debug — during `/diagnosing-bugs`
 
@@ -68,5 +72,5 @@ Do not call `/grill-adapter:wiki-research` at the start of debugging. After Phas
 
 ### Boundary
 
-grill-adapter's standalone utility skills (`init-wiki`, `import-wiki`, `migrate-wiki`, `lanhu-requirements`, `shared-wiki-mcp`, `publish-shared-wiki`, `update-wiki`, `scaffold-practice-skill`) are utilities, not grill workflow steps. Do not auto-invoke grill's planning/implementation/review/completion skills solely because one of them ran.
+grill-adapter's standalone utility skills (`init-wiki`, `import-wiki`, `migrate-wiki`, `lanhu-requirements`, `shared-wiki-mcp`, `publish-shared-wiki`, `candidate-journal`, `update-wiki`, `scaffold-practice-skill`) are utilities, not grill workflow steps. Do not auto-invoke grill's planning/implementation/review/completion skills solely because one of them ran.
 <!-- grill-adapter:host:grill:end -->

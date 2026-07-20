@@ -27,7 +27,7 @@ for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN" "$HOOKS_JSON"; do
 done
 
 # Codex blocks carry the same touchpoints with native skill mentions.
-for skill in wiki-research wiki-materialize update-wiki source-truth-check lanhu-requirements break-loop; do
+for skill in wiki-research wiki-materialize update-wiki candidate-journal source-truth-check lanhu-requirements break-loop; do
   need "$CODEX_GRILL" "\$grill-adapter:$skill"
 done
 need "$CODEX_GRILL" '$mattpocock-skills:grill-with-docs'
@@ -45,6 +45,7 @@ need "$GRILL" 'never patches any grill skill'
 need "$GRILL" '/grill-adapter:wiki-research'       # Disclose
 need "$GRILL" '/grill-adapter:wiki-materialize'    # Bind
 need "$GRILL" '/grill-adapter:update-wiki'         # Capture
+need "$GRILL" '/grill-adapter:candidate-journal'   # feature journal
 need "$GRILL" '/grill-adapter:source-truth-check'  # source-of-truth Verify
 need "$GRILL" '/grill-adapter:lanhu-requirements'  # Lanhu Intake
 need "$GRILL" '/grill-adapter:break-loop'          # break-loop
@@ -59,9 +60,21 @@ need "$PLAIN" 'grill-adapter:host:plain:start'
 need "$PLAIN" '/grill-adapter:wiki-research'
 need "$PLAIN" '/grill-adapter:wiki-materialize'
 need "$PLAIN" '/grill-adapter:update-wiki'
+need "$PLAIN" '/grill-adapter:candidate-journal'
 need "$PLAIN" '/grill-adapter:source-truth-check'
 need "$PLAIN" '/grill-adapter:break-loop'
 need "$PLAIN" 'no host skill is patched'
+
+# Every knowledge-producing workflow stage targets the same mechanical feature journal.
+for f in "$GRILL" "$PLAIN"; do
+  need "$f" 'grill-with-docs'
+  need "$f" 'specification'
+  need "$f" 'tickets'
+  need "$f" 'implementation'
+  need "$f" 'review'
+  need "$f" 'debugging'
+  need "$f" 'wiki-candidates.jsonl'
+done
 
 # Neither block may carry an install path: they land outside plugin content, where
 # ${CLAUDE_PLUGIN_ROOT} is never substituted, and a baked absolute path would rot on the
