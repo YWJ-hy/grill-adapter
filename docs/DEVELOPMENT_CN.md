@@ -106,6 +106,12 @@ bash tests/host-conventions-smoke.sh "$PWD"
 
 任一步 FAIL，`release-check` 整体 FAIL。
 
+### 4.1 隔离 Codex 集成验收的 provider 配置
+
+`tests/codex-plugin-smoke.sh` 的隔离 `CODEX_HOME` 只验证 marketplace/plugin 安装，不发模型请求。要在隔离 home 里继续跑**模型驱动**的 skill 集成验收，除了认证，还必须保留当前会话的 effective `model`、`model_provider` 及对应 `[model_providers.<name>]` 配置；只复制/链接 `auth.json` 不够。
+
+启动输出里的 `model:` 与 `provider:` 是验收前置断言。若自定义 provider 的模型在隔离 home 中退回 `provider: openai`，CLI 可能表现为反复 `stream disconnected`，这不是 plugin/skill/hook 故障。先修复隔离配置，再判断集成路径；不得通过把完整用户配置或凭据提交进测试 fixture 来解决。远端 plugin catalog 在 API-key 登录下产生的同步 warning 与本地 plugin skill 执行是两条独立路径，也不能拿它替代实际 sampling/skill 结果。
+
 ---
 
 ## 5. 改不同层的验证要求
