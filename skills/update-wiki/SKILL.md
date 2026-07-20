@@ -44,6 +44,18 @@ Apply this skill's normal responsibilities to every folded `pending` or `deferre
 
 For each candidate, invoke `candidate-journal outcome`: record `kept` only after the proposed Note/Card change succeeds, `skipped` with the durable-gate reason, or `deferred` while a conflict, authorization question, or later publishing step remains recoverable. Never delete or rewrite the journal; retain it as the lifecycle receipt and never commit it. If it is missing, proceed with the normal end-of-flow review.
 
+### Obsidian Note write path
+
+When `.shared-adapter/settings.json` selects `wiki.provider: obsidian`, never edit the Vault or its repository worktree directly. After semantic targeting and content review:
+
+1. Call `obsidian_wiki_propose_note_change` with the bound `sourceId`, Vault-relative Note path, complete proposed atomic Note content, operation, and expected content hash (`null` for create).
+2. Show the returned structured diff to the user. A proposal does not write.
+3. Respect the returned effective policy: `deny` stops; `confirm` requires explicit user authorization; `direct` may proceed without a separate confirmation. Authorization never weakens `deny`.
+4. Call `obsidian_wiki_apply_note_change` with the exact proposal inputs and `authorized: true` only after confirmation when required. Treat authentication failure, expected-hash conflict, binding/path/schema/identity/typed-link failure, or Shared neutrality rejection as `deferred`; do not retry by editing files directly.
+5. Record `kept` only after the apply response returns matching post-write `wikiId`, path, and content hash. The changed worktree is staged knowledge state for the later publishing flow; do not claim it is merged or runtime-visible.
+
+The loopback write bridge is the only automated Obsidian writer. Neither this skill nor a script may accept an arbitrary Vault/root override.
+
 ### Optional pre-step — convert a grill knowledge increment
 
 Only when the project keeps grill-style knowledge files (`CONTEXT.md`, `docs/adr/`): diff that increment into candidate events first, appending to the same feature journal, then fold the journal as above.
@@ -152,7 +164,8 @@ These scripts are helpers only. They do not replace agent judgment.
 | `wiki_generate_section_index.py <file>` | Regenerate a page's companion section index and rebuild the root `.graph.json` (section nodes, `[[ ]]` edges, backlinks, dangling). It must not decide content. |
 | `wiki_update_check.py --wiki-root all` | Validate index/format mechanics, configured shared-wiki neutrality guards, and dangling `[[page#section]]` edges across roots. It must not decide whether durable knowledge exists. |
 | `update-wiki.py --wiki-root project|shared` | Refresh indexed wiki page summaries for the changed local root; shared root refreshes reject configured neutrality violations. |
-| shared-wiki MCP tools | Optional GitHub-backed shared wiki read/search/validate/branch+PR path. They submit mechanical PRs only and must not decide durable knowledge, ownership, or neutrality. |
+| `obsidian_wiki_propose_note_change` / `obsidian_wiki_apply_note_change` | Validate, preview, and CAS-write a bound atomic Note through the authenticated loopback bridge. They must not decide durable knowledge or ownership. |
+| shared-wiki MCP tools | Optional legacy GitHub-backed shared wiki read/search/validate/branch+PR path. They submit mechanical PRs only and must not decide durable knowledge, ownership, or neutrality. |
 
 ## Forbidden Shortcuts
 

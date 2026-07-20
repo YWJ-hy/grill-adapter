@@ -5,6 +5,7 @@ import { sourcesTool } from './tools/sources.js';
 import { searchTool } from './tools/search.js';
 import { readNoteTool, readNotesByWikiIdsTool, readNotesTool } from './tools/read.js';
 import { graphNeighborsTool } from './tools/graph.js';
+import { applyNoteChangeTool, proposeNoteChangeTool } from './tools/write.js';
 import { environmentForMcpRequest } from './bindings.js';
 
 function toResult(value: unknown) {
@@ -53,5 +54,22 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     inputSchema: z.object({ wikiIds: z.array(z.string().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(graphNeighborsTool(input, requestEnv(extra._meta))));
+  const noteChangeSchema = {
+    sourceId: z.string().min(1),
+    operation: z.enum(['create', 'update']),
+    path: z.string().min(1),
+    content: z.string().min(1),
+    expectedHash: z.string().nullable(),
+  };
+  server.registerTool('obsidian_wiki_propose_note_change', {
+    description: 'Validate a bound atomic Note create/update and return its structured diff without writing.',
+    inputSchema: z.object(noteChangeSchema),
+    annotations: { readOnlyHint: true, idempotentHint: true },
+  }, async (input, extra) => toResult(await proposeNoteChangeTool(input, requestEnv(extra._meta))));
+  server.registerTool('obsidian_wiki_apply_note_change', {
+    description: 'Apply an already reviewed bound atomic Note change through the authenticated loopback bridge with expected-hash CAS.',
+    inputSchema: z.object({ ...noteChangeSchema, authorized: z.boolean().optional() }),
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+  }, async (input, extra) => toResult(await applyNoteChangeTool(input, requestEnv(extra._meta))));
   return server;
 }

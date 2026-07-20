@@ -46,7 +46,7 @@ print("  binding OK.")
 PY
 
 echo ""
-echo "Obsidian Wiki Source bindings (read-only diagnostic):"
+echo "Obsidian Wiki Source runtime (binding/read/write-bridge diagnostic):"
 if [[ -f "$SCRIPT_DIR/mcp/obsidian-wiki/dist/index.js" ]] && command -v node >/dev/null 2>&1; then
   CLAUDE_PROJECT_DIR="$PROJECT_ROOT" node "$SCRIPT_DIR/mcp/obsidian-wiki/dist/index.js" status || true
 else

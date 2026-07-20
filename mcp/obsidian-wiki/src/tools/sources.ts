@@ -16,6 +16,7 @@ export function sourcesTool(env: NodeJS.ProcessEnv = process.env) {
       effectiveReadPolicy: binding.effectiveReadPolicy,
       effectiveUpdatePolicy: binding.effectiveUpdatePolicy,
       effectiveCreatePolicy: binding.effectiveCreatePolicy,
+      writeBridgeConfigured: binding.vaultHealth.writeBridgeConfigured,
       bindingDigest: binding.bindingDigest,
       scope: binding.manifest.scope,
     })),

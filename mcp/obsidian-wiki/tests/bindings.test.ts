@@ -99,6 +99,22 @@ describe('Obsidian Wiki Source bindings', () => {
     expect(status.errors.join(' ')).toMatch(/unresolved vaultRef/);
   });
 
+  it('rejects incomplete or non-loopback write bridge registry configuration', () => {
+    const binding = { sourceId: 'project', role: 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: 'Projects/example', access: { read: true } };
+    const incomplete = fixture([binding], [{ root: 'Projects/example', sourceId: 'project', scope: 'project' }]);
+    const incompleteRegistry = JSON.parse(readFileSync(incomplete.registryPath, 'utf8'));
+    incompleteRegistry.vaults.knowledge.bridgeUrl = 'http://127.0.0.1:27124';
+    writeJson(incomplete.registryPath, incompleteRegistry);
+    expect(resolveBindings(testEnvironment(incomplete)).errors.join(' ')).toMatch(/requires both bridgeUrl and bridgeTokenEnv/);
+
+    const exposed = fixture([binding], [{ root: 'Projects/example', sourceId: 'project', scope: 'project' }]);
+    const exposedRegistry = JSON.parse(readFileSync(exposed.registryPath, 'utf8'));
+    exposedRegistry.vaults.knowledge.bridgeUrl = 'http://0.0.0.0:27124';
+    exposedRegistry.vaults.knowledge.bridgeTokenEnv = 'OBSIDIAN_WIKI_BRIDGE_TOKEN';
+    writeJson(exposed.registryPath, exposedRegistry);
+    expect(resolveBindings(testEnvironment(exposed)).errors.join(' ')).toMatch(/loopback host/);
+  });
+
   it('resolves Codex bindings from the MCP working directory', () => {
     const input = fixture([
       { sourceId: 'project', role: 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: 'Projects/example', access: { read: true } },

@@ -10,7 +10,7 @@ const edgeTypes = [
 
 type EdgeType = typeof edgeTypes[number][0];
 
-function linkPath(value: string): string {
+export function linkPath(value: string): string {
   const target = /^\[\[([^#|\]]+)/.exec(value)?.[1]?.trim();
   if (!target) throw new Error(`Typed edge must use an Obsidian link: ${value}`);
   return target.endsWith('.md') ? target : `${target}.md`;

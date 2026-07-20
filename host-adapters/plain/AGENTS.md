@@ -39,6 +39,8 @@ While implementing, invoke `$grill-adapter:candidate-journal` with stage `implem
 
 Run `$grill-adapter:update-wiki` to validate/fold the journal and record keep/skip/defer for every unresolved candidate. If the project keeps grill-style knowledge files (`CONTEXT.md`, `docs/adr/`), the skill first converts that increment into journal events via its own grill bridge (bridge, not `import-wiki`). The `wiki-capture` hook reminds only on pending/deferred work or an invalid journal.
 
+For `wiki.provider: obsidian`, Capture must use `obsidian_wiki_propose_note_change`, show its structured diff, then use `obsidian_wiki_apply_note_change` only when the effective Source policy permits it and any required confirmation was explicit. Never edit the Vault worktree directly; conflicts remain deferred and recoverable. A successful apply is staged knowledge state, not a merged/published Note.
+
 ### Debug
 
 After root-cause evidence narrows the failure, optionally run `$grill-adapter:wiki-research` (phase `debug`, ≤2 sections) for a targeted lookup. After a verified fix, run `$grill-adapter:break-loop` for a retrospective; it hands durable candidates to `$grill-adapter:update-wiki`.

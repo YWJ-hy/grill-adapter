@@ -10,7 +10,7 @@ export type RetrievedNote = AtomicNote & {
   bindingDigest: string;
 };
 
-function normalizeVaultPath(value: string): string {
+export function normalizeVaultPath(value: string): string {
   if (path.posix.isAbsolute(value)) throw new Error('Obsidian Note path must be Vault-relative');
   const normalized = path.posix.normalize(value.replaceAll('\\', '/'));
   if (normalized === '.' || normalized === '..' || normalized.startsWith('../')) {
@@ -19,11 +19,11 @@ function normalizeVaultPath(value: string): string {
   return normalized.replace(/^\.\//, '');
 }
 
-function noteIsWithinBinding(notePath: string, binding: ResolvedBinding): boolean {
+export function noteIsWithinBinding(notePath: string, binding: ResolvedBinding): boolean {
   return notePath === binding.root || notePath.startsWith(`${binding.root}/`);
 }
 
-function assertPathWithinBinding(notePath: string, binding: ResolvedBinding): string {
+export function assertPathWithinBinding(notePath: string, binding: ResolvedBinding): string {
   const normalized = normalizeVaultPath(notePath);
   if (!noteIsWithinBinding(normalized, binding)) {
     throw new Error(`Obsidian Note path is outside bound Source ${binding.sourceId}: ${normalized}`);
@@ -110,7 +110,12 @@ export function readBoundNotesByWikiIds(wikiIds: string[], bindings: ResolvedBin
   return stableBatchRead(resolved as BoundPath[], env);
 }
 
-export function searchBoundNotes(query: string, bindings: ResolvedBinding[], env: NodeJS.ProcessEnv): RetrievedNote[] {
+export function searchBoundNotes(
+  query: string,
+  bindings: ResolvedBinding[],
+  env: NodeJS.ProcessEnv,
+  requireActiveAndVisible = true,
+): RetrievedNote[] {
   const readableBindings = bindings.filter((binding) => binding.effectiveReadPolicy === 'allow');
   const notes: RetrievedNote[] = [];
   const seenPaths = new Set<string>();
@@ -125,7 +130,7 @@ export function searchBoundNotes(query: string, bindings: ResolvedBinding[], env
       if (!noteIsWithinBinding(notePath, binding)) continue;
       if (notePath === `${binding.root}/_meta` || notePath.startsWith(`${binding.root}/_meta/`)) continue;
       const note = readBoundNote(notePath, [binding], env, false);
-      if (note.status !== 'active' || !note.agentVisible) continue;
+      if (requireActiveAndVisible && (note.status !== 'active' || !note.agentVisible)) continue;
       if (seenIds.has(note.wikiId)) throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
       seenIds.add(note.wikiId);
       notes.push(note);

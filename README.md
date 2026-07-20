@@ -39,7 +39,7 @@ codex plugin marketplace add YWJ-hy/grill-adapter
 codex plugin add grill-adapter@grill-adapter
 ```
 
-Both runtimes discover **13 skills, 3 hook events, and 2 MCP servers**. Claude Code also registers the 3 files under `agents/` directly; Codex keeps those prompts as plugin payload and the two entry skills dispatch general sub-agents with the same role instructions. The legacy `shared-wiki` and Source-binding `obsidian-wiki` servers are registered together and start automatically.
+Both runtimes discover **13 skills, 3 hook events, and 2 MCP servers**. Claude Code also registers the 3 files under `agents/` directly; Codex keeps those prompts as plugin payload and the two entry skills dispatch general sub-agents with the same role instructions. The legacy `shared-wiki` and Source-binding `obsidian-wiki` servers are registered together and start automatically. `obsidian-wiki` also exposes proposal/apply tools for governed Note writes; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server (setup: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
 
 > **Claude Code scope is shared.** Skills, agents, hooks, and bundled MCP servers all take the plugin's scope. Codex's current `plugin add` command has no project/user scope flag; project isolation comes from explicit Wiki bindings and fail-closed policy.
 

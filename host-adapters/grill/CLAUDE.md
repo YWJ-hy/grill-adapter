@@ -64,6 +64,8 @@ Run `/grill-adapter:update-wiki` to validate/fold the `.adapter/context/<feature
 
 Reach the gate by actually invoking the skill; skipping is valid only as the skill's own conclusion with a stated reason. `/grill-adapter:update-wiki` owns the durable gate, sectionizing, `type:`, `[[page#section]]` edges, dedup, neutralization, and authorization.
 
+For `wiki.provider: obsidian`, Capture must use `obsidian_wiki_propose_note_change`, show its structured diff, then use `obsidian_wiki_apply_note_change` only when the effective Source policy permits it and any required confirmation was explicit. Never edit the Vault worktree directly; conflicts remain deferred and recoverable. A successful apply is staged knowledge state, not a merged/published Note.
+
 The `wiki-capture` hook (Stop) is a non-blocking backstop that reminds on pending/deferred candidates, stays silent for a fully terminal retained journal, and reports an invalid journal.
 
 ### Debug — during `/diagnosing-bugs`

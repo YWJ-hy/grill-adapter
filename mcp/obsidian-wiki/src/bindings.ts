@@ -53,6 +53,7 @@ type Repository = z.infer<typeof RepositorySchema>;
 
 type VaultHealth = {
   selector: string;
+  writeBridgeConfigured: boolean;
 };
 
 type RepositoryHealth = {
@@ -78,6 +79,8 @@ export type ResolvedBinding = {
   role: 'project' | 'shared';
   vaultRef: string;
   vaultSelector: string;
+  bridgeUrl: string | undefined;
+  bridgeTokenEnv: string | undefined;
   repositoryRef: string;
   repository: Repository;
   vaultHealth: VaultHealth;
@@ -330,12 +333,25 @@ function validateRepository(repository: Repository): RepositoryHealth {
 }
 
 function validateVault(vault: Vault, env: NodeJS.ProcessEnv): VaultHealth {
+  if ((vault.bridgeUrl === undefined) !== (vault.bridgeTokenEnv === undefined)) {
+    throw new Error('Vault write bridge requires both bridgeUrl and bridgeTokenEnv');
+  }
+  if (vault.bridgeUrl) {
+    const url = new URL(vault.bridgeUrl);
+    const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    if (url.protocol !== 'http:' || !(hostname === 'localhost' || hostname === '::1' || /^127(?:\.\d{1,3}){3}$/.test(hostname))) {
+      throw new Error('Vault bridgeUrl must use HTTP on a loopback host');
+    }
+    if (url.username || url.password || (url.pathname !== '/' && url.pathname !== '')) {
+      throw new Error('Vault bridgeUrl must not contain credentials or a path');
+    }
+  }
   const executable = env.OBSIDIAN_WIKI_OBSIDIAN_CLI || 'obsidian';
   const listedVaults = commandOutput(executable, ['vault']);
   if (!listedVaults.split(/\r?\n/).some((line) => line.trim() === vault.selector)) {
     throw new Error(`Obsidian Vault selector is not available: ${vault.selector}`);
   }
-  return { selector: vault.selector };
+  return { selector: vault.selector, writeBridgeConfigured: vault.bridgeUrl !== undefined };
 }
 
 export function resolveBindings(
@@ -402,6 +418,8 @@ export function resolveBindings(
         role: candidate.role,
         vaultRef: candidate.vaultRef,
         vaultSelector: vault.selector,
+        bridgeUrl: vault.bridgeUrl,
+        bridgeTokenEnv: vault.bridgeTokenEnv,
         repositoryRef: candidate.repositoryRef,
         repository,
         vaultHealth,

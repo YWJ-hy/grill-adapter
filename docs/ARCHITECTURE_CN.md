@@ -39,7 +39,7 @@ grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 
 | **Disclose** 选 wiki | 独立 `/grill-adapter:wiki-research` skill（驱动 `grill-adapter:wiki-researcher` agent），任何 host 都能调 | grill-with-docs 质询期 |
 | **Carry** 带约束 | schema-v6 `.adapter/context/<feature-slug>.wiki-context.json` 保存绑定 digest、atomic Note ID/path/hash/summary、独立 Skill Card 与 ticket roster 指纹，绝不保存 Note body；锚点是 feature，不是 plan 文件 | to-tickets 据 Obsidian selection 写 |
 | **Bind** 执行期 reread | schema-v5/v6 都由每 ticket `/grill-adapter:wiki-materialize <ticket>` 精确读取；schema-v6 仅经 bound Obsidian MCP stable-ID 读取路由硬 Note、角色 Skill Card 和 1 跳 `depends_on`，任何漂移 fail-closed；`wiki-reread` hook 只做 SessionStart 提醒 | implement 逐 ticket |
-| **Capture** 回写 | `/grill-adapter:update-wiki`（语义门），其可选前置步经 `grill_context_to_candidates.py` 吃 grill CONTEXT.md/ADR 增量 | code-review 后 |
+| **Capture** 回写 | `/grill-adapter:update-wiki`（语义门），其可选前置步经 `grill_context_to_candidates.py` 吃 grill CONTEXT.md/ADR 增量；Obsidian provider 经 proposal → loopback bridge CAS apply | code-review 后 |
 
 `/grill-adapter:wiki-materialize` 复用 `scripts/wiki_materialize_task.py`——本地 + `github_mcp` 两类 section 统一取，含**执行期有界 1 跳 `depends-on` 闭包**。
 
@@ -53,6 +53,7 @@ grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 
 ## 引擎组件
 
 - **执行层脚本 `scripts/*.py`**：`wiki_common`（1 跳邻居、depends-on 闭包等共享逻辑）、`wiki_context_render`（schema-v5 只读兼容，以及 schema-v6 Obsidian metadata Carry 的校验/渲染/scaffold/finalize；task 身份与指纹来自 host 产出的 ticket roster）、`wiki_materialize_task`（schema-v5 的单一固定取数器：本地 + github_mcp reread + 1 跳闭包）、`wiki_candidate_journal`（候选事件校验、锁内追加、生命周期 fold）、`wiki_generate_section_index` / `wiki_update_check` / `wiki_migrate_helper`、`wiki_graph_neighbors`、`wiki_section` / `wiki_read_section` / `wiki_select_target` / `wiki_apply_update` / `wiki_import` / `init-wiki` / `update-wiki`；`source_truth_settings` / `source_truth_common`；`lanhu_settings`；`scaffold_practice_skill`；`grill_context_to_candidates`（grill→journal 桥）。
+- **obsidian-wiki MCP + write bridge `mcp/obsidian-wiki/`**：同一提交型 bundle 暴露绑定只读工具、Note proposal/apply MCP/JSON CLI，以及独立 `serve-write-bridge` 入口。MCP 只按当前项目 binding 选择 Source 并执行更严格的 project policy；bridge 只监听 loopback，以环境 token 鉴权，再独立执行 allowlisted Source root、manifest policy、schema/identity/typed-link、`_meta`、Shared neutrality与 expected-hash CAS 校验，最后 atomic rename。bridge 不随 MCP 自动开放端口。
 - **shared-wiki MCP `mcp/shared-wiki/`**：TypeScript MCP server，随插件 MCP 声明自启；Claude Code 从 `CLAUDE_PROJECT_DIR`、Codex 从 MCP request 的 `x-codex-turn-metadata.workspaces`（并兼容标准 roots capability）定位项目，再读该项目 `.shared-adapter/settings.json` 自配置；直接 CLI 仍可从进程 cwd 定位。MCP server 先注册工具，首次调用时解析绑定，未声明或多 root 歧义均 fail-closed。其余 read/graph/CLI 与 bundle 不变式不变。
 - **模板与导出**：`wiki-template/`、`wiki-repo-skills/` + `wiki-repo-ci/`、`contracts/`（含 wiki context/selection、ticket roster 与 `wiki-candidate-journal-v1.example.jsonl` 契约示例）。
 
