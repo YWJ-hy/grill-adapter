@@ -21,6 +21,14 @@ Before any Lanhu analysis, determine whether the user wants a `frontend` or `bac
 
 Frontend now has exactly one package shape. Deprecated `lanhu.frontend.output.format` settings are ignored; frontend always routes to `lanhu-frontend-requirements-analyst` and writes the unified `frontend-prd/` package. Backend remains Markdown-only and routes to `lanhu-backend-requirements-analyst`.
 
+### Analyst dispatch compatibility
+
+- When the runtime exposes the named Lanhu plugin agents, invoke the selected agent directly.
+- Codex does not register plugin `agents/*.md` as callable agents. In Codex, read the selected self-contained prompt completely, then spawn one general sub-agent per selected page with that prompt as its role instructions plus the dispatch input from step 11. Do not run the analyst inline in the main session.
+  - Frontend prompt: `${CLAUDE_PLUGIN_ROOT}/agents/lanhu-frontend-requirements-analyst.md`
+  - Backend prompt: `${CLAUDE_PLUGIN_ROOT}/agents/lanhu-backend-requirements-analyst.md`
+- Route confirmation answers back to the same sub-agent when it remains available; otherwise spawn a replacement with the same full prompt, prior compact metadata, and `resolutionMode: resolve_confirmation` input.
+
 ## Output package structures
 
 ### Frontend unified package

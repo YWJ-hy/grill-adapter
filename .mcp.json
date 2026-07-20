@@ -1,5 +1,4 @@
 {
-  "_comment": "grill-adapter plugin MCP servers. Both start with the plugin and share its scope. shared-wiki remains the legacy schema-v5 server. obsidian-wiki resolves only Sources bound in CLAUDE_PROJECT_DIR/.shared-adapter/settings.json and its machine-local registry, then fails closed when configuration is invalid. Tools are namespaced mcp__plugin_grill-adapter_<server>__*.",
   "mcpServers": {
     "shared-wiki": {
       "command": "node",

@@ -100,6 +100,41 @@ export type BindingResolution = {
   warnings: string[];
 };
 
+export type McpRequestMeta = Record<string, unknown> | undefined;
+
+export function environmentForMcpRequest(
+  env: NodeJS.ProcessEnv,
+  requestMeta: McpRequestMeta,
+  workingDirectory: string = process.cwd(),
+): NodeJS.ProcessEnv {
+  if (env.CLAUDE_PROJECT_DIR) return env;
+  const turnMeta = requestMeta?.['x-codex-turn-metadata'];
+  const isCodexRequest = turnMeta !== null && typeof turnMeta === 'object' && !Array.isArray(turnMeta);
+  const workspaces = isCodexRequest
+    ? (turnMeta as Record<string, unknown>).workspaces
+    : undefined;
+  const workspaceDirs = workspaces !== null && typeof workspaces === 'object' && !Array.isArray(workspaces)
+    ? Object.keys(workspaces).filter((workspace) => path.isAbsolute(workspace))
+    : [];
+  const configuredProjectDirs = [...new Set(workspaceDirs.map((dir) => path.resolve(dir)))]
+    .filter((dir) => existsSync(path.join(dir, '.shared-adapter', 'settings.json')));
+  if (!isCodexRequest) {
+    const projectDir = path.resolve(workingDirectory);
+    if (existsSync(path.join(projectDir, '.shared-adapter', 'settings.json'))) {
+      return { ...env, CLAUDE_PROJECT_DIR: projectDir };
+    }
+  }
+  if (configuredProjectDirs.length === 0) {
+    throw new Error('No Codex workspace metadata contains .shared-adapter/settings.json for Obsidian Wiki binding resolution');
+  }
+  if (configuredProjectDirs.length > 1) {
+    throw new Error(
+      `Multiple Codex workspaces contain .shared-adapter/settings.json; Obsidian Wiki binding is ambiguous: ${configuredProjectDirs.join(', ')}`,
+    );
+  }
+  return { ...env, CLAUDE_PROJECT_DIR: configuredProjectDirs[0] };
+}
+
 function normalizeRoot(value: string): string {
   if (path.isAbsolute(value)) throw new Error('binding root must be a relative path');
   const normalized = path.posix.normalize(value.replaceAll('\\', '/'));
@@ -303,9 +338,11 @@ function validateVault(vault: Vault, env: NodeJS.ProcessEnv): VaultHealth {
   return { selector: vault.selector };
 }
 
-export function resolveBindings(env: NodeJS.ProcessEnv = process.env): BindingResolution {
-  const projectDir = env.CLAUDE_PROJECT_DIR ? path.resolve(env.CLAUDE_PROJECT_DIR) : undefined;
-  if (!projectDir) throw new Error('CLAUDE_PROJECT_DIR is required to resolve Obsidian Wiki bindings');
+export function resolveBindings(
+  env: NodeJS.ProcessEnv = process.env,
+  workingDirectory: string = process.cwd(),
+): BindingResolution {
+  const projectDir = path.resolve(env.CLAUDE_PROJECT_DIR ?? workingDirectory);
   const settingsPath = path.join(projectDir, '.shared-adapter', 'settings.json');
   const settings = ProjectSettingsSchema.parse(readJsonFile(settingsPath, 'Project settings'));
   const registryPath = path.resolve(env.OBSIDIAN_WIKI_REGISTRY ?? path.join(process.env.HOME ?? '', '.config', 'grill-adapter', 'obsidian-wiki.json'));

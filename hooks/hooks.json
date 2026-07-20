@@ -1,5 +1,4 @@
 {
-  "_comment": "grill-adapter plugin hooks. Auto-registered when the plugin is enabled — no merge into any project's .claude/settings.json. ${CLAUDE_PLUGIN_ROOT} resolves to this plugin's versioned install dir and survives plugin updates. Host-agnostic: grill and plain hosts use the same hooks.",
   "hooks": {
     "SessionStart": [
       {

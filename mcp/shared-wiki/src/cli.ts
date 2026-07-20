@@ -5,8 +5,8 @@ import type { SectionReadRequest } from './tools/readSection.js';
 import { graphNeighborsTool } from './tools/graphNeighbors.js';
 
 // Synchronous CLI entry into the same shared-wiki read path the stdio MCP server exposes.
-// It reuses loadConfig() (so it self-configures from CLAUDE_PROJECT_DIR exactly like the
-// server) and readSectionsTool() / graphNeighborsTool() (so revision/index/marker/graph
+// It reuses loadConfig() (so direct CLI calls self-configure from CLAUDE_PROJECT_DIR or their
+// process cwd) and readSectionsTool() / graphNeighborsTool() (so revision/index/marker/graph
 // semantics are guaranteed identical — there is a single shared-wiki reader, never a second
 // re-implementation). A plain orchestrator script (wiki_materialize_task.py) can therefore
 // fetch github_mcp hard-constraint rereads AND close their 1-hop depends-on edges against

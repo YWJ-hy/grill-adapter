@@ -1,6 +1,6 @@
 # grill-adapter 开发与验收指南
 
-本文是 grill-adapter 的**开发与测试原则**。grill-adapter 是一个 **host-agnostic 的 Claude Code adapter**：把项目 wiki、Lanhu 需求录入、source-of-truth 校验、break-loop 调试复盘等能力作为**独立 skill / agent / hook** 挂到宿主上，**绝不 patch 宿主自带的任何 skill**。默认宿主 = grill（`mattpocock/skills`），也兼容裸 Claude Code（plain）。
+本文是 grill-adapter 的**开发与测试原则**。grill-adapter 是一个 **host-agnostic 的 Claude Code/Codex adapter**：把项目 wiki、Lanhu 需求录入、source-of-truth 校验、break-loop 调试复盘等能力作为独立 skill / agent-role / hook 挂到宿主上，**绝不 patch 宿主自带的任何 skill**。
 
 ---
 
@@ -12,7 +12,7 @@
 2. `docs/HOST_INTEGRATION_CN.md`：host 适配器模型、grill / plain 约定块全文、hook 配置、plugin 安装模型、`${CLAUDE_PLUGIN_ROOT}` 替换。
 3. 与本次改动相关的 `skills/*/SKILL.md`（以及被它调用的 `scripts/*.py`、`agents/*.md`）。
 
-**验收铁律：以 Claude Code 集成路径为准。** adapter 的最终验收，必须在 Claude Code 里真跑一遍完整用户流：
+**验收铁律：以安装后的真实集成路径为准。** 改动只涉及某一运行时时，必须在该运行时真跑完整用户流；改共享 skill/hook/MCP 时，Claude Code 与 Codex 都必须验收：
 
 ```
 (可选 lanhu-requirements) → grill-with-docs → to-spec / to-tickets → implement → code-review → update-wiki
@@ -27,11 +27,11 @@
 | 层 | 载体 | 证明什么 | 能否替代上层 |
 |---|---|---|---|
 | ① 脚本级 smoke / regression | `tests/wiki-*.sh`、`tests/source-truth-*.sh`、`tests/lanhu-*.sh`、`tests/shared-wiki-*.sh` 等 | 执行层（引擎脚本）行为正确 | **否**，不能替代集成路径 |
-| ② 项目接线测试 | `tests/install-project-wiring-smoke.sh` | `install` 只做一件事：写/剥 `<project>/CLAUDE.md` 里 marker 包裹的约定块——幂等、host 切换、干净卸载，且**既不碰 `~/.claude`、也不碰项目 `settings.json`**，约定块里不含任何安装路径 | 否 |
+| ② 项目接线测试 | `tests/install-project-wiring-smoke.sh` | `install` 只写/剥 `<project>/CLAUDE.md`、`AGENTS.md` 的约定块；覆盖 runtime/host 切换、幂等、干净卸载与零路径 | 否 |
 | ③ hook 行为测试 | `tests/hooks-smoke.sh` | 三个 host 无关 hook（wiki-reread / wiki-capture-suggest / source-truth-lint）在事件 JSON 驱动下的注入与静默路径 | 否 |
 | ④ 桥测试 | `tests/grill-bridge-smoke.sh` | `scripts/grill_context_to_candidates.py` 把 grill `CONTEXT.md` / `docs/adr` 增量转成 update-wiki 候选行（由 `skills/update-wiki` 的可选前置步骤调用） | 否 |
 | ⑤ host 约定测试 | `tests/host-conventions-smoke.sh` | grill / plain 约定块含全部触点、零 patch 不变式、skill 调用带 `grill-adapter:` 命名空间、块内零安装路径 | 否 |
-| ⑥ 集成验收 | Claude Code 真跑（无脚本） | 铁律那条端到端流真正跑通 | 这是**最终门** |
+| ⑥ 集成验收 | 安装后 Claude Code/Codex 真跑 | 铁律那条端到端流真正跑通 | 这是**最终门** |
 
 ① 是回归网，②~⑤ 是安装/接线网，⑥ 是不可省的人工验收。**下四层全绿 ≠ 通过验收**，⑥ 必须真跑。
 
@@ -51,19 +51,21 @@
 
 ## 3. 常用命令（全量，来自 `manage.sh`）
 
-grill-adapter **本身是一个 Claude Code plugin**：skills / agents / `hooks/hooks.json` / `.mcp.json` 由 plugin 布局声明，Claude Code 自动发现并注册，`claude plugin install grill-adapter@grill-adapter --scope project|user` 一次全启用。`manage.sh` 只管 plugin 管不到的那一件事——目标项目的 `CLAUDE.md` 约定块。
+grill-adapter 同时提供 Claude Code 与 Codex plugin manifest。共享 skills/hooks/MCP；Claude Code 原生注册 `agents/`，Codex 由入口 skill 派生相同角色的通用 sub-agent。`manage.sh` 只管目标项目 `CLAUDE.md`/`AGENTS.md` 约定块。
 
 开发期不必安装即可加载 plugin 并核对组件清单：
 
 ```bash
 claude --plugin-dir "$PWD" plugin details grill-adapter   # 应报 12 skills / 3 agents / 3 hooks / 2 MCP servers
+codex plugin marketplace add "$PWD"                       # 开发期本地 marketplace
+codex plugin add grill-adapter@grill-adapter
 ```
 
 在 grill-adapter 源码根目录运行：
 
 ```bash
-./manage.sh install <project-root> [--host grill|plain]   # 把 host 约定块写进该项目的 CLAUDE.md
-./manage.sh uninstall <project-root>                       # 从该项目 CLAUDE.md 剥掉约定块
+./manage.sh install <project-root> [--host grill|plain] [--runtime claude|codex|both]
+./manage.sh uninstall <project-root> [--runtime claude|codex|both]
 ./manage.sh verify <project-root> [--host grill|plain]     # 校验该项目已接线
 ./manage.sh status [project-root]                          # 报告 plugin 启用（仅提示性）+ 约定块状态
 ./manage.sh bootstrap-wiki <project-root> [--template name] [--wiki-root project|shared]
@@ -97,7 +99,7 @@ bash tests/host-conventions-smoke.sh "$PWD"
   3. **占位符残留检查**：机械 `grep` `__SUPERPOWER_ADAPTER` 残留，以及 `skills/`、`agents/`、`role-prd/`、`host-adapters/` 里已作废的 `__GRILL_ADAPTER_ROOT__`。
   4. **所有 MCP typecheck + build + test**：每个 `mcp/*` 包运行 `npm install && npm run typecheck && npm run build && npm test`（无 npm 则 SKIP）。`build` 是 esbuild 打包、**不做类型检查**，所以 `typecheck` 必须单独跑。
   5. **MCP bundle 已提交且与 src 一致**：每个插件注册 MCP 的 `dist/index.js` 必须存在且在步骤 4 重新构建后无 git 漂移。
-  6. **plugin 组件清单**：`claude --plugin-dir <root> plugin details grill-adapter` 必须报满 12 skills / 3 agents / 3 hooks / 2 MCP servers（无 `claude` CLI 则 SKIP）。
+  6. **plugin 组件清单**：Claude 必须报满 12 skills / 3 agents / 3 hooks / 2 MCP；`tests/codex-plugin-smoke.sh` 必须通过 manifest 校验与隔离 marketplace 安装。
   7. **沙盒项目接线 + verify**：对临时项目 `install --host grill` 后 `verify`。
   8. **全套 smoke**：跑 `self-test.sh`。
   9. **doctor**：对传入项目只读诊断。
@@ -109,10 +111,10 @@ bash tests/host-conventions-smoke.sh "$PWD"
 ## 5. 改不同层的验证要求
 
 - **改 skill**（`skills/*/SKILL.md`）→ 加载 plugin 后，在 Claude Code 里**从该 skill 的入口**真正走一遍用户路径验证；不要只跑它背后的 Python。
-- **改 hook**（`hooks/*.sh`、`hooks/hooks.json`）→ 跑 `tests/hooks-smoke.sh`，并用 `claude --plugin-dir "$PWD" plugin details grill-adapter` 确认 3 个 hook 仍被发现。hook 随 plugin 启用**自动注册**，不再往任何项目的 `.claude/settings.json` 里并片段。
-- **改接线逻辑**（`lib/install.py`、`manifest.json`）→ 跑 `tests/install-project-wiring-smoke.sh`，并 `./manage.sh install <project>` + `./manage.sh verify <project>` 走一遍。
+- **改 hook**（`hooks/*.sh`、`hooks/hooks.json`）→ 跑 `tests/hooks-smoke.sh`、`tests/codex-plugin-smoke.sh`，并用 Claude plugin details 确认 3 个 hook 仍被发现。
+- **改接线逻辑**（`lib/install.py`、`manifest.json`）→ 跑 `tests/install-project-wiring-smoke.sh`，并对 `--runtime claude|codex|both` 走 install + verify。
 - **改引擎脚本**（`scripts/wiki_*.py`、`scripts/source_truth_*.py`）→ 跑相关 `tests/wiki-*.sh` / `tests/source-truth-*.sh` smoke，再 `./manage.sh release-check <project>` 兜底。
-- **改 host 约定块**（`host-adapters/grill/CLAUDE.md`、`host-adapters/plain/CLAUDE.md`）→ 跑 `tests/host-conventions-smoke.sh`，并**手动把约定块粘进目标项目的 `CLAUDE.md`** 在真实宿主下验证触点措辞可用。约定块写进的是**目标项目**的 `CLAUDE.md`（不是 plugin 内容），所以块里**不许出现任何安装路径**：`${CLAUDE_PLUGIN_ROOT}` 在那儿不会被替换，写死绝对路径又会随 plugin 版本目录被回收而失效。块只**点名 skill**，且 grill-adapter 自己的 skill 一律带命名空间（`/grill-adapter:wiki-research` 等）；grill 自带的 `/grill-with-docs`、`/to-spec`、`/implement` 等**不加**命名空间。
+- **改 host 约定块**（`host-adapters/*/{CLAUDE,AGENTS}.md`）→ 跑 `tests/host-conventions-smoke.sh`，并在对应真实运行时验证。块里不许出现安装路径；Claude 用 `/grill-adapter:<skill>`，Codex 用 `$grill-adapter:<skill>`。
 - **改 shared-wiki MCP**（`mcp/shared-wiki/src/`）→ `npm run typecheck` + `npm run build` + `npm test`，并**把重新构建的 `dist/index.js` 一起提交**。`build` 是 esbuild 单文件打包（SDK/zod 内联），plugin 缓存**没有安装期构建步骤**，`.mcp.json` 直接启动仓库里提交的这份 bundle——bundle 不提交或与 src 漂移，用户拿到的就是旧代码，`release-check` 步骤 5 会 FAIL。
 - **改 Lanhu 分析 agent** → **改源，不改生成物**：编辑共享骨架 `role-prd/analyst.common.md` 或 `role-prd/{frontend,backend}.md`，然后跑 `python3 lib/sync_role_prd.py sync <root>` 重新生成两个 analyst（`agents/lanhu-frontend-requirements-analyst.md`、`agents/lanhu-backend-requirements-analyst.md`），再跑 Lanhu 相关 smoke（`tests/lanhu-*.sh`）。**生成的 analyst 文件不要手改**——`release-check` 步骤 2 会因漂移 FAIL。生成源住在 `role-prd/` 而不是 `agents/`：plugin 会把 `agents/*.md` **每一个**都注册成 agent，模板停在那儿就成了幽灵 agent。
 
@@ -132,8 +134,8 @@ bash tests/host-conventions-smoke.sh "$PWD"
 
 ## 7. 占位符规则
 
-- **plugin 内容里**（`skills/`、`agents/`、`hooks/hooks.json`、`.mcp.json`）指向仓库根的路径统一用 **`${CLAUDE_PLUGIN_ROOT}`**。Claude Code 在加载时做**文本替换**，并把反斜杠归一成正斜杠——因此它与 shell 无关（PowerShell / bash 都成立）。只认**裸 token** `${CLAUDE_PLUGIN_ROOT}`：`${CLAUDE_PLUGIN_ROOT:-x}` 这类带默认值的写法**不会**被替换。
-- **plugin 内容之外不许用它**。`host-adapters/*/CLAUDE.md` 写进的是目标项目的 `CLAUDE.md`，不是 plugin 内容，`${CLAUDE_PLUGIN_ROOT}` 在那儿永远不会被替换——那两个块里**根本不放安装路径**。
+- **共享 plugin 内容里**（`skills/`、`agents/`、`hooks/hooks.json`、`.mcp.json`）继续统一用裸 token **`${CLAUDE_PLUGIN_ROOT}`**。Claude Code 原生替换，Codex 兼容加载层也识别；不要另造一份只含 `PLUGIN_ROOT` 的 skills 树。
+- **plugin 内容之外不许用它**。`host-adapters/*/{CLAUDE,AGENTS}.md` 会写进目标项目，不是 plugin 内容；这些块里根本不放安装路径。
 - **`__GRILL_ADAPTER_ROOT__` 已作废**，`${CLAUDE_PLUGIN_ROOT}` 取代它。没有任何安装期改写会再碰这些文件，残留的占位符会原样发给用户，`release-check` 步骤 3 会在 `skills/`、`agents/`、`role-prd/`、`host-adapters/` 里 `grep` 到即 FAIL。
 - **禁止残留任何 `__SUPERPOWER_ADAPTER_*__`**（旧 superpower-adapter 的占位符）。这是移植遗留的机械红线，`release-check` 步骤 3 会 `grep` 检查残留并在命中时 FAIL。
 

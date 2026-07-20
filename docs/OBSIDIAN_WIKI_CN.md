@@ -9,7 +9,7 @@
 - `shared-wiki`：现有 schema-v5 shared Wiki 路径，保持不变。
 - `obsidian-wiki`：解析当前项目的 Obsidian Source bindings，并提供 Source/status、受绑定限制的 Note 搜索/读取，以及一跳 typed neighbor 查询。
 
-`obsidian-wiki` 只从 `CLAUDE_PROJECT_DIR` 指向项目的 `.shared-adapter/settings.json` 读取 bindings。工具不接受 Vault、Source 或 root 路径参数，因此调用方不能扩大到未绑定内容。
+`obsidian-wiki` 只从宿主确定的项目根下 `.shared-adapter/settings.json` 读取 bindings：Claude Code 使用 `CLAUDE_PROJECT_DIR`，Codex 使用受控 MCP request 的 Git workspace metadata，直接 CLI 可使用进程 cwd。工具不接受 Vault、Source 或 root 路径参数，因此调用方不能扩大到未绑定内容；多个 Codex workspace 同时声明 settings 时按歧义 fail-closed。
 
 ## 项目配置
 

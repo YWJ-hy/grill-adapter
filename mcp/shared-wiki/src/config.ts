@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as z from 'zod/v4';
 
 const ConfigFileSchema = z.object({
@@ -40,6 +41,24 @@ export type SharedWikiConfig = {
   draftPr: boolean;
 };
 
+export type McpRootsClient = {
+  getClientCapabilities(): { roots?: unknown } | undefined;
+  listRoots(): Promise<{ roots: Array<{ uri: string; name?: string }> }>;
+};
+
+export type McpRequestMeta = Record<string, unknown> | undefined;
+
+export class MissingSharedWikiConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MissingSharedWikiConfigError';
+  }
+}
+
+function missingSharedWikiConfigError(): MissingSharedWikiConfigError {
+  return new MissingSharedWikiConfigError('Missing shared wiki repo URL. Set wiki.sharedMcp.repoUrl in <project>/.shared-adapter/settings.json (resolved from CLAUDE_PROJECT_DIR, Codex workspace metadata, an MCP workspace root, or the direct CLI working directory), or SHARED_WIKI_MCP_REPO_URL / repoUrl in SHARED_WIKI_MCP_CONFIG.');
+}
+
 function expandHome(input: string): string {
   if (input === '~') return homedir();
   if (input.startsWith('~/')) return path.join(homedir(), input.slice(2));
@@ -57,14 +76,16 @@ function readConfigFile(configPath: string | undefined): Partial<z.infer<typeof 
 }
 
 // Resolve the per-project shared-wiki connection from the consumer project's
-// settings, located via CLAUDE_PROJECT_DIR (injected into every stdio MCP server
-// by Claude Code). This lets a single generic, repo-less registration target a
+// settings, located via CLAUDE_PROJECT_DIR or an explicitly supplied working
+// directory. This lets a single generic, repo-less registration target a
 // different shared wiki per project: the server self-configures from the project
 // it was launched for. Returns {} when no project dir, no settings file, or no
 // wiki.sharedMcp block exists — callers fail closed if nothing else supplies a repo.
-function readProjectMcpConfig(env: NodeJS.ProcessEnv): Partial<z.infer<typeof ProjectMcpSchema>> {
-  const projectDir = env.CLAUDE_PROJECT_DIR;
-  if (!projectDir) return {};
+function readProjectMcpConfig(
+  env: NodeJS.ProcessEnv,
+  workingDirectory: string,
+): Partial<z.infer<typeof ProjectMcpSchema>> {
+  const projectDir = env.CLAUDE_PROJECT_DIR ?? workingDirectory;
   const settingsPath = path.join(path.resolve(expandHome(projectDir)), '.shared-adapter', 'settings.json');
   if (!existsSync(settingsPath)) return {};
   let parsed: unknown;
@@ -98,12 +119,15 @@ function normalizeRelativeRoot(value: string, field: string): string {
   return normalized === '.' ? '.' : normalized.replace(/^\.\//, '');
 }
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): SharedWikiConfig {
+export function loadConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  workingDirectory: string = process.cwd(),
+): SharedWikiConfig {
   const fileConfig = readConfigFile(env.SHARED_WIKI_MCP_CONFIG);
-  const projectConfig = readProjectMcpConfig(env);
+  const projectConfig = readProjectMcpConfig(env, workingDirectory);
 
   // Precedence per field: explicit env var > explicit SHARED_WIKI_MCP_CONFIG file >
-  // per-project settings (CLAUDE_PROJECT_DIR) > built-in default. Existing global
+  // per-project settings (CLAUDE_PROJECT_DIR or supplied cwd) > built-in default. Existing global
   // setups keep working because they set SHARED_WIKI_MCP_CONFIG, which still wins;
   // the new generic registration sets none of these and resolves the repo entirely
   // from the project's wiki.sharedMcp block. With no source supplying a repo URL we
@@ -112,7 +136,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SharedWikiConf
   // unavailable. cacheDir is never taken from the project block (machine-local).
   const repoUrl = env.SHARED_WIKI_MCP_REPO_URL ?? fileConfig.repoUrl ?? projectConfig.repoUrl;
   if (!repoUrl) {
-    throw new Error('Missing shared wiki repo URL. Set wiki.sharedMcp.repoUrl in <project>/.shared-adapter/settings.json (resolved from CLAUDE_PROJECT_DIR), or SHARED_WIKI_MCP_REPO_URL / repoUrl in SHARED_WIKI_MCP_CONFIG.');
+    throw missingSharedWikiConfigError();
   }
 
   const baseCacheDir = expandHome(env.SHARED_WIKI_MCP_CACHE_DIR ?? fileConfig.cacheDir ?? '~/.cache/grill-adapter/shared-wiki-mcp');
@@ -130,4 +154,68 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SharedWikiConf
     cloneDir: path.join(cacheDir, repoCacheName(repoUrl)),
     draftPr: fileConfig.draftPr ?? projectConfig.draftPr ?? true,
   };
+}
+
+// Codex resolves a plugin MCP's `cwd: "."` to the plugin root so relative bundle
+// paths launch reliably. The consumer project therefore comes from Codex's
+// request workspace metadata (or standard MCP roots when supported), never that
+// plugin cwd. Claude Code keeps CLAUDE_PROJECT_DIR; direct CLI calls keep cwd.
+export async function loadMcpConfig(
+  client: McpRootsClient,
+  env: NodeJS.ProcessEnv = process.env,
+  workingDirectory: string = process.cwd(),
+  requestMeta?: McpRequestMeta,
+): Promise<SharedWikiConfig> {
+  const supportsRoots = Boolean(client.getClientCapabilities()?.roots);
+  const isCodexRequest = isObject(requestMeta?.['x-codex-turn-metadata']);
+  const hasExplicitConfig = Boolean(
+    env.CLAUDE_PROJECT_DIR || env.SHARED_WIKI_MCP_CONFIG || env.SHARED_WIKI_MCP_REPO_URL,
+  );
+  if (hasExplicitConfig || (!isCodexRequest && !supportsRoots)) {
+    try {
+      return loadConfig(env, workingDirectory);
+    } catch (error) {
+      if (!(error instanceof MissingSharedWikiConfigError)) throw error;
+      if (hasExplicitConfig || (!isCodexRequest && !supportsRoots)) throw error;
+    }
+  }
+
+  const projectDirs = codexWorkspaceDirs(requestMeta);
+  if (supportsRoots) {
+    const { roots } = await client.listRoots();
+    projectDirs.push(...roots.flatMap((root) => {
+      try {
+        const url = new URL(root.uri);
+        return url.protocol === 'file:' ? [fileURLToPath(url)] : [];
+      } catch {
+        return [];
+      }
+    }));
+  }
+  const configuredProjectDirs = [...new Set(projectDirs.map((dir) => path.resolve(dir)))]
+    .filter((dir) => existsSync(path.join(dir, '.shared-adapter', 'settings.json')));
+
+  if (configuredProjectDirs.length === 0) {
+    throw new MissingSharedWikiConfigError(
+      `${missingSharedWikiConfigError().message} No Codex workspace metadata or MCP workspace root contains .shared-adapter/settings.json.`,
+    );
+  }
+  if (configuredProjectDirs.length > 1) {
+    throw new Error(
+      `Multiple Codex workspaces or MCP workspace roots contain .shared-adapter/settings.json; shared-wiki binding is ambiguous: ${configuredProjectDirs.join(', ')}`,
+    );
+  }
+  return loadConfig(env, configuredProjectDirs[0]);
+}
+
+function codexWorkspaceDirs(requestMeta: McpRequestMeta): string[] {
+  const turnMeta = requestMeta?.['x-codex-turn-metadata'];
+  if (!isObject(turnMeta)) return [];
+  const workspaces = (turnMeta as Record<string, unknown>).workspaces;
+  if (!isObject(workspaces)) return [];
+  return Object.keys(workspaces).filter((workspace) => path.isAbsolute(workspace));
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

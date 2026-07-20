@@ -1,6 +1,8 @@
+import path from 'node:path';
 import { resolveBindings } from '../bindings.js';
 
 export function statusTool(env: NodeJS.ProcessEnv = process.env) {
+  const projectDir = path.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
   try {
     const resolution = resolveBindings(env);
     return {
@@ -31,6 +33,7 @@ export function statusTool(env: NodeJS.ProcessEnv = process.env) {
     return {
       healthy: false,
       provider: 'obsidian',
+      projectDir,
       bindings: [],
       errors: [error instanceof Error ? error.message : String(error)],
       warnings: [],

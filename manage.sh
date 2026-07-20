@@ -7,17 +7,16 @@ COMMAND="${1:-}"
 usage() {
   local code="${1:-1}"
   cat >&2 <<EOF
-grill-adapter — host-agnostic Claude Code adapter (wiki + Lanhu + source-truth)
+grill-adapter — host-agnostic Claude Code/Codex adapter (wiki + Lanhu + source-truth)
 
-grill-adapter ships as a Claude Code plugin: skills, agents, hooks and the shared-wiki MCP
-all activate together via \`claude plugin install grill-adapter --scope project|user\`.
-These commands only wire the one thing a plugin cannot touch — a project's CLAUDE.md.
+grill-adapter ships as a plugin bundle. These commands wire the one thing a plugin cannot
+touch: a project's CLAUDE.md (Claude Code), AGENTS.md (Codex), or both.
 
 Usage:
-  $0 install <project-root> [--host grill|plain]    Write the host convention block into a project
-  $0 uninstall <project-root>                        Strip the host convention block from a project
-  $0 verify <project-root> [--host grill|plain]      Verify the project is wired
-  $0 status [project-root]                           Report plugin + convention-block status
+  $0 install <project-root> [--host grill|plain] [--runtime claude|codex|both]
+  $0 uninstall <project-root> [--runtime claude|codex|both]
+  $0 verify <project-root> [--host grill|plain] [--runtime claude|codex|both]
+  $0 status [project-root] [--runtime claude|codex|both]
   $0 bootstrap-wiki <project-root> [--template name] [--wiki-root project|shared]
   $0 init-wiki <project-root> [analysis-hint]        Emit project inventory for agent-led wiki init
   $0 export-wiki-skills <wiki-repo-root> [--no-graph-ci]

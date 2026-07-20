@@ -200,9 +200,9 @@ grill-adapter 明确承认自己不是无缝的，并把降级点讲清楚：
 
 ## 附录 · plugin 组件一览
 
-grill-adapter 以 **Claude Code plugin** 形式发布：`claude plugin install grill-adapter@grill-adapter --scope project|user` 一次装好，下列组件由 plugin 布局声明、Claude Code 自动发现并注册。skill / agent / hook / MCP **共用 plugin 的 scope**（plugin 自带的 MCP 不能单独设 scope，`--scope project` 就是让 shared-wiki MCP 只在本项目起）。
+grill-adapter 同时以 **Claude Code plugin** 与 **Codex plugin** 形式发布。Claude 使用 `claude plugin install grill-adapter@grill-adapter --scope project|user`；Codex 使用 `codex plugin marketplace add YWJ-hy/grill-adapter` 后 `codex plugin add grill-adapter@grill-adapter`。
 
-唯一不由 plugin 承载的是**目标项目 `CLAUDE.md` 里的 host 约定块**，由 `./manage.sh install <project> --host grill|plain` 写入；块里只点名 skill，不含任何安装路径。
+唯一不由 plugin 承载的是目标项目的 host 约定块：Claude 写 `CLAUDE.md`，Codex 写 `AGENTS.md`。由 `./manage.sh install <project> --host grill|plain --runtime claude|codex|both` 写入；块里只点名 skill，不含任何安装路径。
 
 **Skills（12）**：`wiki-research`、`wiki-materialize`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`publish-shared-wiki`、`shared-wiki-mcp`、`scaffold-practice-skill`、`lanhu-requirements`、`break-loop`、`source-truth-check`。
 
@@ -210,11 +210,11 @@ grill-adapter 以 **Claude Code plugin** 形式发布：`claude plugin install g
 >
 > 约定块里对 grill-adapter 自己的 skill 一律带命名空间调用（`/grill-adapter:wiki-research` 等）；grill 自带的 `/grill-with-docs`、`/to-spec`、`/implement` 等不加。
 
-**Agents（3）**：`wiki-researcher`、`lanhu-frontend-requirements-analyst`、`lanhu-backend-requirements-analyst`。
+**Agent roles（3）**：`wiki-researcher`、`lanhu-frontend-requirements-analyst`、`lanhu-backend-requirements-analyst`。Claude Code 直接注册；Codex 由入口 skill 读取同一 prompt 并派生通用 sub-agent。
 
 **MCP servers（2）**：`shared-wiki` 保留 schema-v5 shared Wiki 路径；`obsidian-wiki` 解析受约束的 Obsidian Source binding，并提供状态与 Source 清单。两者随 plugin 自动启动，无需手工注册；`obsidian-wiki` 只读取当前项目 `.shared-adapter/settings.json` 声明的 binding，未绑定、Vault/仓库不健康或 policy 不兼容时 fail-closed。
 
-**Hooks（3 个事件）**：随 plugin 启用**自动注册**，不往任何项目的 `.claude/settings.json` 里并片段。
+**Hooks（3 个事件）**：随 plugin 启用自动注册，不往项目设置里并片段。
 
 | hook | 触发时机 | 作用 |
 | --- | --- | --- |

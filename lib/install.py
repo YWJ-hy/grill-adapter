@@ -1,21 +1,10 @@
 #!/usr/bin/env python3
-"""grill-adapter project wiring — writes the host convention block into a project.
+"""grill-adapter project wiring for Claude Code and Codex.
 
-grill-adapter ships as a Claude Code plugin. Skills, agents, hooks (`hooks/hooks.json`), the
-shared-wiki MCP (`.mcp.json`), and the whole script/contract payload all travel inside the
-plugin and activate together via:
-
-    claude plugin install grill-adapter --scope project|user
-
-Nothing is copied into ~/.claude, no hook entries are merged into a project's
-.claude/settings.json, and no MCP is registered by hand. Scope is the plugin's scope — a
-plugin-bundled MCP cannot be scoped separately from its plugin.
-
-What a plugin *cannot* do is edit a target project's CLAUDE.md, so exactly one project-level
-step remains here: writing the marker-delimited host convention block that tells the host
-workflow (grill or plain) when to invoke each touchpoint. The block names skills only — it
-hard-codes no install path, because the plugin's install path is version-scoped and would go
-stale on the next plugin update.
+The plugin carries skills, hooks, MCP servers, and the script/contract payload. What a plugin
+cannot do is edit a target project's durable instruction file, so this module writes the
+marker-delimited host convention block into CLAUDE.md, AGENTS.md, or both. The block names
+skills only and never hard-codes a versioned plugin install path.
 
 Commands: install | uninstall | verify | status
 """
@@ -32,10 +21,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 from package_manifest import load_manifest  # noqa: E402
-from resolve_install_target import resolve_project_target, user_claude_dir  # noqa: E402
+from resolve_install_target import (  # noqa: E402
+    resolve_project_target,
+    user_claude_dir,
+    user_codex_dir,
+)
 
 PLUGIN_NAME = "grill-adapter"
 HOST_BLOCK_MARKER = "grill-adapter:host:"
+RUNTIME_FILES = {"claude": "CLAUDE.md", "codex": "AGENTS.md"}
 _HOST_BLOCK_RE = re.compile(
     r"\n*<!-- grill-adapter:host:[a-z]+:start -->.*?<!-- grill-adapter:host:[a-z]+:end -->\n*",
     re.DOTALL,
@@ -46,51 +40,64 @@ def _log(msg: str) -> None:
     print(msg)
 
 
-# --- host block in the project's CLAUDE.md ------------------------------------
+# --- host block in the project's durable instruction file ---------------------
 
-def _host_conventions() -> dict:
-    return load_manifest(REPO_ROOT)["projectLevel"]["hostConventions"]
+
+def _runtime_names(runtime: str) -> tuple[str, ...]:
+    if runtime == "both":
+        return tuple(RUNTIME_FILES)
+    if runtime not in RUNTIME_FILES:
+        raise SystemExit(f"Unknown runtime '{runtime}'. Choose one of: claude, codex, both")
+    return (runtime,)
+
+
+def _host_conventions(runtime: str) -> dict:
+    return load_manifest(REPO_ROOT)["projectLevel"]["hostConventions"][runtime]
+
+
+def _instruction_path(project: Path, runtime: str) -> Path:
+    return project / RUNTIME_FILES[runtime]
 
 
 def _strip_host_block(text: str) -> str:
     return _HOST_BLOCK_RE.sub("\n", text)
 
 
-def write_host_block(project: Path, host: str) -> None:
-    conventions = _host_conventions()
+def write_host_block(project: Path, host: str, runtime: str) -> None:
+    conventions = _host_conventions(runtime)
     if host not in conventions:
         raise SystemExit(f"Unknown host '{host}'. Choose one of: {', '.join(conventions)}")
     block = (REPO_ROOT / conventions[host]).read_text(encoding="utf-8")
-    claude_md = project / "CLAUDE.md"
-    existing = claude_md.read_text(encoding="utf-8") if claude_md.is_file() else ""
+    instructions = _instruction_path(project, runtime)
+    existing = instructions.read_text(encoding="utf-8") if instructions.is_file() else ""
     stripped = _strip_host_block(existing).rstrip()
     updated = (stripped + "\n\n" + block.strip() + "\n") if stripped else (block.strip() + "\n")
-    claude_md.write_text(updated, encoding="utf-8")
-    _log(f"project: {host} host convention written to {claude_md}")
+    instructions.write_text(updated, encoding="utf-8")
+    _log(f"project: {runtime}/{host} host convention written to {instructions}")
 
 
-def remove_host_block(project: Path) -> bool:
-    claude_md = project / "CLAUDE.md"
-    if not claude_md.is_file():
+def remove_host_block(project: Path, runtime: str) -> bool:
+    instructions = _instruction_path(project, runtime)
+    if not instructions.is_file():
         return False
-    text = claude_md.read_text(encoding="utf-8")
+    text = instructions.read_text(encoding="utf-8")
     stripped = _strip_host_block(text)
     if stripped == text:
         return False
-    claude_md.write_text(stripped.rstrip() + "\n" if stripped.strip() else "", encoding="utf-8")
+    instructions.write_text(stripped.rstrip() + "\n" if stripped.strip() else "", encoding="utf-8")
     return True
 
 
-def has_host_block(project: Path) -> bool:
-    claude_md = project / "CLAUDE.md"
-    return claude_md.is_file() and HOST_BLOCK_MARKER in claude_md.read_text(
+def has_host_block(project: Path, runtime: str) -> bool:
+    instructions = _instruction_path(project, runtime)
+    return instructions.is_file() and HOST_BLOCK_MARKER in instructions.read_text(
         encoding="utf-8", errors="replace"
     )
 
 
 # --- plugin enablement (advisory only) ---------------------------------------
 
-def plugin_scopes(project: Path | None) -> list[str]:
+def claude_plugin_scopes(project: Path | None) -> list[str]:
     """Scopes grill-adapter appears installed at, read from Claude Code's plugin registry.
 
     Advisory only: `--plugin-dir` dev runs and any future registry layout change are both
@@ -121,66 +128,107 @@ def plugin_scopes(project: Path | None) -> list[str]:
     return scopes
 
 
-def _plugin_hint(project: Path | None) -> None:
-    scopes = plugin_scopes(project)
+def codex_plugin_enabled() -> bool:
+    """Best-effort read of Codex's plugin table; advisory output only."""
+    config = user_codex_dir() / "config.toml"
+    if not config.is_file():
+        return False
+    try:
+        text = config.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    section = re.search(
+        rf'(?ms)^\[plugins\."{re.escape(PLUGIN_NAME)}@[^"]+"\]\s*(.*?)(?=^\[|\Z)',
+        text,
+    )
+    return bool(section and re.search(r"(?m)^enabled\s*=\s*true\s*$", section.group(1)))
+
+
+def _claude_plugin_hint(project: Path | None) -> None:
+    scopes = claude_plugin_scopes(project)
     if scopes:
-        _log(f"plugin: grill-adapter enabled at {', '.join(scopes)}")
+        _log(f"plugin (claude): grill-adapter enabled at {', '.join(scopes)}")
         return
-    _log("plugin: grill-adapter not found in the plugin registry. The skills, agents, hooks and")
-    _log("        shared-wiki MCP all live in the plugin, so install it to activate them:")
+    _log("plugin (claude): grill-adapter not found; install it to activate the bundle:")
     _log(f"          claude plugin install {PLUGIN_NAME}@{PLUGIN_NAME} --scope project")
-    _log("        (project scope also scopes the bundled MCP to that project; use --scope user")
-    _log("        for every project. Dev runs via `claude --plugin-dir` are not listed here.)")
+
+
+def _codex_plugin_hint() -> None:
+    if codex_plugin_enabled():
+        _log("plugin (codex): grill-adapter enabled")
+        return
+    _log("plugin (codex): grill-adapter not found; install the marketplace and plugin:")
+    _log("          codex plugin marketplace add YWJ-hy/grill-adapter")
+    _log(f"          codex plugin add {PLUGIN_NAME}@{PLUGIN_NAME}")
+
+
+def _plugin_hint(project: Path | None, runtime: str) -> None:
+    for name in _runtime_names(runtime):
+        if name == "claude":
+            _claude_plugin_hint(project)
+        else:
+            _codex_plugin_hint()
 
 
 # --- commands ----------------------------------------------------------------
 
-def cmd_install(host: str, project: str | None) -> int:
+def cmd_install(host: str, runtime: str, project: str | None) -> int:
     target = resolve_project_target(project)
     if target is None:
         _log("Nothing to wire: pass a project root to write its host convention block.")
-        _plugin_hint(None)
+        _plugin_hint(None, runtime)
         return 0
-    write_host_block(target, host)
-    _plugin_hint(target)
+    for name in _runtime_names(runtime):
+        write_host_block(target, host, name)
+    _plugin_hint(target, runtime)
     return 0
 
 
-def cmd_uninstall(project: str | None) -> int:
+def cmd_uninstall(runtime: str, project: str | None) -> int:
     target = resolve_project_target(project)
     if target is None:
         _log("Nothing to unwire: pass a project root to strip its host convention block.")
         return 0
-    if remove_host_block(target):
-        _log(f"project: stripped host block from {target / 'CLAUDE.md'}")
-    else:
-        _log(f"project: no host block in {target / 'CLAUDE.md'}")
-    _log(f"To remove the skills/agents/hooks/MCP, uninstall the plugin: claude plugin uninstall {PLUGIN_NAME}")
+    for name in _runtime_names(runtime):
+        instructions = _instruction_path(target, name)
+        if remove_host_block(target, name):
+            _log(f"project: stripped host block from {instructions}")
+        else:
+            _log(f"project: no host block in {instructions}")
+    if "claude" in _runtime_names(runtime):
+        _log(f"Claude plugin removal: claude plugin uninstall {PLUGIN_NAME}")
+    if "codex" in _runtime_names(runtime):
+        _log(f"Codex plugin removal: codex plugin remove {PLUGIN_NAME}@{PLUGIN_NAME}")
     return 0
 
 
-def cmd_verify(host: str, project: str | None) -> int:
+def cmd_verify(host: str, runtime: str, project: str | None) -> int:
     target = resolve_project_target(project)
     if target is None:
         _log("grill-adapter verify: nothing to check without a project root.")
-        _plugin_hint(None)
+        _plugin_hint(None, runtime)
         return 0
-    if not has_host_block(target):
-        print(f"FAIL: no grill-adapter host block in {target / 'CLAUDE.md'}", file=sys.stderr)
-        return 1
+    for name in _runtime_names(runtime):
+        if not has_host_block(target, name):
+            print(
+                f"FAIL: no grill-adapter host block in {_instruction_path(target, name)}",
+                file=sys.stderr,
+            )
+            return 1
     _log("grill-adapter verify OK")
-    _plugin_hint(target)
+    _plugin_hint(target, runtime)
     return 0
 
 
-def cmd_status(project: str | None) -> int:
+def cmd_status(runtime: str, project: str | None) -> int:
     target = resolve_project_target(project)
-    _plugin_hint(target)
+    _plugin_hint(target, runtime)
     if target is None:
         print("project: none passed")
         return 0
     print(f"project: {target}")
-    print(f"  host block present: {has_host_block(target)}")
+    for name in _runtime_names(runtime):
+        print(f"  {RUNTIME_FILES[name]} host block present: {has_host_block(target, name)}")
     return 0
 
 
@@ -204,19 +252,21 @@ def main() -> int:
         p = sub.add_parser(cmd)
         p.add_argument("project", nargs="?", default=None, help="Project root to wire")
         p.add_argument("--host", default=default_host, help="Host convention to wire (grill|plain)")
+        p.add_argument("--runtime", choices=("claude", "codex", "both"), default="claude")
     for cmd in ("uninstall", "status"):
         p = sub.add_parser(cmd)
         p.add_argument("project", nargs="?", default=None)
+        p.add_argument("--runtime", choices=("claude", "codex", "both"), default="claude")
     args = parser.parse_args()
 
     if args.command == "install":
-        return cmd_install(args.host, args.project)
+        return cmd_install(args.host, args.runtime, args.project)
     if args.command == "uninstall":
-        return cmd_uninstall(args.project)
+        return cmd_uninstall(args.runtime, args.project)
     if args.command == "verify":
-        return cmd_verify(args.host, args.project)
+        return cmd_verify(args.host, args.runtime, args.project)
     if args.command == "status":
-        return cmd_status(args.project)
+        return cmd_status(args.runtime, args.project)
     return 1
 
 

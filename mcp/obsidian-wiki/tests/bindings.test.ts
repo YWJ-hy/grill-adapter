@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolveBindings } from '../src/bindings.js';
+import { environmentForMcpRequest, resolveBindings } from '../src/bindings.js';
 import { sourcesTool } from '../src/tools/sources.js';
 import { statusTool } from '../src/tools/status.js';
 
@@ -89,13 +89,49 @@ describe('Obsidian Wiki Source bindings', () => {
   });
 
   it('fails closed for absent project configuration and registry entries', () => {
-    expect(() => resolveBindings({})).toThrow(/CLAUDE_PROJECT_DIR is required/);
+    expect(() => resolveBindings({}, path.join(tmpdir(), 'missing-codex-project'))).toThrow(/Project settings/);
     const input = fixture([
       { sourceId: 'project', role: 'project', vaultRef: 'missing', repositoryRef: 'wiki', root: 'Projects/example', access: { read: true } },
     ], [{ root: 'Projects/example', sourceId: 'project', scope: 'project' }]);
     const status = statusTool(testEnvironment(input));
     expect(status.healthy).toBe(false);
+    expect(status.projectDir).toBe(input.projectDir);
     expect(status.errors.join(' ')).toMatch(/unresolved vaultRef/);
+  });
+
+  it('resolves Codex bindings from the MCP working directory', () => {
+    const input = fixture([
+      { sourceId: 'project', role: 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: 'Projects/example', access: { read: true } },
+    ], [{ root: 'Projects/example', sourceId: 'project', scope: 'project' }]);
+    const env = testEnvironment(input);
+    delete env.CLAUDE_PROJECT_DIR;
+    expect(resolveBindings(env, input.projectDir).bindings).toHaveLength(1);
+  });
+
+  it('resolves Codex bindings from MCP request workspace metadata when cwd is the plugin root', () => {
+    const input = fixture([
+      { sourceId: 'project', role: 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: 'Projects/example', access: { read: true } },
+    ], [{ root: 'Projects/example', sourceId: 'project', scope: 'project' }]);
+    const env = testEnvironment(input);
+    delete env.CLAUDE_PROJECT_DIR;
+    const pluginLikeProject = fixture([], []);
+    const requestEnv = environmentForMcpRequest(env, {
+      'x-codex-turn-metadata': { workspaces: { [input.projectDir]: { has_changes: false } } },
+    }, pluginLikeProject.projectDir);
+    expect(requestEnv.CLAUDE_PROJECT_DIR).toBe(input.projectDir);
+    expect(resolveBindings(requestEnv).bindings).toHaveLength(1);
+  });
+
+  it('fails closed when Codex workspace binding is absent or ambiguous', () => {
+    const first = fixture([], []);
+    const second = fixture([], []);
+    expect(() => environmentForMcpRequest({}, {}, path.join(tmpdir(), 'plugin-root')))
+      .toThrow(/No Codex workspace metadata/);
+    expect(() => environmentForMcpRequest({}, {
+      'x-codex-turn-metadata': {
+        workspaces: { [first.projectDir]: {}, [second.projectDir]: {} },
+      },
+    }, path.join(tmpdir(), 'plugin-root'))).toThrow(/binding is ambiguous/);
   });
 
   it('rejects duplicate IDs, duplicate roots, overlapping roots, extra project roles, and root escapes', () => {

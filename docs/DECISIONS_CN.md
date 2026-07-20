@@ -264,3 +264,26 @@ shared wiki 采用**每项目绑定**：
 - **skills 与 MCP 无法分别作用域**：插件自带 MCP 严格跟随插件作用域，做不到「skills 全局 + MCP 单项目」。（逃生舱：插件 MCP 与手动注册按 endpoint 判重，local/project/user 优先级均高于 plugin，手动注册会压过插件那份——但双轨并存排查成本高，不推荐。）
 - **仓库多一个构建产物** `mcp/shared-wiki/dist/index.js`，release-check 步骤 5 卡它与 src 的漂移。
 - **skill 引用一律变长**：`/wiki-research` → `/grill-adapter:wiki-research`（插件 skill 强制带命名空间）。
+
+---
+
+## 决策 13：同仓库提供 Codex 原生插件入口
+
+**背景**
+Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 `.claude-plugin` 不足以完成运行：12 个 skills 可见，`agents/` 不注册，hooks 因宽松 JSON 注释字段被严格解析拒绝，MCP 也不能依赖 `CLAUDE_PROJECT_DIR`。
+
+**决策**
+- 新增 `.codex-plugin/plugin.json`，复用现有 skills、hooks、MCP bundle 与 marketplace；Codex MCP 声明使用原生 `cwd: "."` + 相对 bundle 路径，不复制执行层。
+- `manage.sh` 增加独立的 `--runtime claude|codex|both` 维度；workflow host 仍由 `--host grill|plain` 决定。Claude 写 `CLAUDE.md`，Codex 写 `AGENTS.md`。
+- 保留 `agents/*.md` 为单一角色真相源。Claude 直接注册；Codex 由 `wiki-research` / `lanhu-requirements` 读取完整 prompt 后派生通用 sub-agent。
+- hooks/MCP 配置使用两端都接受的严格 JSON 子集。MCP 项目根在 Claude Code 下取 `CLAUDE_PROJECT_DIR`，在 Codex 下取 MCP request 的 Git workspace metadata，并兼容标准 roots capability；直接 CLI 才回退进程 cwd。Codex 的 plugin MCP cwd 是插件根，不能充当消费项目根。
+- 发布门加入隔离 `CODEX_HOME` 下的真实 marketplace add + plugin add smoke；共享运行时改动最终仍需真跑完整 Codex 集成路径。
+
+**理由**
+- 双 manifest 让 Codex UI、校验和安装使用原生 metadata，同时不破坏既有 Claude 用户。
+- runtime 与 host 正交，避免把「用 grill 还是 plain」错误地等同于「用 Claude 还是 Codex」。
+- agent prompt、skills 与引擎保持单源，防止双平台规则漂移。
+
+**代价（已知并接受）**
+- Codex 当前没有 Claude 的 plugin project/user scope；隔离依赖项目绑定与 fail-closed policy。
+- 两端的 skill 引用语法不同：Claude 用 `/grill-adapter:<skill>`，Codex 用 `$grill-adapter:<skill>`，因此 host 约定块必须各有一份薄模板。

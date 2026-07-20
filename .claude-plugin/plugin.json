@@ -1,7 +1,7 @@
 {
   "name": "grill-adapter",
   "version": "0.2.0",
-  "description": "Host-agnostic Claude Code adapter: sectioned cross-repo project wiki (Disclose/Carry/Bind/Capture), Lanhu requirements intake, and source-of-truth verify/lint — as standalone skills, agents, and hooks. Never patches a host skill. Defaults to grill (mattpocock/skills) as the front-end; also runs on plain Claude Code.",
+  "description": "Host-agnostic Claude Code/Codex adapter: sectioned cross-repo project wiki (Disclose/Carry/Bind/Capture), Lanhu requirements intake, and source-of-truth verify/lint as standalone skills, agent roles, and hooks. Never patches a host skill.",
   "author": {
     "name": "yewenjie"
   },

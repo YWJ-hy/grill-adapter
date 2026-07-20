@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { loadConfig } from '../src/config.js';
+import { loadConfig, loadMcpConfig, type McpRootsClient } from '../src/config.js';
 
 const createdDirs: string[] = [];
 
@@ -19,6 +20,23 @@ function emptyProject(): string {
   const projectDir = mkdtempSync(path.join(tmpdir(), 'swm-proj-'));
   createdDirs.push(projectDir);
   return projectDir;
+}
+
+function rootsClient(projectDirs: string[], supportsRoots = true): McpRootsClient {
+  return {
+    getClientCapabilities: () => supportsRoots ? { roots: {} } : {},
+    listRoots: async () => ({
+      roots: projectDirs.map((dir) => ({ uri: pathToFileURL(dir).href })),
+    }),
+  };
+}
+
+function codexMeta(projectDirs: string[]): Record<string, unknown> {
+  return {
+    'x-codex-turn-metadata': {
+      workspaces: Object.fromEntries(projectDirs.map((dir) => [dir, { has_changes: false }])),
+    },
+  };
 }
 
 afterEach(() => {
@@ -72,6 +90,14 @@ describe('loadConfig', () => {
     expect(config.draftPr).toBe(false);
   });
 
+  it('loads Codex project settings from the MCP working directory', () => {
+    const projectDir = projectWithSettings({
+      wiki: { sharedMcp: { repoUrl: 'https://github.com/acme/codex-wiki.git' } },
+    });
+    const config = loadConfig({}, projectDir);
+    expect(config.repoUrl).toBe('https://github.com/acme/codex-wiki.git');
+  });
+
   it('lets explicit env vars override project settings', () => {
     const projectDir = projectWithSettings({
       wiki: { sharedMcp: { repoUrl: 'https://github.com/acme/platform-wiki.git', baseBranch: 'master' } },
@@ -112,5 +138,50 @@ describe('loadConfig', () => {
   it('reports an invalid wiki.sharedMcp block', () => {
     const projectDir = projectWithSettings({ wiki: { sharedMcp: { repoUrl: 123 } } });
     expect(() => loadConfig({ CLAUDE_PROJECT_DIR: projectDir })).toThrow(/Invalid wiki\.sharedMcp/);
+  });
+});
+
+describe('loadMcpConfig', () => {
+  it('loads Codex project settings from request workspace metadata', async () => {
+    const projectDir = projectWithSettings({
+      wiki: { sharedMcp: { repoUrl: 'https://github.com/acme/codex-metadata-wiki.git' } },
+    });
+    const pluginDir = projectWithSettings({
+      wiki: { sharedMcp: { repoUrl: 'https://github.com/acme/plugin-root-must-not-win.git' } },
+    });
+    const config = await loadMcpConfig(rootsClient([], false), {}, pluginDir, codexMeta([projectDir]));
+    expect(config.repoUrl).toBe('https://github.com/acme/codex-metadata-wiki.git');
+  });
+
+  it('loads Codex project settings from an MCP workspace root when cwd is the plugin root', async () => {
+    const projectDir = projectWithSettings({
+      wiki: { sharedMcp: { repoUrl: 'https://github.com/acme/codex-roots-wiki.git' } },
+    });
+    const pluginDir = emptyProject();
+    const config = await loadMcpConfig(rootsClient([projectDir]), {}, pluginDir);
+    expect(config.repoUrl).toBe('https://github.com/acme/codex-roots-wiki.git');
+  });
+
+  it('fails closed when the client has no roots capability', async () => {
+    await expect(loadMcpConfig(rootsClient([], false), {}, emptyProject()))
+      .rejects.toThrow(/Missing shared wiki repo URL/);
+  });
+
+  it('fails closed when no workspace root declares settings', async () => {
+    await expect(loadMcpConfig(rootsClient([emptyProject()]), {}, emptyProject()))
+      .rejects.toThrow(/No Codex workspace metadata or MCP workspace root contains/);
+  });
+
+  it('fails closed when multiple workspace roots declare settings', async () => {
+    const first = projectWithSettings({ wiki: { sharedMcp: { repoUrl: 'first' } } });
+    const second = projectWithSettings({ wiki: { sharedMcp: { repoUrl: 'second' } } });
+    await expect(loadMcpConfig(rootsClient([first, second]), {}, emptyProject()))
+      .rejects.toThrow(/binding is ambiguous/);
+  });
+
+  it('surfaces invalid settings from the selected workspace root', async () => {
+    const projectDir = projectWithSettings('{ not json');
+    await expect(loadMcpConfig(rootsClient([projectDir]), {}, emptyProject()))
+      .rejects.toThrow(/Invalid JSON in .*settings\.json/);
   });
 });

@@ -14,15 +14,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${1:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 GRILL="$ROOT/host-adapters/grill/CLAUDE.md"
 PLAIN="$ROOT/host-adapters/plain/CLAUDE.md"
+CODEX_GRILL="$ROOT/host-adapters/grill/AGENTS.md"
+CODEX_PLAIN="$ROOT/host-adapters/plain/AGENTS.md"
 HOOKS_JSON="$ROOT/hooks/hooks.json"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 need() { grep -Fq "$2" "$1" || fail "$1 missing: $2"; }
 deny() { ! grep -Fq "$2" "$1" || fail "$1 must not contain: $2"; }
 
-for f in "$GRILL" "$PLAIN" "$HOOKS_JSON"; do
+for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN" "$HOOKS_JSON"; do
   [[ -f "$f" ]] || fail "missing host-adapter file: $f"
 done
+
+# Codex blocks carry the same touchpoints with native skill mentions.
+for skill in wiki-research wiki-materialize update-wiki source-truth-check lanhu-requirements break-loop; do
+  need "$CODEX_GRILL" "\$grill-adapter:$skill"
+done
+need "$CODEX_GRILL" '$mattpocock-skills:grill-with-docs'
+need "$CODEX_GRILL" '$mattpocock-skills:to-tickets'
+need "$CODEX_GRILL" '$mattpocock-skills:implement'
+need "$CODEX_PLAIN" '$grill-adapter:wiki-research'
+need "$CODEX_PLAIN" '$grill-adapter:wiki-materialize'
+need "$CODEX_PLAIN" 'plain Codex host'
 
 # grill block: markers + zero-patch invariant + all four wiki touchpoints + subsystems.
 # Skills are plugin skills, so every invocation must carry the grill-adapter: namespace.
@@ -53,9 +66,10 @@ need "$PLAIN" 'no host skill is patched'
 # Neither block may carry an install path: they land outside plugin content, where
 # ${CLAUDE_PLUGIN_ROOT} is never substituted, and a baked absolute path would rot on the
 # next plugin update (the cache path is version-scoped).
-for f in "$GRILL" "$PLAIN"; do
+for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
   deny "$f" '__GRILL_ADAPTER_ROOT__'
   deny "$f" 'CLAUDE_PLUGIN_ROOT'
+  deny "$f" 'PLUGIN_ROOT'
   deny "$f" 'grill_context_to_candidates.py'
 done
 

@@ -8949,13 +8949,13 @@ var $ZodObject = /* @__PURE__ */ $constructor("$ZodObject", (inst, def) => {
     }
     return propValues;
   });
-  const isObject2 = isObject;
+  const isObject3 = isObject;
   const catchall = def.catchall;
   let value;
   inst._zod.parse = (payload, ctx) => {
     value ?? (value = _normalized.value);
     const input = payload.value;
-    if (!isObject2(input)) {
+    if (!isObject3(input)) {
       payload.issues.push({
         expected: "object",
         code: "invalid_type",
@@ -9082,7 +9082,7 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
     return (payload, ctx) => fn(shape, payload, ctx);
   };
   let fastpass;
-  const isObject2 = isObject;
+  const isObject3 = isObject;
   const jit = !globalConfig.jitless;
   const allowsEval2 = allowsEval;
   const fastEnabled = jit && allowsEval2.value;
@@ -9091,7 +9091,7 @@ var $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) =>
   inst._zod.parse = (payload, ctx) => {
     value ?? (value = _normalized.value);
     const input = payload.value;
-    if (!isObject2(input)) {
+    if (!isObject3(input)) {
       payload.issues.push({
         expected: "object",
         code: "invalid_type",
@@ -13937,6 +13937,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 var ConfigFileSchema = object({
   repoUrl: string2().min(1).optional(),
   baseBranch: string2().min(1).optional(),
@@ -13954,6 +13955,15 @@ var ProjectMcpSchema = object({
   displayRoot: string2().min(1).optional(),
   draftPr: boolean2().optional()
 });
+var MissingSharedWikiConfigError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "MissingSharedWikiConfigError";
+  }
+};
+function missingSharedWikiConfigError() {
+  return new MissingSharedWikiConfigError("Missing shared wiki repo URL. Set wiki.sharedMcp.repoUrl in <project>/.shared-adapter/settings.json (resolved from CLAUDE_PROJECT_DIR, Codex workspace metadata, an MCP workspace root, or the direct CLI working directory), or SHARED_WIKI_MCP_REPO_URL / repoUrl in SHARED_WIKI_MCP_CONFIG.");
+}
 function expandHome(input) {
   if (input === "~") return homedir();
   if (input.startsWith("~/")) return path.join(homedir(), input.slice(2));
@@ -13968,9 +13978,8 @@ function readConfigFile(configPath) {
   const parsed = JSON.parse(readFileSync(absolutePath, "utf8"));
   return ConfigFileSchema.parse(parsed);
 }
-function readProjectMcpConfig(env) {
-  const projectDir = env.CLAUDE_PROJECT_DIR;
-  if (!projectDir) return {};
+function readProjectMcpConfig(env, workingDirectory) {
+  const projectDir = env.CLAUDE_PROJECT_DIR ?? workingDirectory;
   const settingsPath = path.join(path.resolve(expandHome(projectDir)), ".shared-adapter", "settings.json");
   if (!existsSync(settingsPath)) return {};
   let parsed;
@@ -14001,12 +14010,12 @@ function normalizeRelativeRoot(value, field) {
   }
   return normalized === "." ? "." : normalized.replace(/^\.\//, "");
 }
-function loadConfig(env = process.env) {
+function loadConfig(env = process.env, workingDirectory = process.cwd()) {
   const fileConfig = readConfigFile(env.SHARED_WIKI_MCP_CONFIG);
-  const projectConfig = readProjectMcpConfig(env);
+  const projectConfig = readProjectMcpConfig(env, workingDirectory);
   const repoUrl = env.SHARED_WIKI_MCP_REPO_URL ?? fileConfig.repoUrl ?? projectConfig.repoUrl;
   if (!repoUrl) {
-    throw new Error("Missing shared wiki repo URL. Set wiki.sharedMcp.repoUrl in <project>/.shared-adapter/settings.json (resolved from CLAUDE_PROJECT_DIR), or SHARED_WIKI_MCP_REPO_URL / repoUrl in SHARED_WIKI_MCP_CONFIG.");
+    throw missingSharedWikiConfigError();
   }
   const baseCacheDir = expandHome(env.SHARED_WIKI_MCP_CACHE_DIR ?? fileConfig.cacheDir ?? "~/.cache/grill-adapter/shared-wiki-mcp");
   const cacheDir = path.resolve(baseCacheDir);
@@ -14022,6 +14031,55 @@ function loadConfig(env = process.env) {
     cloneDir: path.join(cacheDir, repoCacheName(repoUrl)),
     draftPr: fileConfig.draftPr ?? projectConfig.draftPr ?? true
   };
+}
+async function loadMcpConfig(client, env = process.env, workingDirectory = process.cwd(), requestMeta) {
+  const supportsRoots = Boolean(client.getClientCapabilities()?.roots);
+  const isCodexRequest = isObject2(requestMeta?.["x-codex-turn-metadata"]);
+  const hasExplicitConfig = Boolean(
+    env.CLAUDE_PROJECT_DIR || env.SHARED_WIKI_MCP_CONFIG || env.SHARED_WIKI_MCP_REPO_URL
+  );
+  if (hasExplicitConfig || !isCodexRequest && !supportsRoots) {
+    try {
+      return loadConfig(env, workingDirectory);
+    } catch (error2) {
+      if (!(error2 instanceof MissingSharedWikiConfigError)) throw error2;
+      if (hasExplicitConfig || !isCodexRequest && !supportsRoots) throw error2;
+    }
+  }
+  const projectDirs = codexWorkspaceDirs(requestMeta);
+  if (supportsRoots) {
+    const { roots } = await client.listRoots();
+    projectDirs.push(...roots.flatMap((root) => {
+      try {
+        const url = new URL(root.uri);
+        return url.protocol === "file:" ? [fileURLToPath(url)] : [];
+      } catch {
+        return [];
+      }
+    }));
+  }
+  const configuredProjectDirs = [...new Set(projectDirs.map((dir) => path.resolve(dir)))].filter((dir) => existsSync(path.join(dir, ".shared-adapter", "settings.json")));
+  if (configuredProjectDirs.length === 0) {
+    throw new MissingSharedWikiConfigError(
+      `${missingSharedWikiConfigError().message} No Codex workspace metadata or MCP workspace root contains .shared-adapter/settings.json.`
+    );
+  }
+  if (configuredProjectDirs.length > 1) {
+    throw new Error(
+      `Multiple Codex workspaces or MCP workspace roots contain .shared-adapter/settings.json; shared-wiki binding is ambiguous: ${configuredProjectDirs.join(", ")}`
+    );
+  }
+  return loadConfig(env, configuredProjectDirs[0]);
+}
+function codexWorkspaceDirs(requestMeta) {
+  const turnMeta = requestMeta?.["x-codex-turn-metadata"];
+  if (!isObject2(turnMeta)) return [];
+  const workspaces = turnMeta.workspaces;
+  if (!isObject2(workspaces)) return [];
+  return Object.keys(workspaces).filter((workspace) => path.isAbsolute(workspace));
+}
+function isObject2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 // node_modules/zod/v3/helpers/util.js
@@ -23206,18 +23264,22 @@ async function withCloneLock(config2, fn, opts = {}) {
 }
 
 // src/server.ts
-function createServer(config2) {
+function createServer(configSource) {
   const server = new McpServer({ name: "shared-wiki-mcp", version: "0.1.0" });
+  const withConfigLock = async (requestMeta, callback) => {
+    const config2 = typeof configSource === "function" ? await configSource(requestMeta) : configSource;
+    return withCloneLock(config2, () => callback(config2));
+  };
   server.registerTool("shared_wiki_status", {
     description: "Check shared wiki MCP configuration, clone state, tool availability, policy, and wiki validation summary.",
     inputSchema: object({}),
     annotations: { readOnlyHint: true, idempotentHint: true }
-  }, async () => toResult(await withCloneLock(config2, () => statusTool(config2))));
+  }, async (_input, extra) => toResult(await withConfigLock(extra._meta, (config2) => statusTool(config2))));
   server.registerTool("shared_wiki_tree", {
     description: "Return the index-driven shared wiki tree with leaf companion section-index metadata.",
     inputSchema: object({}),
     annotations: { readOnlyHint: true, idempotentHint: true }
-  }, async () => toResult(await withCloneLock(config2, () => treeTool(config2))));
+  }, async (_input, extra) => toResult(await withConfigLock(extra._meta, (config2) => treeTool(config2))));
   server.registerTool("shared_wiki_read", {
     description: "Read an indexed root/directory index or companion section index. Full leaf documents are blocked by default; use shared_wiki_read_section for leaf content.",
     inputSchema: object({
@@ -23225,7 +23287,7 @@ function createServer(config2) {
       allowLeafDocumentRead: boolean2().optional()
     }),
     annotations: { readOnlyHint: true, idempotentHint: true }
-  }, async (input) => toResult(await withCloneLock(config2, () => readTool(config2, input))));
+  }, async (input, extra) => toResult(await withConfigLock(extra._meta, (config2) => readTool(config2, input))));
   server.registerTool("shared_wiki_read_section", {
     description: "Read a specific marked section from an indexed leaf shared wiki page, optionally with bounded document context from its companion section index.",
     inputSchema: object({
@@ -23234,7 +23296,7 @@ function createServer(config2) {
       includeDocumentContext: boolean2().optional()
     }),
     annotations: { readOnlyHint: true, idempotentHint: true }
-  }, async (input) => toResult(await withCloneLock(config2, () => readSectionTool(config2, input))));
+  }, async (input, extra) => toResult(await withConfigLock(extra._meta, (config2) => readSectionTool(config2, input))));
   server.registerTool("shared_wiki_read_sections", {
     description: "Read multiple marked sections across indexed leaf shared wiki pages in one ordered batch, optionally with bounded document context.",
     inputSchema: object({
@@ -23247,19 +23309,19 @@ function createServer(config2) {
       errorMode: _enum(["strict", "partial"]).optional()
     }),
     annotations: { readOnlyHint: true, idempotentHint: true }
-  }, async (input) => toResult(await withCloneLock(config2, () => readSectionsTool(config2, input))));
+  }, async (input, extra) => toResult(await withConfigLock(extra._meta, (config2) => readSectionsTool(config2, input))));
   server.registerTool("shared_wiki_search", {
     description: "Search indexed shared wiki markdown pages with bounded snippets.",
     inputSchema: object({ query: string2().min(1), maxResults: number2().int().min(1).max(50).optional() }),
     annotations: { readOnlyHint: true, idempotentHint: true }
-  }, async (input) => toResult(await withCloneLock(config2, () => searchTool(config2, input))));
+  }, async (input, extra) => toResult(await withConfigLock(extra._meta, (config2) => searchTool(config2, input))));
   server.registerTool("shared_wiki_graph_neighbors", {
     description: "Return bounded 1-hop graph neighbors (out/in edges with type and an indexed flag) for the given page#section nodes. Does NOT load the whole graph \u2014 output scales with the number of requested nodes.",
     inputSchema: object({
       nodes: array(string2().min(1)).min(1).max(100)
     }),
     annotations: { readOnlyHint: true, idempotentHint: true }
-  }, async (input) => toResult(await withCloneLock(config2, () => graphNeighborsTool(config2, input))));
+  }, async (input, extra) => toResult(await withConfigLock(extra._meta, (config2) => graphNeighborsTool(config2, input))));
   server.registerTool("shared_wiki_validate_patch", {
     description: "Validate a unified diff against shared wiki policy without pushing or opening a PR.",
     inputSchema: object({
@@ -23267,7 +23329,7 @@ function createServer(config2) {
       authorizedCreate: boolean2().optional(),
       authorizedUpdate: boolean2().optional()
     })
-  }, async (input) => toResult(await withCloneLock(config2, () => validatePatchTool(config2, input))));
+  }, async (input, extra) => toResult(await withConfigLock(extra._meta, (config2) => validatePatchTool(config2, input))));
   server.registerTool("shared_wiki_create_patch_pr", {
     description: "Apply a validated shared wiki patch on a new branch, push it, and open a GitHub PR. Never merges.",
     inputSchema: object({
@@ -23280,7 +23342,7 @@ function createServer(config2) {
       authorizedUpdate: boolean2().optional(),
       draft: boolean2().optional()
     })
-  }, async (input) => toResult(await withCloneLock(config2, () => createPatchPrTool(config2, input))));
+  }, async (input, extra) => toResult(await withConfigLock(extra._meta, (config2) => createPatchPrTool(config2, input))));
   return server;
 }
 function toResult(value) {
@@ -23376,8 +23438,8 @@ async function runGraphNeighborsCliFromStdin() {
 
 // src/index.ts
 async function startServer() {
-  const config2 = loadConfig();
-  const server = createServer(config2);
+  let server;
+  server = createServer((requestMeta) => loadMcpConfig(server.server, process.env, process.cwd(), requestMeta));
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

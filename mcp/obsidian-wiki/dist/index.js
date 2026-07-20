@@ -3229,8 +3229,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path3) {
-      let input = path3;
+    function removeDotSegments(path4) {
+      let input = path4;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3482,8 +3482,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path3, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
+        const [path4, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -7132,10 +7132,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path3) {
-  if (!path3)
+function getElementAtPath(obj, path4) {
+  if (!path4)
     return obj;
-  return path3.reduce((acc, key) => acc?.[key], obj);
+  return path4.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7544,11 +7544,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path3, issues) {
+function prefixIssues(path4, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path3);
+    iss.path.unshift(path4);
     return iss;
   });
 }
@@ -7695,16 +7695,16 @@ function flattenError(error2, mapper = (issue2) => issue2.message) {
 }
 function formatError(error2, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error3, path3 = []) => {
+  const processError = (error3, path4 = []) => {
     for (const issue2 of error3.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path3, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path4, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
       } else {
-        const fullpath = [...path3, ...issue2.path];
+        const fullpath = [...path4, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -14291,8 +14291,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path3, errorMaps, issueData } = params;
-  const fullPath = [...path3, ...issueData.path || []];
+  const { data, path: path4, errorMaps, issueData } = params;
+  const fullPath = [...path4, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -14407,11 +14407,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path3, key) {
+  constructor(parent, value, path4, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path3;
+    this._path = path4;
     this._key = key;
   }
   get path() {
@@ -21858,6 +21858,9 @@ var EMPTY_COMPLETION_RESULT = {
   }
 };
 
+// src/tools/status.ts
+import path2 from "node:path";
+
 // src/bindings.ts
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -21929,6 +21932,29 @@ var RegistrySchema = object({
   vaults: record(string2().min(1), VaultSchema),
   repositories: record(string2().min(1), RepositorySchema)
 });
+function environmentForMcpRequest(env, requestMeta, workingDirectory = process.cwd()) {
+  if (env.CLAUDE_PROJECT_DIR) return env;
+  const turnMeta = requestMeta?.["x-codex-turn-metadata"];
+  const isCodexRequest = turnMeta !== null && typeof turnMeta === "object" && !Array.isArray(turnMeta);
+  const workspaces = isCodexRequest ? turnMeta.workspaces : void 0;
+  const workspaceDirs = workspaces !== null && typeof workspaces === "object" && !Array.isArray(workspaces) ? Object.keys(workspaces).filter((workspace) => path.isAbsolute(workspace)) : [];
+  const configuredProjectDirs = [...new Set(workspaceDirs.map((dir) => path.resolve(dir)))].filter((dir) => existsSync(path.join(dir, ".shared-adapter", "settings.json")));
+  if (!isCodexRequest) {
+    const projectDir = path.resolve(workingDirectory);
+    if (existsSync(path.join(projectDir, ".shared-adapter", "settings.json"))) {
+      return { ...env, CLAUDE_PROJECT_DIR: projectDir };
+    }
+  }
+  if (configuredProjectDirs.length === 0) {
+    throw new Error("No Codex workspace metadata contains .shared-adapter/settings.json for Obsidian Wiki binding resolution");
+  }
+  if (configuredProjectDirs.length > 1) {
+    throw new Error(
+      `Multiple Codex workspaces contain .shared-adapter/settings.json; Obsidian Wiki binding is ambiguous: ${configuredProjectDirs.join(", ")}`
+    );
+  }
+  return { ...env, CLAUDE_PROJECT_DIR: configuredProjectDirs[0] };
+}
 function normalizeRoot(value) {
   if (path.isAbsolute(value)) throw new Error("binding root must be a relative path");
   const normalized = path.posix.normalize(value.replaceAll("\\", "/"));
@@ -22111,9 +22137,8 @@ function validateVault(vault, env) {
   }
   return { selector: vault.selector };
 }
-function resolveBindings(env = process.env) {
-  const projectDir = env.CLAUDE_PROJECT_DIR ? path.resolve(env.CLAUDE_PROJECT_DIR) : void 0;
-  if (!projectDir) throw new Error("CLAUDE_PROJECT_DIR is required to resolve Obsidian Wiki bindings");
+function resolveBindings(env = process.env, workingDirectory = process.cwd()) {
+  const projectDir = path.resolve(env.CLAUDE_PROJECT_DIR ?? workingDirectory);
   const settingsPath = path.join(projectDir, ".shared-adapter", "settings.json");
   const settings = ProjectSettingsSchema.parse(readJsonFile(settingsPath, "Project settings"));
   const registryPath = path.resolve(env.OBSIDIAN_WIKI_REGISTRY ?? path.join(process.env.HOME ?? "", ".config", "grill-adapter", "obsidian-wiki.json"));
@@ -22196,6 +22221,7 @@ ${root}`;
 
 // src/tools/status.ts
 function statusTool(env = process.env) {
+  const projectDir = path2.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
   try {
     const resolution = resolveBindings(env);
     return {
@@ -22226,6 +22252,7 @@ function statusTool(env = process.env) {
     return {
       healthy: false,
       provider: "obsidian",
+      projectDir,
       bindings: [],
       errors: [error2 instanceof Error ? error2.message : String(error2)],
       warnings: []
@@ -22257,7 +22284,7 @@ function sourcesTool(env = process.env) {
 }
 
 // src/retrieval.ts
-import path2 from "node:path";
+import path3 from "node:path";
 
 // src/note.ts
 import { createHash as createHash2 } from "node:crypto";
@@ -22387,8 +22414,8 @@ function readNote(vaultSelector, notePath, env) {
 
 // src/retrieval.ts
 function normalizeVaultPath(value) {
-  if (path2.posix.isAbsolute(value)) throw new Error("Obsidian Note path must be Vault-relative");
-  const normalized = path2.posix.normalize(value.replaceAll("\\", "/"));
+  if (path3.posix.isAbsolute(value)) throw new Error("Obsidian Note path must be Vault-relative");
+  const normalized = path3.posix.normalize(value.replaceAll("\\", "/"));
   if (normalized === "." || normalized === ".." || normalized.startsWith("../")) {
     throw new Error("Obsidian Note path escapes its Vault");
   }
@@ -22637,41 +22664,42 @@ function toResult(value) {
 }
 function createServer(env = process.env) {
   const server = new McpServer({ name: "obsidian-wiki-mcp", version: "0.1.0" });
+  const requestEnv = (requestMeta) => environmentForMcpRequest(env, requestMeta);
   server.registerTool("obsidian_wiki_status", {
     description: "Report the current project\u2019s resolved Obsidian Wiki Source binding health without reading unbound Vault content.",
     inputSchema: object({}),
     annotations: { readOnlyHint: true, idempotentHint: true }
-  }, async () => toResult(statusTool(env)));
+  }, async (_input, extra) => toResult(statusTool(requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_sources", {
     description: "List only the healthy Obsidian Wiki Sources bound to the current project.",
     inputSchema: object({}),
     annotations: { readOnlyHint: true, idempotentHint: true }
-  }, async () => toResult(sourcesTool(env)));
+  }, async (_input, extra) => toResult(sourcesTool(requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_search", {
     description: "Search active, agent-visible atomic Notes only within the current project\u2019s readable bound Sources.",
     inputSchema: object({ query: string2().min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true }
-  }, async (input) => toResult(searchTool(input, env)));
+  }, async (input, extra) => toResult(searchTool(input, requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_read_note", {
     description: "Read one atomic Note only when its Vault-relative path is under a readable bound Source.",
     inputSchema: object({ path: string2().min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true }
-  }, async (input) => toResult(readNoteTool(input, env)));
+  }, async (input, extra) => toResult(readNoteTool(input, requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_read_notes", {
     description: "Batch read atomic Notes with stable content hashes and a snapshot hash, failing closed on inconsistency.",
     inputSchema: object({ paths: array(string2().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true }
-  }, async (input) => toResult(readNotesTool(input, env)));
+  }, async (input, extra) => toResult(readNotesTool(input, requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_read_notes_by_wiki_ids", {
     description: "Batch read atomic Notes by stable wiki_id, resolving exactly one readable active Note per ID.",
     inputSchema: object({ wikiIds: array(string2().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true }
-  }, async (input) => toResult(readNotesByWikiIdsTool(input, env)));
+  }, async (input, extra) => toResult(readNotesByWikiIdsTool(input, requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_graph_neighbors", {
     description: "Return de-duplicated direct typed neighbors for bound atomic Note wiki IDs without recursive traversal.",
     inputSchema: object({ wikiIds: array(string2().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true }
-  }, async (input) => toResult(graphNeighborsTool(input, env)));
+  }, async (input, extra) => toResult(graphNeighborsTool(input, requestEnv(extra._meta))));
   return server;
 }
 

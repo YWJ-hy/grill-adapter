@@ -1,8 +1,8 @@
 # grill-adapter
 
-A **host-agnostic Claude Code plugin** that adds three things to your coding workflow — a sectioned, cross-repo **project wiki**; **Lanhu (蓝湖) requirements intake**; and **source-of-truth** verification — as standalone skills, agents, and hooks. It **never patches a host skill**: it wires into your workflow purely through a project `CLAUDE.md` convention block and the plugin's own hooks, so host upgrades can't break it.
+A **host-agnostic Claude Code and Codex plugin** that adds three things to your coding workflow — a sectioned, cross-repo **project wiki**; **Lanhu (蓝湖) requirements intake**; and **source-of-truth** verification — as standalone skills, agent roles, and hooks. It **never patches a host skill**: it wires into your workflow through a project convention block (`CLAUDE.md` or `AGENTS.md`) and the plugin's own hooks, so host upgrades can't break it.
 
-It defaults to [**grill** (mattpocock/skills)](https://github.com/mattpocock/skills) as the front-end (`/grill-with-docs → /to-spec → /to-tickets → /implement → /code-review`), and also runs on **plain Claude Code**.
+It defaults to [**grill** (mattpocock/skills)](https://github.com/mattpocock/skills) as the front-end (`grill-with-docs → to-spec → to-tickets → implement → code-review`), and also runs on **plain Claude Code or Codex**.
 
 > grill-adapter is the host-agnostic successor to a Superpowers-coupled adapter. It keeps all of that adapter's functionality and drops exactly one thing: the mechanism that patched anchors into the host's own skills. See [`docs/DECISIONS_CN.md`](docs/DECISIONS_CN.md).
 
@@ -23,38 +23,49 @@ Plus **Lanhu intake** (`/grill-adapter:lanhu-requirements`), **source-of-truth**
 
 ## Install (30 seconds, if you already have grill)
 
-**1. Install the plugin** (from your project directory):
+**1. Install the plugin**.
+
+Claude Code (from your project directory):
 
 ```bash
 claude plugin marketplace add YWJ-hy/grill-adapter
 claude plugin install grill-adapter@grill-adapter --scope project
 ```
 
-Claude Code discovers the whole component inventory from the plugin layout — **12 skills, 3 agents, 3 hooks, and 2 MCP servers**. The legacy `shared-wiki` server and the new `obsidian-wiki` Source-binding server are registered together; nothing is copied into `~/.claude` or merged into your project's `.claude/settings.json`. MCP servers start automatically; no manual registration.
+Codex:
 
-> **Scope is shared.** Skills, agents, hooks, and bundled MCP servers all take the plugin's scope — a plugin-bundled MCP cannot be scoped separately. Use `--scope project` for project-scoped Wiki access, `--scope user` to share it across projects.
+```bash
+codex plugin marketplace add YWJ-hy/grill-adapter
+codex plugin add grill-adapter@grill-adapter
+```
 
-**2. Wire the project** — the one thing a plugin cannot touch is your project's `CLAUDE.md`:
+Both runtimes discover **12 skills, 3 hook events, and 2 MCP servers**. Claude Code also registers the 3 files under `agents/` directly; Codex keeps those prompts as plugin payload and the two entry skills dispatch general sub-agents with the same role instructions. The legacy `shared-wiki` and Source-binding `obsidian-wiki` servers are registered together and start automatically.
+
+> **Claude Code scope is shared.** Skills, agents, hooks, and bundled MCP servers all take the plugin's scope. Codex's current `plugin add` command has no project/user scope flag; project isolation comes from explicit Wiki bindings and fail-closed policy.
+
+**2. Wire the project** — the one thing a plugin cannot touch is your project's durable instruction file:
 
 ```bash
 git clone https://github.com/YWJ-hy/grill-adapter.git
 cd grill-adapter
-./manage.sh install /path/to/your/project --host grill   # write the host convention block
+./manage.sh install /path/to/your/project --host grill --runtime claude
+# Codex: --runtime codex; teams using both: --runtime both
 ./manage.sh bootstrap-wiki /path/to/your/project           # seed .adapter/wiki/
 ./manage.sh doctor /path/to/your/project                   # sanity-check
 ```
 
-- The convention block is marker-delimited and **names skills only — it carries no install path**, so plugin upgrades can't rot it.
+- The convention block is marker-delimited and **names skills only — it carries no install path**, so plugin upgrades can't rot it. Claude Code uses `CLAUDE.md`; Codex uses `AGENTS.md`.
 - **Zero host-skill patching.** To remove: drop `grill-adapter@grill-adapter` from the project's `.claude/settings.json` `enabledPlugins` (a project-scope plugin is a committed, team-shared setting, so `claude plugin uninstall` deliberately refuses to remove it for you — use `claude plugin disable grill-adapter@grill-adapter --scope local` to switch it off for yourself only), then `./manage.sh uninstall /path/to/your/project` to strip the convention block.
+- On Codex, remove the bundle with `codex plugin remove grill-adapter@grill-adapter`, then run `./manage.sh uninstall /path/to/your/project --runtime codex`.
 
 New to grill? Follow [`docs/SETUP_AND_USAGE_CN.md`](docs/SETUP_AND_USAGE_CN.md), which installs grill first.
 
 ## Commands
 
-`manage.sh` only covers project wiring and the wiki utilities; the plugin itself is managed by `claude plugin` / `/plugin`.
+`manage.sh` only covers project wiring and the wiki utilities; the plugin itself is managed by `claude plugin` / `/plugin` or `codex plugin`.
 
 ```
-./manage.sh install|uninstall|verify|status <project> [--host grill|plain]
+./manage.sh install|uninstall|verify|status <project> [--host grill|plain] [--runtime claude|codex|both]
 ./manage.sh bootstrap-wiki <project> [--template name] [--wiki-root project|shared]
 ./manage.sh init-wiki <project> [hint]
 ./manage.sh export-wiki-skills <wiki-repo> [--no-graph-ci]
@@ -63,9 +74,9 @@ New to grill? Follow [`docs/SETUP_AND_USAGE_CN.md`](docs/SETUP_AND_USAGE_CN.md),
 ./manage.sh release-check <project>
 ```
 
-## Relationship to grill / Claude Code
+## Relationship to grill / Claude Code / Codex
 
-grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe to; grill-adapter never forks or edits it. grill-adapter is the layer that adds the wiki/Lanhu/source-truth touchpoints *around* grill by convention. On plain Claude Code you invoke the same skills yourself at the matching moments (see the `plain` host block).
+grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe to; grill-adapter never forks or edits it. grill-adapter adds wiki/Lanhu/source-truth touchpoints *around* grill by convention. On plain Claude Code or Codex you invoke the same skills yourself at the matching moments (see the runtime-specific `plain` host block).
 
 ## Documentation
 
@@ -84,7 +95,7 @@ grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe 
 
 ## Requirements
 
-- Claude Code (CLI, desktop, or IDE extension)
+- Claude Code or Codex (CLI/app)
 - Python 3.9+
 - Node.js ≥ 20 (to run the bundled Wiki MCP servers; the plugin ships prebuilt bundles — nothing to build)
 

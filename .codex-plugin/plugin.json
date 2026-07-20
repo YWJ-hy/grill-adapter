@@ -1,0 +1,57 @@
+{
+  "name": "grill-adapter",
+  "version": "0.2.0",
+  "description": "Host-agnostic coding adapter with project wiki, Lanhu requirements intake, and source-of-truth verification for grill or plain Codex workflows.",
+  "author": {
+    "name": "yewenjie",
+    "url": "https://github.com/YWJ-hy"
+  },
+  "homepage": "https://github.com/YWJ-hy/grill-adapter",
+  "repository": "https://github.com/YWJ-hy/grill-adapter",
+  "license": "MIT",
+  "keywords": [
+    "wiki",
+    "knowledge-graph",
+    "requirements",
+    "source-of-truth",
+    "grill",
+    "lanhu",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "mcpServers": {
+    "shared-wiki": {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "./mcp/shared-wiki/dist/index.js"
+      ]
+    },
+    "obsidian-wiki": {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "./mcp/obsidian-wiki/dist/index.js"
+      ]
+    }
+  },
+  "interface": {
+    "displayName": "Grill Adapter",
+    "shortDescription": "Add governed project knowledge and requirements intake to coding workflows",
+    "longDescription": "Adds Disclose, Carry, Bind, and Capture project-wiki touchpoints, Lanhu requirements intake, source-of-truth verification, hooks, and two bundled Wiki MCP servers without patching the host workflow.",
+    "developerName": "yewenjie",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/YWJ-hy/grill-adapter",
+    "defaultPrompt": [
+      "Research the project wiki before planning this change.",
+      "Bind the selected wiki constraints before implementation.",
+      "Review durable knowledge from this completed change."
+    ],
+    "brandColor": "#247B63"
+  }
+}

@@ -5,6 +5,7 @@ import { sourcesTool } from './tools/sources.js';
 import { searchTool } from './tools/search.js';
 import { readNoteTool, readNotesByWikiIdsTool, readNotesTool } from './tools/read.js';
 import { graphNeighborsTool } from './tools/graph.js';
+import { environmentForMcpRequest } from './bindings.js';
 
 function toResult(value: unknown) {
   return {
@@ -15,40 +16,42 @@ function toResult(value: unknown) {
 
 export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
   const server = new McpServer({ name: 'obsidian-wiki-mcp', version: '0.1.0' });
+  const requestEnv = (requestMeta: Record<string, unknown> | undefined) =>
+    environmentForMcpRequest(env, requestMeta);
   server.registerTool('obsidian_wiki_status', {
     description: 'Report the current project’s resolved Obsidian Wiki Source binding health without reading unbound Vault content.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, idempotentHint: true },
-  }, async () => toResult(statusTool(env)));
+  }, async (_input, extra) => toResult(statusTool(requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_sources', {
     description: 'List only the healthy Obsidian Wiki Sources bound to the current project.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, idempotentHint: true },
-  }, async () => toResult(sourcesTool(env)));
+  }, async (_input, extra) => toResult(sourcesTool(requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_search', {
     description: 'Search active, agent-visible atomic Notes only within the current project’s readable bound Sources.',
     inputSchema: z.object({ query: z.string().min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true },
-  }, async (input) => toResult(searchTool(input, env)));
+  }, async (input, extra) => toResult(searchTool(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_read_note', {
     description: 'Read one atomic Note only when its Vault-relative path is under a readable bound Source.',
     inputSchema: z.object({ path: z.string().min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true },
-  }, async (input) => toResult(readNoteTool(input, env)));
+  }, async (input, extra) => toResult(readNoteTool(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_read_notes', {
     description: 'Batch read atomic Notes with stable content hashes and a snapshot hash, failing closed on inconsistency.',
     inputSchema: z.object({ paths: z.array(z.string().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true },
-  }, async (input) => toResult(readNotesTool(input, env)));
+  }, async (input, extra) => toResult(readNotesTool(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_read_notes_by_wiki_ids', {
     description: 'Batch read atomic Notes by stable wiki_id, resolving exactly one readable active Note per ID.',
     inputSchema: z.object({ wikiIds: z.array(z.string().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true },
-  }, async (input) => toResult(readNotesByWikiIdsTool(input, env)));
+  }, async (input, extra) => toResult(readNotesByWikiIdsTool(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_graph_neighbors', {
     description: 'Return de-duplicated direct typed neighbors for bound atomic Note wiki IDs without recursive traversal.',
     inputSchema: z.object({ wikiIds: z.array(z.string().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true },
-  }, async (input) => toResult(graphNeighborsTool(input, env)));
+  }, async (input, extra) => toResult(graphNeighborsTool(input, requestEnv(extra._meta))));
   return server;
 }

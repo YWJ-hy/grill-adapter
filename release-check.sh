@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# grill-adapter release-check — full pre-release gate. Non-destructive: the plugin is loaded
-# read-only via --plugin-dir and project wiring is exercised against a throwaway project, so
-# the caller's real ~/.claude and the passed project are never mutated. The passed
+# grill-adapter release-check — full pre-release gate. Project wiring and Codex plugin install
+# are exercised in throwaway directories, so the caller's agent config and project are not
+# mutated. The passed
 # <project-root> is used read-only by doctor.
 set -uo pipefail
 
@@ -32,9 +32,8 @@ else
 fi
 
 step "3. Placeholder residue check"
-# __GRILL_ADAPTER_ROOT__ is dead in plugin content: Claude Code substitutes ${CLAUDE_PLUGIN_ROOT}
-# in skill/agent bodies, and nothing install-time rewrites these files any more, so a leftover
-# would ship to users verbatim.
+# __GRILL_ADAPTER_ROOT__ is dead in plugin content. Nothing install-time rewrites these files,
+# so a leftover would ship to users verbatim.
 residue=0
 if grep -rn '__SUPERPOWER_ADAPTER' "$SCRIPT_DIR/scripts" "$SCRIPT_DIR/skills" "$SCRIPT_DIR/agents" "$SCRIPT_DIR/lib" "$SCRIPT_DIR/hooks" "$SCRIPT_DIR/contracts" 2>/dev/null; then
   echo "  FAIL (superpower-adapter placeholder residue)"; residue=1
@@ -99,15 +98,21 @@ else
   echo "  SKIP (claude CLI not found)"
 fi
 
+if bash "$SCRIPT_DIR/tests/codex-plugin-smoke.sh" "$SCRIPT_DIR"; then
+  echo "  OK (Codex manifest + isolated marketplace install)"
+else
+  echo "  FAIL (Codex plugin smoke)"; fail=1
+fi
+
 step "7. Sandbox project wiring + verify (throwaway project)"
 SANDBOX_PROJECT="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX_PROJECT"' EXIT
-if python3 "$SCRIPT_DIR/lib/install.py" install "$SANDBOX_PROJECT" --host grill >/tmp/grill-rc-install.$$.log 2>&1; then
+if python3 "$SCRIPT_DIR/lib/install.py" install "$SANDBOX_PROJECT" --host grill --runtime both >/tmp/grill-rc-install.$$.log 2>&1; then
   echo "  install OK"
 else
   echo "  install FAIL"; sed 's/^/    /' /tmp/grill-rc-install.$$.log | tail -20; fail=1
 fi
-check python3 "$SCRIPT_DIR/lib/install.py" verify "$SANDBOX_PROJECT" --host grill
+check python3 "$SCRIPT_DIR/lib/install.py" verify "$SANDBOX_PROJECT" --host grill --runtime both
 rm -f /tmp/grill-rc-install.$$.log
 
 step "8. Smoke/regression suite"

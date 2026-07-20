@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """Resolve grill-adapter install targets.
 
-grill-adapter ships as a Claude Code plugin, so there is no user-level install to resolve:
-skills, agents, hooks, the shared-wiki MCP, and the script/contract payload all live inside
-the plugin and are addressed from skill/agent/hook/MCP config via ``${CLAUDE_PLUGIN_ROOT}``,
-which Claude Code substitutes with the plugin's versioned install dir. Never hard-code that
-path anywhere that outlives a session -- it changes on every plugin update.
+grill-adapter ships as a Claude Code/Codex plugin, so there is no user-level payload install
+to resolve. Skills, hooks, MCP servers, and the script/contract payload all live inside the
+plugin's versioned install directory.
 
-What remains is the one thing a plugin cannot do: edit a target project's CLAUDE.md.
+What remains is the one thing a plugin cannot do: edit a target project's durable instructions.
 
   project level (per project):
-    - host convention block -> <project>/CLAUDE.md
+    - Claude Code host convention block -> <project>/CLAUDE.md
+    - Codex host convention block -> <project>/AGENTS.md
 """
 
 from __future__ import annotations
@@ -27,6 +26,13 @@ def user_claude_dir() -> Path:
     """
     override = os.environ.get("CLAUDE_CONFIG_DIR")
     base = Path(override).expanduser() if override else (Path.home() / ".claude")
+    return base.resolve()
+
+
+def user_codex_dir() -> Path:
+    """The user's Codex config dir (~/.codex), override with CODEX_HOME."""
+    override = os.environ.get("CODEX_HOME")
+    base = Path(override).expanduser() if override else (Path.home() / ".codex")
     return base.resolve()
 
 
@@ -59,6 +65,7 @@ def main() -> int:
     explicit = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else None
     print(json.dumps({
         "userClaudeDir": user_claude_dir().as_posix(),
+        "userCodexDir": user_codex_dir().as_posix(),
         "projectTarget": (resolve_project_target(explicit).as_posix() if explicit else None),
     }, indent=2))
     return 0

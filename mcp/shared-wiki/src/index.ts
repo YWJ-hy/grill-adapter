@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { loadConfig } from './config.js';
+import { loadMcpConfig } from './config.js';
 import { createServer } from './server.js';
 import { runGraphNeighborsCliFromStdin, runReadSectionsCliFromStdin } from './cli.js';
 
 async function startServer(): Promise<void> {
-  const config = loadConfig();
-  const server = createServer(config);
+  let server: ReturnType<typeof createServer>;
+  server = createServer((requestMeta) =>
+    loadMcpConfig(server.server, process.env, process.cwd(), requestMeta));
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
