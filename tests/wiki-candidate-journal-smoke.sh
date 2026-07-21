@@ -13,17 +13,31 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 JOURNAL="$T/.adapter/context/feature-a.wiki-candidates.jsonl"
 
 append_candidate() {
-  python3 "$JOURNAL_CLI" append \
-    --journal "$JOURNAL" \
-    --feature-slug feature-a \
-    --event-id "$1" \
-    --candidate-id "$2" \
-    --stage "$3" \
-    --candidate-type "$4" \
-    --kind "$5" \
-    --claim "$6" \
-    --why "$7" \
+  ARGS=(
+    python3 "$JOURNAL_CLI" append
+    --journal "$JOURNAL"
+    --feature-slug feature-a
+    --event-id "$1"
+    --candidate-id "$2"
+    --stage "$3"
+    --candidate-type "$4"
+    --kind "$5"
+    --claim "$6"
+    --why "$7"
     --source-ref "$8"
+  )
+  if [[ "$4" == "skill_card" ]]; then
+    ARGS+=(
+      --skill-provider claude-code-project
+      --skill-name receipt-verifier
+      --skill-version 1.0.0
+      --skill-contract-hash sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      --skill-role reviewer
+      --skill-trigger "publish review"
+      --skill-summary "Verify applied Note receipts before publication."
+    )
+  fi
+  "${ARGS[@]}"
 }
 
 # One feature journal accepts Wiki and Skill Card candidates from different workflow stages.
@@ -39,6 +53,24 @@ append_candidate evt-capture cand-capture review wiki_note contract \
   'Capture receipts retain the exact staged Note identity.' \
   'Publishing must group and verify only the Note writes accepted by Capture.' \
   'issue:#8' >/dev/null
+
+for invalid_identity in \
+  '--skill-name ../outside --skill-version 1.0.0' \
+  '--skill-name receipt-verifier --skill-version latest' \
+  '--skill-name receipt-verifier --skill-version 1.2'; do
+  if python3 "$JOURNAL_CLI" append \
+    --journal "$T/.adapter/context/invalid-skill.wiki-candidates.jsonl" \
+    --feature-slug invalid-skill --event-id invalid-event --candidate-id invalid-card \
+    --stage implementation --candidate-type skill_card --kind skill_registration \
+    --claim 'Invalid skill registration.' --why 'The identity must fail closed.' \
+    --source-ref 'test:invalid' --skill-provider claude-code-project \
+    $invalid_identity \
+    --skill-contract-hash sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    --skill-role reviewer --skill-trigger review --skill-summary 'Invalid identity.' \
+    >/dev/null 2>&1; then
+    fail "invalid Skill Card name/version was accepted: $invalid_identity"
+  fi
+done
 
 # Public CLI output stays UTF-8 even when the inherited stdio encoding is ASCII.
 UTF8_JOURNAL="$T/.adapter/context/utf8-feature.wiki-candidates.jsonl"
@@ -84,6 +116,16 @@ assert d["eventCount"] == 3
 assert d["counts"] == {"pending": 3, "superseded": 0, "kept": 0, "skipped": 0, "deferred": 0}
 assert [item["candidateId"] for item in d["candidates"]] == ["cand-wiki", "cand-skill", "cand-capture"]
 assert d["candidates"][1]["candidateType"] == "skill_card"
+assert d["candidates"][1]["skillRegistration"] == {
+    "provider": "claude-code-project",
+    "name": "receipt-verifier",
+    "version": "1.0.0",
+    "contractHash": "sha256:" + "a" * 64,
+    "roles": ["reviewer"],
+    "triggers": ["publish review"],
+    "summary": "Verify applied Note receipts before publication.",
+    "discoveryState": "pending",
+}
 ' || fail "fold did not preserve pending Wiki and Skill Card candidates"
 
 # Capture records proposal identity before a recoverable pause, then replaces it with the
@@ -190,10 +232,40 @@ python3 "$JOURNAL_CLI" outcome \
   --journal "$JOURNAL" --feature-slug feature-a --event-id evt-5 \
   --candidate-id cand-skill --status deferred \
   --reason 'The target pack does not exist yet.' >/dev/null
+if python3 "$JOURNAL_CLI" outcome \
+  --journal "$JOURNAL" --feature-slug feature-a --event-id evt-6-missing \
+  --candidate-id cand-skill --status kept \
+  --reason 'The pack exists but no reviewed Card was applied.' >/dev/null 2>&1; then
+  fail "Skill Card candidate reached kept without an applied bound receipt"
+fi
+if python3 "$JOURNAL_CLI" outcome \
+  --journal "$JOURNAL" --feature-slug feature-a --event-id evt-6-mismatch \
+  --candidate-id cand-skill --status kept --reason 'Applied another Card.' \
+  --write-state applied --operation create \
+  --source-id project-wiki --repository-ref knowledge-repo \
+  --binding-digest "$BINDING_DIGEST" --wiki-id project/skills/other \
+  --path Projects/demo/Skills/other.md --after-hash "$AFTER_HASH" \
+  --skill-provider claude-code-project --skill-name other --skill-version 1.0.0 \
+  --skill-contract-hash sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  --skill-role reviewer --skill-trigger 'publish review' \
+  --skill-summary 'Verify applied Note receipts before publication.' >/dev/null 2>&1; then
+  fail "Skill Card candidate accepted a receipt for another registration"
+fi
 python3 "$JOURNAL_CLI" outcome \
   --journal "$JOURNAL" --feature-slug feature-a --event-id evt-6 \
   --candidate-id cand-skill --status kept \
-  --reason 'The pack was scaffolded and is ready for Capture.' >/dev/null
+  --reason 'The reviewed Card was applied with the staged pack identity.' \
+  --write-state applied --operation create \
+  --source-id project-wiki --repository-ref knowledge-repo \
+  --binding-digest "$BINDING_DIGEST" \
+  --wiki-id project/skills/receipt-verifier \
+  --path Projects/demo/Skills/receipt-verifier.md \
+  --after-hash "$AFTER_HASH" \
+  --skill-provider claude-code-project \
+  --skill-name receipt-verifier --skill-version 1.0.0 \
+  --skill-contract-hash sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  --skill-role reviewer --skill-trigger 'publish review' \
+  --skill-summary 'Verify applied Note receipts before publication.' >/dev/null
 
 python3 "$JOURNAL_CLI" validate --journal "$JOURNAL" --feature-slug feature-a >/dev/null
 FOLDED="$(python3 "$JOURNAL_CLI" fold --journal "$JOURNAL" --feature-slug feature-a)"
@@ -204,6 +276,7 @@ by_id = {item["candidateId"]: item for item in d["candidates"]}
 assert by_id["cand-wiki"]["status"] == "superseded"
 assert by_id["cand-wiki"]["supersededBy"] == "cand-replacement"
 assert by_id["cand-skill"]["status"] == "kept"
+assert by_id["cand-skill"]["writeReceipt"]["skillRegistration"] == by_id["cand-skill"]["skillRegistration"]
 assert by_id["cand-replacement"]["status"] == "pending"
 assert by_id["cand-capture"]["status"] == "kept"
 assert by_id["cand-capture"]["writeReceipt"]["state"] == "applied"

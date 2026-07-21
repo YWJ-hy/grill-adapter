@@ -37,7 +37,7 @@ If the preflight fails because a ticket's text changed after the wiki was bound 
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --task-id <ticket-id> --role implementer --strict --execution-ready
 ```
 
-2. Materialize this ticket's authoritative hard-constraint rereads and inject stdout after the rendered constraints under `## Hard Wiki Constraint Rereads`: schema-v5 reads local project + `github_mcp` shared sections; schema-v6 reads routed hard Obsidian Notes and role-required Skill Cards through the bound Obsidian MCP:
+2. Materialize this ticket's authoritative hard-constraint rereads and inject stdout after the rendered constraints under `## Hard Wiki Constraint Rereads`: schema-v5 reads local project + `github_mcp` shared sections; schema-v6 reads routed hard Obsidian Notes and role-required Skill Cards through the bound Obsidian MCP. For every Card, the rendered output names the verified `skillName` and requires invoking that project skill for the current role; the Card body never substitutes for the executable pack:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_materialize_task.py .adapter/context/<feature-slug>.wiki-context.json --task-id <ticket-id> --role implementer --project-root <project-root> --strict --execution-ready
@@ -45,7 +45,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_materialize_task.py .adapter/context/
 
 For a reviewer pass, use `--role reviewer`. To append directly into a handoff file the subagent Reads, add `--append-to <file>`.
 
-`wiki_materialize_task.py` is the **single fixed fetcher**. For schema-v5 it extracts local sections and uses the shared-wiki MCP `read-sections` CLI for `source: github_mcp`. For schema-v6 it calls only the bound Obsidian MCP `read-notes` and `graph-neighbors` CLI endpoints: it checks every direct Note/Card's source, role, path, stable ID, type, binding digest, content hash, summary, and Skill Card role policy against the carried sidecar before emitting content. Both versions close only the selected hard constraints' **bounded, de-duplicated 1-hop `depends-on` set**; schema-v6 does not follow a dependency's dependencies.
+`wiki_materialize_task.py` is the **single fixed fetcher**. For schema-v5 it extracts local sections and uses the shared-wiki MCP `read-sections` CLI for `source: github_mcp`. For schema-v6 it calls only the bound Obsidian MCP `read-notes` and `graph-neighbors` CLI endpoints: it checks every direct Note/Card's source, role, path, stable ID, type, binding digest, content hash, summary, and Skill Card provider/name/version/contract-hash/trigger/role identity against the carried sidecar before emitting content. Both versions close only the selected hard constraints' **bounded, de-duplicated 1-hop `depends-on` set**; schema-v6 does not follow a dependency's dependencies.
 
 It fails closed on binding changes, missing or duplicate IDs, content or metadata drift, Skill Card policy violations, unreadable Notes, partial results, unavailable required MCP tools, and shared-wiki rebinding/revision drift. Do not hand-fetch Notes or sections, call MCP read tools yourself, or paste body text instead.
 

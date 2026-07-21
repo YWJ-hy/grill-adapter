@@ -3229,8 +3229,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path6) {
-      let input = path6;
+    function removeDotSegments(path7) {
+      let input = path7;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3482,8 +3482,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path6, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path6 && path6 !== "/" ? path6 : void 0;
+        const [path7, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path7 && path7 !== "/" ? path7 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -7132,10 +7132,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path6) {
-  if (!path6)
+function getElementAtPath(obj, path7) {
+  if (!path7)
     return obj;
-  return path6.reduce((acc, key) => acc?.[key], obj);
+  return path7.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7544,11 +7544,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path6, issues) {
+function prefixIssues(path7, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path6);
+    iss.path.unshift(path7);
     return iss;
   });
 }
@@ -7695,16 +7695,16 @@ function flattenError(error2, mapper = (issue2) => issue2.message) {
 }
 function formatError(error2, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error3, path6 = []) => {
+  const processError = (error3, path7 = []) => {
     for (const issue2 of error3.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path6, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path7, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path6, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path6, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
       } else {
-        const fullpath = [...path6, ...issue2.path];
+        const fullpath = [...path7, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -14291,8 +14291,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path6, errorMaps, issueData } = params;
-  const fullPath = [...path6, ...issueData.path || []];
+  const { data, path: path7, errorMaps, issueData } = params;
+  const fullPath = [...path7, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -14407,11 +14407,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path6, key) {
+  constructor(parent, value, path7, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path6;
+    this._path = path7;
     this._key = key;
   }
   get path() {
@@ -22130,6 +22130,7 @@ function validateRepository(repository, allowedStagedRoots = []) {
   if (worktreeStatus && !hasAllowedStagedChanges) {
     throw new Error("repository worktree must be clean or contain only staged Obsidian Note changes under bound Source roots");
   }
+  let baseSynchronized = false;
   if (!hasAllowedStagedChanges && repository.syncBeforeResearch !== false) {
     try {
       const remoteBase = `${repository.remote}/${repository.baseBranch}`;
@@ -22138,6 +22139,7 @@ function validateRepository(repository, allowedStagedRoots = []) {
       const localRevision = commandOutput("git", ["-C", worktreeRoot, "rev-parse", "HEAD"]);
       const remoteRevision = commandOutput("git", ["-C", worktreeRoot, "rev-parse", remoteBase]);
       if (localRevision !== remoteRevision) throw new Error(`local ${repository.baseBranch} is not current with ${remoteBase}`);
+      baseSynchronized = true;
     } catch (error2) {
       if (!repository.allowStaleRead) {
         throw new Error(`repository cannot prove a fresh baseBranch: ${error2 instanceof Error ? error2.message : String(error2)}`);
@@ -22148,7 +22150,8 @@ function validateRepository(repository, allowedStagedRoots = []) {
     remote: repository.remote,
     expectedRemote: configuredRemote,
     baseBranch: repository.baseBranch,
-    currentBranch
+    currentBranch,
+    baseSynchronized
   };
 }
 function validateVault(vault, env) {
@@ -22326,6 +22329,11 @@ import path3 from "node:path";
 
 // src/note.ts
 import { createHash as createHash2 } from "node:crypto";
+var SkillNameSchema = string2().regex(/^[a-z0-9][a-z0-9-]*$/);
+var SkillVersionSchema = string2().regex(
+  /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
+);
+var uniqueList = (values) => new Set(values).size === values.length;
 var NoteSchema = object({
   wiki_schema: literal("grill-adapter.obsidian-note/v1"),
   wiki_id: string2().min(1),
@@ -22338,7 +22346,12 @@ var NoteSchema = object({
   see_also: array(string2()).optional(),
   supersedes: array(string2()).optional(),
   contradicts: array(string2()).optional(),
-  skill_roles: array(_enum(["implementer", "reviewer"])).optional()
+  skill_roles: array(_enum(["implementer", "reviewer"])).min(1).refine(uniqueList, "Skill Card roles must be unique").optional(),
+  skill_provider: literal("claude-code-project").optional(),
+  skill_name: SkillNameSchema.optional(),
+  skill_version: SkillVersionSchema.optional(),
+  skill_contract_hash: string2().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  skill_triggers: array(string2().min(1)).min(1).refine(uniqueList, "Skill Card triggers must be unique").optional()
 });
 function parseScalar2(raw) {
   const value = raw.trim();
@@ -22389,6 +22402,21 @@ function parseAtomicNote(contents, description = "Note") {
     throw new Error(`${description} has invalid atomic Note properties: ${parsed.error.issues.map((issue2) => issue2.message).join("; ")}`);
   }
   const note = parsed.data;
+  const skillFields = [
+    note.skill_provider,
+    note.skill_name,
+    note.skill_version,
+    note.skill_contract_hash,
+    note.skill_roles,
+    note.skill_triggers
+  ];
+  const isSkillCard = skillFields.some((value) => value !== void 0);
+  if (isSkillCard && skillFields.some((value) => value === void 0)) {
+    throw new Error(`${description} has incomplete Skill Card properties`);
+  }
+  if (isSkillCard && note.type !== "guide") {
+    throw new Error(`${description} Skill Card type must be guide`);
+  }
   return {
     wikiId: note.wiki_id,
     type: note.type,
@@ -22397,6 +22425,11 @@ function parseAtomicNote(contents, description = "Note") {
     summary: note.summary,
     constraintStrength: note.constraint_strength,
     skillRoles: note.skill_roles ?? [],
+    skillProvider: note.skill_provider,
+    skillName: note.skill_name,
+    skillVersion: note.skill_version,
+    skillContractHash: note.skill_contract_hash,
+    skillTriggers: note.skill_triggers ?? [],
     edges: {
       dependsOn: note.depends_on ?? [],
       seeAlso: note.see_also ?? [],
@@ -22563,6 +22596,114 @@ ${notePath}`;
   }
   return notes;
 }
+function matchingBoundSkillCards(note, bindings, env, requireActiveAndVisible = true) {
+  if (!note.skillProvider || !note.skillName) return [];
+  return searchBoundNotes(
+    `[skill_name:${note.skillName}]`,
+    bindings,
+    env,
+    requireActiveAndVisible
+  ).filter((candidate) => candidate.skillProvider === note.skillProvider && candidate.skillName === note.skillName);
+}
+function assertUniqueBoundSkillCard(note, bindings, env) {
+  if (!note.skillProvider) return;
+  const matches = matchingBoundSkillCards(note, bindings, env);
+  if (matches.length !== 1 || matches[0].wikiId !== note.wikiId || matches[0].path !== note.path || matches[0].sourceId !== note.sourceId) {
+    throw new Error(
+      `Skill Card identity ${note.skillProvider}/${note.skillName} resolved ${matches.length} active Cards`
+    );
+  }
+}
+
+// src/skill-card.ts
+import { createHash as createHash3 } from "node:crypto";
+import { lstatSync as lstatSync2, readFileSync as readFileSync2, readdirSync } from "node:fs";
+import path4 from "node:path";
+function pendingSkillRegistration(note) {
+  if (!note.skillProvider) return void 0;
+  return {
+    provider: note.skillProvider,
+    name: note.skillName,
+    version: note.skillVersion,
+    contractHash: note.skillContractHash,
+    roles: note.skillRoles,
+    triggers: note.skillTriggers,
+    summary: note.summary,
+    discoveryState: "pending"
+  };
+}
+function packFiles(packRoot, current = packRoot) {
+  const files = [];
+  for (const entry of readdirSync(current, { withFileTypes: true })) {
+    const absolute = path4.join(current, entry.name);
+    const relative = path4.relative(packRoot, absolute).split(path4.sep).join("/");
+    if (entry.isSymbolicLink() || lstatSync2(absolute).isSymbolicLink()) {
+      throw new Error(`skill pack contract does not allow symlinks: ${relative}`);
+    }
+    if (entry.isDirectory()) files.push(...packFiles(packRoot, absolute));
+    else if (entry.isFile()) files.push(relative);
+  }
+  return files.sort((left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")));
+}
+function skillContractHash(packRoot) {
+  const digest = createHash3("sha256");
+  digest.update("grill-adapter.skill-pack-contract/v1\0", "utf8");
+  for (const relative of packFiles(packRoot)) {
+    digest.update(relative, "utf8");
+    digest.update("\0", "utf8");
+    digest.update(createHash3("sha256").update(readFileSync2(path4.join(packRoot, relative))).digest());
+    digest.update("\0", "utf8");
+  }
+  return `sha256:${digest.digest("hex")}`;
+}
+function skillFrontmatter(skillPath) {
+  const text = readFileSync2(skillPath, "utf8").replaceAll("\r\n", "\n");
+  const match = /^---\n([\s\S]*?)\n---\n/.exec(text);
+  if (!match) throw new Error("SKILL.md has no frontmatter");
+  const fields = {};
+  for (const line of match[1].split("\n")) {
+    const field = /^([A-Za-z0-9_-]+):\s*(.*?)\s*$/.exec(line);
+    if (field) fields[field[1]] = field[2].replace(/^['"]|['"]$/g, "");
+  }
+  return fields;
+}
+function skillCardAvailability(note, projectDir, context) {
+  if (!note.skillProvider) return { available: true };
+  if (context.mode === "discovery" && !context.baseSynchronized) {
+    return { available: false, reason: "Card Source base is not synchronized with its remote" };
+  }
+  if (note.skillProvider !== "claude-code-project") {
+    return { available: false, reason: `unsupported provider ${note.skillProvider}` };
+  }
+  const packRoot = path4.join(projectDir, ".claude", "skills", note.skillName);
+  const skillPath = path4.join(packRoot, "SKILL.md");
+  try {
+    const frontmatter = skillFrontmatter(skillPath);
+    if (frontmatter.name !== note.skillName) {
+      return { available: false, reason: "pack name does not match the Card" };
+    }
+    if (frontmatter.version !== note.skillVersion) {
+      return { available: false, reason: "pack version does not match the Card" };
+    }
+    if (skillContractHash(packRoot) !== note.skillContractHash) {
+      return { available: false, reason: "pack contract hash does not match the Card" };
+    }
+    return { available: true };
+  } catch (error2) {
+    return {
+      available: false,
+      reason: error2 instanceof Error ? error2.message : String(error2)
+    };
+  }
+}
+function assertSkillCardAvailable(note, projectDir, context) {
+  const availability = skillCardAvailability(note, projectDir, context);
+  if (!availability.available) {
+    throw new Error(
+      `Skill Card is unavailable: ${note.wikiId}: ${availability.reason ?? "unknown reason"}`
+    );
+  }
+}
 
 // src/tools/search.ts
 function searchTool(input, env = process.env) {
@@ -22570,8 +22711,22 @@ function searchTool(input, env = process.env) {
   if (resolution.errors.length > 0) {
     throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
   }
+  const found = searchBoundNotes(input.query, resolution.bindings, env);
+  for (const note of found) assertUniqueBoundSkillCard(note, resolution.bindings, env);
   return {
-    notes: searchBoundNotes(input.query, resolution.bindings, env).map((note) => ({
+    notes: found.filter((note) => {
+      const binding = resolution.bindings.find(
+        (candidate) => candidate.bindingDigest === note.bindingDigest
+      );
+      return skillCardAvailability(
+        note,
+        resolution.projectDir,
+        {
+          mode: "discovery",
+          baseSynchronized: binding?.repositoryHealth.baseSynchronized === true
+        }
+      ).available;
+    }).map((note) => ({
       sourceId: note.sourceId,
       role: note.role,
       path: note.path,
@@ -22579,6 +22734,12 @@ function searchTool(input, env = process.env) {
       type: note.type,
       constraintStrength: note.constraintStrength,
       skillRoles: note.skillRoles,
+      skillProvider: note.skillProvider,
+      skillName: note.skillName,
+      skillVersion: note.skillVersion,
+      skillContractHash: note.skillContractHash,
+      skillTriggers: note.skillTriggers,
+      discoveryState: note.skillProvider ? "discoverable" : void 0,
       summary: note.summary,
       contentHash: note.contentHash,
       bindingDigest: note.bindingDigest
@@ -22587,35 +22748,60 @@ function searchTool(input, env = process.env) {
 }
 
 // src/tools/read.ts
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 function snapshotHash(notes) {
   const canonical = notes.map((note) => `${note.sourceId}
 ${note.wikiId}
 ${note.contentHash}`).sort().join("\n");
-  return `sha256:${createHash3("sha256").update(canonical, "utf8").digest("hex")}`;
+  return `sha256:${createHash4("sha256").update(canonical, "utf8").digest("hex")}`;
+}
+function checkedNotes(notes, projectDir, bindings, env) {
+  for (const note of notes) {
+    const binding = bindings.find((candidate) => candidate.bindingDigest === note.bindingDigest);
+    assertSkillCardAvailable(note, projectDir, {
+      mode: "discovery",
+      baseSynchronized: binding?.repositoryHealth.baseSynchronized === true
+    });
+    assertUniqueBoundSkillCard(note, bindings, env);
+  }
+  return notes;
+}
+function serializedNote(note) {
+  return {
+    sourceId: note.sourceId,
+    role: note.role,
+    path: note.path,
+    wikiId: note.wikiId,
+    type: note.type,
+    status: note.status,
+    agentVisible: note.agentVisible,
+    summary: note.summary,
+    constraintStrength: note.constraintStrength,
+    skillRoles: note.skillRoles,
+    skillProvider: note.skillProvider,
+    skillName: note.skillName,
+    skillVersion: note.skillVersion,
+    skillContractHash: note.skillContractHash,
+    skillTriggers: note.skillTriggers,
+    discoveryState: note.skillProvider ? "discoverable" : void 0,
+    content: note.content,
+    contentHash: note.contentHash,
+    bindingDigest: note.bindingDigest
+  };
 }
 function readNotesTool(input, env = process.env) {
   const resolution = resolveBindings(env);
   if (resolution.errors.length > 0) {
     throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
   }
-  const notes = readBoundNotes(input.paths, resolution.bindings, env);
+  const notes = checkedNotes(
+    readBoundNotes(input.paths, resolution.bindings, env),
+    resolution.projectDir,
+    resolution.bindings,
+    env
+  );
   return {
-    notes: notes.map((note) => ({
-      sourceId: note.sourceId,
-      role: note.role,
-      path: note.path,
-      wikiId: note.wikiId,
-      type: note.type,
-      status: note.status,
-      agentVisible: note.agentVisible,
-      summary: note.summary,
-      constraintStrength: note.constraintStrength,
-      skillRoles: note.skillRoles,
-      content: note.content,
-      contentHash: note.contentHash,
-      bindingDigest: note.bindingDigest
-    })),
+    notes: notes.map(serializedNote),
     snapshotHash: snapshotHash(notes)
   };
 }
@@ -22624,23 +22810,14 @@ function readNotesByWikiIdsTool(input, env = process.env) {
   if (resolution.errors.length > 0) {
     throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
   }
-  const notes = readBoundNotesByWikiIds(input.wikiIds, resolution.bindings, env);
+  const notes = checkedNotes(
+    readBoundNotesByWikiIds(input.wikiIds, resolution.bindings, env),
+    resolution.projectDir,
+    resolution.bindings,
+    env
+  );
   return {
-    notes: notes.map((note) => ({
-      sourceId: note.sourceId,
-      role: note.role,
-      path: note.path,
-      wikiId: note.wikiId,
-      type: note.type,
-      status: note.status,
-      agentVisible: note.agentVisible,
-      summary: note.summary,
-      constraintStrength: note.constraintStrength,
-      skillRoles: note.skillRoles,
-      content: note.content,
-      contentHash: note.contentHash,
-      bindingDigest: note.bindingDigest
-    })),
+    notes: notes.map(serializedNote),
     snapshotHash: snapshotHash(notes)
   };
 }
@@ -22665,12 +22842,31 @@ function exactlyOne(notes, description) {
   if (notes.length !== 1) throw new Error(`${description} resolved ${notes.length} readable active Notes`);
   return notes[0];
 }
-function resolveByWikiId(wikiId, env, bindings) {
-  return exactlyOne(searchBoundNotes(`[wiki_id:${wikiId}]`, bindings, env).filter((note) => note.wikiId === wikiId), `wiki_id ${wikiId}`);
+function checked(note, resolution, env) {
+  const binding = resolution.bindings.find(
+    (candidate) => candidate.bindingDigest === note.bindingDigest
+  );
+  assertSkillCardAvailable(note, resolution.projectDir, {
+    mode: "discovery",
+    baseSynchronized: binding?.repositoryHealth.baseSynchronized === true
+  });
+  assertUniqueBoundSkillCard(note, resolution.bindings, env);
+  return note;
 }
-function resolveByLink(link, env, bindings) {
+function resolveByWikiId(wikiId, env, resolution) {
+  const note = exactlyOne(
+    searchBoundNotes(`[wiki_id:${wikiId}]`, resolution.bindings, env).filter((candidate) => candidate.wikiId === wikiId),
+    `wiki_id ${wikiId}`
+  );
+  return checked(note, resolution, env);
+}
+function resolveByLink(link, env, resolution) {
   const targetPath = linkPath(link);
-  return exactlyOne(searchBoundNotes(`path:"${targetPath}"`, bindings, env).filter((note) => note.path === targetPath), `typed edge ${link}`);
+  const note = exactlyOne(
+    searchBoundNotes(`path:"${targetPath}"`, resolution.bindings, env).filter((candidate) => candidate.path === targetPath),
+    `typed edge ${link}`
+  );
+  return checked(note, resolution, env);
 }
 function graphNeighborsTool(input, env = process.env) {
   const resolution = resolveBindings(env);
@@ -22679,11 +22875,11 @@ function graphNeighborsTool(input, env = process.env) {
   }
   const neighbors = {};
   for (const wikiId of [...new Set(input.wikiIds)]) {
-    const source = resolveByWikiId(wikiId, env, resolution.bindings);
+    const source = resolveByWikiId(wikiId, env, resolution);
     const direct = /* @__PURE__ */ new Map();
     for (const [type, property] of edgeTypes) {
       for (const link of source.edges[property]) {
-        const target = resolveByLink(link, env, resolution.bindings);
+        const target = resolveByLink(link, env, resolution);
         direct.set(`${type}
 ${target.wikiId}`, { type, wikiId: target.wikiId, path: target.path });
       }
@@ -22776,13 +22972,31 @@ function validateTypedLinks(note, bindings, env) {
 }
 function validateIdentity(input, binding, bindings, env, proposed) {
   const matches = searchBoundNotes(`[wiki_id:${proposed.wikiId}]`, bindings, env, false).filter((note) => note.wikiId === proposed.wikiId);
+  const matchingCards = matchingBoundSkillCards(proposed, bindings, env, false);
   if (input.operation === "create") {
     if (input.expectedHash !== null) throw new Error("Creating an Obsidian Note requires expectedHash: null");
     if (matches.length > 0) throw new Error(`Proposed wiki_id already exists in a bound Source: ${proposed.wikiId}`);
+    if (matchingCards.length > 0) {
+      throw new Error(
+        `Skill Card identity ${proposed.skillProvider}/${proposed.skillName} already exists in a bound Source`
+      );
+    }
     return;
   }
   if (!input.expectedHash) throw new Error("Updating an Obsidian Note requires expectedHash");
   const existing = readBoundNote(input.path, [binding], env, false);
+  if (existing.skillProvider && !proposed.skillProvider) {
+    throw new Error("An existing Skill Card cannot be converted to a plain Note");
+  }
+  if (existing.skillProvider && (existing.skillProvider !== proposed.skillProvider || existing.skillName !== proposed.skillName)) {
+    throw new Error("Skill Card provider/name identity must be preserved on update");
+  }
+  const conflictingCards = matchingCards.filter((card) => card.path !== existing.path || card.sourceId !== existing.sourceId);
+  if (conflictingCards.length > 0) {
+    throw new Error(
+      `Skill Card identity ${proposed.skillProvider}/${proposed.skillName} already exists in another bound Note`
+    );
+  }
   if (existing.wikiId !== proposed.wikiId) {
     throw new Error(`Proposed Note wiki_id must preserve existing identity ${existing.wikiId}`);
   }
@@ -22799,6 +23013,7 @@ function prepareChange(input, env) {
   const binding = selectedBinding(input, bindings);
   const notePath = assertPathWithinBinding(input.path, binding);
   const proposed = parseAtomicNote(input.content, notePath);
+  assertSkillCardAvailable(proposed, resolution.projectDir, { mode: "write" });
   validateIdentity(input, binding, bindings, env, proposed);
   validateTypedLinks(proposed, bindings, env);
   enforceNeutrality(binding, notePath, proposed.content);
@@ -22818,7 +23033,8 @@ function prepareChange(input, env) {
       expectedHash: input.expectedHash,
       expectedWikiId: proposed.wikiId,
       authorized: input.authorized === true
-    }
+    },
+    skillRegistration: pendingSkillRegistration(proposed)
   };
 }
 function decorate(result, prepared) {
@@ -22833,7 +23049,8 @@ function decorate(result, prepared) {
     repositoryRef: prepared.binding.repositoryRef,
     bindingDigest: prepared.binding.bindingDigest,
     policy: prepared.policy,
-    authorizationRequired: prepared.policy === "confirm"
+    authorizationRequired: prepared.policy === "confirm",
+    skillRegistration: prepared.skillRegistration
   };
 }
 async function proposeNoteChangeTool(input, env = process.env) {
@@ -22926,15 +23143,15 @@ import { createServer as createServer2 } from "node:http";
 import {
   existsSync as existsSync2,
   linkSync,
-  lstatSync as lstatSync2,
+  lstatSync as lstatSync3,
   mkdirSync,
-  readFileSync as readFileSync2,
-  readdirSync,
+  readFileSync as readFileSync3,
+  readdirSync as readdirSync2,
   realpathSync as realpathSync2,
   rmSync,
   writeFileSync
 } from "node:fs";
-import path4 from "node:path";
+import path5 from "node:path";
 
 // src/atomic-exchange.ts
 import { execFileSync as execFileSync3 } from "node:child_process";
@@ -22977,26 +23194,26 @@ var BridgeError = class extends Error {
   status;
 };
 function normalizeRelativePath(value, description) {
-  if (path4.posix.isAbsolute(value) || path4.win32.isAbsolute(value)) {
+  if (path5.posix.isAbsolute(value) || path5.win32.isAbsolute(value)) {
     throw new BridgeError(403, `${description} must be Vault-relative`);
   }
-  const normalized = path4.posix.normalize(value.replaceAll("\\", "/")).replace(/^\.\//, "");
+  const normalized = path5.posix.normalize(value.replaceAll("\\", "/")).replace(/^\.\//, "");
   if (!normalized || normalized === "." || normalized === ".." || normalized.startsWith("../")) {
     throw new BridgeError(403, `${description} escapes the Vault`);
   }
   return normalized;
 }
 function inside(candidate, root) {
-  return candidate === root || candidate.startsWith(`${root}${path4.sep}`);
+  return candidate === root || candidate.startsWith(`${root}${path5.sep}`);
 }
 function nearestExistingDirectory(directory) {
   let candidate = directory;
   while (!existsSync2(candidate)) {
-    const parent = path4.dirname(candidate);
+    const parent = path5.dirname(candidate);
     if (parent === candidate) throw new BridgeError(403, "Note parent has no existing Vault ancestor");
     candidate = parent;
   }
-  if (!lstatSync2(candidate).isDirectory()) throw new BridgeError(400, "Note parent ancestor is not a directory");
+  if (!lstatSync3(candidate).isDirectory()) throw new BridgeError(400, "Note parent ancestor is not a directory");
   return realpathSync2(candidate);
 }
 var BridgeSettingsSchema = object({
@@ -23016,9 +23233,9 @@ var BridgeSettingsSchema = object({
 function atomicNoteFiles(root) {
   const files = [];
   const visit = (directory) => {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    for (const entry of readdirSync2(directory, { withFileTypes: true })) {
       if (entry.name === "_meta") continue;
-      const target = path4.join(directory, entry.name);
+      const target = path5.join(directory, entry.name);
       if (entry.isSymbolicLink()) throw new BridgeError(403, `Symbolic links are not allowed in writable Source content: ${target}`);
       if (entry.isDirectory()) visit(target);
       else if (entry.isFile() && entry.name.endsWith(".md")) files.push(target);
@@ -23027,26 +23244,48 @@ function atomicNoteFiles(root) {
   visit(root.resolvedRoot);
   return files;
 }
-function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoot, roots) {
+function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoot, roots, projectRoots) {
   const noteFiles = [...roots.values()].flatMap(atomicNoteFiles);
-  const identityMatches = noteFiles.filter((file) => parseAtomicNote(readFileSync2(file, "utf8"), file).wikiId === proposed.wikiId);
+  const existingNotes = noteFiles.map((file) => ({
+    file,
+    note: parseAtomicNote(readFileSync3(file, "utf8"), file)
+  }));
+  const identityMatches = existingNotes.filter(({ note }) => note.wikiId === proposed.wikiId);
   if (operation === "create" && identityMatches.length > 0) {
     throw new BridgeError(409, `Proposed wiki_id already exists in an allowed Source: ${proposed.wikiId}`);
   }
-  if (operation === "update" && (identityMatches.length !== 1 || realpathSync2(identityMatches[0]) !== realpathSync2(targetPath))) {
+  if (operation === "update" && (identityMatches.length !== 1 || realpathSync2(identityMatches[0].file) !== realpathSync2(targetPath))) {
     throw new BridgeError(409, `Updated wiki_id does not resolve uniquely to its existing Note: ${proposed.wikiId}`);
+  }
+  const targetNote = operation === "update" ? identityMatches[0].note : void 0;
+  if (targetNote?.skillProvider && !proposed.skillProvider) {
+    throw new BridgeError(409, "An existing Skill Card cannot be converted to a plain Note");
+  }
+  if (targetNote?.skillProvider && (targetNote.skillProvider !== proposed.skillProvider || targetNote.skillName !== proposed.skillName)) {
+    throw new BridgeError(409, "Skill Card provider/name identity must be preserved on update");
+  }
+  if (proposed.skillProvider) {
+    const projectNotes = [...projectRoots.values()].flatMap(atomicNoteFiles).map((file) => ({ file, note: parseAtomicNote(readFileSync3(file, "utf8"), file) }));
+    const cardMatches = projectNotes.filter(({ note }) => note.skillProvider === proposed.skillProvider && note.skillName === proposed.skillName);
+    const conflictingCards = operation === "create" ? cardMatches : cardMatches.filter(({ file }) => realpathSync2(file) !== realpathSync2(targetPath));
+    if (conflictingCards.length > 0) {
+      throw new BridgeError(
+        409,
+        `Skill Card identity ${proposed.skillProvider}/${proposed.skillName} already exists in an allowed Source`
+      );
+    }
   }
   for (const links of Object.values(proposed.edges)) {
     for (const link of links) {
       const target = /^\[\[([^#|\]]+)/.exec(link)?.[1]?.trim();
       if (!target) throw new BridgeError(400, `Typed edge must use an Obsidian link: ${link}`);
       const vaultPath = normalizeRelativePath(target.endsWith(".md") ? target : `${target}.md`, "Typed edge");
-      const resolvedTarget = path4.resolve(vaultRoot, ...vaultPath.split("/"));
+      const resolvedTarget = path5.resolve(vaultRoot, ...vaultPath.split("/"));
       const owningRoot = [...roots.values()].find((root) => inside(resolvedTarget, root.resolvedRoot));
-      if (!owningRoot || !existsSync2(resolvedTarget) || !lstatSync2(resolvedTarget).isFile()) {
+      if (!owningRoot || !existsSync2(resolvedTarget) || !lstatSync3(resolvedTarget).isFile()) {
         throw new BridgeError(400, `Typed edge does not resolve to an allowed atomic Note: ${link}`);
       }
-      parseAtomicNote(readFileSync2(resolvedTarget, "utf8"), vaultPath);
+      parseAtomicNote(readFileSync3(resolvedTarget, "utf8"), vaultPath);
     }
   }
 }
@@ -23059,18 +23298,24 @@ function enforceGovernance(change, root, apply, vaultRoot, roots, allowedProject
     throw new BridgeError(403, "Project is not allowed by this bridge");
   }
   if (!allowedProjects.has(projectDir)) throw new BridgeError(403, "Project is not allowed by this bridge");
-  const settingsPath = path4.join(projectDir, ".shared-adapter", "settings.json");
+  const settingsPath = path5.join(projectDir, ".shared-adapter", "settings.json");
   let settings;
   try {
-    settings = BridgeSettingsSchema.parse(JSON.parse(readFileSync2(settingsPath, "utf8")));
+    settings = BridgeSettingsSchema.parse(JSON.parse(readFileSync3(settingsPath, "utf8")));
   } catch (error2) {
     throw new BridgeError(403, `Project binding cannot be validated: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
-  const binding = settings.wiki.obsidian.bindings.find((candidate) => candidate.sourceId === request.sourceId && candidate.vaultRef === request.vaultRef && path4.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, "") === request.sourceRoot);
+  const binding = settings.wiki.obsidian.bindings.find((candidate) => candidate.sourceId === request.sourceId && candidate.vaultRef === request.vaultRef && path5.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, "") === request.sourceRoot);
   if (!binding || !binding.access.read) throw new BridgeError(403, "Source is not a readable binding of the allowed project");
+  const projectRootNames = new Set(
+    settings.wiki.obsidian.bindings.filter((candidate) => candidate.access.read).map((candidate) => path5.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, ""))
+  );
+  const projectRoots = new Map(
+    [...roots].filter(([rootName]) => projectRootNames.has(rootName))
+  );
   let manifest;
   try {
-    manifest = parseSourceManifest(readFileSync2(root.manifestPath, "utf8"), root.manifestPath);
+    manifest = parseSourceManifest(readFileSync3(root.manifestPath, "utf8"), root.manifestPath);
   } catch (error2) {
     throw new BridgeError(403, `Source manifest cannot be validated: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
@@ -23103,7 +23348,23 @@ ${request.content}`;
       }
     }
   }
-  validateTypedLinksAndIdentity(parseAtomicNote(request.content, request.path), request.operation, change.targetPath, vaultRoot, roots);
+  const proposed = parseAtomicNote(request.content, request.path);
+  try {
+    assertSkillCardAvailable(proposed, projectDir, { mode: "write" });
+  } catch (error2) {
+    throw new BridgeError(
+      403,
+      error2 instanceof Error ? error2.message : String(error2)
+    );
+  }
+  validateTypedLinksAndIdentity(
+    proposed,
+    request.operation,
+    change.targetPath,
+    vaultRoot,
+    roots,
+    projectRoots
+  );
 }
 function validateChange(raw, options, vaultRoot, allowedRoots) {
   const parsed = ChangeSchema.safeParse(raw);
@@ -23123,9 +23384,9 @@ function validateChange(raw, options, vaultRoot, allowedRoots) {
     throw new BridgeError(403, `Note path is metadata and cannot be written: ${notePath}`);
   }
   if (!notePath.endsWith(".md")) throw new BridgeError(400, "Atomic Note path must end in .md");
-  const targetPath = path4.resolve(vaultRoot, ...notePath.split("/"));
+  const targetPath = path5.resolve(vaultRoot, ...notePath.split("/"));
   if (!inside(targetPath, resolvedSourceRoot)) throw new BridgeError(403, `Note path escapes its Source root: ${notePath}`);
-  const parent = path4.dirname(targetPath);
+  const parent = path5.dirname(targetPath);
   const resolvedParent = nearestExistingDirectory(parent);
   if (!inside(resolvedParent, resolvedSourceRoot)) throw new BridgeError(403, `Note parent escapes its Source root: ${notePath}`);
   const proposed = parseAtomicNote(request.content, notePath);
@@ -23137,10 +23398,10 @@ function validateChange(raw, options, vaultRoot, allowedRoots) {
     if (exists) throw new BridgeError(409, `Cannot create an existing Note: ${notePath}`);
   } else {
     if (!request.expectedHash) throw new BridgeError(400, "Update requires expectedHash");
-    if (!exists || !lstatSync2(targetPath).isFile()) throw new BridgeError(409, `Cannot update a missing Note: ${notePath}`);
+    if (!exists || !lstatSync3(targetPath).isFile()) throw new BridgeError(409, `Cannot update a missing Note: ${notePath}`);
     const resolvedTarget = realpathSync2(targetPath);
     if (!inside(resolvedTarget, resolvedSourceRoot)) throw new BridgeError(403, `Note path escapes its Source root: ${notePath}`);
-    beforeContent = readFileSync2(resolvedTarget, "utf8");
+    beforeContent = readFileSync3(resolvedTarget, "utf8");
     const existing = parseAtomicNote(beforeContent, notePath);
     if (existing.wikiId !== request.expectedWikiId || existing.wikiId !== proposed.wikiId) {
       throw new BridgeError(409, "Existing and proposed Note wiki_id must preserve identity");
@@ -23191,12 +23452,12 @@ function respond(response, status, body) {
 }
 function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
   if (change.request.operation === "create") {
-    mkdirSync(path4.dirname(change.targetPath), { recursive: true, mode: 448 });
-    if (!inside(realpathSync2(path4.dirname(change.targetPath)), change.resolvedSourceRoot)) {
+    mkdirSync(path5.dirname(change.targetPath), { recursive: true, mode: 448 });
+    if (!inside(realpathSync2(path5.dirname(change.targetPath)), change.resolvedSourceRoot)) {
       throw new BridgeError(403, "Created Note parent escaped its Source root");
     }
   }
-  const temporaryPath = path4.join(path4.dirname(change.targetPath), `.${path4.basename(change.targetPath)}.${randomUUID()}.tmp`);
+  const temporaryPath = path5.join(path5.dirname(change.targetPath), `.${path5.basename(change.targetPath)}.${randomUUID()}.tmp`);
   const lockPath = `${change.targetPath}.grill-adapter-write.lock`;
   let ownsLock = false;
   try {
@@ -23215,21 +23476,21 @@ function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
         throw new BridgeError(409, `Expected hash conflict: Note was created concurrently: ${error2 instanceof Error ? error2.message : String(error2)}`);
       }
     } else {
-      if (!existsSync2(change.targetPath) || contentHash(readFileSync2(change.targetPath, "utf8")) !== change.request.expectedHash) {
+      if (!existsSync2(change.targetPath) || contentHash(readFileSync3(change.targetPath, "utf8")) !== change.request.expectedHash) {
         throw new BridgeError(409, "Expected hash conflict: Note changed concurrently");
       }
       beforeAtomicExchange?.(change.targetPath);
       atomicExchange(change.targetPath, temporaryPath);
       afterAtomicExchange?.(change.targetPath);
-      const swappedOutHash = contentHash(readFileSync2(temporaryPath, "utf8"));
-      const writtenHash = contentHash(readFileSync2(change.targetPath, "utf8"));
+      const swappedOutHash = contentHash(readFileSync3(temporaryPath, "utf8"));
+      const writtenHash = contentHash(readFileSync3(change.targetPath, "utf8"));
       if (swappedOutHash !== change.request.expectedHash || writtenHash !== change.diff.afterHash) {
         let expectedTargetHash = change.diff.afterHash;
-        while (contentHash(readFileSync2(change.targetPath, "utf8")) === expectedTargetHash) {
+        while (contentHash(readFileSync3(change.targetPath, "utf8")) === expectedTargetHash) {
           atomicExchange(change.targetPath, temporaryPath);
-          const displacedHash = contentHash(readFileSync2(temporaryPath, "utf8"));
+          const displacedHash = contentHash(readFileSync3(temporaryPath, "utf8"));
           if (displacedHash === expectedTargetHash) break;
-          expectedTargetHash = contentHash(readFileSync2(change.targetPath, "utf8"));
+          expectedTargetHash = contentHash(readFileSync3(change.targetPath, "utf8"));
         }
         throw new BridgeError(409, "Expected hash conflict: Note changed during atomic exchange");
       }
@@ -23238,7 +23499,7 @@ function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
     rmSync(temporaryPath, { force: true });
     if (ownsLock) rmSync(lockPath, { force: true });
   }
-  const written = readFileSync2(change.targetPath, "utf8");
+  const written = readFileSync3(change.targetPath, "utf8");
   const note = parseAtomicNote(written, change.request.path);
   if (note.wikiId !== change.proposedWikiId || note.contentHash !== change.diff.afterHash) {
     throw new BridgeError(500, "Post-write Note identity verification failed");
@@ -23249,21 +23510,21 @@ async function startWriteBridge(options) {
   const host = options.host ?? "127.0.0.1";
   if (!isLoopbackHost(host)) throw new Error("Obsidian Wiki write bridge must bind to a loopback host");
   if (!options.token) throw new Error("Obsidian Wiki write bridge token must not be empty");
-  if (!path4.isAbsolute(options.vaultRoot)) throw new Error("Obsidian Wiki write bridge Vault root must be absolute");
+  if (!path5.isAbsolute(options.vaultRoot)) throw new Error("Obsidian Wiki write bridge Vault root must be absolute");
   const vaultRoot = realpathSync2(options.vaultRoot);
   const allowedProjects = new Set(options.projectDirs.map((projectDir) => {
-    if (!path4.isAbsolute(projectDir)) throw new Error("Obsidian Wiki write bridge project directories must be absolute");
+    if (!path5.isAbsolute(projectDir)) throw new Error("Obsidian Wiki write bridge project directories must be absolute");
     return realpathSync2(projectDir);
   }));
   if (allowedProjects.size === 0) throw new Error("Obsidian Wiki write bridge requires at least one allowed project directory");
   const allowedRoots = /* @__PURE__ */ new Map();
   for (const rawRoot of options.allowedRoots) {
     const root = normalizeRelativePath(rawRoot, "Allowed Source root");
-    const resolved = realpathSync2(path4.resolve(vaultRoot, ...root.split("/")));
+    const resolved = realpathSync2(path5.resolve(vaultRoot, ...root.split("/")));
     if (!inside(resolved, vaultRoot)) throw new Error(`Allowed Source root escapes the Vault: ${root}`);
-    const manifestPath = path4.join(resolved, "_meta", "wiki-source.md");
-    if (!existsSync2(manifestPath) || !lstatSync2(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
-    parseSourceManifest(readFileSync2(manifestPath, "utf8"), manifestPath);
+    const manifestPath = path5.join(resolved, "_meta", "wiki-source.md");
+    if (!existsSync2(manifestPath) || !lstatSync3(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
+    parseSourceManifest(readFileSync3(manifestPath, "utf8"), manifestPath);
     allowedRoots.set(root, { resolvedRoot: resolved, manifestPath });
   }
   if (allowedRoots.size === 0) throw new Error("Obsidian Wiki write bridge requires at least one allowed Source root");
@@ -23334,12 +23595,12 @@ import { execFileSync as execFileSync4 } from "node:child_process";
 import {
   existsSync as existsSync3,
   mkdirSync as mkdirSync2,
-  readFileSync as readFileSync3,
+  readFileSync as readFileSync4,
   renameSync,
   rmSync as rmSync2,
   writeFileSync as writeFileSync2
 } from "node:fs";
-import path5 from "node:path";
+import path6 from "node:path";
 var HashSchema = string2().regex(/^sha256:[a-f0-9]{64}$/);
 var ReceiptIdentitySchema = object({
   provider: literal("obsidian"),
@@ -23425,7 +23686,7 @@ function samePaths(actual, expected) {
   return actual.length === expected.length && actual.every((value, index) => value === expected[index]);
 }
 function writeManifest(manifestPath, manifest) {
-  mkdirSync2(path5.dirname(manifestPath), { recursive: true });
+  mkdirSync2(path6.dirname(manifestPath), { recursive: true });
   const temporaryPath = `${manifestPath}.tmp-${process.pid}`;
   writeFileSync2(temporaryPath, `${JSON.stringify(manifest, null, 2)}
 `, { encoding: "utf8", flag: "wx" });
@@ -23449,7 +23710,7 @@ function receiptBinding(receipt, bindings) {
 function validateReceipt(receipt, binding, env, publishedCommit) {
   const notePath = normalizeVaultPath(receipt.path);
   const worktreeRoot = binding.repository.worktreeRoot;
-  const contents = publishedCommit ? gitFile(publishedCommit, notePath, env, worktreeRoot) : readFileSync3(path5.join(worktreeRoot, ...notePath.split("/")), "utf8");
+  const contents = publishedCommit ? gitFile(publishedCommit, notePath, env, worktreeRoot) : readFileSync4(path6.join(worktreeRoot, ...notePath.split("/")), "utf8");
   const note = parseAtomicNote(contents, notePath);
   if (note.wikiId !== receipt.wikiId) throw new Error(`write receipt wiki_id drift for ${notePath}`);
   if (note.contentHash !== receipt.afterHash) throw new Error(`write receipt afterHash drift for ${notePath}`);
@@ -23521,7 +23782,7 @@ function coordinatePeerPrs(manifest, bindingsByRepository, manifestPath, env) {
 function publishRepository(manifest, run, binding, receipts, manifestPath, env) {
   const repository = binding.repository;
   const worktreeRoot = repository.worktreeRoot;
-  const lockPath = path5.join(worktreeRoot, PublishLockFile);
+  const lockPath = path6.join(worktreeRoot, PublishLockFile);
   let enteredPublishBranch = false;
   writeFileSync2(lockPath, `${manifest.runId}
 `, { encoding: "utf8", flag: "wx" });
@@ -23642,8 +23903,8 @@ ${normalizeVaultPath(receipt.path)}`;
   if (resolution.errors.length > 0) {
     throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
   }
-  const manifestPath = path5.join(resolution.projectDir, ".adapter", "context", `${journal.featureSlug}.wiki-publish.json`);
-  const existingManifest = existsSync3(manifestPath) ? PublishManifestSchema.parse(JSON.parse(readFileSync3(manifestPath, "utf8"))) : void 0;
+  const manifestPath = path6.join(resolution.projectDir, ".adapter", "context", `${journal.featureSlug}.wiki-publish.json`);
+  const existingManifest = existsSync3(manifestPath) ? PublishManifestSchema.parse(JSON.parse(readFileSync4(manifestPath, "utf8"))) : void 0;
   if (existingManifest && existingManifest.featureSlug !== journal.featureSlug) {
     throw new Error("publish manifest featureSlug does not match the folded journal");
   }

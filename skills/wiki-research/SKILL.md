@@ -15,7 +15,7 @@ It does not patch any host skill. A host wires it in by convention:
 - **plain Claude Code**: call `/grill-adapter:wiki-research` yourself before proposing an approach, and again when writing the implementation plan.
 - **Codex**: use `$grill-adapter:wiki-research` at the same two points.
 
-Formal planning uses only the bound Obsidian Sources exposed by `obsidian_wiki_*`. Select the smallest relevant atomic Notes from project and Shared Sources, and select applicable Skill Cards independently. Read search results and stable batch-read metadata; do not copy Note bodies into a selection or sidecar.
+Formal planning uses only the bound Obsidian Sources exposed by `obsidian_wiki_*`. Select the smallest relevant atomic Notes from project and Shared Sources, and select applicable Skill Cards independently. A Card is eligible only when MCP search/read returns `discoveryState: discoverable` after proving its Source is synchronized to the remote base and verifying its project pack provider, version, and contract hash. Read search results and stable batch-read metadata; do not copy Note bodies into a selection or sidecar.
 
 ### Researcher dispatch compatibility
 
@@ -72,7 +72,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .adapter/context/<f
    - `destination.kind`: `planning-only` for soft Notes the task text already embodies (never for a hard Note); `global` for rules every task and reviewer needs; else `task-bound`.
    - `destination.reason`: one line per Note/Card (the generator leaves it empty on purpose).
    - For every `task-bound` Note/Card, list the roster ticket ids in `destination.tasks` (e.g. `["01","03"]`).
-   - Do not change `requiredSkills[].requiredFor`; it is copied from the reviewed Skill Card's `skill_roles` property.
+   - Do not change `requiredSkills[].requiredFor` or its `skillProvider`/`skillName`/`skillVersion`/`skillContractHash`/`skillTriggers`/`discoveryState`; all are copied from mechanically validated reviewed Card metadata.
    - Flip `taskRouting.status` to `confirmed` with `selectedSectionsFrozen: true`.
    - Surface every global Note/Card summary to the user as a feature-wide constraint.
 

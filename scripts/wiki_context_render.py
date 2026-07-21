@@ -46,6 +46,13 @@ SCAFFOLD_TASK_ROUTING = {
 TICKET_SOURCES = {"grill-local-scratch", "github-issues", "manual"}
 HEX_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+SKILL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+SKILL_VERSION_RE = re.compile(
+    r"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
+    r"(?:-(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*)"
+    r"(?:\.(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*))*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
+)
 V6_NOTE_TYPES = {"constraint", "domain", "decision", "guide"}
 V6_ROLES = {"project", "shared"}
 V6_REQUIRED_SKILL_ROLES = {"implementer", "reviewer"}
@@ -147,7 +154,19 @@ def _validate_v6_note(
     value = _as_dict(note, field)
     allowed_fields = {
         "sourceId", "role", "path", "wikiId", "type", "summary", "bindingDigest", "contentHash",
-        *( ("requiredFor",) if require_skill else ("constraintStrength",) ),
+        *(
+            (
+                "requiredFor",
+                "skillProvider",
+                "skillName",
+                "skillVersion",
+                "skillContractHash",
+                "skillTriggers",
+                "discoveryState",
+            )
+            if require_skill
+            else ("constraintStrength",)
+        ),
         *( ("destination",) if allow_destination else () ),
     }
     unknown_fields = sorted(set(value) - allowed_fields)
@@ -168,8 +187,34 @@ def _validate_v6_note(
         raise ValidationError(f"{field}.content is not allowed; schemaVersion 6 carries Note metadata only")
     if require_skill:
         roles = _as_list(value.get("requiredFor"), f"{field}.requiredFor")
-        if not roles or any(role not in V6_REQUIRED_SKILL_ROLES for role in roles):
-            raise ValidationError(f"{field}.requiredFor must be a non-empty subset of {sorted(V6_REQUIRED_SKILL_ROLES)}")
+        if (
+            not roles
+            or len(roles) != len(set(roles))
+            or any(role not in V6_REQUIRED_SKILL_ROLES for role in roles)
+        ):
+            raise ValidationError(
+                f"{field}.requiredFor must be a non-empty unique subset of "
+                f"{sorted(V6_REQUIRED_SKILL_ROLES)}"
+            )
+        if value.get("skillProvider") != "claude-code-project":
+            raise ValidationError(f"{field}.skillProvider must be claude-code-project")
+        if not isinstance(value.get("skillName"), str) or not SKILL_NAME_RE.fullmatch(value["skillName"]):
+            raise ValidationError(f"{field}.skillName must use kebab-case")
+        if not isinstance(value.get("skillVersion"), str) or not SKILL_VERSION_RE.fullmatch(value["skillVersion"]):
+            raise ValidationError(
+                f"{field}.skillVersion must be a semantic major.minor.patch version"
+            )
+        if not SHA256_RE.match(str(value.get("skillContractHash", ""))):
+            raise ValidationError(f"{field}.skillContractHash must be a sha256 digest")
+        triggers = _as_list(value.get("skillTriggers"), f"{field}.skillTriggers")
+        if (
+            not triggers
+            or any(not isinstance(trigger, str) or not trigger.strip() for trigger in triggers)
+            or len(set(triggers)) != len(triggers)
+        ):
+            raise ValidationError(f"{field}.skillTriggers must be a non-empty unique string array")
+        if value.get("discoveryState") != "discoverable":
+            raise ValidationError(f"{field}.discoveryState must be discoverable")
     elif value.get("constraintStrength") not in ("hard", "soft", None):
         raise ValidationError(f"{field}.constraintStrength must be hard or soft when present")
     return value

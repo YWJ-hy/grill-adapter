@@ -83,6 +83,12 @@ cat > "$SELECTION" <<'JSON'
       "summary": "Contract review Skill Card.",
       "contentHash": "sha256:ca27b3425c495553a30e2723a5e4e8f2a9ce4bfb5a0adf08f92ca3a7f25acef4",
       "bindingDigest": "bcf807e3d2a82a76c160c50c2d759d1a31c7da89c5a27f6c8b283f66849cf95c",
+      "skillProvider": "claude-code-project",
+      "skillName": "review-contracts",
+      "skillVersion": "1.0.0",
+      "skillContractHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "skillTriggers": ["contract review"],
+      "discoveryState": "discoverable",
       "requiredFor": ["reviewer"]
     }
   ],
@@ -110,6 +116,12 @@ assert 'content' not in note
 skill = context['requiredSkills'][0]
 assert skill['wikiId'] == 'shared/skills/review-contracts'
 assert skill['requiredFor'] == ['reviewer']
+assert skill['skillProvider'] == 'claude-code-project'
+assert skill['skillName'] == 'review-contracts'
+assert skill['skillVersion'] == '1.0.0'
+assert skill['skillContractHash'].startswith('sha256:')
+assert skill['skillTriggers'] == ['contract review']
+assert skill['discoveryState'] == 'discoverable'
 assert skill['destination'] == {'kind': 'task-bound', 'reason': '', 'tasks': []}
 assert context['taskWikiRefs'] == []
 print('v6 scaffold structure ok')
@@ -193,6 +205,28 @@ if python3 "$SCRIPT" "$BAD" --validate-only --strict --execution-ready --ticket-
 fi
 if ! grep -q 'duplicates wikiId' /tmp/obsidian-v6-duplicate.out; then
   cat /tmp/obsidian-v6-duplicate.out >&2
+  exit 1
+fi
+
+BAD_SKILL="$TMP/invalid-skill-identity.wiki-context.json"
+cp "$CONTEXT" "$BAD_SKILL"
+python3 - "$BAD_SKILL" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+context = json.load(open(path, encoding='utf-8'))
+context['requiredSkills'][0]['skillVersion'] = '1.2'
+context['requiredSkills'][0]['requiredFor'] = ['reviewer', 'reviewer']
+with open(path, 'w', encoding='utf-8') as handle:
+    json.dump(context, handle)
+PY
+if python3 "$SCRIPT" "$BAD_SKILL" --validate-only --strict --execution-ready --ticket-roster "$ROSTER" >/tmp/obsidian-v6-skill-identity.out 2>&1; then
+  printf 'Expected invalid Skill Card identity/routing metadata to fail\n' >&2
+  exit 1
+fi
+if ! grep -q 'requiredFor must be a non-empty unique subset\|skillVersion must be a semantic major.minor.patch version' /tmp/obsidian-v6-skill-identity.out; then
+  cat /tmp/obsidian-v6-skill-identity.out >&2
   exit 1
 fi
 

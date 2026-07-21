@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { contentHash } from '../src/note.js';
+import { skillContractHash } from '../src/skill-card.js';
 import { startWriteBridge, type WriteBridgeHandle } from '../src/write-bridge.js';
 import { applyNoteChangeTool, proposeNoteChangeTool } from '../src/tools/write.js';
 
@@ -25,6 +26,14 @@ function manifest(sourceId: string, scope: 'project' | 'shared', update = 'confi
 function note(wikiId: string, body: string, dependsOn?: string): string {
   const edge = dependsOn ? `depends_on:\n  - "[[${dependsOn}]]"\n` : '';
   return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: constraint\nstatus: active\nagent_visible: true\nsummary: Write tool contract\nconstraint_strength: hard\n${edge}---\n\n# Write tool contract\n\n${body}\n`;
+}
+
+function skillCard(
+  wikiId: string,
+  name: string,
+  contractHash: string,
+): string {
+  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: guide\nstatus: active\nagent_visible: true\nsummary: Review runtime changes.\nskill_provider: claude-code-project\nskill_name: ${name}\nskill_version: 1.0.0\nskill_contract_hash: ${contractHash}\nskill_roles:\n  - reviewer\nskill_triggers:\n  - runtime review\n---\n\n# Review runtime\n\nUse the executable pack.\n`;
 }
 
 async function fixture(options: { shared?: boolean; update?: string } = {}) {
@@ -109,6 +118,78 @@ describe('bound Obsidian Note writes', () => {
     const applied = await applyNoteChangeTool(input, env);
     expect(applied.postWrite).toMatchObject({ wikiId: `${sourceId}/new`, path: `${sourceRoot}/Guides/New.md`, contentHash: contentHash(content) });
     expect(readFileSync(path.join(vaultRoot, sourceRoot, 'Guides', 'New.md'), 'utf8')).toBe(content);
+  });
+
+  it('creates a reviewed Skill Card only when its project pack identity is available', async () => {
+    const { env, projectDir, sourceRoot, sourceId } = await fixture({ update: 'direct' });
+    const packRoot = path.join(projectDir, '.claude', 'skills', 'review-runtime');
+    mkdirSync(packRoot, { recursive: true });
+    writeFileSync(
+      path.join(packRoot, 'SKILL.md'),
+      '---\nname: review-runtime\ndescription: Review runtime changes.\nversion: 1.0.0\n---\n\n# Review Runtime\n',
+      'utf8',
+    );
+    const wikiId = `${sourceId}/skills/review-runtime`;
+    const notePath = `${sourceRoot}/Skills/review-runtime.md`;
+    const content = skillCard(wikiId, 'review-runtime', skillContractHash(packRoot));
+    const input = {
+      sourceId,
+      operation: 'create' as const,
+      path: notePath,
+      content,
+      expectedHash: null,
+    };
+
+    await expect(proposeNoteChangeTool(input, env)).resolves.toMatchObject({
+      diff: { afterHash: contentHash(content) },
+    });
+    await expect(applyNoteChangeTool(input, env)).resolves.toMatchObject({
+      postWrite: { wikiId, path: notePath },
+      skillRegistration: {
+        provider: 'claude-code-project',
+        name: 'review-runtime',
+        version: '1.0.0',
+        discoveryState: 'pending',
+      },
+    });
+
+    const duplicateWikiId = `${sourceId}/skills/review-runtime-duplicate`;
+    await expect(proposeNoteChangeTool({
+      ...input,
+      path: `${sourceRoot}/Skills/review-runtime-duplicate.md`,
+      content: skillCard(duplicateWikiId, 'review-runtime', skillContractHash(packRoot)),
+    }, env)).rejects.toThrow(/Skill Card identity.*already exists/);
+
+    const stale = skillCard(wikiId.replace('review-runtime', 'stale-runtime'), 'review-runtime', `sha256:${'0'.repeat(64)}`);
+    await expect(proposeNoteChangeTool({
+      ...input,
+      path: `${sourceRoot}/Skills/stale-runtime.md`,
+      content: stale,
+    }, env)).rejects.toThrow(/Skill Card is unavailable/);
+  });
+
+  it('rejects malformed Skill Card identity and routing metadata', async () => {
+    const { env, sourceRoot, sourceId } = await fixture({ update: 'direct' });
+    const wikiId = `${sourceId}/skills/review-runtime`;
+    const notePath = `${sourceRoot}/Skills/review-runtime.md`;
+    const validHash = `sha256:${'a'.repeat(64)}`;
+    const base = skillCard(wikiId, 'review-runtime', validHash);
+
+    for (const [label, content] of [
+      ['path-like name', base.replace('skill_name: review-runtime', 'skill_name: ../../outside')],
+      ['invalid version', base.replace('skill_version: 1.0.0', 'skill_version: latest')],
+      ['incomplete semantic version', base.replace('skill_version: 1.0.0', 'skill_version: 1.2')],
+      ['duplicate role', base.replace('  - reviewer\nskill_triggers:', '  - reviewer\n  - reviewer\nskill_triggers:')],
+      ['duplicate trigger', base.replace('  - runtime review\n---', '  - runtime review\n  - runtime review\n---')],
+    ] as const) {
+      await expect(proposeNoteChangeTool({
+        sourceId,
+        operation: 'create',
+        path: notePath,
+        content,
+        expectedHash: null,
+      }, env), label).rejects.toThrow(/invalid atomic Note properties|must be unique/);
+    }
   });
 
   it('continues proposing and applying bound Notes after earlier bridge writes stage the worktree', async () => {

@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
 import * as z from 'zod/v4';
 
+const SkillNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
+const SkillVersionSchema = z.string().regex(
+  /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
+);
+const uniqueList = <T>(values: T[]) => new Set(values).size === values.length;
+
 const NoteSchema = z.object({
   wiki_schema: z.literal('grill-adapter.obsidian-note/v1'),
   wiki_id: z.string().min(1),
@@ -13,7 +19,18 @@ const NoteSchema = z.object({
   see_also: z.array(z.string()).optional(),
   supersedes: z.array(z.string()).optional(),
   contradicts: z.array(z.string()).optional(),
-  skill_roles: z.array(z.enum(['implementer', 'reviewer'])).optional(),
+  skill_roles: z.array(z.enum(['implementer', 'reviewer']))
+    .min(1)
+    .refine(uniqueList, 'Skill Card roles must be unique')
+    .optional(),
+  skill_provider: z.literal('claude-code-project').optional(),
+  skill_name: SkillNameSchema.optional(),
+  skill_version: SkillVersionSchema.optional(),
+  skill_contract_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  skill_triggers: z.array(z.string().min(1))
+    .min(1)
+    .refine(uniqueList, 'Skill Card triggers must be unique')
+    .optional(),
 });
 
 export type AtomicNote = {
@@ -24,6 +41,11 @@ export type AtomicNote = {
   summary: string;
   constraintStrength: 'hard' | 'soft' | undefined;
   skillRoles: ('implementer' | 'reviewer')[];
+  skillProvider: 'claude-code-project' | undefined;
+  skillName: string | undefined;
+  skillVersion: string | undefined;
+  skillContractHash: string | undefined;
+  skillTriggers: string[];
   edges: Record<'dependsOn' | 'seeAlso' | 'supersedes' | 'contradicts', string[]>;
   content: string;
   contentHash: string;
@@ -83,6 +105,21 @@ export function parseAtomicNote(contents: string, description = 'Note'): AtomicN
     throw new Error(`${description} has invalid atomic Note properties: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`);
   }
   const note = parsed.data;
+  const skillFields = [
+    note.skill_provider,
+    note.skill_name,
+    note.skill_version,
+    note.skill_contract_hash,
+    note.skill_roles,
+    note.skill_triggers,
+  ];
+  const isSkillCard = skillFields.some((value) => value !== undefined);
+  if (isSkillCard && skillFields.some((value) => value === undefined)) {
+    throw new Error(`${description} has incomplete Skill Card properties`);
+  }
+  if (isSkillCard && note.type !== 'guide') {
+    throw new Error(`${description} Skill Card type must be guide`);
+  }
   return {
     wikiId: note.wiki_id,
     type: note.type,
@@ -91,6 +128,11 @@ export function parseAtomicNote(contents: string, description = 'Note'): AtomicN
     summary: note.summary,
     constraintStrength: note.constraint_strength,
     skillRoles: note.skill_roles ?? [],
+    skillProvider: note.skill_provider,
+    skillName: note.skill_name,
+    skillVersion: note.skill_version,
+    skillContractHash: note.skill_contract_hash,
+    skillTriggers: note.skill_triggers ?? [],
     edges: {
       dependsOn: note.depends_on ?? [],
       seeAlso: note.see_also ?? [],

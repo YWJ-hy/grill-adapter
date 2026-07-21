@@ -62,6 +62,7 @@ type RepositoryHealth = {
   expectedRemote: string;
   baseBranch: string;
   currentBranch: string;
+  baseSynchronized: boolean;
 };
 
 export type SourceManifest = {
@@ -333,6 +334,7 @@ function validateRepository(repository: Repository, allowedStagedRoots: string[]
   if (worktreeStatus && !hasAllowedStagedChanges) {
     throw new Error('repository worktree must be clean or contain only staged Obsidian Note changes under bound Source roots');
   }
+  let baseSynchronized = false;
   if (!hasAllowedStagedChanges && repository.syncBeforeResearch !== false) {
     try {
       const remoteBase = `${repository.remote}/${repository.baseBranch}`;
@@ -341,6 +343,7 @@ function validateRepository(repository: Repository, allowedStagedRoots: string[]
       const localRevision = commandOutput('git', ['-C', worktreeRoot, 'rev-parse', 'HEAD']);
       const remoteRevision = commandOutput('git', ['-C', worktreeRoot, 'rev-parse', remoteBase]);
       if (localRevision !== remoteRevision) throw new Error(`local ${repository.baseBranch} is not current with ${remoteBase}`);
+      baseSynchronized = true;
     } catch (error) {
       if (!repository.allowStaleRead) {
         throw new Error(`repository cannot prove a fresh baseBranch: ${error instanceof Error ? error.message : String(error)}`);
@@ -353,6 +356,7 @@ function validateRepository(repository: Repository, allowedStagedRoots: string[]
     expectedRemote: configuredRemote,
     baseBranch: repository.baseBranch,
     currentBranch,
+    baseSynchronized,
   };
 }
 

@@ -462,6 +462,17 @@ def _render_section_block(mat: dict[str, Any]) -> str:
         lines.append(f"- Pulled in via: depends-on closure of `{mat['closedVia']}`")
     for caveat in mat.get("caveats") or []:
         lines.append(f"- Caveat: {caveat}")
+    required_skill = mat.get("requiredSkill")
+    if isinstance(required_skill, dict):
+        lines.extend(
+            [
+                "#### Required executable skill",
+                "",
+                f"MUST invoke project skill `{required_skill['name']}` for this "
+                f"`{required_skill['role']}` task before acting on the Card below.",
+                "The Card text is discovery metadata; the verified pack is the executable procedure.",
+            ]
+        )
     lines.append("#### Full section text")
     lines.append("")
     lines.append(mat["content"])
@@ -517,6 +528,16 @@ def _assert_v6_note_matches(expected: dict[str, Any], actual: dict[str, Any], ro
     if actual.get("summary") != expected.get("summary"):
         raise MaterializeError(f"Obsidian Note summary drift for {identity}")
     if is_skill:
+        for key in (
+            "skillProvider",
+            "skillName",
+            "skillVersion",
+            "skillContractHash",
+            "skillTriggers",
+            "discoveryState",
+        ):
+            if actual.get(key) != expected.get(key):
+                raise MaterializeError(f"required Skill Card {key} drift for {identity}")
         roles = actual.get("skillRoles")
         expected_roles = expected.get("requiredFor")
         if not isinstance(roles, list) or not isinstance(expected_roles, list) or sorted(roles) != sorted(expected_roles):
@@ -559,7 +580,21 @@ def _v6_materialize(data: dict[str, Any], task_id: str | None, role: str, projec
         if actual is None:
             raise MaterializeError(f"Obsidian Wiki MCP returned no Note for {expected['wikiId']}")
         _assert_v6_note_matches(expected, actual, role, is_skill)
-        materialized.append({"displayPath": actual["path"], "sectionId": actual["wikiId"], "content": actual["content"], "closedVia": None, "revision": None, "caveats": []})
+        materialized.append(
+            {
+                "displayPath": actual["path"],
+                "sectionId": actual["wikiId"],
+                "content": actual["content"],
+                "closedVia": None,
+                "revision": None,
+                "caveats": [],
+                "requiredSkill": (
+                    {"name": actual["skillName"], "role": role}
+                    if is_skill
+                    else None
+                ),
+            }
+        )
 
     hard_note_ids = [str(note["wikiId"]) for note, is_skill in direct if not is_skill]
     closure_ids: list[str] = []

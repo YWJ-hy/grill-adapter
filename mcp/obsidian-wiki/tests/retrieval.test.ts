@@ -18,10 +18,26 @@ function sourceManifest(sourceId: string): string {
   return `---\nwiki_schema: grill-adapter.obsidian-source/v1\nwiki_source_id: ${sourceId}\nscope: project\nupdate_existing: confirm\ncreate_note: confirm\n---\n\n# ${sourceId}\n`;
 }
 
-function note(wikiId: string, summary: string, options: { status?: string; agentVisible?: boolean; dependsOn?: string[]; skillRoles?: string[] } = {}): string {
+function note(wikiId: string, summary: string, options: {
+  status?: string;
+  agentVisible?: boolean;
+  dependsOn?: string[];
+  skill?: {
+    provider: string;
+    name: string;
+    version: string;
+    contractHash: string;
+    roles: string[];
+    triggers: string[];
+  };
+} = {}): string {
   const dependsOn = options.dependsOn?.length ? `depends_on:\n${options.dependsOn.map((value) => `  - "${value}"`).join('\n')}\n` : '';
-  const skillRoles = options.skillRoles?.length ? `skill_roles:\n${options.skillRoles.map((value) => `  - ${value}`).join('\n')}\n` : '';
-  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: constraint\nstatus: ${options.status ?? 'active'}\nagent_visible: ${options.agentVisible ?? true}\nsummary: ${summary}\nconstraint_strength: hard\n${dependsOn}${skillRoles}---\n\n# ${wikiId}\n\nRule body.\n`;
+  const skill = options.skill
+    ? `skill_provider: ${options.skill.provider}\nskill_name: ${options.skill.name}\nskill_version: ${options.skill.version}\nskill_contract_hash: ${options.skill.contractHash}\nskill_roles:\n${options.skill.roles.map((value) => `  - ${value}`).join('\n')}\nskill_triggers:\n${options.skill.triggers.map((value) => `  - ${value}`).join('\n')}\n`
+    : '';
+  const type = options.skill ? 'guide' : 'constraint';
+  const strength = options.skill ? '' : 'constraint_strength: hard\n';
+  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: ${type}\nstatus: ${options.status ?? 'active'}\nagent_visible: ${options.agentVisible ?? true}\nsummary: ${summary}\n${strength}${dependsOn}${skill}---\n\n# ${wikiId}\n\nRule body.\n`;
 }
 
 function fixture() {
@@ -29,9 +45,24 @@ function fixture() {
   createdDirectories.push(root);
   const projectDir = path.join(root, 'project');
   const vaultRoot = path.join(root, 'vault');
+  const remoteRoot = path.join(root, 'knowledge.git');
   const registryPath = path.join(root, 'registry.json');
   const obsidianCli = path.join(root, 'obsidian');
   const sourceRoot = path.join(vaultRoot, 'Projects', 'example');
+  const skillPack = path.join(projectDir, '.claude', 'skills', 'review-runtime');
+  mkdirSync(skillPack, { recursive: true });
+  writeFileSync(
+    path.join(skillPack, 'SKILL.md'),
+    '---\nname: review-runtime\ndescription: Review runtime changes.\nversion: 1.0.0\n---\n\n# Review Runtime\n',
+    'utf8',
+  );
+  const staleSkillPack = path.join(projectDir, '.claude', 'skills', 'stale-runtime');
+  mkdirSync(staleSkillPack, { recursive: true });
+  writeFileSync(
+    path.join(staleSkillPack, 'SKILL.md'),
+    '---\nname: stale-runtime\ndescription: Review stale runtime changes.\nversion: 1.0.0\n---\n\n# Stale Runtime\n',
+    'utf8',
+  );
   mkdirSync(path.join(sourceRoot, '_meta'), { recursive: true });
   writeFileSync(path.join(sourceRoot, '_meta', 'wiki-source.md'), sourceManifest('project'), 'utf8');
   writeFileSync(path.join(sourceRoot, 'Visible.md'), note('project/example/visible', 'Visible note', { dependsOn: ['[[Projects/example/Dependency]]'] }), 'utf8');
@@ -39,15 +70,35 @@ function fixture() {
   writeFileSync(path.join(sourceRoot, 'Transitive.md'), note('project/example/transitive', 'Transitive note'), 'utf8');
   writeFileSync(path.join(sourceRoot, 'Archived.md'), note('project/example/archived', 'Archived note', { status: 'archived' }), 'utf8');
   writeFileSync(path.join(sourceRoot, 'Private.md'), note('project/example/private', 'Private note', { agentVisible: false }), 'utf8');
-  writeFileSync(path.join(sourceRoot, 'ReviewSkill.md'), note('project/example/review-skill', 'Review Skill Card', { skillRoles: ['reviewer'] }), 'utf8');
+  const matchingSkill = {
+    provider: 'claude-code-project',
+    name: 'review-runtime',
+    version: '1.0.0',
+    contractHash: 'sha256:5cea9f04d62aa80841dedb5c02af7f85b3bb074a0e12a18f293954e4ea3bbc3c',
+    roles: ['reviewer'],
+    triggers: ['runtime review'],
+  };
+  writeFileSync(path.join(sourceRoot, 'ReviewSkill.md'), note('project/example/review-skill', 'Review Skill Card', { skill: matchingSkill }), 'utf8');
+  writeFileSync(path.join(sourceRoot, 'StaleSkill.md'), note('project/example/stale-skill', 'Stale Skill Card', {
+    skill: { ...matchingSkill, name: 'stale-runtime', contractHash: `sha256:${'0'.repeat(64)}` },
+  }), 'utf8');
+  writeFileSync(path.join(sourceRoot, 'MissingSkill.md'), note('project/example/missing-skill', 'Missing Skill Card', {
+    skill: { ...matchingSkill, name: 'missing-runtime' },
+  }), 'utf8');
+  writeFileSync(path.join(sourceRoot, 'DuplicateSkill.md'), note('project/example/duplicate-skill', 'Archived duplicate Skill Card', {
+    status: 'archived',
+    skill: matchingSkill,
+  }), 'utf8');
   mkdirSync(path.join(vaultRoot, 'Projects', 'other'), { recursive: true });
   writeFileSync(path.join(vaultRoot, 'Projects', 'other', 'Other.md'), note('project/other/private', 'Other project note'), 'utf8');
   execFileSync('git', ['init', '--initial-branch=main', vaultRoot]);
+  execFileSync('git', ['init', '--bare', '--initial-branch=main', remoteRoot]);
   execFileSync('git', ['-C', vaultRoot, 'config', 'user.name', 'Test User']);
   execFileSync('git', ['-C', vaultRoot, 'config', 'user.email', 'test@example.invalid']);
-  execFileSync('git', ['-C', vaultRoot, 'remote', 'add', 'origin', 'https://github.com/acme/knowledge.git']);
+  execFileSync('git', ['-C', vaultRoot, 'remote', 'add', 'origin', remoteRoot]);
   execFileSync('git', ['-C', vaultRoot, 'add', '.']);
   execFileSync('git', ['-C', vaultRoot, 'commit', '-m', 'fixture']);
+  execFileSync('git', ['-C', vaultRoot, 'push', '--set-upstream', 'origin', 'main']);
   writeFileSync(obsidianCli, `#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
@@ -62,6 +113,9 @@ else if (args.includes('search')) process.stdout.write(JSON.stringify([
   { path: 'Projects/example/Archived.md' },
   { path: 'Projects/example/Private.md' },
   { path: 'Projects/example/ReviewSkill.md' },
+  { path: 'Projects/example/StaleSkill.md' },
+  { path: 'Projects/example/MissingSkill.md' },
+  { path: 'Projects/example/DuplicateSkill.md' },
   { path: 'Projects/other/Other.md' },
 ]));
 else if (args.includes('read')) {
@@ -69,7 +123,8 @@ else if (args.includes('read')) {
   const statePath = process.env.FAKE_OBSIDIAN_READ_STATE;
   const readCount = statePath && fs.existsSync(statePath) ? Number(fs.readFileSync(statePath, 'utf8')) : 0;
   if (statePath) fs.writeFileSync(statePath, String(readCount + 1));
-  const content = fs.readFileSync(path.join(vaultRoot, notePath), 'utf8');
+  let content = fs.readFileSync(path.join(vaultRoot, notePath), 'utf8');
+  if (process.env.FAKE_OBSIDIAN_DUPLICATE_ACTIVE === 'true' && notePath.endsWith('/DuplicateSkill.md')) content = content.replace('status: archived', 'status: active');
   process.stdout.write(JSON.stringify({ path: notePath, content: process.env.FAKE_OBSIDIAN_MUTATE_SECOND_READ === 'true' && readCount === 1 ? content.replace('Rule body.', 'Changed body.') : content }));
 } else process.exit(2);
 `, 'utf8');
@@ -85,10 +140,11 @@ else if (args.includes('read')) {
   });
   writeJson(registryPath, {
     vaults: { knowledge: { selector: 'Knowledge' } },
-    repositories: { wiki: { worktreeRoot: vaultRoot, remote: 'origin', expectedRemote: 'github.com/acme/knowledge', baseBranch: 'main', syncBeforeResearch: false } },
+    repositories: { wiki: { worktreeRoot: vaultRoot, remote: 'origin', expectedRemote: remoteRoot, baseBranch: 'main', syncBeforeResearch: true } },
   });
   return {
     vaultRoot,
+    registryPath,
     env: {
       CLAUDE_PROJECT_DIR: projectDir,
       OBSIDIAN_WIKI_REGISTRY: registryPath,
@@ -119,7 +175,7 @@ describe('Obsidian Wiki retrieval', () => {
     expect(result.notes.map((note) => note.wikiId)).not.toContain('project/other/private');
   });
 
-  it('exposes declared Skill Card roles without returning Note content from search', () => {
+  it('discovers only base-synchronized Skill Cards whose local provider/version/hash are available', () => {
     const { env } = fixture();
     const result = searchTool({ query: 'skill' }, env);
 
@@ -127,9 +183,44 @@ describe('Obsidian Wiki retrieval', () => {
     expect(skill).toMatchObject({
       wikiId: 'project/example/review-skill',
       skillRoles: ['reviewer'],
-      constraintStrength: 'hard',
+      skillProvider: 'claude-code-project',
+      skillName: 'review-runtime',
+      skillVersion: '1.0.0',
+      skillContractHash: 'sha256:5cea9f04d62aa80841dedb5c02af7f85b3bb074a0e12a18f293954e4ea3bbc3c',
+      skillTriggers: ['runtime review'],
+      discoveryState: 'discoverable',
     });
     expect(skill).not.toHaveProperty('content');
+    expect(result.notes.map((note) => note.wikiId)).not.toContain('project/example/stale-skill');
+    expect(result.notes.map((note) => note.wikiId)).not.toContain('project/example/missing-skill');
+    expect(() => readNotesByWikiIdsTool({ wikiIds: ['project/example/stale-skill'] }, env))
+      .toThrow(/Skill Card is unavailable/);
+  });
+
+  it('does not discover or directly read a Skill Card without affirmative base synchronization', () => {
+    const { env, registryPath } = fixture();
+    const registry = JSON.parse(readFileSync(registryPath, 'utf8'));
+    registry.repositories.wiki.syncBeforeResearch = false;
+    writeJson(registryPath, registry);
+
+    expect(searchTool({ query: 'skill' }, env).notes.map((note) => note.wikiId))
+      .not.toContain('project/example/review-skill');
+    expect(() => readNotesByWikiIdsTool({ wikiIds: ['project/example/review-skill'] }, env))
+      .toThrow(/base.*synchron/i);
+    expect(() => graphNeighborsTool({ wikiIds: ['project/example/review-skill'] }, env))
+      .toThrow(/base.*synchron/i);
+  });
+
+  it('fails closed when one executable pack has multiple active Skill Cards', () => {
+    const { env } = fixture();
+    const duplicateEnv = { ...env, FAKE_OBSIDIAN_DUPLICATE_ACTIVE: 'true' };
+
+    expect(() => searchTool({ query: 'skill' }, duplicateEnv))
+      .toThrow(/resolved 2 active Cards/);
+    expect(() => readNotesByWikiIdsTool({ wikiIds: ['project/example/review-skill'] }, duplicateEnv))
+      .toThrow(/resolved 2 active Cards/);
+    expect(() => graphNeighborsTool({ wikiIds: ['project/example/review-skill'] }, duplicateEnv))
+      .toThrow(/resolved 2 active Cards/);
   });
 
   it('targets the binding Vault explicitly for Obsidian search and reads', () => {

@@ -14,6 +14,7 @@ import {
 import path from 'node:path';
 import * as z from 'zod/v4';
 import { contentHash, parseAtomicNote } from './note.js';
+import { assertSkillCardAvailable } from './skill-card.js';
 import { parseSourceManifest, type SourceManifest } from './bindings.js';
 import { isLoopbackHost } from './loopback.js';
 import { normalizeWritePolicy, stricterPolicy, type WritePolicy } from './policy.js';
@@ -142,14 +143,52 @@ function validateTypedLinksAndIdentity(
   targetPath: string,
   vaultRoot: string,
   roots: Map<string, GovernedRoot>,
+  projectRoots: Map<string, GovernedRoot>,
 ): void {
   const noteFiles = [...roots.values()].flatMap(atomicNoteFiles);
-  const identityMatches = noteFiles.filter((file) => parseAtomicNote(readFileSync(file, 'utf8'), file).wikiId === proposed.wikiId);
+  const existingNotes = noteFiles.map((file) => ({
+    file,
+    note: parseAtomicNote(readFileSync(file, 'utf8'), file),
+  }));
+  const identityMatches = existingNotes.filter(({ note }) => note.wikiId === proposed.wikiId);
   if (operation === 'create' && identityMatches.length > 0) {
     throw new BridgeError(409, `Proposed wiki_id already exists in an allowed Source: ${proposed.wikiId}`);
   }
-  if (operation === 'update' && (identityMatches.length !== 1 || realpathSync(identityMatches[0]) !== realpathSync(targetPath))) {
+  if (operation === 'update' && (
+    identityMatches.length !== 1
+    || realpathSync(identityMatches[0].file) !== realpathSync(targetPath)
+  )) {
     throw new BridgeError(409, `Updated wiki_id does not resolve uniquely to its existing Note: ${proposed.wikiId}`);
+  }
+  const targetNote = operation === 'update' ? identityMatches[0].note : undefined;
+  if (targetNote?.skillProvider && !proposed.skillProvider) {
+    throw new BridgeError(409, 'An existing Skill Card cannot be converted to a plain Note');
+  }
+  if (
+    targetNote?.skillProvider
+    && (
+      targetNote.skillProvider !== proposed.skillProvider
+      || targetNote.skillName !== proposed.skillName
+    )
+  ) {
+    throw new BridgeError(409, 'Skill Card provider/name identity must be preserved on update');
+  }
+  if (proposed.skillProvider) {
+    const projectNotes = [...projectRoots.values()]
+      .flatMap(atomicNoteFiles)
+      .map((file) => ({ file, note: parseAtomicNote(readFileSync(file, 'utf8'), file) }));
+    const cardMatches = projectNotes.filter(({ note }) => (
+      note.skillProvider === proposed.skillProvider && note.skillName === proposed.skillName
+    ));
+    const conflictingCards = operation === 'create'
+      ? cardMatches
+      : cardMatches.filter(({ file }) => realpathSync(file) !== realpathSync(targetPath));
+    if (conflictingCards.length > 0) {
+      throw new BridgeError(
+        409,
+        `Skill Card identity ${proposed.skillProvider}/${proposed.skillName} already exists in an allowed Source`,
+      );
+    }
   }
   for (const links of Object.values(proposed.edges)) {
     for (const link of links) {
@@ -195,6 +234,14 @@ function enforceGovernance(
     && path.posix.normalize(candidate.root.replaceAll('\\', '/')).replace(/^\.\//, '') === request.sourceRoot
   ));
   if (!binding || !binding.access.read) throw new BridgeError(403, 'Source is not a readable binding of the allowed project');
+  const projectRootNames = new Set(
+    settings.wiki.obsidian.bindings
+      .filter((candidate) => candidate.access.read)
+      .map((candidate) => path.posix.normalize(candidate.root.replaceAll('\\', '/')).replace(/^\.\//, '')),
+  );
+  const projectRoots = new Map(
+    [...roots].filter(([rootName]) => projectRootNames.has(rootName)),
+  );
   let manifest: SourceManifest;
   try {
     manifest = parseSourceManifest(readFileSync(root.manifestPath, 'utf8'), root.manifestPath);
@@ -229,7 +276,23 @@ function enforceGovernance(
       }
     }
   }
-  validateTypedLinksAndIdentity(parseAtomicNote(request.content, request.path), request.operation, change.targetPath, vaultRoot, roots);
+  const proposed = parseAtomicNote(request.content, request.path);
+  try {
+    assertSkillCardAvailable(proposed, projectDir, { mode: 'write' });
+  } catch (error) {
+    throw new BridgeError(
+      403,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  validateTypedLinksAndIdentity(
+    proposed,
+    request.operation,
+    change.targetPath,
+    vaultRoot,
+    roots,
+    projectRoots,
+  );
 }
 
 function validateChange(

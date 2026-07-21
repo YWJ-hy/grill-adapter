@@ -138,3 +138,40 @@ export function searchBoundNotes(
   }
   return notes;
 }
+
+export function matchingBoundSkillCards(
+  note: Pick<AtomicNote, 'skillProvider' | 'skillName'>,
+  bindings: ResolvedBinding[],
+  env: NodeJS.ProcessEnv,
+  requireActiveAndVisible = true,
+): RetrievedNote[] {
+  if (!note.skillProvider || !note.skillName) return [];
+  return searchBoundNotes(
+    `[skill_name:${note.skillName}]`,
+    bindings,
+    env,
+    requireActiveAndVisible,
+  ).filter((candidate) => (
+    candidate.skillProvider === note.skillProvider
+    && candidate.skillName === note.skillName
+  ));
+}
+
+export function assertUniqueBoundSkillCard(
+  note: RetrievedNote,
+  bindings: ResolvedBinding[],
+  env: NodeJS.ProcessEnv,
+): void {
+  if (!note.skillProvider) return;
+  const matches = matchingBoundSkillCards(note, bindings, env);
+  if (
+    matches.length !== 1
+    || matches[0].wikiId !== note.wikiId
+    || matches[0].path !== note.path
+    || matches[0].sourceId !== note.sourceId
+  ) {
+    throw new Error(
+      `Skill Card identity ${note.skillProvider}/${note.skillName} resolved ${matches.length} active Cards`,
+    );
+  }
+}

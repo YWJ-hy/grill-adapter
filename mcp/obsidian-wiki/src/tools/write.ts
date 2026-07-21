@@ -1,9 +1,15 @@
 import type { ResolvedBinding } from '../bindings.js';
 import { resolveBindings } from '../bindings.js';
 import { parseAtomicNote } from '../note.js';
-import { assertPathWithinBinding, readBoundNote, searchBoundNotes } from '../retrieval.js';
+import {
+  assertPathWithinBinding,
+  matchingBoundSkillCards,
+  readBoundNote,
+  searchBoundNotes,
+} from '../retrieval.js';
 import { callWriteBridge, type BridgeChangeRequest } from '../write-client.js';
 import { linkPath } from './graph.js';
+import { assertSkillCardAvailable, pendingSkillRegistration } from '../skill-card.js';
 
 export type NoteChangeInput = {
   sourceId: string;
@@ -69,13 +75,39 @@ function validateIdentity(
 ): void {
   const matches = searchBoundNotes(`[wiki_id:${proposed.wikiId}]`, bindings, env, false)
     .filter((note) => note.wikiId === proposed.wikiId);
+  const matchingCards = matchingBoundSkillCards(proposed, bindings, env, false);
   if (input.operation === 'create') {
     if (input.expectedHash !== null) throw new Error('Creating an Obsidian Note requires expectedHash: null');
     if (matches.length > 0) throw new Error(`Proposed wiki_id already exists in a bound Source: ${proposed.wikiId}`);
+    if (matchingCards.length > 0) {
+      throw new Error(
+        `Skill Card identity ${proposed.skillProvider}/${proposed.skillName} already exists in a bound Source`,
+      );
+    }
     return;
   }
   if (!input.expectedHash) throw new Error('Updating an Obsidian Note requires expectedHash');
   const existing = readBoundNote(input.path, [binding], env, false);
+  if (existing.skillProvider && !proposed.skillProvider) {
+    throw new Error('An existing Skill Card cannot be converted to a plain Note');
+  }
+  if (
+    existing.skillProvider
+    && (
+      existing.skillProvider !== proposed.skillProvider
+      || existing.skillName !== proposed.skillName
+    )
+  ) {
+    throw new Error('Skill Card provider/name identity must be preserved on update');
+  }
+  const conflictingCards = matchingCards.filter((card) => (
+    card.path !== existing.path || card.sourceId !== existing.sourceId
+  ));
+  if (conflictingCards.length > 0) {
+    throw new Error(
+      `Skill Card identity ${proposed.skillProvider}/${proposed.skillName} already exists in another bound Note`,
+    );
+  }
   if (existing.wikiId !== proposed.wikiId) {
     throw new Error(`Proposed Note wiki_id must preserve existing identity ${existing.wikiId}`);
   }
@@ -91,6 +123,7 @@ type PreparedChange = {
   binding: ResolvedBinding;
   policy: 'direct' | 'confirm' | 'deny';
   request: BridgeChangeRequest;
+  skillRegistration: ReturnType<typeof pendingSkillRegistration>;
 };
 
 function prepareChange(input: NoteChangeInput, env: NodeJS.ProcessEnv): PreparedChange {
@@ -99,6 +132,7 @@ function prepareChange(input: NoteChangeInput, env: NodeJS.ProcessEnv): Prepared
   const binding = selectedBinding(input, bindings);
   const notePath = assertPathWithinBinding(input.path, binding);
   const proposed = parseAtomicNote(input.content, notePath);
+  assertSkillCardAvailable(proposed, resolution.projectDir, { mode: 'write' });
   validateIdentity(input, binding, bindings, env, proposed);
   validateTypedLinks(proposed, bindings, env);
   enforceNeutrality(binding, notePath, proposed.content);
@@ -119,6 +153,7 @@ function prepareChange(input: NoteChangeInput, env: NodeJS.ProcessEnv): Prepared
       expectedWikiId: proposed.wikiId,
       authorized: input.authorized === true,
     },
+    skillRegistration: pendingSkillRegistration(proposed),
   };
 }
 
@@ -140,6 +175,7 @@ function decorate(result: Record<string, unknown>, prepared: PreparedChange) {
     bindingDigest: prepared.binding.bindingDigest,
     policy: prepared.policy,
     authorizationRequired: prepared.policy === 'confirm',
+    skillRegistration: prepared.skillRegistration,
   };
 }
 

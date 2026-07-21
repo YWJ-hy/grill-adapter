@@ -1,21 +1,21 @@
 # Obsidian Wiki Source 绑定
 
-本页描述 Obsidian Wiki 的受控运行边界：项目只能解析它明确绑定的 Source；规划期将受绑定限制的 atomic Note 和 Skill Card 选择承载为 schema-v6 sidecar；执行期按 stable ID reread 权威 Note；review 后普通 Note 只能经本机 loopback write bridge 做 proposal + expected-hash CAS 写入，再由 applied receipts 驱动可恢复的 GitHub draft-PR 发布。schema-v5 sidecar 在过渡期只读，不能再由新规划生成；迁移仍由后续切片完成。
+本页描述 Obsidian Wiki 的受控运行边界：项目只能解析它明确绑定的 Source；规划期将受绑定限制的 atomic Note 和 Skill Card 选择承载为 schema-v6 sidecar；执行期按 stable ID reread 权威 Note；review 后 atomic Note（含 Skill Card）只能经本机 loopback write bridge 做 proposal + expected-hash CAS 写入，再由 applied receipts 驱动可恢复的 GitHub draft-PR 发布。schema-v5 sidecar 在过渡期只读，不能再由新规划生成；迁移仍由后续切片完成。
 
 ## 运行边界
 
 插件同时发货两个 MCP：
 
 - `shared-wiki`：现有 schema-v5 shared Wiki 路径，保持不变。
-- `obsidian-wiki`：解析当前项目的 Obsidian Source bindings，并提供 Source/status、受绑定限制的 Note 搜索/读取、一跳 typed neighbor 查询，以及普通 Note proposal/apply 工具。
+- `obsidian-wiki`：解析当前项目的 Obsidian Source bindings，并提供 Source/status、受绑定限制的 Note/Card 搜索读取、一跳 typed neighbor，以及统一 proposal/apply 工具。
 
 `obsidian-wiki` 只从宿主确定的项目根下 `.shared-adapter/settings.json` 读取 bindings：Claude Code 使用 `CLAUDE_PROJECT_DIR`，Codex 使用受控 MCP request 的 Git workspace metadata，直接 CLI 可使用进程 cwd。工具不接受 Vault、Source 或 root 路径参数，因此调用方不能扩大到未绑定内容；多个 Codex workspace 同时声明 settings 时按歧义 fail-closed。
 
 ## Candidate Journal 边界
 
-`grill-with-docs`、specification、tickets、implementation、review 与 debugging 阶段发现的 Wiki Note / Skill Card 候选，只能经 `/grill-adapter:candidate-journal` 追加到 `.adapter/context/<feature-slug>.wiki-candidates.jsonl`，不能写 Obsidian。journal 事件只有 `candidate`、`supersede`、`outcome`；每次追加前完整 replay，并对损坏、截断、重复 identity、未知引用和非法状态转换 fail-closed。
+`grill-with-docs`、specification、tickets、implementation、review 与 debugging 阶段发现的 Wiki Note / Skill Card 候选，只能经 journal 追加，不能写 Obsidian。Skill Card 候选必须由已验证 pack 产生，并携带 provider/name/version/contract hash/roles/triggers；初始 `discoveryState` 恒为 `pending`。journal 每次追加前完整 replay，并对损坏、截断、重复 identity、未知引用和非法状态转换 fail-closed。
 
-review 后 `update-wiki` 先 validate/fold，以最终 review + 已验证 code/tests、final spec/ticket、原 candidate 的顺序对 pending/deferred 候选做语义审查；语义相同的 claims 先合并成一个 `capture` replacement 并显式 supersede，再只写一次。Obsidian outcome 可保存严格的 `writeReceipt`：proposal 暂停是 `proposed+deferred`，恢复后可用另一条 deferred 事件刷新漂移后的 proposal；bridge apply 成功是 `applied+kept`，且必须与最新 proposal 的 `repositoryRef`、binding digest、Wiki ID/path 与 before/after hash 完全一致。journal 是本地、不可提交的恢复 receipt，保留而不删除；它不包含权威 Note body、token 或授权 secret，也不是绕过 Source policy、write bridge 或后续 PR publishing 的写通道。
+review 后 `update-wiki` 先 validate/fold，以最终 review + 已验证 code/tests、final spec/ticket、原 candidate 的顺序对 pending/deferred 候选做语义审查；语义相同的 claims 先合并成一个 `capture` replacement 并显式 supersede，再只写一次。Obsidian outcome 可保存严格的 `writeReceipt`：proposal 暂停是 `proposed+deferred`，恢复后可用另一条 deferred 事件刷新漂移后的 proposal；bridge apply 成功是 `applied+kept`，且必须与最新 proposal 的 repository/binding/Note/path/hash 身份完全一致。Skill Card 的 receipt 还必须携带 write result 返回的完整 `skillRegistration`，并与 staged candidate 逐字段一致；没有匹配 applied receipt 的 Card 不能进入 `kept`。journal 是本地、不可提交的恢复 receipt，保留而不删除；它不包含权威 Note body、token 或授权 secret，也不是绕过 Source policy、write bridge 或后续 PR publishing 的写通道。
 
 ## 项目配置
 
@@ -92,13 +92,17 @@ Shared Source 必须声明 `blocked_terms` 与 `blocked_patterns`。manifest 的
 
 `access.update` 是 binding 层对所有写操作的上限；它与 manifest 的 `update_existing`、`create_note` 分别按更严格的结果生效：`deny` 高于 `confirm`，高于 `direct`。因此 binding 只能收紧、不能放宽 Source 的创建或更新治理。`access.read: false` 使该 Source 不可读，且不会出现在 `obsidian_wiki_sources` 的可用清单中。
 
+### Atomic Skill Card
+
+每个 executable pack 对应唯一一个 `type: guide` atomic Note；同一 provider/name 出现第二张 active Card 时 read/search/graph fail-closed，write 也拒绝创建或改写出重复身份。除普通 Note 属性外，Card 必须完整声明 `skill_provider: claude-code-project`、`skill_name`、`skill_version`、`skill_contract_hash`、非空 `skill_roles` 与 `skill_triggers`；缺任一项、类型不是 guide、pack 缺失、version/hash 漂移都会 fail-closed。pack 的 `SKILL.md` 必须带同一 `major.minor.patch` version。contract hash 使用 `grill-adapter.skill-pack-contract/v1\0` domain prefix，把 pack 内文件按 POSIX 相对路径的 UTF-8 bytes 升序排列，再依次纳入相对路径与文件内容 SHA-256；任何 symlink 都拒绝。Python staging 与 TypeScript MCP 用共享 fixture 锁定同一结果。
+
 ## 只读检索
 
 `obsidian_wiki_search`、`obsidian_wiki_read_note`、`obsidian_wiki_read_notes` 与 `obsidian_wiki_graph_neighbors` 只操作当前项目可读 binding 下的 atomic Note。每次 Obsidian CLI 调用都带 resolver 得到的 Vault selector；调用者只能提供搜索语句、Vault 相对 Note 路径或 `wiki_id`，不能指定 Vault、Source 或 root。
 
-- 搜索结果会机械排除 `_meta/`、未绑定路径、`status` 非 `active` 与 `agent_visible: false` 的 Note；同时返回 `constraintStrength` 与可选 `skillRoles`，供规划期独立挑选约束 Note 和 Skill Card。
+- 搜索结果会机械排除 `_meta/`、未绑定路径、非 active/visible Note；Skill Card 还要求 Source 已明确同步到 remote base，并排除本地 provider/name/version/contract hash 不可用者。`syncBeforeResearch: false` 或 stale-read 降级都不能让 Card 变为 discoverable。通过者返回 `discoveryState: discoverable` 与完整 Card 身份。
 - 批量读取经两轮 Obsidian CLI 重读，返回每条 Note 的 canonical `contentHash` 及整批稳定 `snapshotHash`；读取期间内容、路径或 ID 改变，以及重复 `wiki_id`，都会 fail-closed。
-- typed neighbor 查询仅解析请求 Note 的 `depends_on`、`see_also`、`supersedes`、`contradicts` 一跳目标，去重且不递归跟随 target 的边。
+- typed neighbor 查询仅解析请求 Note 的 `depends_on`、`see_also`、`supersedes`、`contradicts` 一跳目标，去重且不递归跟随 target 的边；source/target 若是 Card，同样先通过 remote-base、pack availability 与唯一性门。
 
 执行层可使用 bundle 的固定 JSON 子命令，避免另写一套 Vault reader：
 
@@ -129,7 +133,7 @@ node mcp/obsidian-wiki/dist/index.js serve-write-bridge
 
 `update-wiki` 的固定写路径是：
 
-1. `obsidian_wiki_propose_note_change` 接受已绑定 `sourceId`、Vault 相对 `.md` 路径、完整 atomic Note 内容、`create|update` 和 expected hash（create 为 `null`），完成 schema、stable ID、typed links、root、effective policy 与 Shared neutrality 校验，返回 structured diff，但不写。
+1. `obsidian_wiki_propose_note_change` 接受已绑定 `sourceId`、Vault 相对 `.md` 路径、完整 atomic Note 内容、`create|update` 和 expected hash（create 为 `null`），完成 schema、stable ID、typed links、root、effective policy 与 Shared neutrality 校验；Skill Card 还复核当前项目 pack identity。返回 structured diff，但不写。
 2. agent 向用户展示 diff。effective policy 为 `confirm` 时必须获得明确授权；`deny` 永远不能被 `authorized: true` 绕过。
 3. `obsidian_wiki_apply_note_change` 把同一输入交给 bridge。bridge 再独立校验 Bearer token、项目 binding + Source manifest effective policy、identity/typed links、允许 root、`_meta` 禁写与 Shared neutrality，并以每 Note 独占写锁串行 bridge 请求。create 使用 no-replace 原子 link；update 通过随包 Python helper 调用宿主的原生 atomic exchange（macOS `renamex_np(RENAME_SWAP)`、Linux `renameat2(RENAME_EXCHANGE)`、Windows `ReplaceFileW`），交换后校验被换出的旧目标 hash。若外部编辑抢先，bridge 原子交换回滚并返回 409，保留外部内容。
 4. bridge 随后返回 `wikiId`、path、content hash，MCP 客户端还会核对 post-write identity 与 proposal 是否完全匹配。成功只表示工作树中的 staged knowledge state；合并、base 同步与正式 runtime 可见性由后续 Git PR publishing 流程负责。

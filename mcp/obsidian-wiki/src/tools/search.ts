@@ -1,13 +1,30 @@
 import { resolveBindings } from '../bindings.js';
-import { searchBoundNotes } from '../retrieval.js';
+import { assertUniqueBoundSkillCard, searchBoundNotes } from '../retrieval.js';
+import { skillCardAvailability } from '../skill-card.js';
 
 export function searchTool(input: { query: string }, env: NodeJS.ProcessEnv = process.env) {
   const resolution = resolveBindings(env);
   if (resolution.errors.length > 0) {
     throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join('; ')}`);
   }
+  const found = searchBoundNotes(input.query, resolution.bindings, env);
+  for (const note of found) assertUniqueBoundSkillCard(note, resolution.bindings, env);
   return {
-    notes: searchBoundNotes(input.query, resolution.bindings, env).map((note) => ({
+    notes: found
+      .filter((note) => {
+        const binding = resolution.bindings.find(
+          (candidate) => candidate.bindingDigest === note.bindingDigest,
+        );
+        return skillCardAvailability(
+          note,
+          resolution.projectDir,
+          {
+            mode: 'discovery',
+            baseSynchronized: binding?.repositoryHealth.baseSynchronized === true,
+          },
+        ).available;
+      })
+      .map((note) => ({
       sourceId: note.sourceId,
       role: note.role,
       path: note.path,
@@ -15,9 +32,15 @@ export function searchTool(input: { query: string }, env: NodeJS.ProcessEnv = pr
       type: note.type,
       constraintStrength: note.constraintStrength,
       skillRoles: note.skillRoles,
+      skillProvider: note.skillProvider,
+      skillName: note.skillName,
+      skillVersion: note.skillVersion,
+      skillContractHash: note.skillContractHash,
+      skillTriggers: note.skillTriggers,
+      discoveryState: note.skillProvider ? 'discoverable' : undefined,
       summary: note.summary,
       contentHash: note.contentHash,
       bindingDigest: note.bindingDigest,
-    })),
+      })),
   };
 }

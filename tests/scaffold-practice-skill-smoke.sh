@@ -49,67 +49,128 @@ assert_file "review.md created" "$PACK/review.md"
 assert_file "scripts/check.py created" "$PACK/scripts/check.py"
 assert_no_file "rules.md not created (not requested)" "$PACK/rules.md"
 assert_contains "SKILL.md references implement.md" '`implement.md`' "$(cat "$PACK/SKILL.md")"
-
-printf '\nTest: register-card honors createNewDocument=ask (default)\n'
-if run register-card --name management-page-practices --triggers "后台管理页, CRUD" > /dev/null 2>&1; then
-  bad "unauthorized create should fail"
+assert_contains "SKILL.md carries the pack version" "version: 1.0.0" "$(cat "$PACK/SKILL.md")"
+if run scaffold --name invalid-version-pack --version 1.2 \
+  --description "Invalid incomplete version" > /dev/null 2>&1; then
+  bad "scaffold accepted a version without major.minor.patch"
 else
-  ok "unauthorized create rejected"
+  ok "scaffold rejected an incomplete semantic version"
 fi
-assert_no_file "skills.md not created without authorization" "$WIKI/guides/skills.md"
+assert_no_file "invalid-version scaffold wrote no SKILL.md" \
+  "$TMP/.claude/skills/invalid-version-pack/SKILL.md"
 
-printf '\nTest: register-card with --authorized-create (规范 wiki document)\n'
-run --json register-card --name management-page-practices \
-  --title "管理页面统一布局" --triggers "后台管理页, CRUD, 列表筛选, 表单弹窗" \
-  --summary "管理页统一布局（筛选+列表+弹窗）的实现与审查规范；命中即必须绑定 skill" \
-  --authorized-create > /dev/null
-assert_file "skills.md created" "$WIKI/guides/skills.md"
-assert_file "companion index created" "$WIKI/guides/skills.index.md"
-SKILLS_MD="$(cat "$WIKI/guides/skills.md")"
-SKILLS_IDX="$(cat "$WIKI/guides/skills.index.md")"
-assert_contains "card section present" "wiki-section:management-page-practices" "$SKILLS_MD"
-assert_contains "card carries authored summary= attribute" 'summary="管理页统一布局' "$SKILLS_MD"
-assert_contains "card requires the skill (hard)" "必须使用 skill：\`management-page-practices\`" "$SKILLS_MD"
-assert_contains "companion index marks hard" "| management-page-practices |" "$SKILLS_IDX"
-assert_contains "index 描述 is the authored summary verbatim" "管理页统一布局（筛选+列表+弹窗）的实现与审查规范" "$SKILLS_IDX"
-assert_contains "index has canonical Sections header" "# Sections: guides/skills.md" "$SKILLS_IDX"
-assert_contains "index has document overview blockquote" "> 项目最佳实践 skill 的发现目录" "$SKILLS_IDX"
-assert_contains "guides/index.md lists skills.md" '`skills.md`' "$(cat "$WIKI/guides/index.md")"
+printf '\nTest: stage-card records a content-addressed pending registration without legacy wiki writes\n'
+STAGED="$(run --json stage-card --name management-page-practices \
+  --feature-slug skill-card-discovery --provider claude-code-project \
+  --version 1.0.0 --roles implement,review \
+  --triggers "后台管理页,CRUD,列表筛选" \
+  --summary "管理页统一布局的实现与审查规范")"
+assert_contains "registration is pending" '"discoveryState": "pending"' "$STAGED"
+assert_contains "registration carries provider" '"provider": "claude-code-project"' "$STAGED"
+assert_contains "registration carries version" '"version": "1.0.0"' "$STAGED"
+assert_contains "registration carries implementer role" '"implementer"' "$STAGED"
+assert_contains "registration carries reviewer role" '"reviewer"' "$STAGED"
+assert_contains "registration carries a contract hash" '"contractHash": "sha256:' "$STAGED"
+JOURNAL="$TMP/.adapter/context/skill-card-discovery.wiki-candidates.jsonl"
+assert_file "registration journal created" "$JOURNAL"
+assert_contains "journal stores structured registration" '"skillRegistration"' "$(cat "$JOURNAL")"
+assert_no_file "stage-card does not write the legacy discovery index" "$WIKI/guides/skills.md"
 
-printf '\nTest: register-card without --summary falls back to a theme line (not a trigger 清单)\n'
-run register-card --name fallback-practice --title "回退实践" --triggers "kw-a, kw-b, kw-c" \
-  --authorized-update > /dev/null
-FB_MD="$(cat "$WIKI/guides/skills.md")"
-assert_contains "fallback card carries a summary= attribute" 'wiki-section:fallback-practice summary="' "$FB_MD"
-[[ "$FB_MD" == *'summary="kw-a, kw-b, kw-c"'* ]] && bad "fallback summary should NOT be the trigger list" || ok "fallback summary is not the trigger list"
-
-printf '\nTest: idempotent re-register (updateExistingPage=skip default), summary marker preserved\n'
-run register-card --name management-page-practices \
-  --title "管理页面统一布局" --triggers "后台管理页, CRUD" \
-  --summary "管理页统一布局（筛选+列表+弹窗）的实现与审查规范；命中即必须绑定 skill" > /dev/null 2>&1
-OPEN_COUNT="$(grep -c '<!-- wiki-section:management-page-practices summary=' "$WIKI/guides/skills.md")"
-CLOSE_COUNT="$(grep -c '<!-- /wiki-section:management-page-practices -->' "$WIKI/guides/skills.md")"
-[[ "$OPEN_COUNT" == "1" && "$CLOSE_COUNT" == "1" ]] && ok "no duplicate card section" || bad "duplicate card section (open=$OPEN_COUNT close=$CLOSE_COUNT)"
-
-printf '\nTest: register-card never mints a wiki root (mis-pointed root fails loudly)\n'
-NOWIKI="$(mktemp -d)"
-if python3 "$SCRIPT" --project-root "$NOWIKI" register-card --name x --authorized-create > /dev/null 2>&1; then
-  bad "register-card should fail when no wiki exists"
+mv "$PACK/review.md" "$TMP/review.md"
+if run stage-card --name management-page-practices \
+  --feature-slug invalid-pack --provider claude-code-project \
+  --version 1.0.0 --roles review --triggers "review" \
+  --summary "Missing router targets must fail." > /dev/null 2>&1; then
+  bad "stage-card accepted a pack with a missing router target"
 else
-  ok "register-card refused (no wiki to write into)"
+  ok "stage-card rejected an invalid pack"
 fi
-assert_no_file "no stray .adapter/wiki minted" "$NOWIKI/.adapter/wiki/index.md"
-rm -rf "$NOWIKI"
+mv "$TMP/review.md" "$PACK/review.md"
 
-printf '\nTest: running from a subdir with --project-root . anchors to the real root (no stray wiki)\n'
-mkdir -p "$TMP/.claude/skills"
-( cd "$TMP/.claude/skills" && python3 "$SCRIPT" --project-root . register-card \
-    --name subdir-practice --title "子目录实践" --triggers "x" \
-    --summary "子目录实践概述；命中即绑定 skill" --authorized-update > /dev/null 2>&1 )
-assert_no_file "no stray wiki under .claude/skills" "$TMP/.claude/skills/.adapter/wiki/index.md"
-assert_contains "card landed in the real project wiki" "wiki-section:subdir-practice" "$(cat "$WIKI/guides/skills.md")"
+printf '# Unreachable pack content\n' > "$PACK/orphan.md"
+if run stage-card --name management-page-practices \
+  --feature-slug unreachable-pack --provider claude-code-project \
+  --version 1.0.0 --roles review --triggers "review" \
+  --summary "Unreachable pack files must fail." > /dev/null 2>&1; then
+  bad "stage-card accepted a pack file that SKILL.md cannot route to"
+else
+  ok "stage-card rejected unreachable pack content"
+fi
+rm "$PACK/orphan.md"
 
-printf '\nTest: validate happy path\n'
+if run stage-card --name management-page-practices \
+  --feature-slug wrong-version --provider claude-code-project \
+  --version 2.0.0 --roles review --triggers "review" \
+  --summary "Version drift must fail." > /dev/null 2>&1; then
+  bad "stage-card accepted a version different from SKILL.md"
+else
+  ok "stage-card rejected version drift"
+fi
+
+cp "$PACK/SKILL.md" "$TMP/management-page-practices.SKILL.md"
+sed 's/version: 1.0.0/version: 1.2/' "$TMP/management-page-practices.SKILL.md" > "$PACK/SKILL.md"
+if run stage-card --name management-page-practices \
+  --feature-slug invalid-semver --provider claude-code-project \
+  --version 1.2 --roles review --triggers "review" \
+  --summary "Versions require major.minor.patch." > /dev/null 2>&1; then
+  bad "stage-card accepted a version without major.minor.patch"
+else
+  ok "stage-card rejected an incomplete semantic version"
+fi
+mv "$TMP/management-page-practices.SKILL.md" "$PACK/SKILL.md"
+
+printf '\nTest: direct legacy index registration is retired\n'
+if run register-card --name management-page-practices --authorized-create > /dev/null 2>&1; then
+  bad "register-card must not retain a direct wiki write path"
+else
+  ok "register-card rejected"
+fi
+assert_no_file "retired command does not create skills.md" "$WIKI/guides/skills.md"
+
+printf '\nTest: identical staging is idempotent\n'
+STAGED_AGAIN="$(run --json stage-card --name management-page-practices \
+  --feature-slug skill-card-discovery --provider claude-code-project \
+  --version 1.0.0 --roles implement,review \
+  --triggers "后台管理页,CRUD,列表筛选" \
+  --summary "管理页统一布局的实现与审查规范")"
+assert_contains "duplicate staging was skipped" '"skipped": 1' "$STAGED_AGAIN"
+[[ "$(wc -l < "$JOURNAL" | tr -d ' ')" == "1" ]] \
+  && ok "journal still has one event" || bad "idempotent staging appended a duplicate"
+
+STAGED_REWORDED="$(run --json stage-card --name management-page-practices \
+  --feature-slug skill-card-discovery --provider claude-code-project \
+  --version 1.0.0 --roles implement,review \
+  --triggers "后台管理页,CRUD,列表筛选" \
+  --summary "管理页布局、筛选与操作区的一致性规范")"
+assert_contains "summary-only revision staged" '"appended": 1' "$STAGED_REWORDED"
+FIRST_CANDIDATE="$(printf '%s' "$STAGED" | python3 -c 'import json,sys; print(json.load(sys.stdin)["candidateId"])')"
+REWORDED_CANDIDATE="$(printf '%s' "$STAGED_REWORDED" | python3 -c 'import json,sys; print(json.load(sys.stdin)["candidateId"])')"
+[[ "$FIRST_CANDIDATE" != "$REWORDED_CANDIDATE" ]] \
+  && ok "summary revision has a distinct candidate identity" \
+  || bad "summary revision collided with the original candidate"
+
+printf '\nTest: contract hash matches the shared cross-runtime path-order vector\n'
+HASH_VECTOR="$TARGET_DIR/mcp/obsidian-wiki/tests/fixtures/skill-pack-hash-v1.json"
+python3 - "$HASH_VECTOR" "$TMP" <<'PY'
+import json
+import pathlib
+import sys
+
+vector = json.load(open(sys.argv[1], encoding='utf-8'))
+pack = pathlib.Path(sys.argv[2]) / '.claude' / 'skills' / vector['name']
+for relative, content in vector['files'].items():
+    destination = pack / relative
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(content, encoding='utf-8', newline='\n')
+PY
+VECTOR_HASH="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["expectedHash"])' "$HASH_VECTOR")"
+VECTOR_STAGED="$(run --json stage-card --name path-order \
+  --feature-slug path-order --provider claude-code-project \
+  --version 1.0.0 --roles review --triggers "path order review" \
+  --summary "Verify cross-runtime path ordering.")"
+assert_contains "Python hash matches shared vector" "\"contractHash\": \"$VECTOR_HASH\"" "$VECTOR_STAGED"
+
+printf '\nTest: validate checks the pack without a legacy discovery index\n'
 if run validate --name management-page-practices > /dev/null; then
   ok "validate ok"
 else
@@ -129,25 +190,11 @@ assert_contains "uncovered source content reported" "Layout Rules" "$CONVERT_JSO
 
 printf '\nTest: coverage closes after authoring\n'
 { printf '# Rules\n\n## Layout Rules\nrules body\n\n## Review Steps\nreview body\n'; } > "$TMP/.claude/skills/old-skill/rules.md"
-if run validate --pack-dir "$TMP/.claude/skills/old-skill" --from "$SRC" --skip-discovery > /dev/null; then
+if run validate --pack-dir "$TMP/.claude/skills/old-skill" --from "$SRC" > /dev/null; then
   ok "coverage complete after authoring"
 else
   bad "coverage should be complete after authoring"
 fi
-
-printf '\nTest: refuse policy blocks card writes\n'
-TMP2="$(mktemp -d)"
-mkdir -p "$TMP2/.adapter/wiki"
-printf '# Project Wiki\n' > "$TMP2/.adapter/wiki/index.md"
-printf '{\n  "wiki": { "updateAuthorization": { "createNewDocument": "refuse" } }\n}\n' > "$TMP2/.adapter/settings.json"
-python3 "$SCRIPT" --project-root "$TMP2" scaffold --name refused-skill > /dev/null
-if python3 "$SCRIPT" --project-root "$TMP2" register-card --name refused-skill --authorized-create > /dev/null 2>&1; then
-  bad "refuse policy should block even with --authorized-create"
-else
-  ok "refuse policy blocked"
-fi
-assert_no_file "no skills.md under refuse policy" "$TMP2/.adapter/wiki/guides/skills.md"
-rm -rf "$TMP2"
 
 printf '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
 printf 'Results: %d passed, %d failed\n' "$PASS" "$FAIL"

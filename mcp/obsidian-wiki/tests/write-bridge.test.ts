@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { contentHash } from '../src/note.js';
+import { skillContractHash } from '../src/skill-card.js';
 import { startWriteBridge, type WriteBridgeHandle } from '../src/write-bridge.js';
 
 const roots: string[] = [];
@@ -10,6 +11,10 @@ const bridges: WriteBridgeHandle[] = [];
 
 function note(wikiId: string, body: string): string {
   return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: constraint\nstatus: active\nagent_visible: true\nsummary: Bridge contract\nconstraint_strength: hard\n---\n\n# Bridge contract\n\n${body}\n`;
+}
+
+function skillCard(wikiId: string, contractHash: string): string {
+  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: guide\nstatus: active\nagent_visible: true\nsummary: Bridge Skill Card\nskill_provider: claude-code-project\nskill_name: bridge-review\nskill_version: 1.0.0\nskill_contract_hash: ${contractHash}\nskill_roles:\n  - reviewer\nskill_triggers:\n  - bridge review\n---\n\n# Bridge review\n`;
 }
 
 function manifest(sourceId: string, scope: 'project' | 'shared'): string {
@@ -35,6 +40,7 @@ async function fixture(
   shared = false,
   beforeAtomicExchange?: (targetPath: string) => void,
   afterAtomicExchange?: (targetPath: string) => void,
+  peerProject = false,
 ) {
   const vaultRoot = mkdtempSync(path.join(tmpdir(), 'obsidian-write-bridge-'));
   roots.push(vaultRoot);
@@ -51,11 +57,34 @@ async function fixture(
   writeFileSync(path.join(projectDir, '.shared-adapter', 'settings.json'), JSON.stringify({
     wiki: { provider: 'obsidian', obsidian: { bindings: [{ sourceId, role: shared ? 'shared' : 'project', vaultRef: 'knowledge', root: sourceRoot, access: { read: true, update: 'confirm' } }] } },
   }), 'utf8');
+  const allowedRoots = [sourceRoot];
+  const projectDirs = [projectDir];
+  if (peerProject) {
+    const peerSourceRoot = 'Projects/peer';
+    const peerProjectDir = path.join(vaultRoot, 'peer-project');
+    mkdirSync(path.join(vaultRoot, peerSourceRoot, '_meta'), { recursive: true });
+    writeFileSync(
+      path.join(vaultRoot, peerSourceRoot, '_meta', 'wiki-source.md'),
+      manifest('peer', 'project'),
+      'utf8',
+    );
+    writeFileSync(
+      path.join(vaultRoot, peerSourceRoot, 'BridgeSkill.md'),
+      skillCard('peer/bridge-review', `sha256:${'0'.repeat(64)}`),
+      'utf8',
+    );
+    mkdirSync(path.join(peerProjectDir, '.shared-adapter'), { recursive: true });
+    writeFileSync(path.join(peerProjectDir, '.shared-adapter', 'settings.json'), JSON.stringify({
+      wiki: { provider: 'obsidian', obsidian: { bindings: [{ sourceId: 'peer', role: 'project', vaultRef: 'knowledge', root: peerSourceRoot, access: { read: true, update: 'confirm' } }] } },
+    }), 'utf8');
+    allowedRoots.push(peerSourceRoot);
+    projectDirs.push(peerProjectDir);
+  }
   const bridge = await startWriteBridge({
     vaultRoot,
     vaultSelector: 'Knowledge',
-    allowedRoots: [sourceRoot],
-    projectDirs: [projectDir],
+    allowedRoots,
+    projectDirs,
     token: 'test-token',
     host: '127.0.0.1',
     port: 0,
@@ -167,6 +196,76 @@ describe('Obsidian Wiki loopback write bridge', () => {
 
     expect((await bridgeRequest(bridge, 'validate', request)).status).toBe(403);
     expect((await bridgeRequest(bridge, 'apply', request)).status).toBe(403);
+  });
+
+  it('rejects an unavailable Skill Card through the direct authenticated bridge boundary', async () => {
+    const { vaultRoot, projectDir, sourceRoot, sourceId, bridge } = await fixture();
+    const packRoot = path.join(projectDir, '.claude', 'skills', 'bridge-review');
+    mkdirSync(packRoot, { recursive: true });
+    writeFileSync(
+      path.join(packRoot, 'SKILL.md'),
+      '---\nname: bridge-review\ndescription: Review bridge changes.\nversion: 1.0.0\n---\n',
+      'utf8',
+    );
+    const target = path.join(vaultRoot, sourceRoot, 'BridgeSkill.md');
+    const request = {
+      vaultSelector: 'Knowledge',
+      projectDir,
+      sourceId,
+      vaultRef: 'knowledge',
+      sourceRoot,
+      operation: 'create',
+      path: `${sourceRoot}/BridgeSkill.md`,
+      content: skillCard(`${sourceId}/bridge-review`, `sha256:${'0'.repeat(64)}`),
+      expectedHash: null,
+      expectedWikiId: `${sourceId}/bridge-review`,
+      authorized: true,
+    };
+
+    expect((await bridgeRequest(bridge, 'validate', request)).status).toBe(403);
+    expect((await bridgeRequest(bridge, 'apply', request)).status).toBe(403);
+    expect(() => readFileSync(target, 'utf8')).toThrow();
+  });
+
+  it('scopes Card uniqueness to one project even when the bridge serves peer projects', async () => {
+    const { projectDir, sourceRoot, sourceId, bridge } = await fixture(
+      false,
+      undefined,
+      undefined,
+      true,
+    );
+    const packRoot = path.join(projectDir, '.claude', 'skills', 'bridge-review');
+    mkdirSync(packRoot, { recursive: true });
+    writeFileSync(
+      path.join(packRoot, 'SKILL.md'),
+      '---\nname: bridge-review\ndescription: Review bridge changes.\nversion: 1.0.0\n---\n',
+      'utf8',
+    );
+    const contractHash = skillContractHash(packRoot);
+    const first = {
+      vaultSelector: 'Knowledge',
+      projectDir,
+      sourceId,
+      vaultRef: 'knowledge',
+      sourceRoot,
+      operation: 'create',
+      path: `${sourceRoot}/BridgeSkill.md`,
+      content: skillCard(`${sourceId}/bridge-review`, contractHash),
+      expectedHash: null,
+      expectedWikiId: `${sourceId}/bridge-review`,
+      authorized: true,
+    };
+    expect((await bridgeRequest(bridge, 'apply', first)).status).toBe(200);
+
+    const duplicate = {
+      ...first,
+      path: `${sourceRoot}/DuplicateBridgeSkill.md`,
+      content: skillCard(`${sourceId}/bridge-review-duplicate`, contractHash),
+      expectedWikiId: `${sourceId}/bridge-review-duplicate`,
+    };
+    const response = await bridgeRequest(bridge, 'validate', duplicate);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: expect.stringMatching(/already exists/) });
   });
 
   it('rereads Source and project governance for every request', async () => {
