@@ -60,11 +60,11 @@ While implementing, if you make a hard-to-reverse or surprising decision, resolv
 
 Once the work is reviewed and accepted, run the Capture gate:
 
-Run `/grill-adapter:update-wiki` to validate/fold the `.adapter/context/<feature-slug>.wiki-candidates.jsonl` journal and make a recorded keep/skip/defer determination for every unresolved candidate. Because this project keeps grill's `CONTEXT.md`/`docs/adr`, the skill first converts that knowledge increment into journal events via its own grill bridge (grill's glossary/ADRs are tier-1; the wiki is tier-2). Do **not** route grill knowledge through `import-wiki`: that is a flat structural copy, not an increment.
+Run `/grill-adapter:update-wiki` to validate/fold the `.adapter/context/<feature-slug>.wiki-candidates.jsonl` journal, reconcile unresolved candidates against final review/code/spec evidence, explicitly consolidate related claims, and record keep/skip/defer for each final candidate. Because this project keeps grill's `CONTEXT.md`/`docs/adr`, the skill first converts that knowledge increment into journal events via its own grill bridge (grill's glossary/ADRs are tier-1; the wiki is tier-2). Do **not** route grill knowledge through `import-wiki`: that is a flat structural copy, not an increment.
 
 Reach the gate by actually invoking the skill; skipping is valid only as the skill's own conclusion with a stated reason. `/grill-adapter:update-wiki` owns the durable gate, sectionizing, `type:`, `[[page#section]]` edges, dedup, neutralization, and authorization.
 
-For `wiki.provider: obsidian`, Capture must use `obsidian_wiki_propose_note_change`, show its structured diff, then use `obsidian_wiki_apply_note_change` only when the effective Source policy permits it and any required confirmation was explicit. Never edit the Vault worktree directly; conflicts remain deferred and recoverable. A successful apply is staged knowledge state, not a merged/published Note.
+For `wiki.provider: obsidian`, Capture must use `obsidian_wiki_propose_note_change`, show its structured diff, then use `obsidian_wiki_apply_note_change` only when the effective Source policy permits it and any required confirmation was explicit. Never edit the Vault worktree directly; conflicts remain deferred and recoverable. Record proposal pauses and successful applies as structured candidate-to-write receipts; a successful apply is staged knowledge state, not a merged/published Note.
 
 The `wiki-capture` hook (Stop) is a non-blocking backstop that reminds on pending/deferred candidates, stays silent for a fully terminal retained journal, and reports an invalid journal.
 

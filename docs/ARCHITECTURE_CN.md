@@ -39,7 +39,7 @@ grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 
 | **Disclose** 选 wiki | 独立 `/grill-adapter:wiki-research` skill（驱动 `grill-adapter:wiki-researcher` agent），任何 host 都能调 | grill-with-docs 质询期 |
 | **Carry** 带约束 | schema-v6 `.adapter/context/<feature-slug>.wiki-context.json` 保存绑定 digest、atomic Note ID/path/hash/summary、独立 Skill Card 与 ticket roster 指纹，绝不保存 Note body；锚点是 feature，不是 plan 文件 | to-tickets 据 Obsidian selection 写 |
 | **Bind** 执行期 reread | schema-v5/v6 都由每 ticket `/grill-adapter:wiki-materialize <ticket>` 精确读取；schema-v6 仅经 bound Obsidian MCP stable-ID 读取路由硬 Note、角色 Skill Card 和 1 跳 `depends_on`，任何漂移 fail-closed；`wiki-reread` hook 只做 SessionStart 提醒 | implement 逐 ticket |
-| **Capture** 回写 | `/grill-adapter:update-wiki`（语义门），其可选前置步经 `grill_context_to_candidates.py` 吃 grill CONTEXT.md/ADR 增量；Obsidian provider 经 proposal → loopback bridge CAS apply | code-review 后 |
+| **Capture** 回写 | `/grill-adapter:update-wiki`（最终证据 reconciliation + related-claim 显式归并 + 语义门），其可选前置步经 `grill_context_to_candidates.py` 吃 grill CONTEXT.md/ADR 增量；Obsidian provider 经 proposal → loopback bridge CAS apply，并把 candidate-to-write receipt 留给 publishing | code-review 后 |
 
 `/grill-adapter:wiki-materialize` 复用 `scripts/wiki_materialize_task.py`——本地 + `github_mcp` 两类 section 统一取，含**执行期有界 1 跳 `depends-on` 闭包**。
 
@@ -48,7 +48,7 @@ grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 
 - **Lanhu Intake**：`lanhu-requirements` skill + 2 个 analyst role prompt（`agents/lanhu-{frontend,backend}-requirements-analyst.md`，由 `lib/sync_role_prd.py` 生成）→ `.lanhu/.../index.md` 证据包（**只作输入**）。Claude Code 直接注册 agent；Codex 由 skill 读取同一 prompt 后派生通用 sub-agent。
 - **source-truth Verify**：`/grill-adapter:source-truth-check` skill（复用 `scripts/source_truth_settings.py`），规划期渲染 policy prompt（spec-pre/plan-pre/plan-review）。**Lint**：`hooks/source-truth-lint.sh`（PostToolUse/Stop）对真实 changed files 跑 `source_truth_common` lint。
 - **break-loop**：`/grill-adapter:break-loop` skill，调试复盘 → 交 `/grill-adapter:update-wiki`。
-- **Candidate Journal**：`/grill-adapter:candidate-journal` + `scripts/wiki_candidate_journal.py`。所有知识生产阶段只向同一 feature-scoped JSONL 追加 `candidate` / `supersede` / `outcome` 事件；Capture 前完整 replay，损坏、截断、冲突重复与非法状态转换 fail-closed。grill bridge 的完全相同 replay 按稳定 candidate identity 幂等跳过，使中断后的 Capture 能继续；journal 保留作恢复 receipt，不进入 Obsidian、不提交。
+- **Candidate Journal**：`/grill-adapter:candidate-journal` + `scripts/wiki_candidate_journal.py`。所有知识生产阶段只向同一 feature-scoped JSONL 追加 `candidate` / `supersede` / `outcome` 事件；Capture 前完整 replay，损坏、截断、冲突重复与非法状态转换 fail-closed。Obsidian outcome 可带严格的 `writeReceipt`，只保存 provider/repository/binding/Note/path/hash 写身份，不保存 Note body 或 secret；`proposed` 只能配 `deferred`，`applied` 只能配 `kept`。grill bridge 的完全相同 replay 按稳定 candidate identity 幂等跳过，使中断后的 Capture 能继续；journal 保留作恢复 receipt，不进入 Obsidian、不提交。
 
 ## 引擎组件
 

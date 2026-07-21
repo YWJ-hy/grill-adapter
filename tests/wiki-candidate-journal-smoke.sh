@@ -35,6 +35,10 @@ append_candidate evt-2 cand-skill implementation skill_card skill_registration \
   'Use the receipt verifier during publish review.' \
   'The procedure is executable and role-specific.' \
   'src/publish.py' >/dev/null
+append_candidate evt-capture cand-capture review wiki_note contract \
+  'Capture receipts retain the exact staged Note identity.' \
+  'Publishing must group and verify only the Note writes accepted by Capture.' \
+  'issue:#8' >/dev/null
 
 # Public CLI output stays UTF-8 even when the inherited stdio encoding is ASCII.
 UTF8_JOURNAL="$T/.adapter/context/utf8-feature.wiki-candidates.jsonl"
@@ -76,11 +80,102 @@ import json, sys
 d = json.load(sys.stdin)
 assert d["schemaVersion"] == 1
 assert d["featureSlug"] == "feature-a"
-assert d["eventCount"] == 2
-assert d["counts"] == {"pending": 2, "superseded": 0, "kept": 0, "skipped": 0, "deferred": 0}
-assert [item["candidateId"] for item in d["candidates"]] == ["cand-wiki", "cand-skill"]
+assert d["eventCount"] == 3
+assert d["counts"] == {"pending": 3, "superseded": 0, "kept": 0, "skipped": 0, "deferred": 0}
+assert [item["candidateId"] for item in d["candidates"]] == ["cand-wiki", "cand-skill", "cand-capture"]
 assert d["candidates"][1]["candidateType"] == "skill_card"
 ' || fail "fold did not preserve pending Wiki and Skill Card candidates"
+
+# Capture records proposal identity before a recoverable pause, then replaces it with the
+# verified post-write identity only after apply succeeds.
+BEFORE_HASH="sha256:1111111111111111111111111111111111111111111111111111111111111111"
+AFTER_HASH="sha256:2222222222222222222222222222222222222222222222222222222222222222"
+BINDING_DIGEST="3333333333333333333333333333333333333333333333333333333333333333"
+capture_outcome() {
+  python3 "$JOURNAL_CLI" outcome \
+    --journal "$JOURNAL" --feature-slug feature-a --event-id "$1" \
+    --candidate-id cand-capture --status "$2" --reason "$3" \
+    --write-state "$4" --operation update \
+    --source-id project-wiki --repository-ref knowledge-repo \
+    --binding-digest "$BINDING_DIGEST" \
+    --wiki-id project/capture/receipts --path Projects/demo/capture-receipts.md \
+    --before-hash "$BEFORE_HASH" --after-hash "$AFTER_HASH"
+}
+capture_outcome evt-capture-proposed deferred \
+  'The policy-compliant proposal is waiting for explicit authorization.' proposed >/dev/null
+FOLDED="$(python3 "$JOURNAL_CLI" fold --journal "$JOURNAL" --feature-slug feature-a)"
+printf '%s' "$FOLDED" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+item = next(item for item in d["candidates"] if item["candidateId"] == "cand-capture")
+assert item["status"] == "deferred"
+assert item["writeReceipt"] == {
+    "provider": "obsidian",
+    "state": "proposed",
+    "operation": "update",
+    "sourceId": "project-wiki",
+    "repositoryRef": "knowledge-repo",
+    "bindingDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+    "wikiId": "project/capture/receipts",
+    "path": "Projects/demo/capture-receipts.md",
+    "beforeHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "afterHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+}
+' || fail "fold did not preserve the deferred proposal receipt"
+
+# A resumed Capture can replace a stale proposal with a newly validated proposal while
+# remaining deferred. The latest proposal becomes the identity that a later apply must match.
+BEFORE_HASH="sha256:4444444444444444444444444444444444444444444444444444444444444444"
+AFTER_HASH="sha256:5555555555555555555555555555555555555555555555555555555555555555"
+capture_outcome evt-capture-reproposed deferred \
+  'Note drift required a fresh policy-compliant proposal before authorization.' proposed >/dev/null
+FOLDED="$(python3 "$JOURNAL_CLI" fold --journal "$JOURNAL" --feature-slug feature-a)"
+printf '%s' "$FOLDED" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+item = next(item for item in d["candidates"] if item["candidateId"] == "cand-capture")
+assert item["status"] == "deferred"
+assert item["writeReceipt"]["state"] == "proposed"
+assert item["writeReceipt"]["beforeHash"] == "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+assert item["writeReceipt"]["afterHash"] == "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+' || fail "fold did not retain the latest re-proposal receipt"
+
+python3 "$JOURNAL_CLI" outcome \
+  --journal "$JOURNAL" --feature-slug feature-a --event-id evt-capture-still-deferred \
+  --candidate-id cand-capture --status deferred \
+  --reason 'Authorization is still unavailable; retain the latest valid proposal.' >/dev/null
+FOLDED="$(python3 "$JOURNAL_CLI" fold --journal "$JOURNAL" --feature-slug feature-a)"
+printf '%s' "$FOLDED" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+item = next(item for item in d["candidates"] if item["candidateId"] == "cand-capture")
+assert item["status"] == "deferred"
+assert item["writeReceipt"]["state"] == "proposed"
+assert item["writeReceipt"]["afterHash"] == "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+' || fail "receipt-less re-deferral discarded the latest valid proposal"
+
+PROPOSAL_BEFORE="$(shasum -a 256 "$JOURNAL" | awk '{print $1}')"
+if python3 "$JOURNAL_CLI" outcome \
+  --journal "$JOURNAL" --feature-slug feature-a --event-id evt-capture-missing \
+  --candidate-id cand-capture --status kept \
+  --reason 'Applied without retaining the proposal identity.' >/dev/null 2>&1; then
+  fail "proposed receipt transitioned to kept without an applied receipt"
+fi
+if python3 "$JOURNAL_CLI" outcome \
+  --journal "$JOURNAL" --feature-slug feature-a --event-id evt-capture-mismatch \
+  --candidate-id cand-capture --status kept --reason 'Applied a different Note.' \
+  --write-state applied --operation update \
+  --source-id project-wiki --repository-ref knowledge-repo \
+  --binding-digest "$BINDING_DIGEST" \
+  --wiki-id project/capture/other --path Projects/demo/other.md \
+  --before-hash "$BEFORE_HASH" --after-hash "$AFTER_HASH" >/dev/null 2>&1; then
+  fail "proposed receipt transitioned to a mismatched applied identity"
+fi
+PROPOSAL_AFTER="$(shasum -a 256 "$JOURNAL" | awk '{print $1}')"
+[[ "$PROPOSAL_BEFORE" == "$PROPOSAL_AFTER" ]] \
+  || fail "rejected proposed-to-applied transition mutated the journal"
+capture_outcome evt-capture-applied kept \
+  'The write bridge returned the matching post-write identity.' applied >/dev/null
 
 # Supersession is explicit and points to a previously appended replacement.
 append_candidate evt-3 cand-replacement review wiki_note decision \
@@ -110,9 +205,13 @@ assert by_id["cand-wiki"]["status"] == "superseded"
 assert by_id["cand-wiki"]["supersededBy"] == "cand-replacement"
 assert by_id["cand-skill"]["status"] == "kept"
 assert by_id["cand-replacement"]["status"] == "pending"
+assert by_id["cand-capture"]["status"] == "kept"
+assert by_id["cand-capture"]["writeReceipt"]["state"] == "applied"
+assert by_id["cand-capture"]["writeReceipt"]["repositoryRef"] == "knowledge-repo"
+assert by_id["cand-capture"]["writeReceipt"]["afterHash"].startswith("sha256:")
 assert d["counts"]["pending"] == 1
 assert d["counts"]["superseded"] == 1
-assert d["counts"]["kept"] == 1
+assert d["counts"]["kept"] == 2
 ' || fail "fold did not apply supersede and outcome lifecycle events"
 
 # Duplicate identities and illegal terminal transitions fail without changing the journal.
@@ -124,6 +223,22 @@ if python3 "$JOURNAL_CLI" outcome \
   --journal "$JOURNAL" --feature-slug feature-a --event-id evt-7 \
   --candidate-id cand-skill --status skipped --reason 'illegal rewrite' >/dev/null 2>&1; then
   fail "terminal candidate outcome was rewritten"
+fi
+if python3 "$JOURNAL_CLI" outcome \
+  --journal "$JOURNAL" --feature-slug feature-a --event-id evt-8 \
+  --candidate-id cand-replacement --status kept --reason 'invalid proposal state' \
+  --write-state proposed --operation update \
+  --source-id project-wiki --repository-ref knowledge-repo \
+  --binding-digest "$BINDING_DIGEST" \
+  --wiki-id project/capture/receipts --path Projects/demo/capture-receipts.md \
+  --before-hash "$BEFORE_HASH" --after-hash "$AFTER_HASH" >/dev/null 2>&1; then
+  fail "kept outcome accepted a proposed-only write receipt"
+fi
+if python3 "$JOURNAL_CLI" outcome \
+  --journal "$JOURNAL" --feature-slug feature-a --event-id evt-9 \
+  --candidate-id cand-replacement --status deferred --reason 'partial receipt' \
+  --write-state proposed --operation update --source-id project-wiki >/dev/null 2>&1; then
+  fail "partial Capture write receipt was accepted"
 fi
 AFTER="$(shasum -a 256 "$JOURNAL" | awk '{print $1}')"
 [[ "$BEFORE" == "$AFTER" ]] || fail "rejected append mutated the journal"
@@ -173,5 +288,10 @@ if python3 "$JOURNAL_CLI" append \
   --claim x --why y --source-ref z >/dev/null 2>&1; then
   fail "wiki_note accepted skill_registration kind"
 fi
+
+python3 "$JOURNAL_CLI" validate \
+  --journal "$ROOT/contracts/wiki-candidate-journal-v1.example.jsonl" \
+  --feature-slug receipt-publishing >/dev/null \
+  || fail "candidate journal contract example is invalid"
 
 printf 'wiki candidate journal smoke OK\n'

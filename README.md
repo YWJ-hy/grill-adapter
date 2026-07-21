@@ -17,7 +17,7 @@ A code assistant forgets your project's durable rules between sessions and acros
 | **Disclose** | `/grill-adapter:wiki-research` skill → `wiki-researcher` selects relevant bound Obsidian atomic Notes and Skill Cards | `/grill-with-docs` |
 | **Carry** | schema-v6 `.wiki-context.json` records bound Source digests and metadata-only Note/Card identity, routing, and ticket fingerprints | `/to-tickets` |
 | **Bind** | `/grill-adapter:wiki-materialize <ticket>` rereads schema-v5 hard sections or schema-v6 routed hard Obsidian Notes, required Skill Cards, and a bounded 1-hop `depends_on` closure; all drift gates fail closed | `/implement` |
-| **Capture** | every stage appends to one feature journal through `/grill-adapter:candidate-journal`; `/grill-adapter:update-wiki` validates/folds it and records keep/skip/defer outcomes before durable knowledge is written | after `/code-review` |
+| **Capture** | every stage appends to one feature journal through `/grill-adapter:candidate-journal`; `/grill-adapter:update-wiki` reconciles final evidence, explicitly consolidates related claims, previews policy-compliant diffs, and records candidate-to-write receipts | after `/code-review` |
 
 Plus **Lanhu intake** (`/grill-adapter:lanhu-requirements`), **source-of-truth** verify (`/grill-adapter:source-truth-check`) + lint hook, and **break-loop** debugging retrospective (`/grill-adapter:break-loop`).
 

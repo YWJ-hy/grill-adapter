@@ -15,7 +15,7 @@
 
 `grill-with-docs`、specification、tickets、implementation、review 与 debugging 阶段发现的 Wiki Note / Skill Card 候选，只能经 `/grill-adapter:candidate-journal` 追加到 `.adapter/context/<feature-slug>.wiki-candidates.jsonl`，不能写 Obsidian。journal 事件只有 `candidate`、`supersede`、`outcome`；每次追加前完整 replay，并对损坏、截断、重复 identity、未知引用和非法状态转换 fail-closed。
 
-review 后 `update-wiki` 先 validate/fold，再对 pending/deferred 候选做语义审查并追加 keep/skip/defer outcome。journal 是本地、不可提交的恢复 receipt，保留而不删除；它既不包含权威 Note body，也不是绕过 Source policy、write bridge 或后续 PR publishing 的写通道。
+review 后 `update-wiki` 先 validate/fold，以最终 review + 已验证 code/tests、final spec/ticket、原 candidate 的顺序对 pending/deferred 候选做语义审查；语义相同的 claims 先合并成一个 `capture` replacement 并显式 supersede，再只写一次。Obsidian outcome 可保存严格的 `writeReceipt`：proposal 暂停是 `proposed+deferred`，恢复后可用另一条 deferred 事件刷新漂移后的 proposal；bridge apply 成功是 `applied+kept`，且必须与最新 proposal 的 `repositoryRef`、binding digest、Wiki ID/path 与 before/after hash 完全一致。journal 是本地、不可提交的恢复 receipt，保留而不删除；它不包含权威 Note body、token 或授权 secret，也不是绕过 Source policy、write bridge 或后续 PR publishing 的写通道。
 
 ## 项目配置
 

@@ -52,7 +52,9 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py fold \
   --feature-slug <feature-slug>
 ```
 
-Only `update-wiki` records outcomes. Append `kept` only after the proposed knowledge change succeeds, `skipped` with the durable-gate reason, or `deferred` when recoverable work remains. A deferred candidate can later become kept or skipped; kept and skipped are terminal.
+Only `update-wiki` records outcomes. Append `kept` only after the proposed knowledge change succeeds, `skipped` with the durable-gate reason, or `deferred` when recoverable work remains. A resumed Capture may append another `deferred` outcome to replace stale recoverable state with a newly validated proposal; it can later become kept or skipped. Kept and skipped are terminal.
+
+When several active candidates express the same final claim, do not write the claim more than once. Append one atomic `capture`-stage candidate with the reconciled final wording, then supersede each related active candidate by that replacement before proposing a change. This keeps the semantic merge explicit and reviewable; the helper does not infer duplicates.
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py outcome \
@@ -60,5 +62,20 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py outcome \
   --feature-slug <feature-slug> --candidate-id <id> \
   --status kept|skipped|deferred --reason "<Capture result>"
 ```
+
+For an Obsidian proposal that must pause, append `deferred` with `--write-state proposed`. If resumed Capture must re-propose after drift, append another deferred proposed receipt; the latest valid proposal replaces the folded recovery view without erasing history. A receipt-less re-deferral updates the reason but retains that latest proposal, so it cannot bypass the eventual identity check. After a successful apply, append `kept` with the same identity as that latest proposal and `--write-state applied`. Supply the exact `sourceId`, `repositoryRef`, `bindingDigest`, `wikiId`, path, operation, and diff hashes returned by the write tools; omit `--before-hash` only for create. The helper accepts `proposed` only with `deferred` and `applied` only with `kept`, and rejects a missing or mismatched applied receipt after a proposal.
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py outcome \
+  --journal .adapter/context/<feature-slug>.wiki-candidates.jsonl \
+  --feature-slug <feature-slug> --candidate-id <id> \
+  --status kept --reason "Write bridge returned matching post-write identity." \
+  --write-state applied --operation update \
+  --source-id <source-id> --repository-ref <repository-ref> \
+  --binding-digest <binding-digest> --wiki-id <wiki-id> --path <vault-relative.md> \
+  --before-hash <sha256:...> --after-hash <sha256:...>
+```
+
+The folded candidate exposes this as `writeReceipt`. It contains no Note body, token, or authorization secret; it is the allowlisted candidate-to-write identity needed by later publishing and recovery.
 
 Retain the journal as the interruption/recovery receipt. The Stop hook is silent once every candidate is terminal; it continues to remind on pending/deferred work and reports invalid journals.

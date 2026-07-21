@@ -11,7 +11,7 @@ import sys
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterator
 
 
@@ -41,6 +41,15 @@ FINAL_STATUSES = {"kept", "skipped", "superseded"}
 VOLATILE_EVENT_FIELDS = {"eventId", "recordedAt"}
 ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 SLUG_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+CONTENT_HASH_PATTERN = re.compile(r"^sha256:[a-f0-9]{64}$")
+BINDING_DIGEST_PATTERN = re.compile(r"^[a-f0-9]{64}$")
+WRITE_RECEIPT_STATES = {"proposed", "applied"}
+WRITE_OPERATIONS = {"create", "update"}
+WRITE_RECEIPT_FIELDS = {
+    "provider", "state", "operation", "sourceId", "repositoryRef", "bindingDigest",
+    "wikiId", "path", "beforeHash", "afterHash",
+}
+WRITE_RECEIPT_IDENTITY_FIELDS = WRITE_RECEIPT_FIELDS - {"state"}
 
 
 class JournalError(ValueError):
@@ -90,6 +99,51 @@ def _validate_timestamp(value: Any) -> None:
         raise JournalError("recordedAt is not a valid ISO-8601 timestamp") from exc
 
 
+def _validate_write_receipt(receipt: Any, outcome_status: str) -> dict[str, Any]:
+    if not isinstance(receipt, dict):
+        raise JournalError("writeReceipt must be a JSON object")
+    _require_keys(receipt, WRITE_RECEIPT_FIELDS, set())
+    if receipt["provider"] != "obsidian":
+        raise JournalError("writeReceipt.provider must be obsidian")
+    if receipt["state"] not in WRITE_RECEIPT_STATES:
+        raise JournalError("writeReceipt.state must be proposed or applied")
+    if receipt["operation"] not in WRITE_OPERATIONS:
+        raise JournalError("writeReceipt.operation must be create or update")
+    for field in ("sourceId", "repositoryRef", "wikiId"):
+        _require_text(receipt[field], f"writeReceipt.{field}", limit=256)
+    digest = _require_text(receipt["bindingDigest"], "writeReceipt.bindingDigest", limit=64)
+    if not BINDING_DIGEST_PATTERN.fullmatch(digest):
+        raise JournalError("writeReceipt.bindingDigest must be a lowercase sha256 hex digest")
+    note_path = _require_text(receipt["path"], "writeReceipt.path", limit=1000)
+    parsed_path = PurePosixPath(note_path)
+    if (
+        "\\" in note_path
+        or parsed_path.is_absolute()
+        or parsed_path.as_posix() != note_path
+        or any(part in {"", ".", ".."} for part in parsed_path.parts)
+        or parsed_path.suffix != ".md"
+    ):
+        raise JournalError("writeReceipt.path must be a normalized relative POSIX .md path")
+    before_hash = receipt["beforeHash"]
+    if before_hash is not None and (
+        not isinstance(before_hash, str) or not CONTENT_HASH_PATTERN.fullmatch(before_hash)
+    ):
+        raise JournalError("writeReceipt.beforeHash must be null or a canonical sha256 content hash")
+    after_hash = receipt["afterHash"]
+    if not isinstance(after_hash, str) or not CONTENT_HASH_PATTERN.fullmatch(after_hash):
+        raise JournalError("writeReceipt.afterHash must be a canonical sha256 content hash")
+    if receipt["operation"] == "create" and before_hash is not None:
+        raise JournalError("create writeReceipt.beforeHash must be null")
+    if receipt["operation"] == "update" and before_hash is None:
+        raise JournalError("update writeReceipt.beforeHash must be a canonical sha256 content hash")
+    expected_status = "deferred" if receipt["state"] == "proposed" else "kept"
+    if outcome_status != expected_status:
+        raise JournalError(
+            f"writeReceipt.state={receipt['state']} requires outcome status={expected_status}"
+        )
+    return receipt
+
+
 def validate_event_shape(event: Any) -> dict[str, Any]:
     if not isinstance(event, dict):
         raise JournalError("event must be a JSON object")
@@ -108,7 +162,7 @@ def validate_event_shape(event: Any) -> dict[str, Any]:
         optional = set()
     else:
         required = common | {"candidateId", "status", "reason"}
-        optional = set()
+        optional = {"writeReceipt"}
     _require_keys(event, required, optional)
 
     if event["schemaVersion"] != SCHEMA_VERSION:
@@ -151,6 +205,8 @@ def validate_event_shape(event: Any) -> dict[str, Any]:
         if event["status"] not in OUTCOME_STATUSES:
             raise JournalError("status must be kept, skipped, or deferred")
         _require_text(event["reason"], "reason")
+        if "writeReceipt" in event:
+            _validate_write_receipt(event["writeReceipt"], event["status"])
     return event
 
 
@@ -226,10 +282,41 @@ def fold_events(events: list[dict[str, Any]], expected_feature_slug: str | None 
                 item["supersededBy"] = replacement_id
                 item["supersedeReason"] = event["reason"]
             else:
-                if item["status"] == "deferred" and event["status"] == "deferred":
-                    raise JournalError(f"candidate {candidate_id!r} is already deferred")
+                previous_receipt = item.get("writeReceipt")
+                next_receipt = event.get("writeReceipt")
+                if (
+                    item["status"] == "deferred"
+                    and isinstance(previous_receipt, dict)
+                    and previous_receipt.get("state") == "proposed"
+                    and event["status"] == "kept"
+                ):
+                    if not isinstance(next_receipt, dict):
+                        raise JournalError(
+                            f"candidate {candidate_id!r} has a proposed write receipt; "
+                            "kept requires the matching applied receipt"
+                        )
+                    mismatches = sorted(
+                        field
+                        for field in WRITE_RECEIPT_IDENTITY_FIELDS
+                        if previous_receipt[field] != next_receipt[field]
+                    )
+                    if mismatches:
+                        raise JournalError(
+                            f"candidate {candidate_id!r} applied receipt does not match its "
+                            f"latest proposal: {', '.join(mismatches)}"
+                        )
                 item["status"] = event["status"]
                 item["outcomeReason"] = event["reason"]
+                if "writeReceipt" in event:
+                    item["writeReceipt"] = event["writeReceipt"]
+                elif (
+                    event["status"] == "deferred"
+                    and isinstance(previous_receipt, dict)
+                    and previous_receipt.get("state") == "proposed"
+                ):
+                    item["writeReceipt"] = previous_receipt
+                else:
+                    item.pop("writeReceipt", None)
             item["lastEventId"] = event["eventId"]
         except JournalError as exc:
             raise JournalError(f"event {index}: {exc}") from exc
@@ -409,6 +496,15 @@ def build_parser() -> argparse.ArgumentParser:
     outcome_parser.add_argument("--candidate-id", required=True)
     outcome_parser.add_argument("--status", required=True, choices=sorted(OUTCOME_STATUSES))
     outcome_parser.add_argument("--reason", required=True)
+    outcome_parser.add_argument("--write-state", choices=sorted(WRITE_RECEIPT_STATES))
+    outcome_parser.add_argument("--operation", choices=sorted(WRITE_OPERATIONS))
+    outcome_parser.add_argument("--source-id")
+    outcome_parser.add_argument("--repository-ref")
+    outcome_parser.add_argument("--binding-digest")
+    outcome_parser.add_argument("--wiki-id")
+    outcome_parser.add_argument("--path")
+    outcome_parser.add_argument("--before-hash")
+    outcome_parser.add_argument("--after-hash")
 
     for command in ("validate", "fold"):
         command_parser = subparsers.add_parser(command)
@@ -460,6 +556,31 @@ def main() -> int:
             reason=args.reason,
         )
     else:
+        receipt_args = (
+            args.write_state,
+            args.operation,
+            args.source_id,
+            args.repository_ref,
+            args.binding_digest,
+            args.wiki_id,
+            args.path,
+            args.before_hash,
+            args.after_hash,
+        )
+        write_receipt = None
+        if any(value is not None for value in receipt_args):
+            write_receipt = {
+                "provider": "obsidian",
+                "state": args.write_state,
+                "operation": args.operation,
+                "sourceId": args.source_id,
+                "repositoryRef": args.repository_ref,
+                "bindingDigest": args.binding_digest,
+                "wikiId": args.wiki_id,
+                "path": args.path,
+                "beforeHash": args.before_hash,
+                "afterHash": args.after_hash,
+            }
         event = new_event(
             "outcome",
             args.feature_slug,
@@ -467,6 +588,7 @@ def main() -> int:
             candidateId=args.candidate_id,
             status=args.status,
             reason=args.reason,
+            **({"writeReceipt": write_receipt} if write_receipt is not None else {}),
         )
 
     append_events(journal_path, [event], args.feature_slug)
