@@ -41,6 +41,8 @@ Run `/grill-adapter:update-wiki` to validate/fold the journal, reconcile unresol
 
 For `wiki.provider: obsidian`, Capture must use `obsidian_wiki_propose_note_change`, show its structured diff, then use `obsidian_wiki_apply_note_change` only when the effective Source policy permits it and any required confirmation was explicit. Never edit the Vault worktree directly; conflicts remain deferred and recoverable. Record proposal pauses and successful applies as structured candidate-to-write receipts; a successful apply is staged knowledge state, not a merged/published Note.
 
+After all outcomes are recorded, `/grill-adapter:update-wiki` must show the exact repository/Note publish scope and obtain explicit Git publishing confirmation. It then uses its bundled resumable publisher to create one allowlisted draft PR per touched repository and coordinate peer PRs. On interruption, rerun the same publish step; never delete its local run manifest or manually recreate branches. Open PR content remains unavailable to formal research until merge, base synchronization, and revalidation.
+
 ### Debug
 
 After root-cause evidence narrows the failure, optionally run `/grill-adapter:wiki-research` (phase `debug`, ≤2 sections) for a targeted lookup. After a verified fix, run `/grill-adapter:break-loop` for a retrospective; it hands durable candidates to `/grill-adapter:update-wiki`.

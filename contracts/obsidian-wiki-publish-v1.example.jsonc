@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "kind": "grill-adapter.obsidian-wiki-publish",
+  "runId": "123e4567-e89b-42d3-a456-426614174000",
+  "featureSlug": "receipt-publishing",
+  "repositories": [
+    {
+      "repositoryRef": "engineering-wiki-all",
+      "baseBranch": "main",
+      "branch": "grill-adapter/wiki/receipt-publishing-engineering-wiki-all-123e4567",
+      "paths": ["Shared/Engineering/publishing-receipts.md"],
+      "stagedTree": null,
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "prUrl": "https://github.com/example/engineering-wiki/pull/42",
+      "state": "published"
+    }
+  ]
+}

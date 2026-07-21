@@ -66,6 +66,8 @@ Reach the gate by actually invoking the skill; skipping is valid only as the ski
 
 For `wiki.provider: obsidian`, Capture must use `obsidian_wiki_propose_note_change`, show its structured diff, then use `obsidian_wiki_apply_note_change` only when the effective Source policy permits it and any required confirmation was explicit. Never edit the Vault worktree directly; conflicts remain deferred and recoverable. Record proposal pauses and successful applies as structured candidate-to-write receipts; a successful apply is staged knowledge state, not a merged/published Note.
 
+After all outcomes are recorded, `$grill-adapter:update-wiki` must show the exact repository/Note publish scope and obtain explicit Git publishing confirmation. It then uses its bundled resumable publisher to create one allowlisted draft PR per touched repository and coordinate peer PRs. On interruption, rerun the same publish step; never delete its local run manifest or manually recreate branches. Open PR content remains unavailable to formal research until merge, base synchronization, and revalidation.
+
 The `wiki-capture` hook (Stop) is a non-blocking backstop that reminds on pending/deferred candidates, stays silent for a fully terminal retained journal, and reports an invalid journal.
 
 ### Debug — during `$mattpocock-skills:diagnosing-bugs`

@@ -307,6 +307,20 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 **理由**
 - append-only event history 同时保住原始候选、替代关系和 Capture 决策，不靠覆写恢复状态。
 - structured write receipt 把 candidate 和 staged Note identity 绑定，为中断恢复及后续按 repositoryRef 发布提供最小充分状态，同时不复制权威内容。
+
+## Obsidian 发布按 applied receipts 建可恢复 draft PR run（2026-07）
+
+### 决策
+
+- `update-wiki` 在 Capture outcomes 完成后，必须重新 fold journal，只把 `kept + writeReceipt.state: applied` 的 Obsidian identities 交给 bundle 的 `publish` JSON CLI。
+- publisher 按 `repositoryRef` 分组，验证 current binding/base/remote/Source/path/wiki ID/before-after hash，要求 worktree changed paths 与 receipt allowlist 完全相等，并在 repository lock 内重验内容与 scope；一仓一 commit + draft PR，所有 PR 用 run ID 与 peer URLs 协调。
+- `.adapter/context/<feature-slug>.wiki-publish.json` 是本地恢复状态。commit 前先记录已验证 Git `stagedTree` object ID，普通 commit 失败也恢复 clean base，重跑时无需重复 Note apply；local commit、remote branch、GitHub PR 中断则通过现有 refs/PR 查询恢复。固定 staged tree/commit 后 base worktree 必须干净，防止新 Capture 改动混入旧 run。
+- 发布期间 repository lock 让 formal read fail-closed；成功或普通外部失败都恢复 base 后移除 lock，base 恢复本身失败则保留 lock。publisher 禁止自动 merge/approve/force-push/reset/stash/clean/delete branch。开放 PR 永不成为 runtime truth，必须 merge + base sync + revalidation 后才可见。
+
+### 理由
+
+- journal receipt 是 Capture 已审核写入与 Git 发布之间唯一足够严格的 allowlist；重新扫描整个 Vault 会扩大 scope，也无法区分本轮 accepted changes。
+- run manifest 与外部 Git/GitHub identity 一起保存最小恢复状态，可处理多仓部分成功，又不把 Note body、token 或凭据复制进项目。
 - 机械 helper 只保证数据完整性，不替代 `update-wiki` 的 durable/ownership/policy 语义门。
 - 同一 feature identity 与 Carry/Bind sidecar 对齐，host 不需要暴露 plan 文档或引擎路径。
 

@@ -6,6 +6,7 @@ import { readNotesByWikiIdsTool, readNotesTool } from './tools/read.js';
 import { graphNeighborsTool } from './tools/graph.js';
 import { applyNoteChangeTool, proposeNoteChangeTool, type NoteChangeInput } from './tools/write.js';
 import { runWriteBridgeFromEnvironment } from './write-bridge.js';
+import { publishFromFoldedJournal } from './publish.js';
 
 async function readJsonRequest(): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -53,8 +54,13 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
   }
+  if (subcommand === 'publish') {
+    const request = await readJsonRequest();
+    process.stdout.write(`${JSON.stringify(publishFromFoldedJournal(request))}\n`);
+    return;
+  }
   if (subcommand !== undefined) {
-    throw new Error('Unknown subcommand. Run with no arguments for MCP stdio, or status, read-notes, read-notes-by-wiki-ids, graph-neighbors, propose-note-change, apply-note-change, or serve-write-bridge.');
+    throw new Error('Unknown subcommand. Run with no arguments for MCP stdio, or status, read-notes, read-notes-by-wiki-ids, graph-neighbors, propose-note-change, apply-note-change, publish, or serve-write-bridge.');
   }
   const server = createServer();
   await server.connect(new StdioServerTransport());

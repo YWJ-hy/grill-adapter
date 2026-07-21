@@ -3229,8 +3229,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path5) {
-      let input = path5;
+    function removeDotSegments(path6) {
+      let input = path6;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3482,8 +3482,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path5, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path5 && path5 !== "/" ? path5 : void 0;
+        const [path6, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path6 && path6 !== "/" ? path6 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -7132,10 +7132,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path5) {
-  if (!path5)
+function getElementAtPath(obj, path6) {
+  if (!path6)
     return obj;
-  return path5.reduce((acc, key) => acc?.[key], obj);
+  return path6.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7544,11 +7544,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path5, issues) {
+function prefixIssues(path6, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path5);
+    iss.path.unshift(path6);
     return iss;
   });
 }
@@ -7695,16 +7695,16 @@ function flattenError(error2, mapper = (issue2) => issue2.message) {
 }
 function formatError(error2, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error3, path5 = []) => {
+  const processError = (error3, path6 = []) => {
     for (const issue2 of error3.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path5, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path6, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path5, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path6, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path5, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path6, ...issue2.path]);
       } else {
-        const fullpath = [...path5, ...issue2.path];
+        const fullpath = [...path6, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -14291,8 +14291,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path5, errorMaps, issueData } = params;
-  const fullPath = [...path5, ...issueData.path || []];
+  const { data, path: path6, errorMaps, issueData } = params;
+  const fullPath = [...path6, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -14407,11 +14407,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path5, key) {
+  constructor(parent, value, path6, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path5;
+    this._path = path6;
     this._key = key;
   }
   get path() {
@@ -23328,6 +23328,406 @@ async function runWriteBridgeFromEnvironment(env = process.env) {
   await bridge.close();
 }
 
+// src/publish.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { execFileSync as execFileSync4 } from "node:child_process";
+import {
+  existsSync as existsSync3,
+  mkdirSync as mkdirSync2,
+  readFileSync as readFileSync3,
+  renameSync,
+  rmSync as rmSync2,
+  writeFileSync as writeFileSync2
+} from "node:fs";
+import path5 from "node:path";
+var HashSchema = string2().regex(/^sha256:[a-f0-9]{64}$/);
+var ReceiptIdentitySchema = object({
+  provider: literal("obsidian"),
+  operation: _enum(["create", "update"]),
+  sourceId: string2().min(1),
+  repositoryRef: string2().min(1),
+  bindingDigest: string2().regex(/^[a-f0-9]{64}$/),
+  wikiId: string2().min(1),
+  path: string2().min(1),
+  beforeHash: HashSchema.nullable(),
+  afterHash: HashSchema
+});
+var AppliedReceiptSchema = ReceiptIdentitySchema.extend({ state: literal("applied") });
+var WriteReceiptSchema = discriminatedUnion("state", [
+  ReceiptIdentitySchema.extend({ state: literal("proposed") }),
+  AppliedReceiptSchema
+]);
+var FoldedJournalSchema = object({
+  schemaVersion: literal(1),
+  featureSlug: string2().regex(/^[a-z0-9][a-z0-9._-]*$/),
+  candidates: array(object({
+    candidateId: string2().min(1),
+    status: _enum(["pending", "superseded", "kept", "skipped", "deferred"]),
+    writeReceipt: WriteReceiptSchema.optional()
+  }))
+});
+var RepositoryRunSchema = object({
+  repositoryRef: string2().min(1),
+  baseBranch: string2().min(1),
+  branch: string2().min(1),
+  paths: array(string2().min(1)).min(1),
+  stagedTree: string2().regex(/^[a-f0-9]{40,64}$/).nullable().default(null),
+  commit: string2().regex(/^[a-f0-9]{40,64}$/).nullable(),
+  prUrl: string2().url().nullable(),
+  state: _enum(["pending", "published"])
+});
+var PublishManifestSchema = object({
+  schemaVersion: literal(1),
+  kind: literal("grill-adapter.obsidian-wiki-publish"),
+  runId: string2().uuid(),
+  featureSlug: string2().regex(/^[a-z0-9][a-z0-9._-]*$/),
+  repositories: array(RepositoryRunSchema).min(1)
+});
+var PublishLockFile = ".grill-adapter-wiki.publish.lock";
+function runCommand(executable, args, env, workingDirectory) {
+  try {
+    return String(execFileSync4(executable, args, {
+      cwd: workingDirectory,
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    })).trim();
+  } catch (error2) {
+    const detail = error2 && typeof error2 === "object" && "stderr" in error2 ? String(error2.stderr ?? "").trim() : "";
+    throw new Error(`${executable} ${args.join(" ")} failed${detail ? `: ${detail}` : ""}`);
+  }
+}
+function git(args, env, workingDirectory) {
+  return runCommand("git", args, env, workingDirectory);
+}
+function gitFile(revision, notePath, env, workingDirectory) {
+  try {
+    return String(execFileSync4("git", ["show", `${revision}:${notePath}`], {
+      cwd: workingDirectory,
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    }));
+  } catch {
+    throw new Error(`Git revision ${revision} does not contain ${notePath}`);
+  }
+}
+function changedPaths(worktreeRoot, env) {
+  const tracked = git(["diff", "HEAD", "--name-status", "--"], env, worktreeRoot).split(/\r?\n/).filter(Boolean).map((line) => {
+    const match = /^([MA])\t(.+)$/.exec(line);
+    if (!match) throw new Error(`unsupported staged Wiki change: ${line}`);
+    return normalizeVaultPath(match[2]);
+  });
+  const untracked = git(["ls-files", "--others", "--exclude-standard"], env, worktreeRoot).split(/\r?\n/).filter(Boolean).map(normalizeVaultPath).filter((notePath) => notePath !== PublishLockFile);
+  return [...tracked, ...untracked].sort();
+}
+function samePaths(actual, expected) {
+  return actual.length === expected.length && actual.every((value, index) => value === expected[index]);
+}
+function writeManifest(manifestPath, manifest) {
+  mkdirSync2(path5.dirname(manifestPath), { recursive: true });
+  const temporaryPath = `${manifestPath}.tmp-${process.pid}`;
+  writeFileSync2(temporaryPath, `${JSON.stringify(manifest, null, 2)}
+`, { encoding: "utf8", flag: "wx" });
+  renameSync(temporaryPath, manifestPath);
+}
+function receiptBinding(receipt, bindings) {
+  const binding = bindings.find((candidate) => candidate.sourceId === receipt.sourceId);
+  if (!binding) throw new Error(`write receipt references an unbound Source: ${receipt.sourceId}`);
+  if (binding.repositoryRef !== receipt.repositoryRef) {
+    throw new Error(`write receipt repositoryRef drift for ${receipt.path}`);
+  }
+  if (binding.bindingDigest !== receipt.bindingDigest) {
+    throw new Error(`write receipt binding digest drift for ${receipt.path}`);
+  }
+  if (binding.publishingMode !== "git-pr") {
+    throw new Error(`Obsidian Wiki publishing requires publishing mode git-pr for ${receipt.sourceId}`);
+  }
+  assertPathWithinBinding(receipt.path, binding);
+  return binding;
+}
+function validateReceipt(receipt, binding, env, publishedCommit) {
+  const notePath = normalizeVaultPath(receipt.path);
+  const worktreeRoot = binding.repository.worktreeRoot;
+  const contents = publishedCommit ? gitFile(publishedCommit, notePath, env, worktreeRoot) : readFileSync3(path5.join(worktreeRoot, ...notePath.split("/")), "utf8");
+  const note = parseAtomicNote(contents, notePath);
+  if (note.wikiId !== receipt.wikiId) throw new Error(`write receipt wiki_id drift for ${notePath}`);
+  if (note.contentHash !== receipt.afterHash) throw new Error(`write receipt afterHash drift for ${notePath}`);
+  if (receipt.operation === "create") {
+    try {
+      gitFile(binding.repository.baseBranch, notePath, env, worktreeRoot);
+      throw new Error(`create receipt path already exists on base: ${notePath}`);
+    } catch (error2) {
+      if (error2 instanceof Error && error2.message.includes("already exists")) throw error2;
+    }
+    if (receipt.beforeHash !== null) throw new Error(`create receipt beforeHash must be null: ${notePath}`);
+    return;
+  }
+  if (receipt.beforeHash === null) throw new Error(`update receipt requires beforeHash: ${notePath}`);
+  const baseNote = parseAtomicNote(gitFile(binding.repository.baseBranch, notePath, env, worktreeRoot), notePath);
+  if (baseNote.contentHash !== receipt.beforeHash) throw new Error(`write receipt beforeHash drift for ${notePath}`);
+}
+function commitPaths(commit, env, worktreeRoot) {
+  return git(["diff-tree", "--no-commit-id", "--name-only", "-r", commit], env, worktreeRoot).split(/\r?\n/).filter(Boolean).map(normalizeVaultPath).sort();
+}
+function revisionPathsFromBase(baseBranch, revision, env, worktreeRoot) {
+  return git(["diff", "--name-only", baseBranch, revision, "--"], env, worktreeRoot).split(/\r?\n/).filter(Boolean).map(normalizeVaultPath).sort();
+}
+function buildPrBody(manifest, run) {
+  const peers = manifest.repositories.filter((candidate) => candidate.repositoryRef !== run.repositoryRef).map((candidate) => candidate.prUrl ?? `${candidate.repositoryRef}: pending`);
+  return [
+    `Obsidian Wiki publish run: ${manifest.runId}`,
+    "",
+    "Changed Notes:",
+    ...run.paths.map((notePath) => `- ${notePath}`),
+    "",
+    "Peer PRs:",
+    ...peers.length > 0 ? peers.map((peer) => `- ${peer}`) : ["- none"],
+    "",
+    "This draft is not runtime-visible until it is merged and the configured base worktree is synchronized and revalidated."
+  ].join("\n");
+}
+function parsePrUrl(value) {
+  return string2().url().parse(value);
+}
+function safeSegment(value) {
+  const normalized = value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!normalized) throw new Error(`repositoryRef cannot form a publish branch segment: ${value}`);
+  return normalized;
+}
+function withTemporaryPrBody(manifestPath, run, body, callback) {
+  const bodyPath = `${manifestPath}.${safeSegment(run.repositoryRef)}.md`;
+  writeFileSync2(bodyPath, `${body}
+`, "utf8");
+  try {
+    return callback(bodyPath);
+  } finally {
+    rmSync2(bodyPath, { force: true });
+  }
+}
+function coordinatePeerPrs(manifest, bindingsByRepository, manifestPath, env) {
+  for (const run of manifest.repositories) {
+    if (!run.prUrl) throw new Error(`publish run has no PR URL for ${run.repositoryRef}`);
+    const binding = bindingsByRepository.get(run.repositoryRef);
+    if (!binding) throw new Error(`publish run has no binding for ${run.repositoryRef}`);
+    withTemporaryPrBody(manifestPath, run, buildPrBody(manifest, run), (bodyPath) => runCommand(
+      env.OBSIDIAN_WIKI_GH_CLI || "gh",
+      ["pr", "edit", run.prUrl, "--body-file", bodyPath],
+      env,
+      binding.repository.worktreeRoot
+    ));
+  }
+}
+function publishRepository(manifest, run, binding, receipts, manifestPath, env) {
+  const repository = binding.repository;
+  const worktreeRoot = repository.worktreeRoot;
+  const lockPath = path5.join(worktreeRoot, PublishLockFile);
+  let enteredPublishBranch = false;
+  writeFileSync2(lockPath, `${manifest.runId}
+`, { encoding: "utf8", flag: "wx" });
+  try {
+    if (run.commit === null) {
+      if (run.stagedTree) {
+        for (const receipt of receipts) validateReceipt(receipt, binding, env, run.stagedTree);
+        if (changedPaths(worktreeRoot, env).length > 0) {
+          throw new Error(`repository ${run.repositoryRef} base worktree must be clean while resuming a staged publish tree`);
+        }
+        if (!samePaths(revisionPathsFromBase(run.baseBranch, run.stagedTree, env, worktreeRoot), run.paths)) {
+          throw new Error(`repository ${run.repositoryRef} staged publish tree differs from the applied receipt allowlist`);
+        }
+      } else {
+        for (const receipt of receipts) validateReceipt(receipt, binding, env);
+        if (!samePaths(changedPaths(worktreeRoot, env), run.paths)) {
+          throw new Error(`repository ${run.repositoryRef} changes differ from the applied receipt allowlist under publish lock`);
+        }
+      }
+      const existingBranch = git(["for-each-ref", "--format=%(objectname)", `refs/heads/${run.branch}`], env, worktreeRoot);
+      const baseCommit = git(["rev-parse", run.baseBranch], env, worktreeRoot);
+      if (existingBranch && existingBranch !== baseCommit) {
+        const parent = git(["rev-parse", `${existingBranch}^`], env, worktreeRoot);
+        if (parent !== baseCommit || !samePaths(commitPaths(existingBranch, env, worktreeRoot), run.paths)) {
+          throw new Error(`existing publish branch drift for ${run.repositoryRef}`);
+        }
+        for (const receipt of receipts) validateReceipt(receipt, binding, env, existingBranch);
+        run.commit = existingBranch;
+        run.stagedTree = null;
+        writeManifest(manifestPath, manifest);
+      } else {
+        git(existingBranch ? ["switch", run.branch] : ["switch", "-c", run.branch], env, worktreeRoot);
+        enteredPublishBranch = true;
+        if (run.stagedTree) {
+          git(["restore", "--source", run.stagedTree, "--staged", "--worktree", "--", ...run.paths], env, worktreeRoot);
+        } else {
+          git(["add", "--", ...run.paths], env, worktreeRoot);
+          run.stagedTree = git(["write-tree"], env, worktreeRoot);
+          writeManifest(manifestPath, manifest);
+        }
+        const staged = git(["diff", "--cached", "--name-only", "--"], env, worktreeRoot).split(/\r?\n/).filter(Boolean).sort();
+        if (!samePaths(staged, run.paths)) {
+          throw new Error(`staged paths differ from the receipt allowlist for ${run.repositoryRef}`);
+        }
+        git(["commit", "-m", `docs(wiki): publish ${manifest.featureSlug}`], env, worktreeRoot);
+        const committed = git(["rev-parse", "HEAD"], env, worktreeRoot);
+        for (const receipt of receipts) validateReceipt(receipt, binding, env, committed);
+        run.commit = committed;
+        run.stagedTree = null;
+        writeManifest(manifestPath, manifest);
+      }
+    } else {
+      const localBranchCommit = git(["rev-parse", run.branch], env, worktreeRoot);
+      if (localBranchCommit !== run.commit) throw new Error(`publish branch drift for ${run.repositoryRef}`);
+      if (!samePaths(commitPaths(run.commit, env, worktreeRoot), run.paths)) {
+        throw new Error(`publish commit paths differ from the receipt allowlist for ${run.repositoryRef}`);
+      }
+      for (const receipt of receipts) validateReceipt(receipt, binding, env, run.commit);
+      git(["switch", run.branch], env, worktreeRoot);
+      enteredPublishBranch = true;
+    }
+    if (git(["branch", "--show-current"], env, worktreeRoot) !== run.branch) {
+      git(["switch", run.branch], env, worktreeRoot);
+      enteredPublishBranch = true;
+    }
+    const remoteBranch = git(["ls-remote", "--heads", repository.remote, `refs/heads/${run.branch}`], env, worktreeRoot).split(/\s+/)[0] ?? "";
+    if (remoteBranch && remoteBranch !== run.commit) throw new Error(`remote publish branch drift for ${run.repositoryRef}`);
+    if (!remoteBranch) git(["push", "--set-upstream", repository.remote, run.branch], env, worktreeRoot);
+    const gh = env.OBSIDIAN_WIKI_GH_CLI || "gh";
+    const existing = runCommand(gh, ["pr", "list", "--head", run.branch, "--state", "all", "--json", "url", "--jq", ".[0].url"], env, worktreeRoot);
+    run.prUrl = parsePrUrl(existing || withTemporaryPrBody(
+      manifestPath,
+      run,
+      buildPrBody(manifest, run),
+      (bodyPath) => runCommand(gh, [
+        "pr",
+        "create",
+        "--draft",
+        "--base",
+        run.baseBranch,
+        "--head",
+        run.branch,
+        "--title",
+        `docs(wiki): publish ${manifest.featureSlug}`,
+        "--body-file",
+        bodyPath
+      ], env, worktreeRoot)
+    ));
+    run.state = "published";
+    writeManifest(manifestPath, manifest);
+  } finally {
+    const branch = git(["branch", "--show-current"], env, worktreeRoot);
+    if (branch !== run.baseBranch) git(["switch", run.baseBranch], env, worktreeRoot);
+    if (enteredPublishBranch && run.commit === null) {
+      git(["restore", "--source", run.baseBranch, "--staged", "--worktree", "--", ...run.paths], env, worktreeRoot);
+    }
+    if (git(["branch", "--show-current"], env, worktreeRoot) !== run.baseBranch) {
+      throw new Error(`repository ${run.repositoryRef} could not restore base branch ${run.baseBranch}`);
+    }
+    if (enteredPublishBranch && changedPaths(worktreeRoot, env).length > 0) {
+      throw new Error(`repository ${run.repositoryRef} could not restore a clean base worktree`);
+    }
+    rmSync2(lockPath, { force: true });
+  }
+}
+function publishFromFoldedJournal(input, env = process.env) {
+  const journal = FoldedJournalSchema.parse(input);
+  const receipts = journal.candidates.flatMap((candidate) => candidate.status === "kept" && candidate.writeReceipt?.state === "applied" ? [candidate.writeReceipt] : []);
+  if (receipts.length === 0) throw new Error("folded journal has no kept applied Obsidian write receipts");
+  const receiptPaths = /* @__PURE__ */ new Set();
+  for (const receipt of receipts) {
+    const key = `${receipt.repositoryRef}
+${normalizeVaultPath(receipt.path)}`;
+    if (receiptPaths.has(key)) throw new Error(`duplicate applied receipt path: ${receipt.path}`);
+    receiptPaths.add(key);
+  }
+  const resolution = resolveBindings(env, env.CLAUDE_PROJECT_DIR, { allowStagedWikiChanges: true });
+  if (resolution.errors.length > 0) {
+    throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
+  }
+  const manifestPath = path5.join(resolution.projectDir, ".adapter", "context", `${journal.featureSlug}.wiki-publish.json`);
+  const existingManifest = existsSync3(manifestPath) ? PublishManifestSchema.parse(JSON.parse(readFileSync3(manifestPath, "utf8"))) : void 0;
+  if (existingManifest && existingManifest.featureSlug !== journal.featureSlug) {
+    throw new Error("publish manifest featureSlug does not match the folded journal");
+  }
+  const byRepository = /* @__PURE__ */ new Map();
+  for (const receipt of receipts) {
+    const binding = receiptBinding(receipt, resolution.bindings);
+    const group = byRepository.get(receipt.repositoryRef) ?? [];
+    group.push({ receipt, binding });
+    byRepository.set(receipt.repositoryRef, group);
+  }
+  for (const [repositoryRef, group] of byRepository) {
+    const binding = group[0].binding;
+    const expected = group.map(({ receipt }) => normalizeVaultPath(receipt.path)).sort();
+    const priorRun = existingManifest?.repositories.find((candidate) => candidate.repositoryRef === repositoryRef);
+    if (priorRun?.commit) {
+      for (const { receipt } of group) validateReceipt(receipt, binding, env, priorRun.commit);
+      if (changedPaths(binding.repository.worktreeRoot, env).length > 0) {
+        throw new Error(`repository ${repositoryRef} base worktree must be clean while resuming a fixed publish commit`);
+      }
+      if (!samePaths(commitPaths(priorRun.commit, env, binding.repository.worktreeRoot), expected)) {
+        throw new Error(`repository ${repositoryRef} publish commit differs from the applied receipt allowlist`);
+      }
+    } else if (priorRun?.stagedTree) {
+      for (const { receipt } of group) validateReceipt(receipt, binding, env, priorRun.stagedTree);
+      if (changedPaths(binding.repository.worktreeRoot, env).length > 0) {
+        throw new Error(`repository ${repositoryRef} base worktree must be clean while resuming a staged publish tree`);
+      }
+      if (!samePaths(
+        revisionPathsFromBase(binding.repository.baseBranch, priorRun.stagedTree, env, binding.repository.worktreeRoot),
+        expected
+      )) {
+        throw new Error(`repository ${repositoryRef} staged publish tree differs from the applied receipt allowlist`);
+      }
+    } else {
+      for (const { receipt } of group) validateReceipt(receipt, binding, env);
+      const actual = changedPaths(binding.repository.worktreeRoot, env);
+      if (!samePaths(actual, expected)) {
+        throw new Error(`repository ${repositoryRef} changes differ from the applied receipt allowlist`);
+      }
+    }
+    git(["fetch", "--quiet", binding.repository.remote, binding.repository.baseBranch], env, binding.repository.worktreeRoot);
+    const localBase = git(["rev-parse", "HEAD"], env, binding.repository.worktreeRoot);
+    const remoteBase = git(["rev-parse", `${binding.repository.remote}/${binding.repository.baseBranch}`], env, binding.repository.worktreeRoot);
+    if (localBase !== remoteBase) throw new Error(`repository ${repositoryRef} base branch is not synchronized with its remote`);
+  }
+  const runId = existingManifest?.runId ?? randomUUID2();
+  const manifest = existingManifest ?? {
+    schemaVersion: 1,
+    kind: "grill-adapter.obsidian-wiki-publish",
+    runId,
+    featureSlug: journal.featureSlug,
+    repositories: [...byRepository.entries()].map(([repositoryRef, group]) => ({
+      repositoryRef,
+      baseBranch: group[0].binding.repository.baseBranch,
+      branch: `grill-adapter/wiki/${journal.featureSlug}-${safeSegment(repositoryRef)}-${runId.slice(0, 8)}`,
+      paths: group.map(({ receipt }) => normalizeVaultPath(receipt.path)).sort(),
+      stagedTree: null,
+      commit: null,
+      prUrl: null,
+      state: "pending"
+    }))
+  };
+  const expectedRepositories = [...byRepository.entries()].map(([repositoryRef, group]) => ({
+    repositoryRef,
+    baseBranch: group[0].binding.repository.baseBranch,
+    paths: group.map(({ receipt }) => normalizeVaultPath(receipt.path)).sort()
+  }));
+  const actualRepositories = manifest.repositories.map(({ repositoryRef, baseBranch, paths }) => ({ repositoryRef, baseBranch, paths }));
+  if (JSON.stringify(actualRepositories) !== JSON.stringify(expectedRepositories)) {
+    throw new Error("publish manifest repositories differ from the folded journal receipts");
+  }
+  if (!existingManifest) writeManifest(manifestPath, manifest);
+  const bindingsByRepository = new Map(
+    [...byRepository.entries()].map(([repositoryRef, group]) => [repositoryRef, group[0].binding])
+  );
+  for (const run of manifest.repositories) {
+    if (run.state === "published") continue;
+    const group = byRepository.get(run.repositoryRef);
+    publishRepository(manifest, run, group[0].binding, group.map(({ receipt }) => receipt), manifestPath, env);
+  }
+  coordinatePeerPrs(manifest, bindingsByRepository, manifestPath, env);
+  return manifest;
+}
+
 // src/index.ts
 async function readJsonRequest() {
   const chunks = [];
@@ -23371,8 +23771,14 @@ async function main() {
 `);
     return;
   }
+  if (subcommand === "publish") {
+    const request = await readJsonRequest();
+    process.stdout.write(`${JSON.stringify(publishFromFoldedJournal(request))}
+`);
+    return;
+  }
   if (subcommand !== void 0) {
-    throw new Error("Unknown subcommand. Run with no arguments for MCP stdio, or status, read-notes, read-notes-by-wiki-ids, graph-neighbors, propose-note-change, apply-note-change, or serve-write-bridge.");
+    throw new Error("Unknown subcommand. Run with no arguments for MCP stdio, or status, read-notes, read-notes-by-wiki-ids, graph-neighbors, propose-note-change, apply-note-change, publish, or serve-write-bridge.");
   }
   const server = createServer();
   await server.connect(new StdioServerTransport());

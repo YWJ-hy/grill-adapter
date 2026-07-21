@@ -1,6 +1,6 @@
 # Obsidian Wiki Source 绑定
 
-本页描述 Obsidian Wiki 的受控运行边界：项目只能解析它明确绑定的 Source；规划期将受绑定限制的 atomic Note 和 Skill Card 选择承载为 schema-v6 sidecar；执行期按 stable ID reread 权威 Note；review 后普通 Note 只能经本机 loopback write bridge 做 proposal + expected-hash CAS 写入。schema-v5 sidecar 在过渡期只读，不能再由新规划生成；Git PR 发布和迁移仍由后续切片完成。
+本页描述 Obsidian Wiki 的受控运行边界：项目只能解析它明确绑定的 Source；规划期将受绑定限制的 atomic Note 和 Skill Card 选择承载为 schema-v6 sidecar；执行期按 stable ID reread 权威 Note；review 后普通 Note 只能经本机 loopback write bridge 做 proposal + expected-hash CAS 写入，再由 applied receipts 驱动可恢复的 GitHub draft-PR 发布。schema-v5 sidecar 在过渡期只读，不能再由新规划生成；迁移仍由后续切片完成。
 
 ## 运行边界
 
@@ -135,6 +135,21 @@ node mcp/obsidian-wiki/dist/index.js serve-write-bridge
 4. bridge 随后返回 `wikiId`、path、content hash，MCP 客户端还会核对 post-write identity 与 proposal 是否完全匹配。成功只表示工作树中的 staged knowledge state；合并、base 同步与正式 runtime 可见性由后续 Git PR publishing 流程负责。
 
 JSON CLI 同样暴露 `propose-note-change` / `apply-note-change`，请求从 stdin 读取；它们仍从当前项目 binding 解析 Source，不能接受任意 Vault/root 覆盖。
+
+## GitHub draft-PR 发布
+
+`update-wiki` 在所有 outcome 落入 journal 后再次 fold。只有 `status: kept` 且 `writeReceipt.state: applied` 的 Obsidian receipt 能进入发布 allowlist；`proposed`、`deferred`、无 receipt 的 kept candidate 都不会发布。agent 先按 `repositoryRef` 展示 Source/path/operation/after-hash，并取得这一次 commit/push/draft-PR scope 的明确确认，然后运行：
+
+```bash
+python3 <plugin-root>/scripts/wiki_candidate_journal.py fold \
+  --journal .adapter/context/<feature-slug>.wiki-candidates.jsonl \
+  --feature-slug <feature-slug> \
+| node <plugin-root>/mcp/obsidian-wiki/dist/index.js publish
+```
+
+publisher 每仓依次验证当前 binding digest、`publishing.mode: git-pr`、remote identity、base branch 与 remote/base 同步、Source containment、wiki ID、before/after hash，以及 worktree changed paths 与 receipts 完全相等；拿到 repository lock 后会再次核对 Note hash 与精确 path scope。它创建 `.grill-adapter-wiki.publish.lock` 阻止 formal read，在 run 专属 branch 上只 add allowlist paths、commit/push、创建 draft PR，并在所有仓库拿到 URL 后回填 peer PR 列表。成功或普通外部失败都会切回 clean base 后移除 lock；若 base 恢复本身失败则保留 lock 并 fail-closed。publisher 不 merge、approve、force-push、reset、stash、clean 或删 branch。
+
+本地 `.adapter/context/<feature-slug>.wiki-publish.json` 是恢复 receipt，不提交。commit 前失败时，manifest 的 `stagedTree` 只保存已验证 Git tree 的 object ID（不保存 Note body），publisher 清理 base index/worktree；重跑时从该 tree 恢复同一 allowlist。已有 local commit、remote branch 或 GitHub PR 会按 content hash/commit/path/URL 重新核验并复用；base 上若出现新的 Capture 改动则 fail-closed，必须另行处理。PR 分支内容不是 runtime truth；只有人工 merge 后，配置的 base worktree 完成同步并重新通过 binding/Note 校验，formal research 才能读取。
 
 ## 诊断与失败模式
 

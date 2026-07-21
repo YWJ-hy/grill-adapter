@@ -39,7 +39,7 @@ grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 
 | **Disclose** 选 wiki | 独立 `/grill-adapter:wiki-research` skill（驱动 `grill-adapter:wiki-researcher` agent），任何 host 都能调 | grill-with-docs 质询期 |
 | **Carry** 带约束 | schema-v6 `.adapter/context/<feature-slug>.wiki-context.json` 保存绑定 digest、atomic Note ID/path/hash/summary、独立 Skill Card 与 ticket roster 指纹，绝不保存 Note body；锚点是 feature，不是 plan 文件 | to-tickets 据 Obsidian selection 写 |
 | **Bind** 执行期 reread | schema-v5/v6 都由每 ticket `/grill-adapter:wiki-materialize <ticket>` 精确读取；schema-v6 仅经 bound Obsidian MCP stable-ID 读取路由硬 Note、角色 Skill Card 和 1 跳 `depends_on`，任何漂移 fail-closed；`wiki-reread` hook 只做 SessionStart 提醒 | implement 逐 ticket |
-| **Capture** 回写 | `/grill-adapter:update-wiki`（最终证据 reconciliation + related-claim 显式归并 + 语义门），其可选前置步经 `grill_context_to_candidates.py` 吃 grill CONTEXT.md/ADR 增量；Obsidian provider 经 proposal → loopback bridge CAS apply，并把 candidate-to-write receipt 留给 publishing | code-review 后 |
+| **Capture** 回写 | `/grill-adapter:update-wiki`（最终证据 reconciliation + related-claim 显式归并 + 语义门），其可选前置步经 `grill_context_to_candidates.py` 吃 grill CONTEXT.md/ADR 增量；Obsidian provider 经 proposal → loopback bridge CAS apply → receipt allowlist Git/draft-PR publish | code-review 后 |
 
 `/grill-adapter:wiki-materialize` 复用 `scripts/wiki_materialize_task.py`——本地 + `github_mcp` 两类 section 统一取，含**执行期有界 1 跳 `depends-on` 闭包**。
 
@@ -53,9 +53,9 @@ grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 
 ## 引擎组件
 
 - **执行层脚本 `scripts/*.py`**：`wiki_common`（1 跳邻居、depends-on 闭包等共享逻辑）、`wiki_context_render`（schema-v5 只读兼容，以及 schema-v6 Obsidian metadata Carry 的校验/渲染/scaffold/finalize；task 身份与指纹来自 host 产出的 ticket roster）、`wiki_materialize_task`（schema-v5 的单一固定取数器：本地 + github_mcp reread + 1 跳闭包）、`wiki_candidate_journal`（候选事件校验、锁内追加、生命周期 fold）、`wiki_generate_section_index` / `wiki_update_check` / `wiki_migrate_helper`、`wiki_graph_neighbors`、`wiki_section` / `wiki_read_section` / `wiki_select_target` / `wiki_apply_update` / `wiki_import` / `init-wiki` / `update-wiki`；`source_truth_settings` / `source_truth_common`；`lanhu_settings`；`scaffold_practice_skill`；`grill_context_to_candidates`（grill→journal 桥）。
-- **obsidian-wiki MCP + write bridge `mcp/obsidian-wiki/`**：同一提交型 bundle 暴露绑定只读工具、Note proposal/apply MCP/JSON CLI，以及独立 `serve-write-bridge` 入口。MCP 只按当前项目 binding 选择 Source；bridge 只监听 loopback，以环境 token 鉴权，且只接受启动白名单中的项目与 Source root。每次请求重新读取该项目 binding + Source manifest，独立计算 effective policy/neutrality，再执行 schema/identity/typed-link、`_meta` 与 expected-hash CAS 校验；per-Note lock 串行 bridge 写，create 以 no-replace atomic link 落盘，update 用宿主原生 atomic exchange 保留旧目标并核 hash，冲突时 exchange 回滚。bridge 不随 MCP 自动开放端口。
+- **obsidian-wiki MCP + write/publish bundle `mcp/obsidian-wiki/`**：同一提交型 bundle 暴露绑定只读工具、Note proposal/apply MCP/JSON CLI、可恢复 `publish` JSON CLI，以及独立 `serve-write-bridge` 入口。bridge 只监听 loopback，以 token 鉴权并对 bound Source 做 policy/neutrality/CAS 校验。publisher 只消费 journal 中 `kept+applied` receipts，按 `repositoryRef` 锁仓并在锁内重验 base/remote/path/hash；commit 前用 Git staged-tree object ID 保存可恢复身份，创建 allowlist commit + draft PR、协调 peer PR，并把 worktree 恢复到 clean base。run manifest 留在项目 `.adapter/context/`，开放 PR 不进入 formal read。
 - **shared-wiki MCP `mcp/shared-wiki/`**：TypeScript MCP server，随插件 MCP 声明自启；Claude Code 从 `CLAUDE_PROJECT_DIR`、Codex 从 MCP request 的 `x-codex-turn-metadata.workspaces`（并兼容标准 roots capability）定位项目，再读该项目 `.shared-adapter/settings.json` 自配置；直接 CLI 仍可从进程 cwd 定位。MCP server 先注册工具，首次调用时解析绑定，未声明或多 root 歧义均 fail-closed。其余 read/graph/CLI 与 bundle 不变式不变。
-- **模板与导出**：`wiki-template/`、`wiki-repo-skills/` + `wiki-repo-ci/`、`contracts/`（含 wiki context/selection、ticket roster 与 `wiki-candidate-journal-v1.example.jsonl` 契约示例）。
+- **模板与导出**：`wiki-template/`、`wiki-repo-skills/` + `wiki-repo-ci/`、`contracts/`（含 wiki context/selection、ticket roster、candidate journal 与 publish run manifest 契约示例）。
 
 ## section 图
 

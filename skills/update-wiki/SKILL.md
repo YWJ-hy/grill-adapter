@@ -58,6 +58,24 @@ When `.shared-adapter/settings.json` selects `wiki.provider: obsidian`, never ed
 
 The loopback write bridge is the only automated Obsidian writer. Neither this skill nor a script may accept an arbitrary Vault/root override.
 
+### Publish applied Obsidian receipts
+
+After every candidate outcome is recorded, fold the journal again. If it contains no `kept` candidate with an `applied` Obsidian write receipt, there is nothing to publish. Otherwise:
+
+1. Show the exact publish scope grouped by `repositoryRef`: Source, Note path, operation, and after-hash. Obtain explicit confirmation for the resulting commits, pushes, and draft PRs. Note-write authorization does not implicitly authorize Git publishing.
+2. After confirmation, pipe the mechanically validated folded journal into the bundled publisher:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py fold \
+  --journal .adapter/context/<feature-slug>.wiki-candidates.jsonl \
+  --feature-slug <feature-slug> \
+| node ${CLAUDE_PLUGIN_ROOT}/mcp/obsidian-wiki/dist/index.js publish
+```
+
+3. Report each `repositoryRef`, branch, commit, and draft PR URL. The publisher accepts only current-binding receipts, requires the base revision to match its configured remote, commits exactly the allowlisted Note paths, and restores every worktree to its base branch. It records `.adapter/context/<feature-slug>.wiki-publish.json`; keep this local and never commit it.
+4. On interruption or partial multi-repository failure, fix the reported external problem and run the exact same fold-to-publish command. Before a commit exists, the run manifest retains only the verified Git staged-tree object ID while the publisher restores a clean base; later it resumes from the staged tree, commit, remote branch, or GitHub PR without repeating Note apply, commits, pushes, or PRs. Do not delete the manifest or manually recreate its branches.
+5. Never merge, approve, force-push, reset, stash, clean, or delete branches here. An open PR is not published runtime knowledge. Formal research can see the change only after human merge, configured base-worktree synchronization, and normal binding/Note revalidation.
+
 ### Optional pre-step — convert a grill knowledge increment
 
 Only when the project keeps grill-style knowledge files (`CONTEXT.md`, `docs/adr/`): diff that increment into candidate events first, appending to the same feature journal, then fold the journal as above.
@@ -167,6 +185,7 @@ These scripts are helpers only. They do not replace agent judgment.
 | `wiki_update_check.py --wiki-root all` | Validate index/format mechanics, configured shared-wiki neutrality guards, and dangling `[[page#section]]` edges across roots. It must not decide whether durable knowledge exists. |
 | `update-wiki.py --wiki-root project|shared` | Refresh indexed wiki page summaries for the changed local root; shared root refreshes reject configured neutrality violations. |
 | `obsidian_wiki_propose_note_change` / `obsidian_wiki_apply_note_change` | Validate, preview, and CAS-write a bound atomic Note through the authenticated loopback bridge. They must not decide durable knowledge or ownership. |
+| `obsidian-wiki ... publish` JSON CLI | Group applied journal receipts by repository, create resumable allowlisted commits and draft GitHub PRs, coordinate peer PRs, and restore base worktrees. |
 | shared-wiki MCP tools | Optional legacy GitHub-backed shared wiki read/search/validate/branch+PR path. They submit mechanical PRs only and must not decide durable knowledge, ownership, or neutrality. |
 
 ## Forbidden Shortcuts

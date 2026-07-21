@@ -80,6 +80,9 @@ done
 # ${CLAUDE_PLUGIN_ROOT} is never substituted, and a baked absolute path would rot on the
 # next plugin update (the cache path is version-scoped).
 for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
+  need "$f" 'resumable publisher'
+  need "$f" 'explicit Git publishing confirmation'
+  need "$f" 'Open PR content remains unavailable to formal research'
   deny "$f" '__GRILL_ADAPTER_ROOT__'
   deny "$f" 'CLAUDE_PLUGIN_ROOT'
   deny "$f" 'PLUGIN_ROOT'
@@ -90,6 +93,7 @@ done
 # consumes its output, where the path does get substituted.
 need "$ROOT/skills/update-wiki/SKILL.md" 'grill_context_to_candidates.py'
 need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/scripts/grill_context_to_candidates.py'
+need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/mcp/obsidian-wiki/dist/index.js publish'
 
 # no residual Superpowers host references in the host blocks
 if grep -nE 'Superpowers' "$GRILL" "$PLAIN" | grep -vE '\.adapter/'; then

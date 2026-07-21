@@ -94,7 +94,7 @@ cd grill-adapter
 | 2 定 spec | `/to-spec` | source-truth Verify：`/grill-adapter:source-truth-check`（spec-pre） | spec |
 | 3 拆 ticket | `/to-tickets` | Disclose+Carry：`/grill-adapter:wiki-research`（plan）→ scaffold sidecar → 由真实 ticket 建 roster → `--finalize` | `.adapter/context/<feature-slug>.{wiki-context,ticket-roster}.json` |
 | 4 实现 | `/implement` | Bind：每 ticket `/grill-adapter:wiki-materialize <ticket>`；`source-truth-lint` hook | 代码 + 硬约束整段 reread |
-| 5 评审后 | `/code-review` → `/grill-adapter:update-wiki` | Capture：`/grill-adapter:update-wiki`（内部可选前置步骤把 grill 的 CONTEXT.md/ADR 增量转成候选） | 回写的 wiki section |
+| 5 评审后 | `/code-review` → `/grill-adapter:update-wiki` | Capture：最终证据 reconcile → proposal/apply → 确认 scope 后按 repository 发布 resumable draft PR | applied receipt + `.wiki-publish.json` + draft PR |
 | 6 调试（如需） | `/diagnosing-bugs` → `/grill-adapter:break-loop` | debug Disclose + 复盘→Capture | 修复 + 复盘候选 |
 
 每一步的命令和约定都写在项目 `CLAUDE.md` 或 `AGENTS.md` 的 grill 约定块里。想看完整流程叙述见 `USER_FLOW_CN.md`。
