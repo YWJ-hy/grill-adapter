@@ -1,5 +1,10 @@
 import { resolveBindings } from '../bindings.js';
-import { searchBoundNotes, type RetrievedNote } from '../retrieval.js';
+import {
+  assertUniqueBoundSkillCard,
+  searchBoundNotes,
+  type RetrievedNote,
+} from '../retrieval.js';
+import { assertSkillCardAvailable } from '../skill-card.js';
 
 const edgeTypes = [
   ['depends_on', 'dependsOn'],
@@ -21,13 +26,37 @@ function exactlyOne(notes: RetrievedNote[], description: string): RetrievedNote 
   return notes[0];
 }
 
-function resolveByWikiId(wikiId: string, env: NodeJS.ProcessEnv, bindings: ReturnType<typeof resolveBindings>['bindings']): RetrievedNote {
-  return exactlyOne(searchBoundNotes(`[wiki_id:${wikiId}]`, bindings, env).filter((note) => note.wikiId === wikiId), `wiki_id ${wikiId}`);
+type Resolution = ReturnType<typeof resolveBindings>;
+
+function checked(note: RetrievedNote, resolution: Resolution, env: NodeJS.ProcessEnv): RetrievedNote {
+  const binding = resolution.bindings.find(
+    (candidate) => candidate.bindingDigest === note.bindingDigest,
+  );
+  assertSkillCardAvailable(note, resolution.projectDir, {
+    mode: 'discovery',
+    baseSynchronized: binding?.repositoryHealth.baseSynchronized === true,
+  });
+  assertUniqueBoundSkillCard(note, resolution.bindings, env);
+  return note;
 }
 
-function resolveByLink(link: string, env: NodeJS.ProcessEnv, bindings: ReturnType<typeof resolveBindings>['bindings']): RetrievedNote {
+function resolveByWikiId(wikiId: string, env: NodeJS.ProcessEnv, resolution: Resolution): RetrievedNote {
+  const note = exactlyOne(
+    searchBoundNotes(`[wiki_id:${wikiId}]`, resolution.bindings, env)
+      .filter((candidate) => candidate.wikiId === wikiId),
+    `wiki_id ${wikiId}`,
+  );
+  return checked(note, resolution, env);
+}
+
+function resolveByLink(link: string, env: NodeJS.ProcessEnv, resolution: Resolution): RetrievedNote {
   const targetPath = linkPath(link);
-  return exactlyOne(searchBoundNotes(`path:"${targetPath}"`, bindings, env).filter((note) => note.path === targetPath), `typed edge ${link}`);
+  const note = exactlyOne(
+    searchBoundNotes(`path:"${targetPath}"`, resolution.bindings, env)
+      .filter((candidate) => candidate.path === targetPath),
+    `typed edge ${link}`,
+  );
+  return checked(note, resolution, env);
 }
 
 export function graphNeighborsTool(input: { wikiIds: string[] }, env: NodeJS.ProcessEnv = process.env) {
@@ -37,11 +66,11 @@ export function graphNeighborsTool(input: { wikiIds: string[] }, env: NodeJS.Pro
   }
   const neighbors: Record<string, Array<{ type: EdgeType; wikiId: string; path: string }>> = {};
   for (const wikiId of [...new Set(input.wikiIds)]) {
-    const source = resolveByWikiId(wikiId, env, resolution.bindings);
+    const source = resolveByWikiId(wikiId, env, resolution);
     const direct = new Map<string, { type: EdgeType; wikiId: string; path: string }>();
     for (const [type, property] of edgeTypes) {
       for (const link of source.edges[property]) {
-        const target = resolveByLink(link, env, resolution.bindings);
+        const target = resolveByLink(link, env, resolution);
         direct.set(`${type}\n${target.wikiId}`, { type, wikiId: target.wikiId, path: target.path });
       }
     }

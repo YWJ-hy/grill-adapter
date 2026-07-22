@@ -55,6 +55,12 @@
       "summary": "Review the runtime boundary with the project Skill Card.",
       "contentHash": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
       "bindingDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "skillProvider": "claude-code-project",
+      "skillName": "review-runtime",
+      "skillVersion": "1.0.0",
+      "skillContractHash": "sha256:abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      "skillTriggers": ["runtime review", "transaction boundary review"],
+      "discoveryState": "discoverable",
       "requiredFor": ["reviewer"],
       "destination": {
         "kind": "global",

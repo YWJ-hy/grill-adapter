@@ -11,7 +11,7 @@ Use one `feature-slug` for the entire workflow. Choose the stage from `grill-wit
 
 ## Append
 
-Capture one atomic claim. Use `candidate-type=wiki_note` for facts, constraints, decisions, guides, conventions, and gotchas. Use `candidate-type=skill_card` only for an executable pack registration candidate. Include final evidence paths or issue references in `source-ref`; never use a Lanhu evidence package as a source.
+Capture one atomic claim. Use `candidate-type=wiki_note` for facts, constraints, decisions, guides, conventions, and gotchas. Use `candidate-type=skill_card` only after `scaffold-practice-skill` has produced a valid executable pack identity. Include final evidence paths or issue references in `source-ref`; never use a Lanhu evidence package as a source.
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py append \
@@ -23,6 +23,18 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py append \
   --source-ref "<path-or-issue>" [--source-ref "<another-ref>"] \
   [--task-id <ticket-id>] [--carve-out] [--origin <producer>]
 ```
+
+For `skill_card`, also pass every structured registration field. Prefer the scaffold helper's `stage-card` command, which computes the contract hash and appends these fields without hand calculation:
+
+```bash
+  --skill-provider claude-code-project --skill-name <name> \
+  --skill-version <SKILL.md version> --skill-contract-hash <sha256:...> \
+  --skill-role implementer|reviewer [--skill-role ...] \
+  --skill-trigger "<scenario>" [--skill-trigger ...] \
+  --skill-summary "<theme summary>"
+```
+
+The candidate always records `discoveryState: pending`. Neither a pending candidate, an applied Note, nor an open draft PR is discoverable runtime knowledge.
 
 Keep the returned `candidateId`. The helper locks the journal, replays every existing event, and refuses corrupt, truncated, duplicate, or illegal data before appending.
 
@@ -63,7 +75,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py outcome \
   --status kept|skipped|deferred --reason "<Capture result>"
 ```
 
-For an Obsidian proposal that must pause, append `deferred` with `--write-state proposed`. If resumed Capture must re-propose after drift, append another deferred proposed receipt; the latest valid proposal replaces the folded recovery view without erasing history. A receipt-less re-deferral updates the reason but retains that latest proposal, so it cannot bypass the eventual identity check. After a successful apply, append `kept` with the same identity as that latest proposal and `--write-state applied`. Supply the exact `sourceId`, `repositoryRef`, `bindingDigest`, `wikiId`, path, operation, and diff hashes returned by the write tools; omit `--before-hash` only for create. The helper accepts `proposed` only with `deferred` and `applied` only with `kept`, and rejects a missing or mismatched applied receipt after a proposal.
+For an Obsidian proposal that must pause, append `deferred` with `--write-state proposed`. If resumed Capture must re-propose after drift, append another deferred proposed receipt; the latest valid proposal replaces the folded recovery view without erasing history. A receipt-less re-deferral updates the reason but retains that latest proposal, so it cannot bypass the eventual identity check. After a successful apply, append `kept` with the same identity as that latest proposal and `--write-state applied`. Supply the exact `sourceId`, `repositoryRef`, `bindingDigest`, `wikiId`, path, operation, and diff hashes returned by the write tools; omit `--before-hash` only for create. For a Skill Card, also copy every field from the write result's `skillRegistration` using the same `--skill-*` flags as the candidate append example above. The helper requires an applied receipt for a kept Skill Card and rejects a missing or mismatched registration.
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py outcome \
@@ -76,6 +88,6 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py outcome \
   --before-hash <sha256:...> --after-hash <sha256:...>
 ```
 
-The folded candidate exposes this as `writeReceipt`. It contains no Note body, token, or authorization secret; it is the allowlisted candidate-to-write identity needed by later publishing and recovery.
+The folded candidate exposes this as `writeReceipt`. For a Card, its nested `skillRegistration` must exactly equal the staged candidate registration. It contains no Note body, token, or authorization secret; it is the allowlisted candidate-to-write identity needed by later publishing and recovery.
 
 Retain the journal as the interruption/recovery receipt. The Stop hook is silent once every candidate is terminal; it continues to remind on pending/deferred work and reports invalid journals.

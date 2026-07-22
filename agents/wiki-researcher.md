@@ -41,7 +41,7 @@ focus: <optional module, concern, or changed files>
 2. Search each bound Source narrowly with task/focus terms using `obsidian_wiki_search`. Search results are metadata only.
 3. Select only Notes whose active, agent-visible metadata applies. Keep project and Shared Notes independently represented by their `sourceId` and `role`.
 4. For each proposed Note, use `obsidian_wiki_read_notes` for one bounded stable batch. Use its returned metadata and `snapshotHash`; do not preserve `content` in the output.
-5. Select a Skill Card independently only when a Note declares non-empty `skillRoles` and its summary/trigger applies. Copy `skillRoles` to `requiredFor`; never infer or broaden those roles.
+5. Select a Skill Card independently only when its result declares `discoveryState: discoverable`, non-empty `skillRoles`, and matching `skillTriggers`. The MCP has already proved that the Card came from a synchronized remote base and that its provider, pack name, version, and contract hash are available in the current project. Copy those identity fields unchanged and copy `skillRoles` to `requiredFor`; never infer or broaden them.
 6. Run one `obsidian_wiki_graph_neighbors` query for the selected Note `wikiId` values. Consider direct typed neighbors only; select a neighbor only if it independently applies. Do not expand a neighbor's neighbors.
 7. During `brainstorm`, return only relevant Note metadata. During `plan`, produce the same bounded metadata selection for Carry. During `debug`, select at most two Notes and state that their claims require code/test verification.
 
@@ -54,7 +54,7 @@ The selection has:
 - `snapshotHash`: exact stable-batch hash from `obsidian_wiki_read_notes`.
 - `wikiBindings`: one `{sourceId, role, bindingDigest}` per selected bound Source.
 - `wikiNotes`: only `{sourceId, role, path, wikiId, type, constraintStrength, summary, contentHash, bindingDigest}`.
-- `requiredSkills`: independent Card metadata with `requiredFor` copied from `skillRoles`.
+- `requiredSkills`: independent Card metadata with `requiredFor` copied from `skillRoles`, plus the mechanically verified `skillProvider`, `skillName`, `skillVersion`, `skillContractHash`, `skillTriggers`, and `discoveryState`.
 - `caveats` and `maintenanceWarnings` when relevant.
 
 Never emit `content`, `destination`, `taskRouting`, `taskWikiRefs`, `taskFingerprint`, ticket identifiers, or full Note bodies.

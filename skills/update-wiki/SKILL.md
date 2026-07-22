@@ -54,9 +54,20 @@ When `.shared-adapter/settings.json` selects `wiki.provider: obsidian`, never ed
 2. Show the returned structured diff to the user. A proposal does not write. If Capture pauses after a valid proposal, record `deferred` with a `proposed` write receipt using the exact proposal identity and hashes. On resume, Note drift may require a fresh proposal and another deferred receipt; only the latest validated proposal can transition to applied.
 3. Respect the returned effective policy: `deny` stops; `confirm` requires explicit user authorization; `direct` may proceed without a separate confirmation. Authorization never weakens `deny`.
 4. Call `obsidian_wiki_apply_note_change` with the exact proposal inputs and `authorized: true` only after confirmation when required. Treat authentication failure, expected-hash conflict, binding/path/schema/identity/typed-link failure, or Shared neutrality rejection as `deferred`; do not retry by editing files directly.
-5. Record `kept` only after the apply response returns matching post-write `wikiId`, path, and content hash. Include an `applied` write receipt with the returned `sourceId`, `repositoryRef`, `bindingDigest`, `wikiId`, path, operation, and before/after hashes. The receipt contains no Note body or secret. The changed worktree plus receipt is staged knowledge state for the later publishing flow; do not claim it is merged or runtime-visible.
+5. Record `kept` only after the apply response returns matching post-write `wikiId`, path, and content hash. Include an `applied` write receipt with the returned `sourceId`, `repositoryRef`, `bindingDigest`, `wikiId`, path, operation, and before/after hashes; for a Card, also copy the returned `skillRegistration` exactly. The receipt contains no Note body or secret. The changed worktree plus receipt is staged knowledge state for the later publishing flow; do not claim it is merged or runtime-visible.
 
 The loopback write bridge is the only automated Obsidian writer. Neither this skill nor a script may accept an arbitrary Vault/root override.
+
+For a folded `skill_card` candidate, require its complete `skillRegistration` identity and re-run `scaffold_practice_skill.py validate` before proposal. Render one atomic `type: guide` Card whose frontmatter copies these fields exactly:
+
+- `skill_provider` ← `provider`
+- `skill_name` ← `name`
+- `skill_version` ← `version`
+- `skill_contract_hash` ← `contractHash`
+- `skill_roles` ← `roles`
+- `skill_triggers` ← `triggers`
+
+Keep the body to a short discovery description; executable rules stay in the pack. Create/update this Card through the same proposal, authorization, applied receipt, and publisher steps as any other atomic Note. Copy the write result's complete `skillRegistration` into the journal receipt; a Skill Card cannot reach `kept` without an applied receipt whose registration exactly matches the staged candidate. The write boundary also rejects a second Card with the same provider/name pack identity. The journal registration remains `pending` even after apply and while its draft PR is open. Report it as `discoverable` only when a later formal MCP search returns the sole Card for that pack from the merged, synchronized base and verifies the same provider/version/hash.
 
 ### Publish applied Obsidian receipts
 
@@ -166,8 +177,8 @@ Some durable knowledge is a **reusable workflow/process** — a stable multi-ste
 
 When a candidate is process-shaped, reusable, and better executed than read:
 1. Do not write it as a wiki leaf page here.
-2. Get user authorization, then hand it off to the `scaffold-practice-skill` skill to create a new pack or update an existing one. That skill also registers the discovery card under `guides/skills.md`, so planning can later surface "use skill X".
-3. `update-wiki` only routes this candidate; it does not create or edit skills itself, and the handoff does not bypass the selected root's `wiki.updateAuthorization` policy.
+2. Get user authorization, then hand it off to `scaffold-practice-skill` to create/update and validate a versioned pack. That skill stages a content-addressed `skill_card` candidate in this feature journal; it never writes a discovery index.
+3. Resume Capture for that structured candidate. Create or update its atomic Obsidian Card through the reviewed write/publish path above. Do not mark an open-PR Card discoverable.
 
 A candidate that is a fact, contract, decision, or gotcha still belongs in the wiki via the steps above. Only process-shaped, executable knowledge is handed off.
 
@@ -184,7 +195,7 @@ These scripts are helpers only. They do not replace agent judgment.
 | `wiki_generate_section_index.py <file>` | Regenerate a page's companion section index and rebuild the root `.graph.json` (section nodes, `[[ ]]` edges, backlinks, dangling). It must not decide content. |
 | `wiki_update_check.py --wiki-root all` | Validate index/format mechanics, configured shared-wiki neutrality guards, and dangling `[[page#section]]` edges across roots. It must not decide whether durable knowledge exists. |
 | `update-wiki.py --wiki-root project|shared` | Refresh indexed wiki page summaries for the changed local root; shared root refreshes reject configured neutrality violations. |
-| `obsidian_wiki_propose_note_change` / `obsidian_wiki_apply_note_change` | Validate, preview, and CAS-write a bound atomic Note through the authenticated loopback bridge. They must not decide durable knowledge or ownership. |
+| `obsidian_wiki_propose_note_change` / `obsidian_wiki_apply_note_change` | Validate, preview, and CAS-write a bound atomic Note through the authenticated loopback bridge. Skill Cards additionally require an available matching project pack identity. They must not decide durable knowledge or ownership. |
 | `obsidian-wiki ... publish` JSON CLI | Group applied journal receipts by repository, create resumable allowlisted commits and draft GitHub PRs, coordinate peer PRs, and restore base worktrees. |
 | shared-wiki MCP tools | Optional legacy GitHub-backed shared wiki read/search/validate/branch+PR path. They submit mechanical PRs only and must not decide durable knowledge, ownership, or neutrality. |
 

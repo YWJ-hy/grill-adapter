@@ -43,13 +43,33 @@ ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 SLUG_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 CONTENT_HASH_PATTERN = re.compile(r"^sha256:[a-f0-9]{64}$")
 BINDING_DIGEST_PATTERN = re.compile(r"^[a-f0-9]{64}$")
+SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+SKILL_VERSION_PATTERN = re.compile(
+    r"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
+    r"(?:-(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*)"
+    r"(?:\.(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*))*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
+)
 WRITE_RECEIPT_STATES = {"proposed", "applied"}
 WRITE_OPERATIONS = {"create", "update"}
 WRITE_RECEIPT_FIELDS = {
     "provider", "state", "operation", "sourceId", "repositoryRef", "bindingDigest",
     "wikiId", "path", "beforeHash", "afterHash",
 }
-WRITE_RECEIPT_IDENTITY_FIELDS = WRITE_RECEIPT_FIELDS - {"state"}
+WRITE_RECEIPT_OPTIONAL_FIELDS = {"skillRegistration"}
+WRITE_RECEIPT_IDENTITY_FIELDS = (WRITE_RECEIPT_FIELDS - {"state"}) | WRITE_RECEIPT_OPTIONAL_FIELDS
+SKILL_REGISTRATION_FIELDS = {
+    "provider",
+    "name",
+    "version",
+    "contractHash",
+    "roles",
+    "triggers",
+    "summary",
+    "discoveryState",
+}
+SKILL_PROVIDERS = {"claude-code-project"}
+SKILL_ROLES = {"implementer", "reviewer"}
 
 
 class JournalError(ValueError):
@@ -102,7 +122,7 @@ def _validate_timestamp(value: Any) -> None:
 def _validate_write_receipt(receipt: Any, outcome_status: str) -> dict[str, Any]:
     if not isinstance(receipt, dict):
         raise JournalError("writeReceipt must be a JSON object")
-    _require_keys(receipt, WRITE_RECEIPT_FIELDS, set())
+    _require_keys(receipt, WRITE_RECEIPT_FIELDS, WRITE_RECEIPT_OPTIONAL_FIELDS)
     if receipt["provider"] != "obsidian":
         raise JournalError("writeReceipt.provider must be obsidian")
     if receipt["state"] not in WRITE_RECEIPT_STATES:
@@ -141,7 +161,51 @@ def _validate_write_receipt(receipt: Any, outcome_status: str) -> dict[str, Any]
         raise JournalError(
             f"writeReceipt.state={receipt['state']} requires outcome status={expected_status}"
         )
+    if "skillRegistration" in receipt:
+        _validate_skill_registration(receipt["skillRegistration"])
     return receipt
+
+
+def _validate_skill_registration(registration: Any) -> dict[str, Any]:
+    if not isinstance(registration, dict):
+        raise JournalError("skillRegistration must be a JSON object")
+    _require_keys(registration, SKILL_REGISTRATION_FIELDS, set())
+    if registration["provider"] not in SKILL_PROVIDERS:
+        raise JournalError(
+            f"skillRegistration.provider must be one of {', '.join(sorted(SKILL_PROVIDERS))}"
+        )
+    name = _require_text(registration["name"], "skillRegistration.name", limit=128)
+    if not SKILL_NAME_PATTERN.fullmatch(name):
+        raise JournalError("skillRegistration.name must use kebab-case")
+    version = _require_text(registration["version"], "skillRegistration.version", limit=64)
+    if not SKILL_VERSION_PATTERN.fullmatch(version):
+        raise JournalError("skillRegistration.version must be a semantic major.minor.patch version")
+    contract_hash = _require_text(
+        registration["contractHash"], "skillRegistration.contractHash", limit=71
+    )
+    if not CONTENT_HASH_PATTERN.fullmatch(contract_hash):
+        raise JournalError(
+            "skillRegistration.contractHash must be a canonical sha256 content hash"
+        )
+    roles = registration["roles"]
+    if (
+        not isinstance(roles, list)
+        or not roles
+        or len(roles) != len(set(roles))
+        or any(role not in SKILL_ROLES for role in roles)
+    ):
+        raise JournalError(
+            "skillRegistration.roles must be a non-empty unique array of implementer/reviewer"
+        )
+    triggers = registration["triggers"]
+    if not isinstance(triggers, list) or not triggers or len(triggers) != len(set(triggers)):
+        raise JournalError("skillRegistration.triggers must be a non-empty unique array")
+    for trigger in triggers:
+        _require_text(trigger, "skillRegistration.triggers[]", limit=256)
+    _require_text(registration["summary"], "skillRegistration.summary", limit=400)
+    if registration["discoveryState"] != "pending":
+        raise JournalError("skillRegistration.discoveryState must be pending in a candidate")
+    return registration
 
 
 def validate_event_shape(event: Any) -> dict[str, Any]:
@@ -156,7 +220,7 @@ def validate_event_shape(event: Any) -> dict[str, Any]:
         required = common | {
             "candidateId", "stage", "candidateType", "kind", "claim", "why", "sourceRefs",
         }
-        optional = {"taskId", "carveOut", "origin"}
+        optional = {"taskId", "carveOut", "origin", "skillRegistration"}
     elif event_type == "supersede":
         required = common | {"candidateId", "byCandidateId", "reason"}
         optional = set()
@@ -181,6 +245,12 @@ def validate_event_shape(event: Any) -> dict[str, Any]:
             raise JournalError(f"kind must be one of {', '.join(sorted(CANDIDATE_KINDS))}")
         if (event["candidateType"] == "skill_card") != (event["kind"] == "skill_registration"):
             raise JournalError("skill_card requires kind=skill_registration, and that kind is card-only")
+        if event["candidateType"] == "skill_card":
+            if "skillRegistration" not in event:
+                raise JournalError("skill_card candidate requires skillRegistration")
+            _validate_skill_registration(event["skillRegistration"])
+        elif "skillRegistration" in event:
+            raise JournalError("skillRegistration is only valid for skill_card candidates")
         _require_text(event["claim"], "claim")
         _require_text(event["why"], "why")
         refs = event["sourceRefs"]
@@ -284,6 +354,32 @@ def fold_events(events: list[dict[str, Any]], expected_feature_slug: str | None 
             else:
                 previous_receipt = item.get("writeReceipt")
                 next_receipt = event.get("writeReceipt")
+                expected_skill_registration = item.get("skillRegistration")
+                if (
+                    expected_skill_registration is not None
+                    and event["status"] == "kept"
+                    and (
+                        not isinstance(next_receipt, dict)
+                        or next_receipt.get("state") != "applied"
+                    )
+                ):
+                    raise JournalError(
+                        f"candidate {candidate_id!r} is a Skill Card; kept requires an "
+                        "applied write receipt bound to its staged registration"
+                    )
+                if isinstance(next_receipt, dict):
+                    receipt_skill_registration = next_receipt.get("skillRegistration")
+                    if expected_skill_registration is not None:
+                        if receipt_skill_registration != expected_skill_registration:
+                            raise JournalError(
+                                f"candidate {candidate_id!r} write receipt does not match its "
+                                "staged Skill Card registration"
+                            )
+                    elif receipt_skill_registration is not None:
+                        raise JournalError(
+                            f"candidate {candidate_id!r} is not a Skill Card but its write "
+                            "receipt carries a Skill Card registration"
+                        )
                 if (
                     item["status"] == "deferred"
                     and isinstance(previous_receipt, dict)
@@ -298,7 +394,7 @@ def fold_events(events: list[dict[str, Any]], expected_feature_slug: str | None 
                     mismatches = sorted(
                         field
                         for field in WRITE_RECEIPT_IDENTITY_FIELDS
-                        if previous_receipt[field] != next_receipt[field]
+                        if previous_receipt.get(field) != next_receipt.get(field)
                     )
                     if mismatches:
                         raise JournalError(
@@ -484,6 +580,13 @@ def build_parser() -> argparse.ArgumentParser:
     append_parser.add_argument("--task-id")
     append_parser.add_argument("--carve-out", action="store_true")
     append_parser.add_argument("--origin")
+    append_parser.add_argument("--skill-provider", choices=sorted(SKILL_PROVIDERS))
+    append_parser.add_argument("--skill-name")
+    append_parser.add_argument("--skill-version")
+    append_parser.add_argument("--skill-contract-hash")
+    append_parser.add_argument("--skill-role", action="append", choices=sorted(SKILL_ROLES))
+    append_parser.add_argument("--skill-trigger", action="append")
+    append_parser.add_argument("--skill-summary")
 
     supersede_parser = subparsers.add_parser("supersede", help="Supersede a candidate")
     _add_common_event_args(supersede_parser)
@@ -505,6 +608,13 @@ def build_parser() -> argparse.ArgumentParser:
     outcome_parser.add_argument("--path")
     outcome_parser.add_argument("--before-hash")
     outcome_parser.add_argument("--after-hash")
+    outcome_parser.add_argument("--skill-provider", choices=sorted(SKILL_PROVIDERS))
+    outcome_parser.add_argument("--skill-name")
+    outcome_parser.add_argument("--skill-version")
+    outcome_parser.add_argument("--skill-contract-hash")
+    outcome_parser.add_argument("--skill-role", action="append", choices=sorted(SKILL_ROLES))
+    outcome_parser.add_argument("--skill-trigger", action="append")
+    outcome_parser.add_argument("--skill-summary")
 
     for command in ("validate", "fold"):
         command_parser = subparsers.add_parser(command)
@@ -531,6 +641,27 @@ def main() -> int:
         return 0
 
     if args.command == "append":
+        skill_values = (
+            args.skill_provider,
+            args.skill_name,
+            args.skill_version,
+            args.skill_contract_hash,
+            args.skill_role,
+            args.skill_trigger,
+            args.skill_summary,
+        )
+        skill_registration = None
+        if any(value is not None for value in skill_values):
+            skill_registration = {
+                "provider": args.skill_provider,
+                "name": args.skill_name,
+                "version": args.skill_version,
+                "contractHash": args.skill_contract_hash,
+                "roles": args.skill_role,
+                "triggers": args.skill_trigger,
+                "summary": args.skill_summary,
+                "discoveryState": "pending",
+            }
         event = new_event(
             "candidate",
             args.feature_slug,
@@ -545,6 +676,11 @@ def main() -> int:
             taskId=args.task_id,
             carveOut=args.carve_out,
             **({"origin": args.origin} if args.origin else {}),
+            **(
+                {"skillRegistration": skill_registration}
+                if skill_registration is not None
+                else {}
+            ),
         )
     elif args.command == "supersede":
         event = new_event(
@@ -556,6 +692,27 @@ def main() -> int:
             reason=args.reason,
         )
     else:
+        skill_values = (
+            args.skill_provider,
+            args.skill_name,
+            args.skill_version,
+            args.skill_contract_hash,
+            args.skill_role,
+            args.skill_trigger,
+            args.skill_summary,
+        )
+        receipt_skill_registration = None
+        if any(value is not None for value in skill_values):
+            receipt_skill_registration = {
+                "provider": args.skill_provider,
+                "name": args.skill_name,
+                "version": args.skill_version,
+                "contractHash": args.skill_contract_hash,
+                "roles": args.skill_role,
+                "triggers": args.skill_trigger,
+                "summary": args.skill_summary,
+                "discoveryState": "pending",
+            }
         receipt_args = (
             args.write_state,
             args.operation,
@@ -580,6 +737,11 @@ def main() -> int:
                 "path": args.path,
                 "beforeHash": args.before_hash,
                 "afterHash": args.after_hash,
+                **(
+                    {"skillRegistration": receipt_skill_registration}
+                    if receipt_skill_registration is not None
+                    else {}
+                ),
             }
         event = new_event(
             "outcome",

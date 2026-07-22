@@ -300,7 +300,7 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 - 新增 `/grill-adapter:candidate-journal` 稳定入口；host convention 只点名 skill，不携带插件路径。所有知识生产阶段都追加到同一 feature journal，中间阶段不写 Obsidian。
 - `wiki_candidate_journal.py` 在文件锁内先完整 replay，再单次 append + fsync。损坏、尾部缺换行、重复 event/candidate ID、跨 feature、未知引用与非法终态转换一律拒绝且不修改 journal。唯一幂等入口是 grill bridge：稳定 candidate ID 与完整 payload 都相同才跳过，使 Capture 中断后可重跑；同 ID 不同内容仍拒绝。
 - fold 状态为 `pending` / `superseded` / `kept` / `skipped` / `deferred`。kept/skipped/superseded 为终态；deferred 可在恢复后再次 defer 以刷新 recoverable proposal，也可转 kept/skipped。
-- schema-v1 outcome 向后兼容地允许严格 `writeReceipt`：只保存 Obsidian provider、repository/binding、Note ID/path、operation 与 before/after hash，不保存 Note body、token 或授权 secret。`proposed` receipt 只能配 `deferred`，`applied` receipt 只能配 `kept`；receipt-less re-deferral 保留最新有效 proposal，若已有 proposed receipt，kept 必须携带与其除 state 外完全相同的 applied receipt。后续 publishing 因而只消费 Capture 明确 allowlist 的 staged Note identities。
+- schema-v1 outcome 向后兼容地允许严格 `writeReceipt`：保存 Obsidian provider、repository/binding、Note ID/path、operation 与 before/after hash；Skill Card 额外保存 bridge-validated `skillRegistration`，并与 staged candidate 逐字段匹配。receipt 不保存 Note body、token 或授权 secret。`proposed` receipt 只能配 `deferred`，`applied` receipt 只能配 `kept`；receipt-less re-deferral 保留最新有效 proposal，若已有 proposed receipt，kept 必须携带与其除 state 外完全相同的 applied receipt。Card 没有匹配 applied receipt 不能 kept。后续 publishing 因而只消费 Capture 明确 allowlist 的 staged Note/Card identities。
 - related claims 的语义去重仍由 `update-wiki` 判断：追加一个最终 `capture` candidate，再用既有 supersede 事件显式归并，机械 helper 不做相似度推断。
 - journal 不删除，保留为中断恢复 receipt；Stop hook 根据 fold 结果提醒 pending/deferred，全终态静默，invalid 单独报警。
 

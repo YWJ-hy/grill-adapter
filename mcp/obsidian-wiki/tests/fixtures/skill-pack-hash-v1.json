@@ -1,0 +1,12 @@
+{
+  "name": "path-order",
+  "version": "1.0.0",
+  "files": {
+    "SKILL.md": "---\nname: path-order\ndescription: Verify contract path ordering.\nversion: 1.0.0\n---\n\nLoad `a/b.md`, `a-b.md`, `.md`, and `😀.md`.\n",
+    "a/b.md": "# Nested\n",
+    "a-b.md": "# Flat\n",
+    ".md": "# Private use\n",
+    "😀.md": "# Supplementary plane\n"
+  },
+  "expectedHash": "sha256:2898e7cf0b97afc46d54e40fd8969fd78a451bd64ef2b401bd57f767422fbbc3"
+}

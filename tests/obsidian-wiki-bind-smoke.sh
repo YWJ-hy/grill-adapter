@@ -39,7 +39,7 @@ cat > "$CONTEXT" <<JSON
     {"sourceId":"project","role":"project","path":"Notes/soft.md","wikiId":"soft","type":"guide","constraintStrength":"soft","summary":"Must not reread.","contentHash":"sha256:${SHA_D}","bindingDigest":"${SHA_B}","destination":{"kind":"global","reason":"Soft context."}}
   ],
   "requiredSkills": [
-    {"sourceId":"project","role":"project","path":"Skills/review.md","wikiId":"review-skill","type":"guide","summary":"Review contract.","contentHash":"sha256:${SHA_D}","bindingDigest":"${SHA_B}","requiredFor":["reviewer"],"destination":{"kind":"task-bound","reason":"T1 review.","tasks":["T1"]}}
+    {"sourceId":"project","role":"project","path":"Skills/review.md","wikiId":"review-skill","type":"guide","summary":"Review contract.","contentHash":"sha256:${SHA_D}","bindingDigest":"${SHA_B}","skillProvider":"claude-code-project","skillName":"review-runtime","skillVersion":"1.0.0","skillContractHash":"sha256:${SHA_A}","skillTriggers":["runtime review"],"discoveryState":"discoverable","requiredFor":["reviewer"],"destination":{"kind":"task-bound","reason":"T1 review.","tasks":["T1"]}}
   ],
   "caveats": [], "maintenanceWarnings": []
 }
@@ -55,7 +55,7 @@ SHA_D = 'd' * 64
 notes = {
   'Notes/runtime.md': {'sourceId': 'project', 'role': 'project', 'path': 'Notes/runtime.md', 'wikiId': 'runtime', 'type': 'constraint', 'constraintStrength': 'hard', 'summary': 'Runtime boundary.', 'contentHash': 'sha256:' + SHA_A, 'bindingDigest': SHA_B, 'content': 'AUTHORITATIVE RUNTIME NOTE'},
   'Notes/transaction.md': {'sourceId': 'project', 'role': 'project', 'path': 'Notes/transaction.md', 'wikiId': 'transaction', 'type': 'constraint', 'constraintStrength': 'hard', 'summary': 'Transaction dependency.', 'contentHash': 'sha256:' + SHA_D, 'bindingDigest': SHA_B, 'content': 'AUTHORITATIVE DEPENDENCY NOTE'},
-  'Skills/review.md': {'sourceId': 'project', 'role': 'project', 'path': 'Skills/review.md', 'wikiId': 'review-skill', 'type': 'guide', 'summary': 'Review contract.', 'skillRoles': ['reviewer'], 'contentHash': 'sha256:' + SHA_D, 'bindingDigest': SHA_B, 'content': 'AUTHORITATIVE REVIEW SKILL'},
+  'Skills/review.md': {'sourceId': 'project', 'role': 'project', 'path': 'Skills/review.md', 'wikiId': 'review-skill', 'type': 'guide', 'summary': 'Review contract.', 'skillRoles': ['reviewer'], 'skillProvider': 'claude-code-project', 'skillName': 'review-runtime', 'skillVersion': '1.0.0', 'skillContractHash': 'sha256:' + SHA_A, 'skillTriggers': ['runtime review'], 'discoveryState': 'discoverable', 'contentHash': 'sha256:' + SHA_D, 'bindingDigest': SHA_B, 'content': 'AUTHORITATIVE REVIEW SKILL'},
 }
 request = json.load(sys.stdin)
 subcommand = sys.argv[1]
@@ -73,6 +73,8 @@ if subcommand in ('read-notes', 'read-notes-by-wiki-ids'):
     result_notes = [{**note, 'path': 'Notes/moved-runtime.md'} if note['wikiId'] == 'runtime' else note for note in result_notes]
   if os.environ.get('FAKE_ROLE_DRIFT'):
     result_notes = [{**note, 'skillRoles': ['implementer', 'reviewer']} if note['wikiId'] == 'review-skill' else note for note in result_notes]
+  if os.environ.get('FAKE_SKILL_CONTRACT_DRIFT'):
+    result_notes = [{**note, 'skillContractHash': 'sha256:' + 'f' * 64} if note['wikiId'] == 'review-skill' else note for note in result_notes]
   print(json.dumps({'notes': result_notes, 'snapshotHash': 'sha256:' + SHA_A}))
 elif subcommand == 'graph-neighbors':
   graph = {'runtime': [{'type': 'depends_on', 'wikiId': 'transaction', 'path': 'Notes/transaction.md'}], 'review-skill': []}
@@ -110,6 +112,7 @@ fi
 # Reviewer receives the reviewer-required Skill Card and its role claim is checked against runtime metadata.
 OUT="$(run_bind reviewer)"
 grep -Fq 'AUTHORITATIVE REVIEW SKILL' <<<"$OUT" || { printf 'reviewer did not receive required Skill Card\n' >&2; exit 1; }
+grep -Fq 'MUST invoke project skill `review-runtime`' <<<"$OUT" || { printf 'reviewer was not told to invoke the executable skill pack\n' >&2; exit 1; }
 
 # Any bound direct Note/Skill content drift stops materialization.
 if FAKE_DRIFT_PATH='Skills/review.md' run_bind reviewer >/dev/null 2>"$TMP/drift.err"; then
@@ -131,5 +134,11 @@ if FAKE_ROLE_DRIFT=1 run_bind reviewer >/dev/null 2>"$TMP/role.err"; then
   exit 1
 fi
 grep -Fq 'role policy drift' "$TMP/role.err" || { cat "$TMP/role.err" >&2; exit 1; }
+
+if FAKE_SKILL_CONTRACT_DRIFT=1 run_bind reviewer >/dev/null 2>"$TMP/skill-contract.err"; then
+  printf 'contract-drifted required Skill Card must stop reviewer materialization\n' >&2
+  exit 1
+fi
+grep -Fq 'skillContractHash drift' "$TMP/skill-contract.err" || { cat "$TMP/skill-contract.err" >&2; exit 1; }
 
 printf 'obsidian wiki Bind smoke passed\n'
