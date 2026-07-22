@@ -212,6 +212,10 @@ grill-adapter 明确承认自己不是无缝的，并把降级点讲清楚：
 - **中间阶段只 journal、不写 Obsidian**：所有 durable 候选先经机械 helper 追加；只有 review 后的 `/grill-adapter:update-wiki` 能做最终语义判断与后续回写。
 - **可恢复但非自动恢复**：journal 保留完整生命周期；损坏或非法转换 fail-closed，必须回到产生事件的 workflow 修复，不能手改 JSONL 绕过。
 
+### Legacy Wiki → Obsidian 迁移规划
+
+调用 `migrate-wiki` 的 **Obsidian migration plan** 模式。它只读 legacy project/shared Wiki、目标 Source snapshot 与本地 skill packs，输出 source/target digest 和逐项 `create/update/skip/conflict` 映射；不会修改 legacy Markdown、indexes、`.graph.json`、Source Notes、settings 或 registry。semantic split、duplicate ID、dangling edge、unavailable pack、Shared neutrality violation、non-migratable navigation 全部进入显式 confirmation gate。用户确认后本模式仍停止；apply/verify/cutover 由下一阶段独立执行。
+
 ---
 
 ## 附录 · plugin 组件一览
@@ -222,7 +226,7 @@ grill-adapter 同时以 **Claude Code plugin** 与 **Codex plugin** 形式发布
 
 **Skills（13）**：`wiki-research`、`wiki-materialize`、`candidate-journal`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`publish-shared-wiki`、`shared-wiki-mcp`、`scaffold-practice-skill`、`lanhu-requirements`、`break-loop`、`source-truth-check`。
 
-> 其中 `wiki-research` / `wiki-materialize` / `candidate-journal` / `update-wiki` / `source-truth-check` / `lanhu-requirements` / `break-loop` 直接出现在上面的端到端流程；`init-wiki` / `import-wiki` / `migrate-wiki` 是建库与 wiki 生命周期 skill；`publish-shared-wiki` / `shared-wiki-mcp` 服务共享 wiki；`scaffold-practice-skill` 负责把可复用实践固化成技能包。
+> 其中 `wiki-research` / `wiki-materialize` / `candidate-journal` / `update-wiki` / `source-truth-check` / `lanhu-requirements` / `break-loop` 直接出现在上面的端到端流程；`init-wiki` / `import-wiki` / `migrate-wiki` 是建库与 wiki 生命周期 skill，`migrate-wiki` 也承载 legacy → Obsidian 的 plan-only 入口；`publish-shared-wiki` / `shared-wiki-mcp` 服务共享 wiki；`scaffold-practice-skill` 负责把可复用实践固化成技能包。
 >
 > 约定块里对 grill-adapter 自己的 skill 一律带命名空间调用（`/grill-adapter:wiki-research` 等）；grill 自带的 `/grill-with-docs`、`/to-spec`、`/implement` 等不加。
 

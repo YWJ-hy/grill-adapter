@@ -74,6 +74,8 @@ New to grill? Follow [`docs/SETUP_AND_USAGE_CN.md`](docs/SETUP_AND_USAGE_CN.md),
 ./manage.sh release-check <project>
 ```
 
+Legacy Wiki migration to Obsidian starts from `/grill-adapter:migrate-wiki` (Claude) or `$grill-adapter:migrate-wiki` (Codex), mode **Obsidian migration plan**. It inventories indexed/unindexed project and Shared pages, section/graph/constraint/legacy-skill metadata, reads only the configured target Source snapshots, and emits a deterministic `create/update/skip/conflict` plan. The mode never writes either Wiki; semantic splits, duplicate IDs, dangling edges, unavailable packs, Shared neutrality violations, and legacy navigation are explicit confirmation gates. Apply/verify/cutover are intentionally outside this plan-only mode.
+
 ## Relationship to grill / Claude Code / Codex
 
 grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe to; grill-adapter never forks or edits it. grill-adapter adds wiki/Lanhu/source-truth touchpoints *around* grill by convention. On plain Claude Code or Codex you invoke the same skills yourself at the matching moments (see the runtime-specific `plain` host block).
