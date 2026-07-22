@@ -30,7 +30,7 @@
         "level2HeadingCount": 1,
         "constraintStrength": "hard",
         "strengthBasis": "normative-language",
-        "strengthConfidence": "explicit"
+        "strengthConfidence": "heuristic"
       }
     ],
     "sections": [
@@ -42,7 +42,7 @@
         "summary": "API responses use the shared envelope.",
         "constraintStrength": "hard",
         "strengthBasis": "normative-language",
-        "strengthConfidence": "explicit",
+        "strengthConfidence": "heuristic",
         "pageType": "constraint"
       }
     ],
@@ -81,13 +81,19 @@
     }
   ],
   "confirmation": {
-    "required": false,
-    "issues": []
+    "required": true,
+    "issues": [
+      {
+        "code": "strength-confirmation",
+        "sourceItemIds": ["legacy:project:section:backend/contracts.md#response-envelope"],
+        "detail": "project:backend/contracts.md#response-envelope constraint strength was inferred as hard from lexical cues"
+      }
+    ]
   },
   "summary": {
     "sourceItemCount": 2,
     "planItemCount": 2,
     "decisionCounts": {"create": 1, "update": 0, "skip": 1, "conflict": 0},
-    "confirmationIssueCount": 0
+    "confirmationIssueCount": 1
   }
 }

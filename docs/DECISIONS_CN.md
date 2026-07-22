@@ -337,7 +337,7 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 - `migrate-wiki` 增加独立的 Obsidian plan-only 模式；不先改 section、index 或 graph，也不调用任何写路径。
 - `wiki_migration_plan.py` 只读 legacy project/shared roots、绑定配置、registry 指向的 Source worktree 和本地 skill pack，stdout 输出 versioned JSON plan。
 - inventory 的每个 page/section/index/graph edge/dangling item 恰有一个 `create|update|skip|conflict` 决策；stable Note ID、proposed path、typed-edge frontmatter transformation 与 Source role 都由机械规则确定。
-- source/target snapshot digest 绑定审计输入。semantic split、duplicate ID、dangling edge、unavailable pack、Shared neutrality violation、non-migratable navigation 与 heuristic constraint strength 必须进入 confirmation gate，不由 planner 猜测修复；binding topology 先按正式读取治理 fail-closed。
+- source/target snapshot digest 绑定审计输入。semantic split、duplicate ID/Card identity、occupied target path、dangling edge、unavailable pack、Shared neutrality violation、non-migratable navigation 与 heuristic constraint strength 必须进入 confirmation gate，不由 planner 猜测修复；binding topology 与 symlink 边界先按正式读取治理 fail-closed。
 
 **理由**
 

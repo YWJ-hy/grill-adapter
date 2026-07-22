@@ -251,6 +251,39 @@ constraint_strength: hard
 
 # Existing API Contract
 MD
+mkdir -p "$PROJECT_SOURCE/rules"
+cat > "$PROJECT_SOURCE/rules/soft-guidance.md" <<'MD'
+---
+wiki_schema: grill-adapter.obsidian-note/v1
+wiki_id: project-source/occupied-soft-guidance
+type: guide
+status: active
+summary: This path is already occupied by another stable identity.
+constraint_strength: soft
+---
+
+# Occupied target path
+MD
+cat > "$PROJECT_SOURCE/existing/legacy-release-card.md" <<'MD'
+---
+wiki_schema: grill-adapter.obsidian-note/v1
+wiki_id: project-source/skills/legacy-release-pack
+type: guide
+status: active
+summary: Existing release pack card with another stable ID.
+constraint_strength: hard
+skill_provider: claude-code-project
+skill_name: release-pack
+skill_version: 1.0.0
+skill_contract_hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+skill_roles:
+  - reviewer
+skill_triggers:
+  - release
+---
+
+# Legacy Release Pack
+MD
 for duplicate in one two; do
   cat > "$PROJECT_SOURCE/existing/foo-$duplicate.md" <<'MD'
 ---
@@ -314,6 +347,9 @@ assert {s["constraintStrength"] for s in inventory["sections"]} >= {"hard", "sof
 negative = next(s for s in inventory["sections"] if s["sectionId"] == "negative-rule")
 assert negative["constraintStrength"] == "soft"
 assert negative["strengthConfidence"] == "heuristic"
+api_inventory = next(s for s in inventory["sections"] if s["sectionId"] == "api-contract")
+assert api_inventory["constraintStrength"] == "hard"
+assert api_inventory["strengthConfidence"] == "heuristic"
 assert any(i["path"] == "index.md" for i in inventory["indexes"])
 assert inventory["graphEdges"][0]["type"] == "depends-on"
 assert {card["skillName"] for card in inventory["skillDiscovery"]} == {"review-pack", "release-pack", "bad-pack"}
@@ -331,7 +367,7 @@ assert api["targetSource"]["sourceId"] == "project-source"
 assert api["proposedPath"] == "Projects/example/rules/api-contract.md"
 assert api["edgeTransformation"] == [{"property": "depends_on", "targetNoteId": "project-source/rules/soft-guidance"}]
 release = next(item for item in plan["planItems"] if item.get("noteId") == "project-source/skills/release-pack")
-assert release["decision"] == "create"
+assert release["decision"] == "conflict"
 assert release["proposedPath"] == "Projects/example/Skills/release-pack.md"
 assert release["skillCard"]["provider"] == "claude-code-project"
 assert release["skillCard"]["version"] == "1.2.3"
@@ -339,6 +375,12 @@ assert release["skillCard"]["contractHash"].startswith("sha256:")
 assert release["skillCard"]["roles"] == ["implementer", "reviewer"]
 assert release["skillCard"]["triggers"] == ["release", "deployment"]
 assert release["skillCard"]["summary"] == "Run the release checklist."
+soft_guidance = next(
+    item for item in plan["planItems"]
+    if item.get("noteId") == "project-source/rules/soft-guidance" and item["sourceKind"] == "section"
+)
+assert soft_guidance["decision"] == "conflict"
+assert "occupied" in soft_guidance["decisionReason"], soft_guidance
 bad_pack = next(item for item in plan["planItems"] if item.get("noteId") == "project-source/skills/bad-pack")
 assert bad_pack["decision"] == "conflict"
 assert "valid version" in bad_pack["decisionReason"]
@@ -355,6 +397,7 @@ assert codes >= {
     "shared-neutrality-violation",
     "non-migratable-navigation",
     "strength-confirmation",
+    "target-path-collision",
 }
 semantic_source_ids = {
     source_id
@@ -368,6 +411,11 @@ strength_source_ids = {
     for source_id in issue["sourceItemIds"]
 }
 assert negative["sourceItemId"] in strength_source_ids
+assert api_inventory["sourceItemId"] in strength_source_ids
+assert any(
+    issue["code"] == "duplicate-id" and "provider/name" in issue["detail"]
+    for issue in confirmation["issues"]
+)
 assert plan["summary"]["confirmationIssueCount"] == len(confirmation["issues"])
 PY
 
@@ -424,5 +472,40 @@ expect_binding_failure overlapping-root "overlapping root"
 expect_binding_failure extra-project "at most one binding may have role: project"
 expect_binding_failure root-escape "binding root must name a directory inside the Vault"
 cp "$SETTINGS_BACKUP" "$SETTINGS"
+
+OUTSIDE_NOTE="$TMP/outside-note.md"
+cat > "$OUTSIDE_NOTE" <<'MD'
+# Outside target Note
+MD
+ln -s "$OUTSIDE_NOTE" "$PROJECT_SOURCE/symlink-note.md"
+if python3 "$PLANNER" --project-root "$PROJECT" --registry "$TMP/registry.json" --wiki-root project > /dev/null 2> "$TMP/note-symlink.err"; then
+  printf 'Planner followed a target Note symlink\n' >&2
+  exit 1
+fi
+grep -Fq "symbolic link" "$TMP/note-symlink.err" \
+  || { printf 'Target Note symlink failure was not explicit\n' >&2; cat "$TMP/note-symlink.err" >&2; exit 1; }
+unlink "$PROJECT_SOURCE/symlink-note.md"
+
+MANIFEST="$PROJECT_SOURCE/_meta/wiki-source.md"
+MANIFEST_BACKUP="$TMP/project-source-manifest.md"
+mv "$MANIFEST" "$MANIFEST_BACKUP"
+ln -s "$MANIFEST_BACKUP" "$MANIFEST"
+if python3 "$PLANNER" --project-root "$PROJECT" --registry "$TMP/registry.json" --wiki-root project > /dev/null 2> "$TMP/manifest-symlink.err"; then
+  printf 'Planner followed a Source manifest symlink\n' >&2
+  exit 1
+fi
+grep -Fq "symbolic link" "$TMP/manifest-symlink.err" \
+  || { printf 'Source manifest symlink failure was not explicit\n' >&2; cat "$TMP/manifest-symlink.err" >&2; exit 1; }
+unlink "$MANIFEST"
+mv "$MANIFEST_BACKUP" "$MANIFEST"
+
+ln -s "$OUTSIDE_NOTE" "$PROJECT/.claude/skills/release-pack/outside.md"
+if python3 "$PLANNER" --project-root "$PROJECT" --registry "$TMP/registry.json" --wiki-root project > /dev/null 2> "$TMP/pack-symlink.err"; then
+  printf 'Planner followed a project Skill Pack symlink\n' >&2
+  exit 1
+fi
+grep -Fq "symbolic link" "$TMP/pack-symlink.err" \
+  || { printf 'Skill Pack symlink failure was not explicit\n' >&2; cat "$TMP/pack-symlink.err" >&2; exit 1; }
+unlink "$PROJECT/.claude/skills/release-pack/outside.md"
 
 printf 'obsidian wiki migration plan smoke complete\n'

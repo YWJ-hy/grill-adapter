@@ -214,7 +214,7 @@ grill-adapter 明确承认自己不是无缝的，并把降级点讲清楚：
 
 ### Legacy Wiki → Obsidian 迁移规划
 
-调用 `migrate-wiki` 的 **Obsidian migration plan** 模式。它先 fail-closed 校验 binding topology，只读 legacy project/shared Wiki、`access.read: true` 的选定 Source snapshot 与本地 skill packs，输出 source/target digest 和逐项 `create/update/skip/conflict` 映射；不会修改 legacy Markdown、indexes、`.graph.json`、Source Notes、settings 或 registry。semantic split、duplicate ID、dangling edge、unavailable pack、Shared neutrality violation、non-migratable navigation 与 heuristic constraint strength 全部进入显式 confirmation gate。用户确认后本模式仍停止；apply/verify/cutover 由下一阶段独立执行。
+调用 `migrate-wiki` 的 **Obsidian migration plan** 模式。它先 fail-closed 校验 binding topology 与 symlink 边界，只读 legacy project/shared Wiki、`access.read: true` 的选定 Source snapshot 与本地 skill packs，输出 source/target digest 和逐项 `create/update/skip/conflict` 映射；不会修改 legacy Markdown、indexes、`.graph.json`、Source Notes、settings 或 registry。semantic split、duplicate ID/Card identity、occupied target path、dangling edge、unavailable pack、Shared neutrality violation、non-migratable navigation 与 heuristic constraint strength 全部进入显式 confirmation gate。用户确认后本模式仍停止；apply/verify/cutover 由下一阶段独立执行。
 
 ---
 

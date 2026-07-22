@@ -108,10 +108,14 @@ def stable_digest(entries: list[tuple[str, bytes]]) -> str:
 
 
 def file_entries(root: Path, prefix: str, include_meta: bool = True) -> list[tuple[str, bytes]]:
+    if root.is_symlink():
+        raise PlanError(f"snapshot root is a symbolic link: {root}")
     if not root.is_dir():
         return []
     entries = []
     for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise PlanError(f"snapshot input is a symbolic link: {path}")
         if not path.is_file() or (not include_meta and "_meta" in path.relative_to(root).parts):
             continue
         entries.append((f"{prefix}/{path.relative_to(root).as_posix()}", path.read_bytes()))
@@ -148,7 +152,7 @@ def strength_for(body: str, skill_name: str | None = None) -> tuple[str, str, st
     if skill_name:
         return "hard", "legacy-skill-discovery", "explicit"
     if HARD_RE.search(body):
-        return "hard", "normative-language", "explicit"
+        return "hard", "normative-language", "heuristic"
     return "soft", "non-normative-language", "heuristic"
 
 
@@ -262,12 +266,17 @@ def load_bindings(
         repository_ref = raw["repositoryRef"]
         repository = repositories[repository_ref]
         worktree_root = Path(repository["worktreeRoot"]).expanduser().resolve()
-        source_root = (worktree_root / root).resolve()
+        configured_source_root = worktree_root / root
+        if configured_source_root.is_symlink():
+            raise PlanError(f"binding {source_id} Source root is a symbolic link")
+        source_root = configured_source_root.resolve()
         try:
             source_root.relative_to(worktree_root)
         except ValueError as exc:
             raise PlanError(f"binding {source_id} root escapes its repository") from exc
         manifest_path = source_root / "_meta" / "wiki-source.md"
+        if manifest_path.is_symlink():
+            raise PlanError(f"binding {source_id} Source manifest is a symbolic link")
         if not manifest_path.is_file():
             raise PlanError(f"binding {source_id} Source manifest not found: {manifest_path}")
         manifest = parse_frontmatter(manifest_path.read_text(encoding="utf-8"))
@@ -280,15 +289,22 @@ def load_bindings(
             or not isinstance(manifest.get("blocked_patterns"), list)
         ):
             raise PlanError(f"binding {source_id} Shared Source manifest must declare blocked_terms and blocked_patterns")
-        notes: list[dict[str, str]] = []
+        notes: list[dict[str, Any]] = []
         for note_path in sorted(source_root.rglob("*.md")):
+            if note_path.is_symlink():
+                raise PlanError(f"binding {source_id} target Note is a symbolic link: {note_path}")
             relative = note_path.relative_to(worktree_root)
             if "_meta" in note_path.relative_to(source_root).parts:
                 continue
             frontmatter = parse_frontmatter(note_path.read_text(encoding="utf-8"))
             wiki_id = frontmatter.get("wiki_id")
-            if isinstance(wiki_id, str) and wiki_id:
-                notes.append({"wikiId": wiki_id, "path": relative.as_posix()})
+            notes.append({
+                "wikiId": wiki_id if isinstance(wiki_id, str) and wiki_id else None,
+                "path": relative.as_posix(),
+                "status": frontmatter.get("status"),
+                "skillProvider": frontmatter.get("skill_provider"),
+                "skillName": frontmatter.get("skill_name"),
+            })
         candidates[role].append({
             "sourceId": source_id,
             "role": role,
@@ -328,6 +344,8 @@ def load_bindings(
 
 
 def collect_legacy_root(root_name: str, wiki_root: Path) -> dict[str, Any]:
+    if wiki_root.is_symlink():
+        raise PlanError(f"legacy {root_name} Wiki root is a symbolic link: {wiki_root}")
     graph = build_wiki_index_graph(wiki_root)
     indexed_leaves = {path.resolve() for path in graph.leaves}
     indexed_indexes = {path.resolve() for path in graph.indexes}
@@ -337,6 +355,8 @@ def collect_legacy_root(root_name: str, wiki_root: Path) -> dict[str, Any]:
     skills: list[dict[str, Any]] = []
 
     for path in sorted(wiki_root.rglob("*.md")):
+        if path.is_symlink():
+            raise PlanError(f"legacy {root_name} Wiki input is a symbolic link: {path}")
         relative = path.relative_to(wiki_root).as_posix()
         if path.name == "index.md" or path.stem.endswith(".index"):
             indexes.append({
@@ -402,6 +422,8 @@ def collect_legacy_root(root_name: str, wiki_root: Path) -> dict[str, Any]:
     graph_edges: list[dict[str, Any]] = []
     dangling: list[dict[str, Any]] = []
     graph_path = wiki_root / ".graph.json"
+    if graph_path.is_symlink():
+        raise PlanError(f"legacy {root_name} Wiki graph is a symbolic link: {graph_path}")
     if graph_path.is_file():
         graph_data = read_json(graph_path, f"{root_name} legacy section graph")
         for edge in graph_data.get("edges", []):
@@ -530,10 +552,20 @@ def build_plan(
     def add_confirmation(code: str, source_ids: list[str], detail: str) -> None:
         confirmations.append({"code": code, "sourceItemIds": sorted(set(source_ids)), "detail": detail})
 
-    target_by_id: dict[str, list[dict[str, str]]] = defaultdict(list)
+    target_by_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    target_by_path: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    target_cards: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for binding in bindings.values():
         for note in binding["notes"]:
-            target_by_id[note["wikiId"]].append(note)
+            target_by_path[note["path"]].append(note)
+            if isinstance(note["wikiId"], str):
+                target_by_id[note["wikiId"]].append(note)
+            if (
+                note["status"] == "active"
+                and isinstance(note["skillProvider"], str)
+                and isinstance(note["skillName"], str)
+            ):
+                target_cards[(note["skillProvider"], note["skillName"])].append(note)
     for wiki_id, notes in sorted(target_by_id.items()):
         if len(notes) > 1:
             add_confirmation("duplicate-id", [], f"target Notes duplicate wiki_id {wiki_id}: {', '.join(note['path'] for note in notes)}")
@@ -575,7 +607,7 @@ def build_plan(
                 add_confirmation(
                     "strength-confirmation",
                     [page["sourceItemId"]],
-                    f"{root_name}:{page['path']} was inferred soft from the absence of recognized normative language",
+                    f"{root_name}:{page['path']} constraint strength was inferred as {page['constraintStrength']} from lexical cues",
                 )
         if page["markerErrors"]:
             item.update(decision="conflict", decisionReason="legacy section markers are invalid")
@@ -624,7 +656,7 @@ def build_plan(
                 add_confirmation(
                     "strength-confirmation",
                     [section["sourceItemId"]],
-                    f"{root_name}:{section['path']}#{section['sectionId']} was inferred soft from the absence of recognized normative language",
+                    f"{root_name}:{section['path']}#{section['sectionId']} constraint strength was inferred as {section['constraintStrength']} from lexical cues",
                 )
         plan_items[item["sourceItemId"]] = item
 
@@ -644,6 +676,35 @@ def build_plan(
             add_confirmation("duplicate-id", [item["sourceItemId"] for item in items], f"target Source contains duplicate Note ID {note_id}")
         elif len(items) == 1 and len(target_matches) == 1 and items[0]["decision"] == "create":
             items[0].update(decision="update", decisionReason=f"target Note already exists at {target_matches[0]['path']}")
+
+    for item in planned_notes:
+        proposed_path = item.get("proposedPath")
+        path_matches = target_by_path.get(proposed_path, []) if isinstance(proposed_path, str) else []
+        path_conflicts = [note for note in path_matches if note.get("wikiId") != item.get("noteId")]
+        if path_conflicts:
+            occupied = ", ".join(
+                f"{note['path']} ({note.get('wikiId') or 'missing wiki_id'})"
+                for note in path_conflicts
+            )
+            item.update(decision="conflict", decisionReason=f"proposed target path is occupied: {occupied}")
+            add_confirmation("target-path-collision", [item["sourceItemId"]], item["decisionReason"])
+        skill_card = item.get("skillCard")
+        if isinstance(skill_card, dict):
+            identity = (skill_card["provider"], skill_card["name"])
+            identity_conflicts = [
+                note for note in target_cards.get(identity, [])
+                if note.get("wikiId") != item.get("noteId")
+            ]
+            if identity_conflicts:
+                existing = ", ".join(
+                    f"{note['path']} ({note.get('wikiId') or 'missing wiki_id'})"
+                    for note in identity_conflicts
+                )
+                item.update(
+                    decision="conflict",
+                    decisionReason=f"active Skill Card provider/name {identity[0]}/{identity[1]} already exists: {existing}",
+                )
+                add_confirmation("duplicate-id", [item["sourceItemId"]], item["decisionReason"])
 
     for page in inventory["pages"]:
         if page["legacyRoot"] != "shared":
