@@ -230,6 +230,24 @@ def load_wiki_settings(project_root: Path, root: WikiRoot) -> dict:
     return _wiki_settings_from_payload(_load_settings_payload(settings_path), settings_path)
 
 
+def enforce_legacy_wiki_writable(project_root: Path, root: WikiRoot) -> None:
+    """Reject writes to roots recorded by an Obsidian migration cutover."""
+    settings_path = project_root.resolve() / SHARED_SETTINGS_REL
+    wiki_settings = _wiki_settings_from_payload(_load_settings_payload(settings_path), settings_path)
+    runtime = wiki_settings.get("legacyRuntime")
+    if runtime is None:
+        return
+    if not isinstance(runtime, dict):
+        raise ValueError(f"wiki.legacyRuntime must be an object in {settings_path}")
+    if runtime.get("mode") != "read-only-archive":
+        return
+    roots = runtime.get("roots")
+    if not isinstance(roots, list) or any(not isinstance(item, str) for item in roots):
+        raise ValueError(f"wiki.legacyRuntime.roots must be a string array in {settings_path}")
+    if root.display_path in roots:
+        raise PermissionError(f"{root.display_path} is a read-only legacy archive after Obsidian cutover")
+
+
 def _read_string_list(settings_path: Path, payload: dict, key: str) -> list[str]:
     value = payload.get(key, [])
     if value is None:
@@ -352,6 +370,7 @@ def enforce_wiki_update_authorization(
     authorized_update: bool = False,
     authorized_create: bool = False,
 ) -> None:
+    enforce_legacy_wiki_writable(project_root, root)
     policy = load_wiki_update_authorization_policy(project_root, root)
     action = policy[operation]
     if action == WIKI_POLICY_SKIP:

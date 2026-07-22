@@ -60,6 +60,15 @@ const PublishManifestSchema = z.object({
   featureSlug: z.string().regex(/^[a-z0-9][a-z0-9._-]*$/),
   repositories: z.array(RepositoryRunSchema).min(1),
 });
+const PublishPreparationSchema = z.object({
+  featureSlug: z.string().regex(/^[a-z0-9][a-z0-9._-]*$/),
+  operations: z.array(z.object({
+    sourceId: z.string().min(1),
+    repositoryRef: z.string().min(1),
+    bindingDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    path: z.string().min(1),
+  })).min(1),
+});
 
 type Receipt = z.infer<typeof AppliedReceiptSchema>;
 
@@ -134,6 +143,119 @@ function writeManifest(manifestPath: string, manifest: PublishManifest): void {
   const temporaryPath = `${manifestPath}.tmp-${process.pid}`;
   writeFileSync(temporaryPath, `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
   renameSync(temporaryPath, manifestPath);
+}
+
+function manifestPathFor(projectDir: string, featureSlug: string): string {
+  return path.join(projectDir, '.adapter', 'context', `${featureSlug}.wiki-publish.json`);
+}
+
+function readPublishManifest(manifestPath: string): PublishManifest | undefined {
+  return existsSync(manifestPath)
+    ? PublishManifestSchema.parse(JSON.parse(readFileSync(manifestPath, 'utf8'))) as PublishManifest
+    : undefined;
+}
+
+export function publishBranchOptions(
+  featureSlug: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  const parsedFeature = z.string().regex(/^[a-z0-9][a-z0-9._-]*$/).parse(featureSlug);
+  const projectDir = path.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
+  const manifest = readPublishManifest(manifestPathFor(projectDir, parsedFeature));
+  if (!manifest || manifest.featureSlug !== parsedFeature) {
+    throw new Error(`publish transaction is unavailable for ${parsedFeature}`);
+  }
+  return Object.fromEntries(manifest.repositories.map((run) => [run.repositoryRef, run.branch]));
+}
+
+export function preparePublishBranches(input: unknown, env: NodeJS.ProcessEnv = process.env): PublishResult {
+  const request = PublishPreparationSchema.parse(input);
+  const projectDir = path.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
+  const manifestPath = manifestPathFor(projectDir, request.featureSlug);
+  const existing = readPublishManifest(manifestPath);
+  const allowedRepositoryBranches = existing
+    ? Object.fromEntries(existing.repositories.map((run) => [run.repositoryRef, run.branch]))
+    : undefined;
+  const resolution = resolveBindings(env, projectDir, {
+    allowStagedWikiChanges: existing !== undefined,
+    allowedRepositoryBranches,
+  });
+  if (resolution.errors.length > 0) {
+    throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join('; ')}`);
+  }
+  const byRepository = new Map<string, { binding: ResolvedBinding; paths: string[] }>();
+  for (const operation of request.operations) {
+    const binding = resolution.bindings.find((candidate) => candidate.sourceId === operation.sourceId);
+    if (!binding) throw new Error(`publish preparation references an unbound Source: ${operation.sourceId}`);
+    if (binding.repositoryRef !== operation.repositoryRef) {
+      throw new Error(`publish preparation repositoryRef drift for ${operation.path}`);
+    }
+    if (binding.bindingDigest !== operation.bindingDigest) {
+      throw new Error(`publish preparation binding digest drift for ${operation.path}`);
+    }
+    if (binding.publishingMode !== 'git-pr') {
+      throw new Error(`Obsidian Wiki publishing requires publishing mode git-pr for ${operation.sourceId}`);
+    }
+    const notePath = assertPathWithinBinding(operation.path, binding);
+    const group = byRepository.get(operation.repositoryRef) ?? { binding, paths: [] };
+    group.paths.push(notePath);
+    byRepository.set(operation.repositoryRef, group);
+  }
+  for (const group of byRepository.values()) {
+    group.paths = [...new Set(group.paths)].sort();
+  }
+
+  const runId = existing?.runId ?? randomUUID();
+  const manifest: PublishManifest = existing ?? {
+    schemaVersion: 1,
+    kind: 'grill-adapter.obsidian-wiki-publish',
+    runId,
+    featureSlug: request.featureSlug,
+    repositories: [...byRepository.entries()].map(([repositoryRef, group]) => ({
+      repositoryRef,
+      baseBranch: group.binding.repository.baseBranch,
+      branch: `grill-adapter/wiki/${request.featureSlug}-${safeSegment(repositoryRef)}-${runId.slice(0, 8)}`,
+      paths: group.paths,
+      stagedTree: null,
+      commit: null,
+      prUrl: null,
+      state: 'pending',
+    })),
+  };
+  const expected = [...byRepository.entries()].map(([repositoryRef, group]) => ({
+    repositoryRef,
+    baseBranch: group.binding.repository.baseBranch,
+    paths: group.paths,
+  }));
+  const actual = manifest.repositories.map(({ repositoryRef, baseBranch, paths }) => ({ repositoryRef, baseBranch, paths }));
+  if (manifest.featureSlug !== request.featureSlug || JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error('publish transaction manifest differs from the prepared migration operations');
+  }
+  if (!existing) writeManifest(manifestPath, manifest);
+
+  for (const run of manifest.repositories) {
+    const binding = byRepository.get(run.repositoryRef)!.binding;
+    const worktreeRoot = binding.repository.worktreeRoot;
+    const currentBranch = git(['branch', '--show-current'], env, worktreeRoot);
+    const baseCommit = git(['rev-parse', run.baseBranch], env, worktreeRoot);
+    const branchCommit = git(['for-each-ref', '--format=%(objectname)', `refs/heads/${run.branch}`], env, worktreeRoot);
+    if (branchCommit && branchCommit !== baseCommit) {
+      throw new Error(`publish preparation branch drift for ${run.repositoryRef}`);
+    }
+    if (currentBranch === run.baseBranch) {
+      if (changedPaths(worktreeRoot, env).length > 0) {
+        throw new Error(`repository ${run.repositoryRef} must be clean before preparing its publish branch`);
+      }
+      git(branchCommit ? ['switch', run.branch] : ['switch', '-c', run.branch], env, worktreeRoot);
+    } else if (currentBranch !== run.branch) {
+      throw new Error(`repository ${run.repositoryRef} is not on its prepared publish branch`);
+    }
+    const changes = changedPaths(worktreeRoot, env);
+    if (changes.some((notePath) => !run.paths.includes(notePath))) {
+      throw new Error(`repository ${run.repositoryRef} contains changes outside its prepared path allowlist`);
+    }
+  }
+  return manifest;
 }
 
 function receiptBinding(receipt: Receipt, bindings: ResolvedBinding[]): ResolvedBinding {
@@ -381,14 +503,19 @@ export function publishFromFoldedJournal(input: unknown, env: NodeJS.ProcessEnv 
     receiptPaths.add(key);
   }
 
-  const resolution = resolveBindings(env, env.CLAUDE_PROJECT_DIR, { allowStagedWikiChanges: true });
+  const projectDir = path.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
+  const manifestPath = manifestPathFor(projectDir, journal.featureSlug);
+  const existingManifest = readPublishManifest(manifestPath);
+  const allowedRepositoryBranches = existingManifest
+    ? Object.fromEntries(existingManifest.repositories.map((run) => [run.repositoryRef, run.branch]))
+    : undefined;
+  const resolution = resolveBindings(env, projectDir, {
+    allowStagedWikiChanges: true,
+    allowedRepositoryBranches,
+  });
   if (resolution.errors.length > 0) {
     throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join('; ')}`);
   }
-  const manifestPath = path.join(resolution.projectDir, '.adapter', 'context', `${journal.featureSlug}.wiki-publish.json`);
-  const existingManifest = existsSync(manifestPath)
-    ? PublishManifestSchema.parse(JSON.parse(readFileSync(manifestPath, 'utf8'))) as PublishManifest
-    : undefined;
   if (existingManifest && existingManifest.featureSlug !== journal.featureSlug) {
     throw new Error('publish manifest featureSlug does not match the folded journal');
   }
@@ -424,14 +551,35 @@ export function publishFromFoldedJournal(input: unknown, env: NodeJS.ProcessEnv 
         throw new Error(`repository ${repositoryRef} staged publish tree differs from the applied receipt allowlist`);
       }
     } else {
-      for (const { receipt } of group) validateReceipt(receipt, binding, env);
-      const actual = changedPaths(binding.repository.worktreeRoot, env);
-      if (!samePaths(actual, expected)) {
-        throw new Error(`repository ${repositoryRef} changes differ from the applied receipt allowlist`);
+      const existingBranch = priorRun
+        ? git(
+          ['for-each-ref', '--format=%(objectname)', `refs/heads/${priorRun.branch}`],
+          env,
+          binding.repository.worktreeRoot,
+        )
+        : '';
+      const baseCommit = git(['rev-parse', binding.repository.baseBranch], env, binding.repository.worktreeRoot);
+      if (priorRun && existingBranch && existingBranch !== baseCommit) {
+        if (changedPaths(binding.repository.worktreeRoot, env).length > 0) {
+          throw new Error(`repository ${repositoryRef} worktree must be clean while recovering an unrecorded publish commit`);
+        }
+        if (!samePaths(commitPaths(existingBranch, env, binding.repository.worktreeRoot), expected)) {
+          throw new Error(`repository ${repositoryRef} unrecorded publish commit differs from the applied receipt allowlist`);
+        }
+        for (const { receipt } of group) validateReceipt(receipt, binding, env, existingBranch);
+        priorRun.commit = existingBranch;
+        priorRun.stagedTree = null;
+        writeManifest(manifestPath, existingManifest!);
+      } else {
+        for (const { receipt } of group) validateReceipt(receipt, binding, env);
+        const actual = changedPaths(binding.repository.worktreeRoot, env);
+        if (!samePaths(actual, expected)) {
+          throw new Error(`repository ${repositoryRef} changes differ from the applied receipt allowlist`);
+        }
       }
     }
     git(['fetch', '--quiet', binding.repository.remote, binding.repository.baseBranch], env, binding.repository.worktreeRoot);
-    const localBase = git(['rev-parse', 'HEAD'], env, binding.repository.worktreeRoot);
+    const localBase = git(['rev-parse', binding.repository.baseBranch], env, binding.repository.worktreeRoot);
     const remoteBase = git(['rev-parse', `${binding.repository.remote}/${binding.repository.baseBranch}`], env, binding.repository.worktreeRoot);
     if (localBase !== remoteBase) throw new Error(`repository ${repositoryRef} base branch is not synchronized with its remote`);
   }

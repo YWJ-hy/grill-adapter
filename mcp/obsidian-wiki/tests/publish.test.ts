@@ -380,6 +380,37 @@ describe('Obsidian Wiki GitHub publishing', () => {
     expect(command('git', [`--git-dir=${input.remoteRoot}`, 'rev-list', '--count', `main..${result.repositories[0].branch}`])).toBe('1');
   });
 
+  it('recovers a publish commit created before its manifest receipt was persisted', () => {
+    const input = fixture();
+    const runId = '123e4567-e89b-42d3-a456-426614174000';
+    const branch = `grill-adapter/wiki/${input.folded.featureSlug}-wiki-${runId.slice(0, 8)}`;
+    const manifestPath = path.join(
+      input.projectDir,
+      '.adapter',
+      'context',
+      `${input.folded.featureSlug}.wiki-publish.json`,
+    );
+    writeJson(manifestPath, {
+      schemaVersion: 1,
+      kind: 'grill-adapter.obsidian-wiki-publish',
+      runId,
+      featureSlug: input.folded.featureSlug,
+      repositories: [{
+        repositoryRef: 'wiki', baseBranch: 'main', branch, paths: [input.notePath],
+        stagedTree: null, commit: null, prUrl: null, state: 'pending',
+      }],
+    });
+    command('git', ['switch', '-c', branch], input.worktreeRoot);
+    command('git', ['add', '--', input.notePath], input.worktreeRoot);
+    command('git', ['commit', '-m', 'unrecorded publish commit'], input.worktreeRoot);
+
+    const result = publishFromFoldedJournal(input.folded, input.env);
+
+    expect(result.repositories[0]).toMatchObject({ branch, state: 'published' });
+    expect(result.repositories[0].commit).toBeTruthy();
+    expect(command('git', ['branch', '--show-current'], input.worktreeRoot)).toBe('main');
+  });
+
   it('rejects a colliding publish branch whose Note contents do not match the applied receipt', () => {
     const input = fixture();
     command('git', ['config', 'user.name', ''], input.worktreeRoot);

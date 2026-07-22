@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from wiki_common import (  # noqa: E402
     build_wiki_index_graph,
+    enforce_legacy_wiki_writable,
     existing_wiki_roots,
     repo_root,
     select_wiki_root,
@@ -230,6 +231,15 @@ def main() -> None:
     parser.add_argument("--wiki-dir", default=None, help="Treat this directory as the wiki root directly (repo-root wiki layout); overrides --wiki-root and the positional project root")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     args = parser.parse_args()
+
+    write_project = args.set_summaries or args.generate_indexes
+    if write_project and not args.wiki_dir:
+        project = Path(write_project).resolve()
+        try:
+            for root in selected_wiki_roots(project, args.wiki_root, require_index=False):
+                enforce_legacy_wiki_writable(project, root)
+        except (PermissionError, ValueError) as exc:
+            raise SystemExit(str(exc)) from exc
 
     if args.inventory:
         project = Path(args.inventory).resolve()

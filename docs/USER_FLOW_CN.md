@@ -216,7 +216,7 @@ grill-adapter 明确承认自己不是无缝的，并把降级点讲清楚：
 
 调用 `migrate-wiki` 的 **Obsidian migration plan** 模式。它先 fail-closed 校验 binding topology 与 symlink 边界，只读 legacy project/shared Wiki、`access.read: true` 的选定 Source snapshot 与本地 skill packs，输出 source/target digest 和逐项 `create/update/skip/conflict` 映射；不会修改 legacy Markdown、indexes、`.graph.json`、Source Notes、settings 或 registry。semantic split、duplicate ID/Card identity、occupied target path、dangling edge、unavailable pack、Shared neutrality violation、non-migratable navigation 与 heuristic constraint strength 全部进入显式 confirmation gate。
 
-用户确认精确 plan 后，apply 重算 plan/snapshots，零 conflict 才经 write bridge 两阶段 CAS 生成 Notes/Cards，把最终 receipts 按 repository 发布成 draft PR，并留下可恢复 migration manifest；这一步不等于 merge。PR 全部由用户合并、base worktree 同步后，verify 只读证明 mapping/ID/Source/schema/policy/hash/search/pack/edge/hard-reread。最后另行确认 cutover；cutover 会重新 verify，且 active schema-v5 sidecar 存在时拒绝。成功后旧 roots 原字节保留，并只在 settings 中标记为 read-only archive。
+用户确认精确 plan 后，apply 重算 plan/snapshots，零 conflict 才先持久化完整 plan、binding/policy snapshot 与全部 CAS intents，并 checkout 每仓专用 PR branch；所有 bridge 写只发生在这些 branch 上。两阶段 CAS 生成 Notes/Cards 后，最终 receipts 按 repository 发布成 draft PR；中断恢复只接受原始 before、seed 或 final hash，不收养人工改动。这一步不等于 merge。PR 全部由用户合并、base worktree 同步后，verify 从 immutable plan 推导 coverage，并只读重验 legacy source、binding/policy、mapping/ID/Source/schema/hash/search/pack/edge/hard-reread。最后另行确认 cutover；cutover 会重新 verify，且 active schema-v5 sidecar 存在时拒绝。成功后仅 plan 选择的旧 roots 原字节保留并标记为 read-only archive，legacy 写 helper 机械拒绝再写。
 
 ---
 

@@ -5,6 +5,30 @@
   "migrationId": "migration-0123456789ab",
   "state": "published",
   "planHash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  // The complete byte-equivalent structured planner output is embedded here. Verify hashes
+  // this object and derives expected coverage from its writable planItems.
+  "plan": {
+    "schemaVersion": 1,
+    "kind": "grill-adapter.obsidian-migration-plan",
+    "generatedBy": "grill-adapter",
+    "mode": "plan-only",
+    "writePerformed": false,
+    "sourceSnapshot": {"algorithm": "sha256:grill-adapter-obsidian-migration-snapshot-v1", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+    "targetSnapshot": {"algorithm": "sha256:grill-adapter-obsidian-migration-snapshot-v1", "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+    "targetSources": [{"sourceId": "example-project", "role": "project", "root": "Projects/example"}],
+    "inventory": {
+      "pages": [],
+      "sections": [{"sourceItemId": "legacy:project:section:backend/contracts.md#response-envelope", "legacyRoot": "project", "path": "backend/contracts.md", "sectionId": "response-envelope", "summary": "API responses use the shared envelope.", "constraintStrength": "hard", "pageType": "constraint"}],
+      "indexes": [],
+      "graphEdges": [],
+      "danglingEdges": [],
+      "skillDiscovery": [],
+      "sourceItems": [{"sourceItemId": "legacy:project:section:backend/contracts.md#response-envelope", "kind": "section"}]
+    },
+    "planItems": [{"sourceItemId": "legacy:project:section:backend/contracts.md#response-envelope", "sourceKind": "section", "targetSource": {"sourceId": "example-project", "role": "project"}, "noteId": "example-project/backend/contracts/response-envelope", "proposedPath": "Projects/example/backend/contracts/response-envelope.md", "noteType": "constraint", "constraintStrength": "hard", "edgeTransformation": [], "decision": "create", "decisionReason": "legacy section maps to one atomic Note"}],
+    "confirmation": {"required": false, "issues": []},
+    "summary": {"sourceItemCount": 1, "planItemCount": 1, "decisionCounts": {"create": 1, "update": 0, "skip": 0, "conflict": 0}, "confirmationIssueCount": 0}
+  },
   "sourceSnapshot": {
     "algorithm": "sha256:grill-adapter-obsidian-migration-snapshot-v1",
     "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -16,6 +40,43 @@
   "targetSources": [
     {"sourceId": "example-project", "role": "project", "root": "Projects/example"}
   ],
+  "bindingSnapshot": [
+    {
+      "sourceId": "example-project",
+      "role": "project",
+      "root": "Projects/example",
+      "repositoryRef": "engineering-wiki",
+      "bindingDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "publishingMode": "git-pr",
+      "effectiveReadPolicy": "allow",
+      "effectiveUpdatePolicy": "direct",
+      "effectiveCreatePolicy": "direct",
+      "manifest": {"wikiSchema": "grill-adapter.obsidian-source/v1", "sourceId": "example-project", "scope": "project", "updateExisting": "direct", "createNote": "direct", "blockedTerms": [], "blockedPatterns": []},
+      "repositoryIdentity": {"remote": "origin", "expectedRemote": "github.com/example/engineering-wiki", "baseBranch": "main", "currentBranch": "main", "baseSynchronized": true}
+    }
+  ],
+  "bindingSnapshotHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  // Complete write intents are persisted before prepare-publish checks out the dedicated branch
+  // and before any bridge call. The roster is the recovery and coverage oracle.
+  "operations": [
+    {
+      "sourceItemId": "legacy:project:section:backend/contracts.md#response-envelope",
+      "sourceKind": "section",
+      "sourceId": "example-project",
+      "repositoryRef": "engineering-wiki",
+      "bindingDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "wikiId": "example-project/backend/contracts/response-envelope",
+      "path": "Projects/example/backend/contracts/response-envelope.md",
+      "operation": "create",
+      "beforeHash": null,
+      "seedHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "contentHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "noteType": "constraint",
+      "constraintStrength": "hard",
+      "edges": []
+    }
+  ],
+  "operationsHash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
   // seededNotes is the resumable first CAS phase; Notes are finalized before publishing.
   "seededNotes": [
     {

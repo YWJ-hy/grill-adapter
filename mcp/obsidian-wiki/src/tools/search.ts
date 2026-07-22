@@ -1,9 +1,15 @@
 import { resolveBindings } from '../bindings.js';
 import { assertUniqueBoundSkillCard, searchBoundNotes } from '../retrieval.js';
 import { skillCardAvailability } from '../skill-card.js';
+import { publishBranchOptions } from '../publish.js';
 
-export function searchTool(input: { query: string }, env: NodeJS.ProcessEnv = process.env) {
-  const resolution = resolveBindings(env);
+export function searchTool(input: { query: string; publishFeatureSlug?: string }, env: NodeJS.ProcessEnv = process.env) {
+  const resolution = resolveBindings(env, process.cwd(), {
+    allowStagedWikiChanges: input.publishFeatureSlug !== undefined,
+    allowedRepositoryBranches: input.publishFeatureSlug
+      ? publishBranchOptions(input.publishFeatureSlug, env)
+      : undefined,
+  });
   if (resolution.errors.length > 0) {
     throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join('; ')}`);
   }
@@ -19,7 +25,7 @@ export function searchTool(input: { query: string }, env: NodeJS.ProcessEnv = pr
           note,
           resolution.projectDir,
           {
-            mode: 'discovery',
+            mode: input.publishFeatureSlug ? 'write' : 'discovery',
             baseSynchronized: binding?.repositoryHealth.baseSynchronized === true,
           },
         ).available;

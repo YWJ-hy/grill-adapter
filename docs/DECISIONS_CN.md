@@ -357,10 +357,11 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 **决策**
 
 - `wiki_migration_apply.py` 只消费 planner 的完整、无 conflict 输出；首次写前重跑 planner 并要求结构化结果完全相等。显式 `--confirmed` 只代表用户确认精确 plan，Source effective policy 仍独立执行。
-- create 先写合法无边 seed，再 CAS finalize，因而 typed edge 顺序和循环不要求绕过 link validation；最终 receipt 始终描述相对 base 的 create/update。
-- 最终 receipts 直接交给既有 publisher，按 repository 建 draft PR 并恢复 base；migration manifest 与 publish manifest 共同提供中断恢复和幂等。
-- verify 只读 merged、base-synchronized 的正式 Obsidian runtime，校验 mapping/ID/Source/schema/policy/hash/search/Skill Card/edge/hard reread；人工编辑只会触发 drift。
-- cutover 需要单独确认并重新 verify；active schema-v5 sidecar 会阻断。旧 roots 不移动、不删除、不 chmod，只在项目 settings 记录 `read-only-archive`。
+- 首个 bridge 写前先把完整 plan、binding/policy snapshot 与全部 CAS intents 原子落盘，并让既有 publisher 创建/checkout 每仓专用 PR branch；base 从不承载迁移 Note 改动。
+- create 先写合法无边 seed，再 CAS finalize，因而 typed edge 顺序和循环不要求绕过 link validation；恢复只接受 intent 中的 before/seed/final hash，最终 receipt 始终描述相对 base 的 create/update。
+- 最终 receipts 交给同一 publisher 提交已准备的 branch、建 draft PR 并恢复 base；migration manifest 与 publish manifest 共同提供中断恢复和幂等。
+- verify 从 embedded plan/operation roster 推导 coverage，重验 source snapshot 与 binding/policy identity，再只读 merged、base-synchronized 的正式 Obsidian runtime；删除 receipt 或人工编辑只会触发 drift。
+- cutover 需要单独确认并重新 verify；active schema-v5 sidecar 会阻断。只归档 plan 选择的旧 roots，不移动、不删除、不 chmod，并由 legacy 写 helper 机械执行 `read-only-archive`。
 
 **理由**
 

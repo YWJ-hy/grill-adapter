@@ -81,7 +81,7 @@ cd grill-adapter
 ./manage.sh doctor /path/to/your/project
 ```
 
-`.adapter/wiki/` 就绪（标准模板：backend / frontend / guides）。或在 Claude Code 里 `/grill-adapter:init-wiki` 让 agent 基于项目盘点起草，`/grill-adapter:import-wiki` + `/grill-adapter:migrate-wiki` 导入并 section 化已有文档。已有 legacy Wiki 迁往 Obsidian 时仍从 `migrate-wiki` 进入，但按 plan → 确认 → CAS apply/draft PR → 人工 merge/base sync → verify → 单独确认 cutover 的生命周期执行；旧目录只标记为 read-only archive，不自动删除。
+`.adapter/wiki/` 就绪（标准模板：backend / frontend / guides）。或在 Claude Code 里 `/grill-adapter:init-wiki` 让 agent 基于项目盘点起草，`/grill-adapter:import-wiki` + `/grill-adapter:migrate-wiki` 导入并 section 化已有文档。已有 legacy Wiki 迁往 Obsidian 时仍从 `migrate-wiki` 进入，但按 plan → 确认 → 先建专用 PR branch、再 CAS apply/draft PR → 人工 merge/base sync → immutable-plan/source/binding verify → 单独确认 cutover 的生命周期执行；只有 plan 选择的旧目录会标记为 mechanically enforced read-only archive，不自动删除。
 
 ## 4. 端到端走一遍
 

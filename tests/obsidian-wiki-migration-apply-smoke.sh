@@ -26,7 +26,14 @@ VAULT="$TMP/vault"
 REMOTE="$TMP/vault.git"
 SOURCE_ROOT="Projects/example"
 mkdir -p "$PROJECT/.adapter/wiki/guides" "$PROJECT/.adapter/context" \
-  "$PROJECT/.shared-adapter" "$PROJECT/.claude/skills/release-check" "$VAULT/$SOURCE_ROOT/_meta"
+  "$PROJECT/.shared-adapter/wiki" "$PROJECT/.claude/skills/release-check" \
+  "$VAULT/$SOURCE_ROOT/_meta" "$VAULT/$SOURCE_ROOT/rules"
+
+cat > "$PROJECT/.shared-adapter/wiki/index.md" <<'MD'
+# Unselected Shared Wiki
+
+This root is outside the project-only migration plan.
+MD
 
 cat > "$PROJECT/.adapter/wiki/index.md" <<'MD'
 # Project Wiki
@@ -98,6 +105,21 @@ create_note: direct
 ---
 
 # Project Source
+MD
+cat > "$VAULT/$SOURCE_ROOT/rules/base-contract.md" <<'MD'
+---
+wiki_schema: grill-adapter.obsidian-note/v1
+wiki_id: "project-source/rules/base-contract"
+type: constraint
+status: active
+agent_visible: true
+summary: "An older base contract."
+constraint_strength: hard
+---
+
+## Base contract
+
+The old base contract may change.
 MD
 
 git init --bare --initial-branch=main "$REMOTE" >/dev/null
@@ -238,6 +260,36 @@ fi
 grep -Fq 'explicit confirmation' "$TMP/unconfirmed.err"
 
 APPLY_OUT="$TMP/apply.json"
+# The write intent must exist before the bridge call, and a crash after that call must
+# leave the exact migration result on its dedicated PR branch rather than on main.
+export GRILL_ADAPTER_TEST_FAIL_AFTER_SOURCE_ITEM='legacy:project:section:rules.md#base-contract'
+if python3 "$MIGRATOR" apply --project-root "$PROJECT" --plan "$PLAN" --confirmed > /dev/null 2> "$TMP/interrupted.err"; then
+  printf 'Migration apply ignored the post-bridge interruption failpoint\n' >&2
+  exit 1
+fi
+unset GRILL_ADAPTER_TEST_FAIL_AFTER_SOURCE_ITEM
+grep -Fq 'injected interruption after bridge write' "$TMP/interrupted.err"
+ACTIVE_BRANCH="$(git -C "$VAULT" branch --show-current)"
+[[ "$ACTIVE_BRANCH" == grill-adapter/wiki/migration-* ]] || {
+  printf 'Migration write was not isolated on a dedicated branch: %s\n' "$ACTIVE_BRANCH" >&2
+  exit 1
+}
+UPDATED_NOTE="$VAULT/$SOURCE_ROOT/rules/base-contract.md"
+cp "$UPDATED_NOTE" "$TMP/interrupted-update.md"
+printf '\nHuman edit during interrupted migration.\n' >> "$UPDATED_NOTE"
+DRIFTED_HASH="$(shasum -a 256 "$UPDATED_NOTE")"
+if python3 "$MIGRATOR" apply --project-root "$PROJECT" --plan "$PLAN" --confirmed > /dev/null 2> "$TMP/interrupted-drift.err"; then
+  printf 'Migration resume overwrote a human edit after an interrupted update\n' >&2
+  exit 1
+fi
+grep -Fq 'write intent drift' "$TMP/interrupted-drift.err"
+[[ "$(shasum -a 256 "$UPDATED_NOTE")" == "$DRIFTED_HASH" ]] || {
+  printf 'Migration resume changed the drifted Note\n' >&2
+  exit 1
+}
+cp "$TMP/interrupted-update.md" "$UPDATED_NOTE"
+
+# The exact expected post-state is reconciled without a duplicate write.
 python3 "$MIGRATOR" apply --project-root "$PROJECT" --plan "$PLAN" --confirmed > "$APPLY_OUT"
 python3 - "$APPLY_OUT" "$VAULT" "$FAKE_GH_STATE" <<'PY'
 import json, pathlib, subprocess, sys
@@ -248,7 +300,10 @@ assert len(result["notes"]) == 3
 assert {note["sourceKind"] for note in result["notes"]} == {"section", "skill-discovery"}
 assert result["repositories"][0]["branch"].startswith("grill-adapter/wiki/migration-")
 assert subprocess.check_output(["git", "-C", sys.argv[2], "branch", "--show-current"], text=True).strip() == "main"
-assert not any(pathlib.Path(sys.argv[2], "Projects/example").glob("rules/**/*.md"))
+assert not pathlib.Path(sys.argv[2], "Projects/example/rules/api-contract.md").exists()
+assert "The old base contract may change." in pathlib.Path(
+    sys.argv[2], "Projects/example/rules/base-contract.md"
+).read_text(encoding="utf-8")
 gh = json.load(open(sys.argv[3], encoding="utf-8"))
 assert gh["createCount"] == 1
 PY
@@ -301,6 +356,46 @@ assert result["checks"]["search"] is True
 assert result["checks"]["hardNoteReread"] is True
 assert result["checks"]["typedEdges"] is True
 PY
+
+# The immutable embedded plan, not mutable receipt arrays, defines coverage.
+cp "$MANIFEST" "$TMP/manifest.good.json"
+python3 - "$MANIFEST" <<'PY'
+import json, sys
+path = sys.argv[1]
+value = json.load(open(path, encoding="utf-8"))
+value["notes"].pop()
+json.dump(value, open(path, "w", encoding="utf-8"), indent=2)
+PY
+if python3 "$MIGRATOR" verify --project-root "$PROJECT" --manifest "$MANIFEST" > /dev/null 2> "$TMP/coverage.err"; then
+  printf 'Migration verify trusted a manifest with a deleted Note row\n' >&2
+  exit 1
+fi
+grep -Fq 'coverage' "$TMP/coverage.err"
+cp "$TMP/manifest.good.json" "$MANIFEST"
+
+cp "$PROJECT/.adapter/wiki/rules.md" "$TMP/legacy-rules.good.md"
+printf '\nLegacy source drift.\n' >> "$PROJECT/.adapter/wiki/rules.md"
+if python3 "$MIGRATOR" verify --project-root "$PROJECT" --manifest "$MANIFEST" > /dev/null 2> "$TMP/source-drift.err"; then
+  printf 'Migration verify accepted legacy source drift\n' >&2
+  exit 1
+fi
+grep -Fq 'legacy source snapshot drift' "$TMP/source-drift.err"
+cp "$TMP/legacy-rules.good.md" "$PROJECT/.adapter/wiki/rules.md"
+
+cp "$PROJECT/.shared-adapter/settings.json" "$TMP/settings.good.json"
+python3 - "$PROJECT/.shared-adapter/settings.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+value = json.load(open(path, encoding="utf-8"))
+value["wiki"]["obsidian"]["bindings"][0]["access"]["update"] = "deny"
+json.dump(value, open(path, "w", encoding="utf-8"), indent=2)
+PY
+if python3 "$MIGRATOR" verify --project-root "$PROJECT" --manifest "$MANIFEST" > /dev/null 2> "$TMP/binding-drift.err"; then
+  printf 'Migration verify accepted binding policy drift\n' >&2
+  exit 1
+fi
+grep -Fq 'binding snapshot drift' "$TMP/binding-drift.err"
+cp "$TMP/settings.good.json" "$PROJECT/.shared-adapter/settings.json"
 
 # Verification is read-only and refuses a post-merge human edit instead of overwriting it.
 NOTE="$VAULT/$SOURCE_ROOT/rules/api-contract.md"

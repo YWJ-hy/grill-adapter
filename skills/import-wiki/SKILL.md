@@ -24,6 +24,7 @@ The goal is structural migration: preserve source content, place it under the se
 - Use `--wiki-root shared` only when the user asks to import into shared wiki or the imported content is clearly cross-project shared knowledge.
 - When importing into shared wiki, require source content and target paths to be neutral/portable; do not import system-specific identifiers, internal URLs, environment names, local paths, or current-system-only business rules.
 - Before importing, honor the selected root's `wiki.updateAuthorization.createNewDocument` policy from `.adapter/settings.json` or `.shared-adapter/settings.json`.
+- If `.shared-adapter/settings.json` records the selected root in `wiki.legacyRuntime.roots` with `mode: read-only-archive`, stop. Explicit authorization never reopens a cut-over legacy root, and `wiki_import.py` enforces this mechanically.
 - After importing, refresh the selected wiki root's index chain.
 
 ## User Input

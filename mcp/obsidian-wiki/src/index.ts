@@ -7,7 +7,7 @@ import { readNotesByWikiIdsTool, readNotesTool } from './tools/read.js';
 import { graphNeighborsTool } from './tools/graph.js';
 import { applyNoteChangeTool, proposeNoteChangeTool, type NoteChangeInput } from './tools/write.js';
 import { runWriteBridgeFromEnvironment } from './write-bridge.js';
-import { publishFromFoldedJournal } from './publish.js';
+import { preparePublishBranches, publishFromFoldedJournal } from './publish.js';
 
 async function readJsonRequest(): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -32,7 +32,10 @@ async function main(): Promise<void> {
     if (typeof request.query !== 'string' || !request.query.trim()) {
       throw new Error('query must be a non-empty string');
     }
-    process.stdout.write(`${JSON.stringify(searchTool({ query: request.query }))}\n`);
+    process.stdout.write(`${JSON.stringify(searchTool({
+      query: request.query,
+      publishFeatureSlug: typeof request.publishFeatureSlug === 'string' ? request.publishFeatureSlug : undefined,
+    }))}\n`);
     return;
   }
   if (subcommand === 'serve-write-bridge') {
@@ -68,8 +71,13 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify(publishFromFoldedJournal(request))}\n`);
     return;
   }
+  if (subcommand === 'prepare-publish') {
+    const request = await readJsonRequest();
+    process.stdout.write(`${JSON.stringify(preparePublishBranches(request))}\n`);
+    return;
+  }
   if (subcommand !== undefined) {
-    throw new Error('Unknown subcommand. Run with no arguments for MCP stdio, or status, search, read-notes, read-notes-by-wiki-ids, graph-neighbors, propose-note-change, apply-note-change, publish, or serve-write-bridge.');
+    throw new Error('Unknown subcommand. Run with no arguments for MCP stdio, or status, search, read-notes, read-notes-by-wiki-ids, graph-neighbors, propose-note-change, apply-note-change, prepare-publish, publish, or serve-write-bridge.');
   }
   const server = createServer();
   await server.connect(new StdioServerTransport());

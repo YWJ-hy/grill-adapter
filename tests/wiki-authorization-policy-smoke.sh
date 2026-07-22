@@ -169,4 +169,28 @@ if ! grep -Fq '真实说明段落。' "${TMP_PROJECT}/.adapter/wiki/index.md"; t
   exit 1
 fi
 
+cat > "${TMP_PROJECT}/.shared-adapter/settings.json" <<'JSON'
+{
+  "wiki": {
+    "legacyRuntime": {
+      "mode": "read-only-archive",
+      "roots": [".adapter/wiki", ".shared-adapter/wiki"],
+      "migrationManifest": ".adapter/context/example.obsidian-migration.json"
+    }
+  }
+}
+JSON
+if (cd "${TMP_PROJECT}" && python3 "${TARGET_DIR}/scripts/wiki_apply_update.py" --authorized-update existing.md Archived "Archived update." "Must fail"); then
+  printf 'Expected wiki_apply_update.py to reject an archived legacy root\n' >&2
+  exit 1
+fi
+if (cd "${TMP_PROJECT}" && python3 "${TARGET_DIR}/scripts/wiki_import.py" source --target archived-import --authorized-create); then
+  printf 'Expected wiki_import.py to reject an archived legacy root\n' >&2
+  exit 1
+fi
+if python3 "${TARGET_DIR}/scripts/wiki_migrate_helper.py" --generate-indexes "${TMP_PROJECT}" --wiki-root project; then
+  printf 'Expected migrate-wiki write modes to reject an archived legacy root\n' >&2
+  exit 1
+fi
+
 printf 'wiki authorization policy smoke test complete\n'

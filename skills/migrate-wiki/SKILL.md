@@ -35,6 +35,7 @@ Analyze existing wiki leaf pages, identify semantically independent constraint/k
 - Do not delete, reorder, or rewrite existing text.
 - Do not auto-invoke the host's planning, implementation, review, completion, or verification skills.
 - Ask the user to confirm the migration plan before applying changes.
+- Before modes 1 or 2 write any marker, index, or graph file, inspect `.shared-adapter/settings.json`. If the selected root appears in `wiki.legacyRuntime.roots` with `mode: read-only-archive`, stop; the mechanical helpers also reject these writes.
 - A section must be a **independently referenceable constraint unit**, not an arbitrary paragraph.
 - Section IDs must be kebab-case (`[a-z0-9][a-z0-9_-]*`) and reflect the constraint's core semantics.
 - After migration, generate companion `.index.md` files for all migrated documents.
@@ -96,7 +97,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_migration_apply.py apply \
   --project-root . --plan <confirmed-plan.json> --confirmed
 ```
 
-Pass `--registry <exact-path>` when the registry is outside its normal location. The coordinator reruns the deterministic planner and requires byte-equivalent structured output before the first write. It creates edge-free Note seeds before a CAS finalization pass so typed edges, including cycles, validate without weakening the bridge. Every create/update still passes the bound Source policy, neutrality, stable-ID, Skill Card, typed-link, and expected-hash gates. Applied identities become an allowlist for the existing publisher, which creates one draft PR per `repositoryRef`, restores each base worktree, and records both publish and migration manifests. Re-running the same apply resumes those manifests and must not duplicate Notes, commits, pushes, or PRs.
+Pass `--registry <exact-path>` when the registry is outside its normal location. The coordinator reruns the deterministic planner and requires byte-equivalent structured output before the first write. Before the first bridge call it persists the full confirmed plan, binding/policy snapshot, and complete write-intent roster, then prepares and checks out one dedicated PR branch per repository. All Note writes occur only on those branches. It creates edge-free Note seeds before a CAS finalization pass so typed edges, including cycles, validate without weakening the bridge. Every create/update still passes the bound Source policy, neutrality, stable-ID, Skill Card, typed-link, and original expected-hash gates. Applied identities become an allowlist for the existing publisher, which commits those already-isolated branches, creates draft PRs, restores each base worktree, and records both publish and migration manifests. Re-running the same apply reconciles only the exact before/seed/final hashes from the durable intent roster and must not overwrite drift or duplicate Notes, commits, pushes, or PRs.
 
 Apply output names `manifestPath` and the draft PRs. Do not merge or mark them merged. After the user has merged every PR and synchronized the configured base worktrees, run:
 
@@ -105,7 +106,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_migration_apply.py verify \
   --project-root . --manifest <migration-manifest.json>
 ```
 
-Verify is Note-read-only. It requires merged PR receipts and fresh bases, then uses the bundled Obsidian CLI seam to prove complete mapping coverage, unique stable IDs, Source/path containment, atomic Note schema/policy health, exact content hashes, search identity, full hard-Note rereads, Skill Card availability, and typed neighbors. Any human edit or configuration drift fails closed and is never overwritten.
+Verify is Note-read-only. It requires merged PR receipts and fresh bases, re-hashes the embedded plan, recomputes the legacy source snapshot, and compares the current binding/policy identity with the apply snapshot. Coverage is derived from the immutable plan and operation roster rather than mutable receipt arrays. It then uses the bundled Obsidian CLI seam to prove unique stable IDs, Source/path containment, atomic Note schema/policy health, exact content hashes, search identity, full hard-Note rereads, Skill Card availability, and typed neighbors. Any human edit, removed receipt, or configuration drift fails closed and is never overwritten.
 
 After a successful verify, show the exact legacy roots and settings change. Obtain a **separate explicit cutover confirmation**, then run:
 
@@ -114,7 +115,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_migration_apply.py cutover \
   --project-root . --manifest <migration-manifest.json> --confirmed
 ```
 
-Cutover performs verify again. It refuses while the newest active `.wiki-context.json` is schema v5. On success it keeps each legacy directory byte-for-byte and records `wiki.legacyRuntime.mode: read-only-archive`, its roots, and the migration manifest in `.shared-adapter/settings.json`; the migration manifest becomes `state: cutover`. Never delete, move, chmod, or rewrite the archived legacy roots automatically.
+Cutover performs verify again. It refuses while the newest active `.wiki-context.json` is schema v5. On success it keeps each selected legacy directory byte-for-byte and records `wiki.legacyRuntime.mode: read-only-archive`, only the roots covered by the confirmed plan, and the migration manifest in `.shared-adapter/settings.json`; the migration manifest becomes `state: cutover`. Legacy update/import/migration helpers mechanically reject later writes to those roots. Never delete, move, chmod, or rewrite the archived legacy roots automatically.
 
 ## Workflow
 

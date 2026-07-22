@@ -12,13 +12,13 @@ planner 先按正式治理规则校验 binding topology（重复 ID/root、root 
 
 ## Legacy Wiki 迁移 apply / verify / cutover
 
-`scripts/wiki_migration_apply.py apply` 只接受原始 schema-v1 plan、零 `conflict`、显式 `--confirmed`。首次写前会用相同 Source selector 重跑 planner，并要求整个结构化 plan 完全一致；source/target snapshot 或 plan 内容漂移均拒绝。为了让任意顺序乃至循环 typed edge 通过既有 bridge 校验，coordinator 先为所有 create 建立无边的合法 atomic Note seed，再以 expected-hash CAS 写入最终 frontmatter/body；update 同样按当前 Note hash CAS。每一步仍经过 binding、Source manifest、effective policy、neutrality、stable ID、Skill Card pack identity 与 typed-link 校验，不直写 Vault。
+`scripts/wiki_migration_apply.py apply` 只接受原始 schema-v1 plan、零 `conflict`、显式 `--confirmed`。首次写前会用相同 Source selector 重跑 planner，并要求整个结构化 plan 完全一致；source/target snapshot 或 plan 内容漂移均拒绝。它先把完整 plan、binding/policy snapshot 和所有 operation 的路径、Note identity、原始 before hash、seed/final hash 原子写进 migration manifest，再由 publisher 建立并 checkout 每仓专用 PR branch；首个 bridge 写发生时已不在 base。为了让任意顺序乃至循环 typed edge 通过既有 bridge 校验，coordinator 先为所有 create 建立无边的合法 atomic Note seed，再以原始 expected-hash CAS 写入最终 frontmatter/body。中断恢复只接受精确 before/seed/final 状态，其他内容均视作人工 drift，绝不把当前 hash 收养成新 CAS 基线。每一步仍经过 binding、Source manifest、effective policy、neutrality、stable ID、Skill Card pack identity 与 typed-link 校验，不绕 bridge 直写 Vault。
 
 最终 Note receipts 作为 allowlist 交给既有 publisher：按 `repositoryRef` 生成 draft PR、恢复 clean base，并与迁移状态一起持久化到 `.adapter/context/migration-<plan-hash>.{wiki-publish,obsidian-migration}.json`。manifest 契约见 `contracts/obsidian-migration-manifest-v1.example.jsonc`。中断重跑复用 seed/final receipt 和 publish run，不重复 Note、commit、push 或 PR；开放 PR 内容仍不进入正式读取。
 
-PR 由用户审查/合并且 configured base worktree 同步后，`verify` 才运行。它先核实所有 PR `MERGED` 与 base freshness，再通过 bundled `status/search/read-notes-by-wiki-ids/graph-neighbors` seam 检查 mapping coverage、唯一 ID、Source/path containment、schema/policy、精确 content hash、search identity、Skill Card availability、typed edges 与 hard Note 全文 reread。verify 不写 Note；任何人工修改都表现为 drift，绝不覆盖。
+PR 由用户审查/合并且 configured base worktree 同步后，`verify` 才运行。它先重算 manifest 内完整 plan 的 `planHash`、legacy source snapshot、binding/policy snapshot，并从 immutable plan + operation roster 推导完整 coverage，删除 receipt 行或改写 receipt 身份都会失败。随后核实所有 PR `MERGED` 与 base freshness，再通过 bundled `status/search/read-notes-by-wiki-ids/graph-neighbors` seam 检查唯一 ID、Source/path containment、schema/policy、精确 content hash、search identity、Skill Card availability、typed edges 与 hard Note 全文 reread。verify 不写 Note；任何人工修改都表现为 drift，绝不覆盖。
 
-`cutover` 需要另一次显式 `--confirmed`，并在写 settings 前重新跑完整 verify。若当前最新 `.adapter/context/*.wiki-context.json` 仍是 schema v5，则 fail-closed。成功后 `.shared-adapter/settings.json` 保持 `wiki.provider: obsidian`，并记录 `wiki.legacyRuntime.mode: read-only-archive`、实际存在的旧 roots 和 migration manifest；旧 Markdown/index/graph 不删除、不移动、不重写。
+`cutover` 需要另一次显式 `--confirmed`，并在写 settings 前重新跑完整 verify。若当前最新 `.adapter/context/*.wiki-context.json` 仍是 schema v5，则 fail-closed。成功后 `.shared-adapter/settings.json` 保持 `wiki.provider: obsidian`，并记录 `wiki.legacyRuntime.mode: read-only-archive`、confirmed plan 实际覆盖的旧 roots 和 migration manifest；未被 plan 选择的另一 root 不会被误归档。旧 Markdown/index/graph 不删除、不移动、不重写；legacy update/import/migration helper 会机械拒绝对 archive roots 的后续写入。
 
 ## 运行边界
 
@@ -190,6 +190,6 @@ node mcp/obsidian-wiki/dist/index.js status
 
 以下条件均为 fail-closed 错误：缺少项目配置、缺少 registry entry、重复 Source/root、多个 project Source、缺失或不匹配 manifest、路径逃逸或 Source root 的符号链接逃逸、Obsidian CLI 未安装或无法列出 Vault selector、非法/不完整的 bridge 配置、带凭据或不匹配的 repository remote、非 `baseBranch`、脏 worktree，以及未解决的 merge/rebase/cherry-pick 等 Git 操作。写路径还会拒绝 token 缺失/错误、`_meta`、未绑定 root、policy deny/未确认 confirm、stable ID 漂移/重复、typed link 失效、expected-hash 冲突及 Shared neutrality 命中。`obsidian_wiki_sources` 在任一 binding 错误时拒绝列出 Source；`obsidian_wiki_status` 返回结构化错误以及已验证的 Vault/repository/bridge 配置摘要以便修复配置，但不暴露 token。
 
-每个成功 binding 有 canonical `bindingDigest`，由 vault reference、Source identity、role、root、publishing mode、repository reference、base branch 与 effective read policy 计算。schema-v6 sidecar 保存它、每个 Note 的 `wikiId`/path/`contentHash`/summary，以及批量读取的 `snapshotHash`，但不保存 Note body；这些字段为后续执行期检测换绑和内容漂移提供身份快照。
+每个成功 binding 有 canonical `bindingDigest`，由 vault reference、Source identity、role、root、publishing mode、repository reference、base branch、effective read/update/create policy 与 Source manifest 治理字段计算。schema-v6 sidecar 保存它、每个 Note 的 `wikiId`/path/`contentHash`/summary，以及批量读取的 `snapshotHash`，但不保存 Note body；这些字段为后续执行期检测换绑、策略和内容漂移提供身份快照。
 
 正式读取默认会在 registry 的 `syncBeforeResearch` 未显式关闭时 fetch 并 `--ff-only` 对齐 `remote/baseBranch`；无法证明 freshness 时仅在 `allowStaleRead: true` 时可继续。repository 根的 `.grill-adapter-wiki.publish.lock` 存在时所有读取都会拒绝，以防发布分支切换期间让 Obsidian 索引暴露混合内容。

@@ -10,6 +10,7 @@ import {
 import { callWriteBridge, type BridgeChangeRequest } from '../write-client.js';
 import { linkPath } from './graph.js';
 import { assertSkillCardAvailable, pendingSkillRegistration } from '../skill-card.js';
+import { publishBranchOptions } from '../publish.js';
 
 export type NoteChangeInput = {
   sourceId: string;
@@ -18,10 +19,17 @@ export type NoteChangeInput = {
   content: string;
   expectedHash: string | null;
   authorized?: boolean;
+  publishFeatureSlug?: string;
 };
 
-function healthyBindings(env: NodeJS.ProcessEnv): ReturnType<typeof resolveBindings> {
-  const resolution = resolveBindings(env, process.cwd(), { allowStagedWikiChanges: true });
+function healthyBindings(input: NoteChangeInput, env: NodeJS.ProcessEnv): ReturnType<typeof resolveBindings> {
+  const allowedRepositoryBranches = input.publishFeatureSlug
+    ? publishBranchOptions(input.publishFeatureSlug, env)
+    : undefined;
+  const resolution = resolveBindings(env, process.cwd(), {
+    allowStagedWikiChanges: true,
+    allowedRepositoryBranches,
+  });
   if (resolution.errors.length > 0) {
     throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join('; ')}`);
   }
@@ -127,9 +135,15 @@ type PreparedChange = {
 };
 
 function prepareChange(input: NoteChangeInput, env: NodeJS.ProcessEnv): PreparedChange {
-  const resolution = healthyBindings(env);
+  const resolution = healthyBindings(input, env);
   const bindings = resolution.bindings;
   const binding = selectedBinding(input, bindings);
+  if (input.publishFeatureSlug) {
+    const branch = publishBranchOptions(input.publishFeatureSlug, env)[binding.repositoryRef];
+    if (!branch || binding.repositoryHealth.currentBranch !== branch) {
+      throw new Error(`Obsidian Wiki migration write requires prepared publish branch for ${binding.repositoryRef}`);
+    }
+  }
   const notePath = assertPathWithinBinding(input.path, binding);
   const proposed = parseAtomicNote(input.content, notePath);
   assertSkillCardAvailable(proposed, resolution.projectDir, { mode: 'write' });

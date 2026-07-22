@@ -232,6 +232,16 @@ function bindingDigest(binding: Omit<ResolvedBinding, 'bindingDigest'>): string 
     binding.repositoryRef,
     binding.repository.baseBranch,
     binding.effectiveReadPolicy,
+    binding.effectiveUpdatePolicy,
+    binding.effectiveCreatePolicy,
+    binding.manifest.wikiSchema,
+    binding.manifest.sourceId,
+    binding.manifest.scope,
+    String(binding.manifest.agentVisible),
+    binding.manifest.updateExisting,
+    binding.manifest.createNote,
+    ...binding.manifest.blockedTerms.map((value) => `blocked-term:${value}`),
+    ...binding.manifest.blockedPatterns.map((value) => `blocked-pattern:${value}`),
   ].join('\n');
   return createHash('sha256').update(canonical).digest('hex');
 }
@@ -301,7 +311,11 @@ function stagedWikiChangesAreAllowed(worktreeRoot: string, roots: string[]): boo
   });
 }
 
-function validateRepository(repository: Repository, allowedStagedRoots: string[] = []): RepositoryHealth {
+function validateRepository(
+  repository: Repository,
+  allowedStagedRoots: string[] = [],
+  allowedBranch?: string,
+): RepositoryHealth {
   if (!existsSync(repository.worktreeRoot)) {
     throw new Error(`repository worktree not found: ${repository.worktreeRoot}`);
   }
@@ -316,7 +330,7 @@ function validateRepository(repository: Repository, allowedStagedRoots: string[]
   }
 
   const currentBranch = commandOutput('git', ['-C', worktreeRoot, 'branch', '--show-current']);
-  if (currentBranch !== repository.baseBranch) {
+  if (currentBranch !== repository.baseBranch && currentBranch !== allowedBranch) {
     throw new Error(`repository must be on baseBranch ${repository.baseBranch}, found ${currentBranch || 'detached HEAD'}`);
   }
   if (existsSync(path.join(worktreeRoot, '.grill-adapter-wiki.publish.lock'))) {
@@ -335,7 +349,7 @@ function validateRepository(repository: Repository, allowedStagedRoots: string[]
     throw new Error('repository worktree must be clean or contain only staged Obsidian Note changes under bound Source roots');
   }
   let baseSynchronized = false;
-  if (!hasAllowedStagedChanges && repository.syncBeforeResearch !== false) {
+  if (currentBranch === repository.baseBranch && !hasAllowedStagedChanges && repository.syncBeforeResearch !== false) {
     try {
       const remoteBase = `${repository.remote}/${repository.baseBranch}`;
       commandOutput('git', ['-C', worktreeRoot, 'fetch', '--quiet', repository.remote, repository.baseBranch]);
@@ -384,7 +398,10 @@ function validateVault(vault: Vault, env: NodeJS.ProcessEnv): VaultHealth {
 export function resolveBindings(
   env: NodeJS.ProcessEnv = process.env,
   workingDirectory: string = process.cwd(),
-  options: { allowStagedWikiChanges?: boolean } = {},
+  options: {
+    allowStagedWikiChanges?: boolean;
+    allowedRepositoryBranches?: Record<string, string>;
+  } = {},
 ): BindingResolution {
   const projectDir = path.resolve(env.CLAUDE_PROJECT_DIR ?? workingDirectory);
   const settingsPath = path.join(projectDir, '.shared-adapter', 'settings.json');
@@ -422,7 +439,11 @@ export function resolveBindings(
           .filter((binding) => binding.repositoryRef === candidate.repositoryRef)
           .map((binding) => normalizeRoot(binding.root))
         : [];
-      const repositoryHealth = validateRepository(repository, stagedRoots);
+      const repositoryHealth = validateRepository(
+        repository,
+        stagedRoots,
+        options.allowedRepositoryBranches?.[candidate.repositoryRef],
+      );
       const worktreeRoot = realpathSync(repository.worktreeRoot);
       const configuredRoot = path.join(worktreeRoot, root);
       if (!existsSync(configuredRoot)) {
