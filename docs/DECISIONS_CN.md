@@ -327,3 +327,25 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 **代价（已知并接受）**
 - 插件组件从 12 增至 13 skills；release inventory 与双 runtime smoke 必须同步。
 - 旧裸 candidate rows 不兼容新 journal，过渡中的活动 feature 必须重新经 skill 追加，不能混写或自动猜测迁移。
+
+---
+
+## 决策 15：legacy Wiki 先生成 snapshot-bound no-write plan
+
+**决策**
+
+- `migrate-wiki` 增加独立的 Obsidian plan-only 模式；不先改 section、index 或 graph，也不调用任何写路径。
+- `wiki_migration_plan.py` 只读 legacy project/shared roots、绑定配置、registry 指向的 Source worktree 和本地 skill pack，stdout 输出 versioned JSON plan。
+- inventory 的每个 page/section/index/graph edge/dangling item 恰有一个 `create|update|skip|conflict` 决策；stable Note ID、proposed path、typed-edge frontmatter transformation 与 Source role 都由机械规则确定。
+- source/target snapshot digest 绑定审计输入。semantic split、duplicate ID/Card identity、occupied target path、dangling edge、unavailable pack、Shared neutrality violation、non-migratable navigation 与 heuristic constraint strength 必须进入 confirmation gate，不由 planner 猜测修复；binding topology 与 symlink 边界先按正式读取治理 fail-closed。
+
+**理由**
+
+- migration apply 会同时触碰两套知识模型；先把身份、范围和不可逆语义选择冻结为可比较计划，才能让后续 apply 做 CAS 式前置校验并安全恢复。
+- 直接扫描 bound Source worktree只读快照，可判断 create/update/duplicate，又不会因 MCP freshness sync 或 Obsidian 索引行为产生隐藏写入。
+- 复用 `migrate-wiki` 生命周期入口，避免再造一个语义重叠 skill；原有 section/graph 模式与 plan-only 模式在入口处明确分支。
+
+**边界**
+
+- 用户确认 plan 不等于 Note 写授权、Git 发布授权或 cutover 授权。
+- apply/verify/cutover 不属于本决策，后续实现必须重验这两个 snapshot digest，不能接受漂移输入。

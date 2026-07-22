@@ -1,6 +1,14 @@
 # Obsidian Wiki Source 绑定
 
-本页描述 Obsidian Wiki 的受控运行边界：项目只能解析它明确绑定的 Source；规划期将受绑定限制的 atomic Note 和 Skill Card 选择承载为 schema-v6 sidecar；执行期按 stable ID reread 权威 Note；review 后 atomic Note（含 Skill Card）只能经本机 loopback write bridge 做 proposal + expected-hash CAS 写入，再由 applied receipts 驱动可恢复的 GitHub draft-PR 发布。schema-v5 sidecar 在过渡期只读，不能再由新规划生成；迁移仍由后续切片完成。
+本页描述 Obsidian Wiki 的受控运行边界：项目只能解析它明确绑定的 Source；规划期将受绑定限制的 atomic Note 和 Skill Card 选择承载为 schema-v6 sidecar；执行期按 stable ID reread 权威 Note；review 后 atomic Note（含 Skill Card）只能经本机 loopback write bridge 做 proposal + expected-hash CAS 写入，再由 applied receipts 驱动可恢复的 GitHub draft-PR 发布。schema-v5 sidecar 在过渡期只读，不能再由新规划生成；legacy Wiki 已支持确定性只读迁移规划，apply/verify/cutover 仍由后续切片完成。
+
+## Legacy Wiki 迁移规划
+
+`migrate-wiki` 的 **Obsidian migration plan** 模式调用 `scripts/wiki_migration_plan.py`，只读 `.adapter/wiki/`、`.shared-adapter/wiki/`、当前项目绑定、machine registry 指向的 Source worktree，以及 legacy discovery card 对应的本地 pack。它不调用 Obsidian、MCP、Git、write bridge 或 publisher，也不修改任何源/目标文件；JSON 只写 stdout，契约见 `contracts/obsidian-migration-plan-v1.example.jsonc`。
+
+planner 先按正式治理规则校验 binding topology（重复 ID/root、root 重叠/越界、多个 project binding 均 fail-closed），在任何 inventory/graph 读取前拒绝 legacy/Source/manifest/pack 符号链接，且只读取 `access.read: true` 的选定 Source。inventory 同时覆盖 indexed/unindexed pages、section markers、navigation indexes、`.graph.json` edge/dangling、hard/soft constraint 与 `guides/skills.md` discovery content。每个 source item 恰有一个 plan decision，并携带目标 Source、稳定 Note ID、Vault 相对 proposed path、edge transformation 与 `create|update|skip|conflict`。目标 path 在同一 Source 内被其他/缺失 ID 的 Note 占用、或任意状态 Skill Card 的 provider/name 已由不同 ID 占用时均输出 conflict。输出保存 source/target snapshot digest；相同字节输入得到相同 plan。
+
+`semantic-split`、`duplicate-id`、`target-path-collision`、`dangling-edge`、`unavailable-pack`、`shared-neutrality-violation`、`non-migratable-navigation`、`strength-confirmation` 必须逐项展示并等待确认，不能在 planner 内静默修正。所有未分节页面均触发 semantic split；词法推断的 hard/soft 都标为 `strengthConfidence: heuristic`。确认也不会触发写入；计划应用、校验与 provider cutover 属于独立后续流程。
 
 ## 运行边界
 
