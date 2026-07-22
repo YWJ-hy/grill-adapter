@@ -74,7 +74,7 @@ New to grill? Follow [`docs/SETUP_AND_USAGE_CN.md`](docs/SETUP_AND_USAGE_CN.md),
 ./manage.sh release-check <project>
 ```
 
-Legacy Wiki migration to Obsidian starts from `/grill-adapter:migrate-wiki` (Claude) or `$grill-adapter:migrate-wiki` (Codex), mode **Obsidian migration plan**. It inventories indexed/unindexed project and Shared pages, section/graph/constraint/legacy-skill metadata, validates the binding topology, rejects symbolic-link inputs, reads only selected target Sources with `access.read: true`, and emits a deterministic `create/update/skip/conflict` plan. The mode never writes either Wiki; semantic splits, duplicate IDs/Card identities, occupied target paths, dangling edges, unavailable packs, Shared neutrality violations, legacy navigation, and heuristic constraint strength are explicit confirmation gates. Apply/verify/cutover are intentionally outside this plan-only mode.
+Legacy Wiki migration to Obsidian runs through `/grill-adapter:migrate-wiki` (Claude) or `$grill-adapter:migrate-wiki` (Codex): deterministic no-write plan -> explicit confirmation -> governed CAS apply -> one draft PR per repository -> merge/base sync -> read-only runtime verify -> separate cutover confirmation. Apply accepts only the exact conflict-free snapshot-bound plan, preserves valid Skill Cards and typed edges, and records a resumable local migration manifest. Verify rejects open PRs, stale bases, missing/duplicate/out-of-Source Notes, hash/search/edge/pack drift, and never overwrites human edits. Cutover reruns verify, rejects an active schema-v5 sidecar, and preserves legacy roots byte-for-byte as declared read-only archives.
 
 ## Relationship to grill / Claude Code / Codex
 

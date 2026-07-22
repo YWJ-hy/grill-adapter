@@ -1,6 +1,6 @@
 # Obsidian Wiki Source 绑定
 
-本页描述 Obsidian Wiki 的受控运行边界：项目只能解析它明确绑定的 Source；规划期将受绑定限制的 atomic Note 和 Skill Card 选择承载为 schema-v6 sidecar；执行期按 stable ID reread 权威 Note；review 后 atomic Note（含 Skill Card）只能经本机 loopback write bridge 做 proposal + expected-hash CAS 写入，再由 applied receipts 驱动可恢复的 GitHub draft-PR 发布。schema-v5 sidecar 在过渡期只读，不能再由新规划生成；legacy Wiki 已支持确定性只读迁移规划，apply/verify/cutover 仍由后续切片完成。
+本页描述 Obsidian Wiki 的受控运行边界：项目只能解析它明确绑定的 Source；规划期将受绑定限制的 atomic Note 和 Skill Card 选择承载为 schema-v6 sidecar；执行期按 stable ID reread 权威 Note；review 后 atomic Note（含 Skill Card）只能经本机 loopback write bridge 做 proposal + expected-hash CAS 写入，再由 applied receipts 驱动可恢复的 GitHub draft-PR 发布。schema-v5 sidecar 在过渡期只读，不能再由新规划生成；legacy Wiki 通过 snapshot-bound plan、受治理 apply、base verify 与显式 cutover 迁移，旧目录始终保留。
 
 ## Legacy Wiki 迁移规划
 
@@ -8,7 +8,17 @@
 
 planner 先按正式治理规则校验 binding topology（重复 ID/root、root 重叠/越界、多个 project binding 均 fail-closed），在任何 inventory/graph 读取前拒绝 legacy/Source/manifest/pack 符号链接，且只读取 `access.read: true` 的选定 Source。inventory 同时覆盖 indexed/unindexed pages、section markers、navigation indexes、`.graph.json` edge/dangling、hard/soft constraint 与 `guides/skills.md` discovery content。每个 source item 恰有一个 plan decision，并携带目标 Source、稳定 Note ID、Vault 相对 proposed path、edge transformation 与 `create|update|skip|conflict`。目标 path 在同一 Source 内被其他/缺失 ID 的 Note 占用、或任意状态 Skill Card 的 provider/name 已由不同 ID 占用时均输出 conflict。输出保存 source/target snapshot digest；相同字节输入得到相同 plan。
 
-`semantic-split`、`duplicate-id`、`target-path-collision`、`dangling-edge`、`unavailable-pack`、`shared-neutrality-violation`、`non-migratable-navigation`、`strength-confirmation` 必须逐项展示并等待确认，不能在 planner 内静默修正。所有未分节页面均触发 semantic split；词法推断的 hard/soft 都标为 `strengthConfidence: heuristic`。确认也不会触发写入；计划应用、校验与 provider cutover 属于独立后续流程。
+`semantic-split`、`duplicate-id`、`target-path-collision`、`dangling-edge`、`unavailable-pack`、`shared-neutrality-violation`、`non-migratable-navigation`、`strength-confirmation` 必须逐项展示并等待确认，不能在 planner 内静默修正。所有未分节页面均触发 semantic split；词法推断的 hard/soft 都标为 `strengthConfidence: heuristic`。plan confirmation 只确认这份映射，不替代 Source 写 policy、PR merge 或 cutover confirmation。
+
+## Legacy Wiki 迁移 apply / verify / cutover
+
+`scripts/wiki_migration_apply.py apply` 只接受原始 schema-v1 plan、零 `conflict`、显式 `--confirmed`。首次写前会用相同 Source selector 重跑 planner，并要求整个结构化 plan 完全一致；source/target snapshot 或 plan 内容漂移均拒绝。为了让任意顺序乃至循环 typed edge 通过既有 bridge 校验，coordinator 先为所有 create 建立无边的合法 atomic Note seed，再以 expected-hash CAS 写入最终 frontmatter/body；update 同样按当前 Note hash CAS。每一步仍经过 binding、Source manifest、effective policy、neutrality、stable ID、Skill Card pack identity 与 typed-link 校验，不直写 Vault。
+
+最终 Note receipts 作为 allowlist 交给既有 publisher：按 `repositoryRef` 生成 draft PR、恢复 clean base，并与迁移状态一起持久化到 `.adapter/context/migration-<plan-hash>.{wiki-publish,obsidian-migration}.json`。manifest 契约见 `contracts/obsidian-migration-manifest-v1.example.jsonc`。中断重跑复用 seed/final receipt 和 publish run，不重复 Note、commit、push 或 PR；开放 PR 内容仍不进入正式读取。
+
+PR 由用户审查/合并且 configured base worktree 同步后，`verify` 才运行。它先核实所有 PR `MERGED` 与 base freshness，再通过 bundled `status/search/read-notes-by-wiki-ids/graph-neighbors` seam 检查 mapping coverage、唯一 ID、Source/path containment、schema/policy、精确 content hash、search identity、Skill Card availability、typed edges 与 hard Note 全文 reread。verify 不写 Note；任何人工修改都表现为 drift，绝不覆盖。
+
+`cutover` 需要另一次显式 `--confirmed`，并在写 settings 前重新跑完整 verify。若当前最新 `.adapter/context/*.wiki-context.json` 仍是 schema v5，则 fail-closed。成功后 `.shared-adapter/settings.json` 保持 `wiki.provider: obsidian`，并记录 `wiki.legacyRuntime.mode: read-only-archive`、实际存在的旧 roots 和 migration manifest；旧 Markdown/index/graph 不删除、不移动、不重写。
 
 ## 运行边界
 

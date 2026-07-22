@@ -1,0 +1,62 @@
+{
+  // Local recovery receipt written under .adapter/context/. Do not commit it.
+  "schemaVersion": 1,
+  "kind": "grill-adapter.obsidian-migration",
+  "migrationId": "migration-0123456789ab",
+  "state": "published",
+  "planHash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "sourceSnapshot": {
+    "algorithm": "sha256:grill-adapter-obsidian-migration-snapshot-v1",
+    "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "targetSnapshot": {
+    "algorithm": "sha256:grill-adapter-obsidian-migration-snapshot-v1",
+    "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "targetSources": [
+    {"sourceId": "example-project", "role": "project", "root": "Projects/example"}
+  ],
+  // seededNotes is the resumable first CAS phase; Notes are finalized before publishing.
+  "seededNotes": [
+    {
+      "sourceItemId": "legacy:project:section:backend/contracts.md#response-envelope",
+      "sourceId": "example-project",
+      "repositoryRef": "engineering-wiki",
+      "bindingDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "wikiId": "example-project/backend/contracts/response-envelope",
+      "path": "Projects/example/backend/contracts/response-envelope.md",
+      "contentHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ],
+  "notes": [
+    {
+      "sourceItemId": "legacy:project:section:backend/contracts.md#response-envelope",
+      "sourceKind": "section",
+      "sourceId": "example-project",
+      "repositoryRef": "engineering-wiki",
+      "bindingDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "wikiId": "example-project/backend/contracts/response-envelope",
+      "path": "Projects/example/backend/contracts/response-envelope.md",
+      "operation": "create",
+      "beforeHash": null,
+      "contentHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "noteType": "constraint",
+      "constraintStrength": "hard",
+      "edges": [
+        {"type": "depends_on", "targetWikiId": "example-project/backend/contracts/base-envelope"}
+      ]
+    }
+  ],
+  "repositories": [
+    {
+      "repositoryRef": "engineering-wiki",
+      "baseBranch": "main",
+      "branch": "grill-adapter/wiki/migration-0123456789ab-engineering-wiki-123e4567",
+      "paths": ["Projects/example/backend/contracts/response-envelope.md"],
+      "stagedTree": "0123456789abcdef0123456789abcdef01234567",
+      "commit": "89abcdef0123456789abcdef0123456789abcdef",
+      "prUrl": "https://github.com/example/engineering-wiki/pull/42",
+      "state": "published"
+    }
+  ]
+}

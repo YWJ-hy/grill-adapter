@@ -24008,6 +24008,15 @@ async function main() {
 `);
     return;
   }
+  if (subcommand === "search") {
+    const request = await readJsonRequest();
+    if (typeof request.query !== "string" || !request.query.trim()) {
+      throw new Error("query must be a non-empty string");
+    }
+    process.stdout.write(`${JSON.stringify(searchTool({ query: request.query }))}
+`);
+    return;
+  }
   if (subcommand === "serve-write-bridge") {
     await runWriteBridgeFromEnvironment();
     return;
@@ -24039,7 +24048,7 @@ async function main() {
     return;
   }
   if (subcommand !== void 0) {
-    throw new Error("Unknown subcommand. Run with no arguments for MCP stdio, or status, read-notes, read-notes-by-wiki-ids, graph-neighbors, propose-note-change, apply-note-change, publish, or serve-write-bridge.");
+    throw new Error("Unknown subcommand. Run with no arguments for MCP stdio, or status, search, read-notes, read-notes-by-wiki-ids, graph-neighbors, propose-note-change, apply-note-change, publish, or serve-write-bridge.");
   }
   const server = createServer();
   await server.connect(new StdioServerTransport());

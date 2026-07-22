@@ -348,4 +348,22 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 **边界**
 
 - 用户确认 plan 不等于 Note 写授权、Git 发布授权或 cutover 授权。
-- apply/verify/cutover 不属于本决策，后续实现必须重验这两个 snapshot digest，不能接受漂移输入。
+- apply/verify/cutover 必须重验这两个 snapshot digest，不能接受漂移输入。
+
+---
+
+## 决策 16：迁移 apply 复用 CAS/receipt publisher，cutover 只标记 archive
+
+**决策**
+
+- `wiki_migration_apply.py` 只消费 planner 的完整、无 conflict 输出；首次写前重跑 planner 并要求结构化结果完全相等。显式 `--confirmed` 只代表用户确认精确 plan，Source effective policy 仍独立执行。
+- create 先写合法无边 seed，再 CAS finalize，因而 typed edge 顺序和循环不要求绕过 link validation；最终 receipt 始终描述相对 base 的 create/update。
+- 最终 receipts 直接交给既有 publisher，按 repository 建 draft PR 并恢复 base；migration manifest 与 publish manifest 共同提供中断恢复和幂等。
+- verify 只读 merged、base-synchronized 的正式 Obsidian runtime，校验 mapping/ID/Source/schema/policy/hash/search/Skill Card/edge/hard reread；人工编辑只会触发 drift。
+- cutover 需要单独确认并重新 verify；active schema-v5 sidecar 会阻断。旧 roots 不移动、不删除、不 chmod，只在项目 settings 记录 `read-only-archive`。
+
+**理由**
+
+- 复用已经审计过的 bridge/publisher，避免迁移拥有第二条绕过 policy、neutrality、CAS 或 Git allowlist 的写路径。
+- seed/finalize 让图结构和单 Note 写 API 兼容，同时 PR 只暴露最终状态。
+- archive 采用声明而非文件系统破坏操作，回滚只需恢复 settings，legacy 真相源仍可审计。
