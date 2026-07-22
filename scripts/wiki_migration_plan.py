@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import posixpath
 import re
 import sys
 import unicodedata
@@ -20,7 +21,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from scaffold_practice_skill import skill_contract_hash  # noqa: E402
+from scaffold_practice_skill import skill_contract_hash, validate_pack  # noqa: E402
 from wiki_common import build_wiki_index_graph  # noqa: E402
 from wiki_section import (  # noqa: E402
     extract_all_sections,
@@ -143,12 +144,12 @@ def graph_item_id(root_name: str, kind: str, value: dict[str, Any]) -> str:
     return source_item_id(root_name, kind, suffix)
 
 
-def strength_for(body: str, skill_name: str | None = None) -> tuple[str, str]:
+def strength_for(body: str, skill_name: str | None = None) -> tuple[str, str, str]:
     if skill_name:
-        return "hard", "legacy-skill-discovery"
+        return "hard", "legacy-skill-discovery", "explicit"
     if HARD_RE.search(body):
-        return "hard", "normative-language"
-    return "soft", "non-normative-language"
+        return "hard", "normative-language", "explicit"
+    return "soft", "non-normative-language", "heuristic"
 
 
 def skill_triggers(body: str) -> list[str]:
@@ -161,6 +162,18 @@ def skill_triggers(body: str) -> list[str]:
 def heading_count(text: str, level: int = 2) -> int:
     prefix = "#" * level
     return sum(1 for line in text.splitlines() if re.match(rf"^{re.escape(prefix)}\s+\S", line))
+
+
+def normalize_binding_root(value: str) -> str:
+    raw = value.replace("\\", "/")
+    if raw.startswith("/") or re.match(r"^[A-Za-z]:/", raw):
+        raise PlanError("binding root must be a relative path")
+    if ".." in raw.split("/"):
+        raise PlanError("binding root must name a directory inside the Vault")
+    normalized = posixpath.normpath(raw)
+    if normalized in (".", "..") or normalized.startswith("../"):
+        raise PlanError("binding root must name a directory inside the Vault")
+    return normalized.removeprefix("./")
 
 
 def load_bindings(
@@ -182,24 +195,72 @@ def load_bindings(
     repositories = registry.get("repositories")
     if not isinstance(repositories, dict):
         raise PlanError("Obsidian Wiki registry must contain repositories")
+    vaults = registry.get("vaults")
+    if not isinstance(vaults, dict):
+        raise PlanError("Obsidian Wiki registry must contain vaults")
 
     candidates: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    denied_by_role: dict[str, list[str]] = defaultdict(list)
     configuration_entries: list[tuple[str, bytes]] = [
         ("configuration/project-settings.json", settings_path.read_bytes()),
         ("configuration/registry.json", registry_path.read_bytes()),
     ]
+    validated_bindings: list[dict[str, Any]] = []
+    source_ids: set[str] = set()
+    roots: list[tuple[str, str]] = []
+    project_binding_count = 0
     for raw in obsidian["bindings"]:
         if not isinstance(raw, dict):
             raise PlanError("each wiki.obsidian.bindings entry must be an object")
         role = raw.get("role")
         source_id = raw.get("sourceId")
         root = raw.get("root")
+        vault_ref = raw.get("vaultRef")
         repository_ref = raw.get("repositoryRef")
-        if role not in ("project", "shared") or not all(isinstance(value, str) and value for value in (source_id, root, repository_ref)):
-            raise PlanError("each binding must declare sourceId, role, repositoryRef, and root")
+        access = raw.get("access")
+        if role not in ("project", "shared") or not all(isinstance(value, str) and value for value in (source_id, root, vault_ref, repository_ref)):
+            raise PlanError("each binding must declare sourceId, role, vaultRef, repositoryRef, and root")
+        if not isinstance(access, dict) or not isinstance(access.get("read"), bool):
+            raise PlanError(f"binding {source_id} must declare boolean access.read")
+        if source_id in source_ids:
+            raise PlanError(f"duplicate sourceId: {source_id}")
+        source_ids.add(source_id)
+        if role == "project":
+            project_binding_count += 1
+            if project_binding_count > 1:
+                raise PlanError("at most one binding may have role: project")
+        normalized_root = normalize_binding_root(root)
+        root_identity = (vault_ref, normalized_root)
+        if root_identity in roots:
+            raise PlanError(f"duplicate root for vault {vault_ref}: {normalized_root}")
+        if any(
+            existing_vault == vault_ref
+            and (
+                normalized_root.startswith(f"{existing_root}/")
+                or existing_root.startswith(f"{normalized_root}/")
+            )
+            for existing_vault, existing_root in roots
+        ):
+            raise PlanError(f"overlapping root for vault {vault_ref}: {normalized_root}")
+        roots.append(root_identity)
+        if vault_ref not in vaults:
+            raise PlanError(f"binding {source_id} has unavailable vaultRef {vault_ref}")
         repository = repositories.get(repository_ref)
         if not isinstance(repository, dict) or not isinstance(repository.get("worktreeRoot"), str):
             raise PlanError(f"binding {source_id} has unavailable repositoryRef {repository_ref}")
+        validated_bindings.append({**raw, "root": normalized_root})
+
+    for raw in validated_bindings:
+        role = raw["role"]
+        source_id = raw["sourceId"]
+        if not raw["access"]["read"]:
+            denied_by_role[role].append(source_id)
+            continue
+        if role not in selected_roles:
+            continue
+        root = raw["root"]
+        repository_ref = raw["repositoryRef"]
+        repository = repositories[repository_ref]
         worktree_root = Path(repository["worktreeRoot"]).expanduser().resolve()
         source_root = (worktree_root / root).resolve()
         try:
@@ -210,8 +271,15 @@ def load_bindings(
         if not manifest_path.is_file():
             raise PlanError(f"binding {source_id} Source manifest not found: {manifest_path}")
         manifest = parse_frontmatter(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("wiki_schema") != "grill-adapter.obsidian-source/v1":
+            raise PlanError(f"binding {source_id} Source manifest has an invalid wiki_schema")
         if manifest.get("wiki_source_id") != source_id or manifest.get("scope") != role:
             raise PlanError(f"binding {source_id} does not match its Source manifest")
+        if role == "shared" and (
+            not isinstance(manifest.get("blocked_terms"), list)
+            or not isinstance(manifest.get("blocked_patterns"), list)
+        ):
+            raise PlanError(f"binding {source_id} Shared Source manifest must declare blocked_terms and blocked_patterns")
         notes: list[dict[str, str]] = []
         for note_path in sorted(source_root.rglob("*.md")):
             relative = note_path.relative_to(worktree_root)
@@ -244,6 +312,11 @@ def load_bindings(
         elif len(choices) == 1:
             chosen = choices[0]
         elif not choices:
+            if denied_by_role.get(role):
+                raise PlanError(
+                    f"no readable Obsidian binding has role {role}; access.read is false for "
+                    + ", ".join(denied_by_role[role])
+                )
             raise PlanError(f"no Obsidian binding has role {role}")
         else:
             option = f"--{role}-source-id"
@@ -254,7 +327,7 @@ def load_bindings(
     return by_role, snapshot_entries
 
 
-def collect_legacy_root(project_root: Path, root_name: str, wiki_root: Path) -> dict[str, Any]:
+def collect_legacy_root(root_name: str, wiki_root: Path) -> dict[str, Any]:
     graph = build_wiki_index_graph(wiki_root)
     indexed_leaves = {path.resolve() for path in graph.leaves}
     indexed_indexes = {path.resolve() for path in graph.indexes}
@@ -288,7 +361,7 @@ def collect_legacy_root(project_root: Path, root_name: str, wiki_root: Path) -> 
             "markerErrors": marker_errors,
             "level2HeadingCount": heading_count(text),
         }
-        page["constraintStrength"], page["strengthBasis"] = strength_for(text)
+        page["constraintStrength"], page["strengthBasis"], page["strengthConfidence"] = strength_for(text)
         pages.append(page)
         bodies = extract_all_sections(text)
         summaries = extract_section_summaries(text)
@@ -297,7 +370,7 @@ def collect_legacy_root(project_root: Path, root_name: str, wiki_root: Path) -> 
             body = bodies.get(section_id, "")
             skill_match = SKILL_NAME_RE.search(body) if relative == "guides/skills.md" else None
             skill_name = skill_match.group(1) if skill_match else (section_id if relative == "guides/skills.md" else None)
-            strength, basis = strength_for(body, skill_name)
+            strength, basis, confidence = strength_for(body, skill_name)
             record = {
                 "sourceItemId": source_item_id(root_name, "section", f"{relative}#{section_id}"),
                 "legacyRoot": root_name,
@@ -306,6 +379,7 @@ def collect_legacy_root(project_root: Path, root_name: str, wiki_root: Path) -> 
                 "summary": summaries.get(section_id, "").strip(),
                 "constraintStrength": strength,
                 "strengthBasis": basis,
+                "strengthConfidence": confidence,
                 "pageType": page["pageType"],
             }
             if skill_name:
@@ -366,12 +440,13 @@ def note_identity(binding: dict[str, Any], page_path: str, section_id: str | Non
 
 def pack_metadata(project_root: Path, skill_name: str) -> tuple[dict[str, Any] | None, str | None]:
     pack = project_root / ".claude" / "skills" / skill_name
+    errors, warnings = validate_pack(pack)
+    if errors or warnings:
+        return None, f"project skill pack {skill_name} validation failed: " + "; ".join([*errors, *warnings])
     skill_file = pack / "SKILL.md"
-    if not skill_file.is_file():
-        return None, f"project skill pack is unavailable: .claude/skills/{skill_name}/SKILL.md"
     frontmatter = parse_frontmatter(skill_file.read_text(encoding="utf-8"))
-    if frontmatter.get("name") != skill_name or not isinstance(frontmatter.get("version"), str):
-        return None, f"project skill pack {skill_name} lacks matching name/version metadata"
+    if frontmatter.get("name") != skill_name:
+        return None, f"project skill pack {skill_name} frontmatter name does not match its discovery name"
     try:
         contract_hash = skill_contract_hash(pack)
     except Exception as exc:  # Pack validation errors are reported, never hidden or repaired.
@@ -431,7 +506,7 @@ def build_plan(
         wiki_root = roots[root_name]
         if not wiki_root.is_dir():
             continue
-        collected = collect_legacy_root(project_root, root_name, wiki_root)
+        collected = collect_legacy_root(root_name, wiki_root)
         for key, values in collected.items():
             inventory[key].extend(values)
         source_entries.extend(file_entries(wiki_root, f"legacy/{root_name}"))
@@ -463,7 +538,6 @@ def build_plan(
         if len(notes) > 1:
             add_confirmation("duplicate-id", [], f"target Notes duplicate wiki_id {wiki_id}: {', '.join(note['path'] for note in notes)}")
 
-    page_by_key = {(page["legacyRoot"], page["path"]): page for page in inventory["pages"]}
     sections_by_page: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for section in inventory["sections"]:
         sections_by_page[(section["legacyRoot"], section["path"])].append(section)
@@ -478,6 +552,8 @@ def build_plan(
             "targetSource": {"sourceId": binding["sourceId"], "role": binding["role"]} if binding else None,
             "noteId": None,
             "proposedPath": None,
+            "noteType": page["pageType"],
+            "constraintStrength": page["constraintStrength"],
             "edgeTransformation": [],
             "decision": "skip" if page["hasSectionMarkers"] else "create",
             "decisionReason": "sectioned page is represented by atomic section Notes" if page["hasSectionMarkers"] else "unsectioned page maps to one atomic Note",
@@ -489,9 +565,18 @@ def build_plan(
             item.update(noteId=note_id, proposedPath=proposed)
             source_ref_to_note[(root_name, page["path"])] = note_id
             planned_notes.append(item)
-            if page["level2HeadingCount"] > 1:
-                item.update(decision="conflict", decisionReason="unsectioned page has multiple semantic headings and requires an atomic split decision")
-                add_confirmation("semantic-split", [page["sourceItemId"]], f"{root_name}:{page['path']} has {page['level2HeadingCount']} level-2 headings")
+            item.update(decision="conflict", decisionReason="unsectioned page requires confirmation of its atomic Note boundaries")
+            add_confirmation(
+                "semantic-split",
+                [page["sourceItemId"]],
+                f"{root_name}:{page['path']} has no section markers; confirm one-Note mapping or an atomic split",
+            )
+            if page["strengthConfidence"] == "heuristic":
+                add_confirmation(
+                    "strength-confirmation",
+                    [page["sourceItemId"]],
+                    f"{root_name}:{page['path']} was inferred soft from the absence of recognized normative language",
+                )
         if page["markerErrors"]:
             item.update(decision="conflict", decisionReason="legacy section markers are invalid")
             add_confirmation("semantic-split", [page["sourceItemId"]], "; ".join(page["markerErrors"]))
@@ -535,6 +620,12 @@ def build_plan(
                     if not item["skillCard"]["triggers"] or not item["skillCard"]["summary"]:
                         item.update(decision="conflict", decisionReason="legacy skill discovery card lacks a summary or trigger list")
                         add_confirmation("incomplete-skill-card", [section["sourceItemId"]], item["decisionReason"])
+            elif section["strengthConfidence"] == "heuristic":
+                add_confirmation(
+                    "strength-confirmation",
+                    [section["sourceItemId"]],
+                    f"{root_name}:{section['path']}#{section['sectionId']} was inferred soft from the absence of recognized normative language",
+                )
         plan_items[item["sourceItemId"]] = item
 
     planned_by_id: dict[str, list[dict[str, Any]]] = defaultdict(list)

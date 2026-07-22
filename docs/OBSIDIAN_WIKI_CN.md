@@ -6,9 +6,9 @@
 
 `migrate-wiki` 的 **Obsidian migration plan** 模式调用 `scripts/wiki_migration_plan.py`，只读 `.adapter/wiki/`、`.shared-adapter/wiki/`、当前项目绑定、machine registry 指向的 Source worktree，以及 legacy discovery card 对应的本地 pack。它不调用 Obsidian、MCP、Git、write bridge 或 publisher，也不修改任何源/目标文件；JSON 只写 stdout，契约见 `contracts/obsidian-migration-plan-v1.example.jsonc`。
 
-inventory 同时覆盖 indexed/unindexed pages、section markers、navigation indexes、`.graph.json` edge/dangling、hard/soft constraint 与 `guides/skills.md` discovery content。每个 source item 恰有一个 plan decision，并携带目标 Source、稳定 Note ID、Vault 相对 proposed path、edge transformation 与 `create|update|skip|conflict`。输出保存 source/target snapshot digest；相同字节输入得到相同 plan。
+planner 先按正式治理规则校验 binding topology（重复 ID/root、root 重叠/越界、多个 project binding 均 fail-closed），且只读取 `access.read: true` 的选定 Source。inventory 同时覆盖 indexed/unindexed pages、section markers、navigation indexes、`.graph.json` edge/dangling、hard/soft constraint 与 `guides/skills.md` discovery content。每个 source item 恰有一个 plan decision，并携带目标 Source、稳定 Note ID、Vault 相对 proposed path、edge transformation 与 `create|update|skip|conflict`。输出保存 source/target snapshot digest；相同字节输入得到相同 plan。
 
-`semantic-split`、`duplicate-id`、`dangling-edge`、`unavailable-pack`、`shared-neutrality-violation`、`non-migratable-navigation` 必须逐项展示并等待确认，不能在 planner 内静默修正。确认也不会触发写入；计划应用、校验与 provider cutover 属于独立后续流程。
+`semantic-split`、`duplicate-id`、`dangling-edge`、`unavailable-pack`、`shared-neutrality-violation`、`non-migratable-navigation`、`strength-confirmation` 必须逐项展示并等待确认，不能在 planner 内静默修正。所有未分节页面均触发 semantic split；仅因未命中规范词而推断为 soft 的项目标为 `strengthConfidence: heuristic`。确认也不会触发写入；计划应用、校验与 provider cutover 属于独立后续流程。
 
 ## 运行边界
 

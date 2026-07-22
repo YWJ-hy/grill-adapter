@@ -27,7 +27,10 @@
         "hasSectionMarkers": true,
         "sectionIds": ["response-envelope"],
         "markerErrors": [],
-        "level2HeadingCount": 1
+        "level2HeadingCount": 1,
+        "constraintStrength": "hard",
+        "strengthBasis": "normative-language",
+        "strengthConfidence": "explicit"
       }
     ],
     "sections": [
@@ -39,6 +42,7 @@
         "summary": "API responses use the shared envelope.",
         "constraintStrength": "hard",
         "strengthBasis": "normative-language",
+        "strengthConfidence": "explicit",
         "pageType": "constraint"
       }
     ],

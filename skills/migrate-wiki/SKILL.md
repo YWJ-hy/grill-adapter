@@ -65,7 +65,7 @@ If the registry is intentionally outside the default location, pass its exact pa
 
 When more than one binding has `role: shared`, choose the intended target explicitly with `--shared-source-id <sourceId>`; never guess. `--project-source-id` is the corresponding explicit selector for a project Source.
 
-The planner reads indexed and unindexed pages, section markers, navigation indexes, `.graph.json` edges/dangling records, hard/soft language, legacy `guides/skills.md` discovery cards, local project skill packs, target Source manifests, and existing target Note IDs. It derives stable Note IDs and proposed Vault-relative paths, transforms typed edges to atomic Note frontmatter, and emits one `create|update|skip|conflict` decision for every source item. Source and target snapshot digests make the result auditable and repeatable.
+The planner first validates the configured binding topology and reads only selected Sources whose binding has `access.read: true`. It then reads indexed and unindexed pages, section markers, navigation indexes, `.graph.json` edges/dangling records, hard/soft language, legacy `guides/skills.md` discovery cards, fully valid local project skill packs, target Source manifests, and existing target Note IDs. It derives stable Note IDs and proposed Vault-relative paths, transforms typed edges to atomic Note frontmatter, and emits one `create|update|skip|conflict` decision for every source item. Source and target snapshot digests make the result auditable and repeatable. Every page without section markers requires a `semantic-split` confirmation, even when its headings appear simple. A `soft` value inferred only from the absence of recognized normative language is marked `strengthConfidence: heuristic` and requires `strength-confirmation`.
 
 Present the decision counts and every `confirmation.issues[]` entry. In particular, never silently resolve these gates:
 
@@ -75,6 +75,7 @@ Present the decision counts and every `confirmation.issues[]` entry. In particul
 - `unavailable-pack`
 - `shared-neutrality-violation`
 - `non-migratable-navigation`
+- `strength-confirmation`
 
 Wait for the user to confirm or revise the reported choices. Even after confirmation, stop: this mode has no apply, verify, or cutover command. Do not edit legacy Markdown, `.graph.json`, indexes, Source Notes, Source manifests, Skill Cards, project settings, or the machine registry. Do not invoke Obsidian/MCP write tools, Git, the write bridge, or the publisher. Applying this exact snapshot-bound plan belongs to the separate migration-apply workflow.
 

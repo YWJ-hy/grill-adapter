@@ -90,8 +90,8 @@ wiki_source_id: other-shared
 scope: shared
 update_existing: confirm
 create_note: confirm
-blocked_terms: []
-blocked_patterns: []
+blocked_terms:
+blocked_patterns:
 ---
 MD
 
@@ -122,6 +122,12 @@ Requests MUST preserve the public contract. [[depends-on: rules#soft-guidance]]
 
 Prefer small compatibility helpers. [[rules#missing-section]]
 <!-- /wiki-section:soft-guidance -->
+
+<!-- wiki-section:negative-rule summary="Secrets must stay private." -->
+## Secret handling
+
+Never expose secrets.
+<!-- /wiki-section:negative-rule -->
 MD
 cat > "$PROJECT_WIKI/multi.md" <<'MD'
 # Compound page
@@ -162,6 +168,14 @@ cat > "$PROJECT_WIKI/guides/skills.md" <<'MD'
 
 实现或审查相关产物时，**必须使用 skill：`release-pack`**。
 <!-- /wiki-section:release-pack -->
+
+<!-- wiki-section:bad-pack summary="Reject an invalid project skill pack." roles="review" -->
+## Bad Pack
+
+适用：migration review
+
+审查相关产物时，**必须使用 skill：`bad-pack`**。
+<!-- /wiki-section:bad-pack -->
 MD
 mkdir -p "$PROJECT/.claude/skills/release-pack"
 cat > "$PROJECT/.claude/skills/release-pack/SKILL.md" <<'MD'
@@ -174,6 +188,21 @@ description: Run the release checklist for release and deployment work.
 # Release Pack
 
 Run the verified checklist.
+MD
+mkdir -p "$PROJECT/.claude/skills/bad-pack"
+cat > "$PROJECT/.claude/skills/bad-pack/SKILL.md" <<'MD'
+---
+name: bad-pack
+version: latest
+description: This pack is intentionally invalid for migration planning.
+---
+
+# Bad Pack
+
+Review the migration.
+MD
+cat > "$PROJECT/.claude/skills/bad-pack/rules.md" <<'MD'
+# Unreferenced rules
 MD
 cat > "$PROJECT_WIKI/.graph.json" <<'JSON'
 {
@@ -280,11 +309,14 @@ pages = inventory["pages"]
 assert any(p["legacyRoot"] == "project" and p["path"] == "rules.md" and p["indexed"] for p in pages)
 assert any(p["legacyRoot"] == "project" and p["path"] == "orphan.md" and not p["indexed"] for p in pages)
 assert any(p["legacyRoot"] == "shared" and p["path"] == "unindexed-shared.md" and not p["indexed"] for p in pages)
-assert {s["sectionId"] for s in inventory["sections"]} >= {"api-contract", "soft-guidance", "review-pack", "release-pack", "tenant-routing"}
+assert {s["sectionId"] for s in inventory["sections"]} >= {"api-contract", "soft-guidance", "negative-rule", "review-pack", "release-pack", "bad-pack", "tenant-routing"}
 assert {s["constraintStrength"] for s in inventory["sections"]} >= {"hard", "soft"}
+negative = next(s for s in inventory["sections"] if s["sectionId"] == "negative-rule")
+assert negative["constraintStrength"] == "soft"
+assert negative["strengthConfidence"] == "heuristic"
 assert any(i["path"] == "index.md" for i in inventory["indexes"])
 assert inventory["graphEdges"][0]["type"] == "depends-on"
-assert {card["skillName"] for card in inventory["skillDiscovery"]} == {"review-pack", "release-pack"}
+assert {card["skillName"] for card in inventory["skillDiscovery"]} == {"review-pack", "release-pack", "bad-pack"}
 
 source_ids = {item["sourceItemId"] for item in inventory["sourceItems"]}
 mapped_ids = [item["sourceItemId"] for item in plan["planItems"]]
@@ -307,6 +339,10 @@ assert release["skillCard"]["contractHash"].startswith("sha256:")
 assert release["skillCard"]["roles"] == ["implementer", "reviewer"]
 assert release["skillCard"]["triggers"] == ["release", "deployment"]
 assert release["skillCard"]["summary"] == "Run the release checklist."
+bad_pack = next(item for item in plan["planItems"] if item.get("noteId") == "project-source/skills/bad-pack")
+assert bad_pack["decision"] == "conflict"
+assert "valid version" in bad_pack["decisionReason"]
+assert "not referenced" in bad_pack["decisionReason"]
 
 confirmation = plan["confirmation"]
 assert confirmation["required"] is True
@@ -318,8 +354,75 @@ assert codes >= {
     "unavailable-pack",
     "shared-neutrality-violation",
     "non-migratable-navigation",
+    "strength-confirmation",
 }
+semantic_source_ids = {
+    source_id
+    for issue in confirmation["issues"] if issue["code"] == "semantic-split"
+    for source_id in issue["sourceItemIds"]
+}
+assert "legacy:project:page:orphan.md" in semantic_source_ids
+strength_source_ids = {
+    source_id
+    for issue in confirmation["issues"] if issue["code"] == "strength-confirmation"
+    for source_id in issue["sourceItemIds"]
+}
+assert negative["sourceItemId"] in strength_source_ids
 assert plan["summary"]["confirmationIssueCount"] == len(confirmation["issues"])
 PY
+
+SETTINGS="$PROJECT/.shared-adapter/settings.json"
+SETTINGS_BACKUP="$TMP/settings.backup.json"
+cp "$SETTINGS" "$SETTINGS_BACKUP"
+
+mutate_settings() {
+  local case_name="$1"
+  cp "$SETTINGS_BACKUP" "$SETTINGS"
+  python3 - "$SETTINGS" "$case_name" <<'PY'
+import json
+import sys
+
+path, case_name = sys.argv[1:]
+settings = json.load(open(path, encoding="utf-8"))
+bindings = settings["wiki"]["obsidian"]["bindings"]
+if case_name == "read-denied":
+    bindings[0]["access"]["read"] = False
+    bindings[0]["root"] = "Projects/missing-denied"
+elif case_name == "duplicate-id":
+    bindings[1]["sourceId"] = bindings[0]["sourceId"]
+elif case_name == "duplicate-root":
+    bindings[2]["root"] = bindings[1]["root"]
+elif case_name == "overlapping-root":
+    bindings[2]["root"] = bindings[1]["root"] + "/nested"
+elif case_name == "extra-project":
+    bindings[1]["role"] = "project"
+elif case_name == "root-escape":
+    bindings[0]["root"] = "Projects/../outside"
+else:
+    raise AssertionError(case_name)
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(settings, handle)
+PY
+}
+
+expect_binding_failure() {
+  local case_name="$1"
+  local expected="$2"
+  mutate_settings "$case_name"
+  if python3 "$PLANNER" --project-root "$PROJECT" --registry "$TMP/registry.json" --wiki-root project > /dev/null 2> "$TMP/$case_name.err"; then
+    printf 'Planner accepted invalid binding case: %s\n' "$case_name" >&2
+    exit 1
+  fi
+  grep -Fq "$expected" "$TMP/$case_name.err" \
+    || { printf 'Binding failure %s did not report %s\n' "$case_name" "$expected" >&2; cat "$TMP/$case_name.err" >&2; exit 1; }
+}
+
+expect_binding_failure read-denied "no readable Obsidian binding has role project"
+expect_binding_failure duplicate-id "duplicate sourceId"
+expect_binding_failure duplicate-root "duplicate root"
+expect_binding_failure overlapping-root "overlapping root"
+expect_binding_failure extra-project "at most one binding may have role: project"
+expect_binding_failure root-escape "binding root must name a directory inside the Vault"
+cp "$SETTINGS_BACKUP" "$SETTINGS"
 
 printf 'obsidian wiki migration plan smoke complete\n'
