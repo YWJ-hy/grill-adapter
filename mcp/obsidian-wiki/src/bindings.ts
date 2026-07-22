@@ -21,7 +21,7 @@ const BindingSchema = z.object({
 const ProjectSettingsSchema = z.object({
   wiki: z.object({
     provider: z.literal('obsidian'),
-    publishing: z.object({ mode: z.string().min(1) }),
+    publishing: z.object({ mode: z.literal('git-pr') }),
     obsidian: z.object({
       bindings: z.array(BindingSchema).min(1),
       exclude: z.array(z.string()).optional(),
@@ -388,7 +388,7 @@ function validateVault(vault: Vault, env: NodeJS.ProcessEnv): VaultHealth {
     }
   }
   const executable = env.OBSIDIAN_WIKI_OBSIDIAN_CLI || 'obsidian';
-  const listedVaults = commandOutput(executable, ['vault']);
+  const listedVaults = commandOutput(executable, ['vaults']);
   if (!listedVaults.split(/\r?\n/).some((line) => line.trim() === vault.selector)) {
     throw new Error(`Obsidian Vault selector is not available: ${vault.selector}`);
   }

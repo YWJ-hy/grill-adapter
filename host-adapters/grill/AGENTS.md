@@ -70,6 +70,12 @@ After all outcomes are recorded, `$grill-adapter:update-wiki` must show the exac
 
 The `wiki-capture` hook (Stop) is a non-blocking backstop that reminds on pending/deferred candidates, stays silent for a fully terminal retained journal, and reports an invalid journal.
 
+### Runtime health and adoption
+
+Before the first formal Obsidian selection, and after any binding, registry, repository-base, bridge, or migration change, require the operator to run `manage.sh doctor <project-root>` from their grill-adapter checkout. `adoptionState: shadow-validation` means the Obsidian path is active while legacy roots remain unchanged for migration evidence; it is not a legacy runtime fallback. Do not cut over until migration verify succeeds and the user separately confirms cutover. `adoptionState: cutover-complete` means only the migration-covered legacy roots are read-only archives.
+
+If Note apply or Git publishing is interrupted, preserve the candidate journal, write receipts, migration manifest, and publish run manifest. Rerun the same publish step or migration operation so it can reconcile recorded identities; never repair recovery by editing the Vault worktree, deleting manifests, or reading legacy content as a fallback.
+
 ### Debug — during `$mattpocock-skills:diagnosing-bugs`
 
 Do not call `$grill-adapter:wiki-research` at the start of debugging. After Phase-1 evidence narrows the failure to a specific component, contract, workflow, or convention, you may run `$grill-adapter:wiki-research` (phase `debug`, ≤2 sections) for a targeted lookup; verify every wiki-derived idea against code/logs/tests. If the bug is happening while implementing a feature's tickets, prefer that feature's `.adapter/context/<feature-slug>.wiki-context.json` sidecar instead of reselecting. Do not write wiki or run `update-wiki` during debugging. After the fix is verified, run `$grill-adapter:break-loop` when a retrospective is warranted; it hands durable candidates to `$grill-adapter:update-wiki`.

@@ -17,10 +17,10 @@ Usage:
   $0 uninstall <project-root> [--runtime claude|codex|both]
   $0 verify <project-root> [--host grill|plain] [--runtime claude|codex|both]
   $0 status [project-root] [--runtime claude|codex|both]
-  $0 bootstrap-wiki <project-root> [--template name] [--wiki-root project|shared]
+  $0 bootstrap-wiki <project-root> [--template name] [--wiki-root project|shared]  Legacy runtime only
   $0 init-wiki <project-root> [analysis-hint]        Emit project inventory for agent-led wiki init
   $0 export-wiki-skills <wiki-repo-root> [--no-graph-ci]
-  $0 doctor <project-root>                            Diagnose install + shared-wiki binding for a project
+  $0 doctor <project-root>                            Diagnose active Wiki provider + adoption state
   $0 self-test [project-root]                         Run the smoke/regression suite
   $0 release-check <project-root>                     Full pre-release gate (install -> verify -> tests)
   $0 help

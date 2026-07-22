@@ -105,27 +105,28 @@ const path = require('node:path');
 const args = process.argv.slice(2);
 const vaultRoot = process.env.FAKE_OBSIDIAN_VAULT_ROOT;
 if (process.env.FAKE_OBSIDIAN_CALLS) fs.appendFileSync(process.env.FAKE_OBSIDIAN_CALLS, args.join(' ') + '\\n');
-if (args[0] === 'vault') process.stdout.write('Knowledge\\n');
+if (args[0] === 'vaults') process.stdout.write('Knowledge\\n');
 else if (args.includes('search')) process.stdout.write(JSON.stringify([
-  { path: 'Projects/example/Visible.md' },
-  { path: 'Projects/example/Dependency.md' },
-  { path: 'Projects/example/Transitive.md' },
-  { path: 'Projects/example/Archived.md' },
-  { path: 'Projects/example/Private.md' },
-  { path: 'Projects/example/ReviewSkill.md' },
-  { path: 'Projects/example/StaleSkill.md' },
-  { path: 'Projects/example/MissingSkill.md' },
-  { path: 'Projects/example/DuplicateSkill.md' },
-  { path: 'Projects/other/Other.md' },
+  'Projects/example/Visible.md',
+  'Projects/example/Dependency.md',
+  'Projects/example/Transitive.md',
+  'Projects/example/Archived.md',
+  'Projects/example/Private.md',
+  'Projects/example/ReviewSkill.md',
+  'Projects/example/StaleSkill.md',
+  'Projects/example/MissingSkill.md',
+  'Projects/example/DuplicateSkill.md',
+  'Projects/other/Other.md',
 ]));
 else if (args.includes('read')) {
-  const notePath = args[args.indexOf('read') + 1];
+  const notePath = args.find((arg) => arg.startsWith('path='))?.slice('path='.length);
+  if (!notePath) process.exit(2);
   const statePath = process.env.FAKE_OBSIDIAN_READ_STATE;
   const readCount = statePath && fs.existsSync(statePath) ? Number(fs.readFileSync(statePath, 'utf8')) : 0;
   if (statePath) fs.writeFileSync(statePath, String(readCount + 1));
   let content = fs.readFileSync(path.join(vaultRoot, notePath), 'utf8');
   if (process.env.FAKE_OBSIDIAN_DUPLICATE_ACTIVE === 'true' && notePath.endsWith('/DuplicateSkill.md')) content = content.replace('status: archived', 'status: active');
-  process.stdout.write(JSON.stringify({ path: notePath, content: process.env.FAKE_OBSIDIAN_MUTATE_SECOND_READ === 'true' && readCount === 1 ? content.replace('Rule body.', 'Changed body.') : content }));
+  process.stdout.write(process.env.FAKE_OBSIDIAN_MUTATE_SECOND_READ === 'true' && readCount === 1 ? content.replace('Rule body.', 'Changed body.') : content);
 } else process.exit(2);
 `, 'utf8');
   chmodSync(obsidianCli, 0o755);
@@ -229,7 +230,9 @@ describe('Obsidian Wiki retrieval', () => {
 
     searchTool({ query: 'note' }, { ...env, FAKE_OBSIDIAN_CALLS: callsPath });
 
-    expect(readFileSync(callsPath, 'utf8')).toContain('vault=Knowledge');
+    const calls = readFileSync(callsPath, 'utf8');
+    expect(calls).toContain('vault=Knowledge search query=note path:"Projects/example" format=json');
+    expect(calls).toContain('vault=Knowledge read path=Projects/example/Visible.md');
     rmSync(callsPath, { force: true });
   });
 

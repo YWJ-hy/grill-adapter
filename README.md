@@ -8,7 +8,7 @@ It defaults to [**grill** (mattpocock/skills)](https://github.com/mattpocock/ski
 
 ## What it solves
 
-A code assistant forgets your project's durable rules between sessions and across repos. grill-adapter gives your project a **wiki as tier-2 knowledge**: sectioned pages with typed `[[page#section]]` edges, a derived `.graph.json`, cross-repo sharing over an MCP server, and — crucially — **execution-time binding**, so the rules that constrain a task are re-read as authoritative section text while that task is implemented. grill's own `CONTEXT.md` glossary + `docs/adr/` are tier-1; grill-adapter bridges their increments up into the wiki.
+A code assistant forgets your project's durable rules between sessions and across repos. grill-adapter gives your project a **wiki as tier-2 knowledge**: bound Obsidian atomic Notes with stable IDs, typed links, governed Skill Cards, and — crucially — **execution-time binding**, so the rules that constrain a task are reread from the synchronized Source while that task is implemented. grill's own `CONTEXT.md` glossary + `docs/adr/` are tier-1; grill-adapter bridges their increments into the candidate journal for reviewed publication.
 
 ## The four wiki touchpoints (stable contract)
 
@@ -50,9 +50,10 @@ git clone https://github.com/YWJ-hy/grill-adapter.git
 cd grill-adapter
 ./manage.sh install /path/to/your/project --host grill --runtime claude
 # Codex: --runtime codex; teams using both: --runtime both
-./manage.sh bootstrap-wiki /path/to/your/project           # seed .adapter/wiki/
-./manage.sh doctor /path/to/your/project                   # sanity-check
+./manage.sh doctor /path/to/your/project                   # validate active provider + adoption state
 ```
+
+For a new project, configure Obsidian Source bindings and the machine-local registry from [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md); `doctor` must report `obsidian-native` and healthy before formal research. `bootstrap-wiki` remains a legacy-only utility for projects that have not adopted `wiki.provider: obsidian`. Existing legacy projects use the migration flow below and remain in `shadow-validation` until verified cutover; there is no legacy runtime fallback.
 
 - The convention block is marker-delimited and **names skills only — it carries no install path**, so plugin upgrades can't rot it. Claude Code uses `CLAUDE.md`; Codex uses `AGENTS.md`.
 - **Zero host-skill patching.** To remove: drop `grill-adapter@grill-adapter` from the project's `.claude/settings.json` `enabledPlugins` (a project-scope plugin is a committed, team-shared setting, so `claude plugin uninstall` deliberately refuses to remove it for you — use `claude plugin disable grill-adapter@grill-adapter --scope local` to switch it off for yourself only), then `./manage.sh uninstall /path/to/your/project` to strip the convention block.
@@ -66,7 +67,7 @@ New to grill? Follow [`docs/SETUP_AND_USAGE_CN.md`](docs/SETUP_AND_USAGE_CN.md),
 
 ```
 ./manage.sh install|uninstall|verify|status <project> [--host grill|plain] [--runtime claude|codex|both]
-./manage.sh bootstrap-wiki <project> [--template name] [--wiki-root project|shared]
+./manage.sh bootstrap-wiki <project> [--template name] [--wiki-root project|shared]  # legacy only
 ./manage.sh init-wiki <project> [hint]
 ./manage.sh export-wiki-skills <wiki-repo> [--no-graph-ci]
 ./manage.sh doctor <project>
@@ -88,6 +89,7 @@ grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe 
 | [`QUICKSTART_CN.md`](QUICKSTART_CN.md) | 已装过 grill：5 分钟跑通 |
 | [`docs/ARCHITECTURE_CN.md`](docs/ARCHITECTURE_CN.md) | 三层架构、4 触点、引擎、section 图、shared MCP、执行期闭包 |
 | [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md) | Obsidian Source binding、machine registry、manifest 与 fail-closed 诊断 |
+| [`docs/OBSIDIAN_ACCEPTANCE_CN.md`](docs/OBSIDIAN_ACCEPTANCE_CN.md) | Desktop + installed Claude Code/Codex 最终验收、shadow validation 与恢复演练 |
 | [`docs/HOST_INTEGRATION_CN.md`](docs/HOST_INTEGRATION_CN.md) | host 适配器模型、grill/plain 约定块全文、plugin 安装模型 |
 | [`docs/USER_FLOW_CN.md`](docs/USER_FLOW_CN.md) | 最终用户端到端流程 |
 | [`docs/LANHU_CN.md`](docs/LANHU_CN.md) | Lanhu 需求录入专章 |

@@ -56,6 +56,7 @@ grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 
 - **obsidian-wiki MCP + write/publish bundle `mcp/obsidian-wiki/`**：同一提交型 bundle 暴露绑定只读工具、Note proposal/apply MCP/JSON CLI、可恢复 `publish` JSON CLI，以及独立 `serve-write-bridge` 入口。bridge 只监听 loopback，以 token 鉴权并对 bound Source 做 policy/neutrality/CAS 校验。publisher 只消费 journal 中 `kept+applied` receipts，按 `repositoryRef` 锁仓并在锁内重验 base/remote/path/hash；commit 前用 Git staged-tree object ID 保存可恢复身份，创建 allowlist commit + draft PR、协调 peer PR，并把 worktree 恢复到 clean base。run manifest 留在项目 `.adapter/context/`，开放 PR 不进入 formal read。
 - **shared-wiki MCP `mcp/shared-wiki/`**：TypeScript MCP server，随插件 MCP 声明自启；Claude Code 从 `CLAUDE_PROJECT_DIR`、Codex 从 MCP request 的 `x-codex-turn-metadata.workspaces`（并兼容标准 roots capability）定位项目，再读该项目 `.shared-adapter/settings.json` 自配置；直接 CLI 仍可从进程 cwd 定位。MCP server 先注册工具，首次调用时解析绑定，未声明或多 root 歧义均 fail-closed。其余 read/graph/CLI 与 bundle 不变式不变。
 - **模板、迁移与导出**：`wiki-template/`、`wiki-repo-skills/` + `wiki-repo-ci/`、`contracts/`。`wiki_migration_plan.py` fail-closed 产出 deterministic plan，并为 update 固化审核时 Note hash；`wiki_migration_apply.py` 在首个 bridge 写前固化完整 plan、binding/policy snapshot 与 CAS intent roster，并先切到专用 PR branch，再经两阶段 CAS 与 receipt publisher 写 draft PR。恢复只接受精确 before/seed/final state，`publishing` 中断从 publisher manifest 对账。verify 从不可变 plan 推导 coverage，重验 legacy source 与 binding/policy，只认 merged + synchronized base；cutover 另需确认、拒绝 active schema-v5 sidecar，并只把 plan 覆盖的 legacy root 标成机械只读 archive，bootstrap/init/update/import/migration 写路径都必须拒绝归档 root。契约示例还包括 migration plan/manifest、wiki context/selection、ticket roster、candidate journal 与 publish run manifest。
+- **rollout 运维门**：`doctor.sh` 只读识别 `obsidian-native`、`shadow-validation`、`cutover-complete`；active Obsidian provider 的 bundle/status/health 任一失败均非零退出并卡 release-check。shadow 只保留 legacy roots 作为 migration evidence，正式四触点不双读、不 fallback；`bootstrap-wiki` 在 active Obsidian provider 下拒绝重新播种 legacy root。
 
 ## section 图
 
@@ -78,4 +79,5 @@ wiki 页被 `<!-- wiki-section:xxx summary="..." -->` 标记切成 section；sec
 - root-specific 写授权：默认 skip/ask；授权标志不绕 `refuse`。
 - shared wiki 中性化：`blockedTerms`/`blockedPatterns`。
 - 换绑/revision 漂移 fail-closed。
+- Obsidian rollout 不引入 legacy runtime fallback；cutover 前 legacy roots 只供 migration verify，cutover 后只读归档。
 - Lanhu evidence-package 边界：只作输入，不写进 wiki / 最终 spec / 验收。

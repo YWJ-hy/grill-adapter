@@ -119,7 +119,7 @@ step "8. Smoke/regression suite"
 if bash "$SCRIPT_DIR/self-test.sh" "$SANDBOX_PROJECT"; then echo "  OK"; else echo "  FAIL"; fail=1; fi
 
 step "9. doctor on the passed project (read-only)"
-bash "$SCRIPT_DIR/doctor.sh" "$PROJECT_ROOT" || true
+check bash "$SCRIPT_DIR/doctor.sh" "$PROJECT_ROOT"
 
 echo ""
 if [[ $fail -eq 0 ]]; then

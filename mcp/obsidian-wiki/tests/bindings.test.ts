@@ -39,7 +39,7 @@ function fixture(bindings: unknown[], manifests: Array<{ root: string; sourceId:
   writeFileSync(path.join(vaultRoot, '.gitkeep'), '', 'utf8');
   execFileSync('git', ['-C', vaultRoot, 'add', '.']);
   execFileSync('git', ['-C', vaultRoot, 'commit', '-m', 'fixture']);
-  writeFileSync(obsidianCli, '#!/usr/bin/env sh\n[ "$1" = "vault" ] && printf "Knowledge\\n"\n', 'utf8');
+  writeFileSync(obsidianCli, '#!/usr/bin/env sh\n[ "$1" = "vaults" ] && printf "Knowledge\\n"\n', 'utf8');
   chmodSync(obsidianCli, 0o755);
   writeJson(path.join(projectDir, '.shared-adapter', 'settings.json'), {
     wiki: { provider: 'obsidian', publishing: { mode: 'git-pr' }, obsidian: { bindings } },
@@ -97,6 +97,18 @@ describe('Obsidian Wiki Source bindings', () => {
     expect(status.healthy).toBe(false);
     expect(status.projectDir).toBe(input.projectDir);
     expect(status.errors.join(' ')).toMatch(/unresolved vaultRef/);
+  });
+
+  it('rejects publishing modes that the bundled publisher cannot execute', () => {
+    const input = fixture([
+      { sourceId: 'project', role: 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: 'Projects/example', access: { read: true } },
+    ], [{ root: 'Projects/example', sourceId: 'project', scope: 'project' }]);
+    const settingsPath = path.join(input.projectDir, '.shared-adapter', 'settings.json');
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+    settings.wiki.publishing.mode = 'github-pr';
+    writeJson(settingsPath, settings);
+
+    expect(() => resolveBindings(testEnvironment(input))).toThrow(/git-pr/);
   });
 
   it('rejects incomplete or non-loopback write bridge registry configuration', () => {

@@ -33,22 +33,23 @@ cd grill-adapter
 
 只把 grill 约定块写进你项目的 `CLAUDE.md`/`AGENTS.md`（marker 包裹，只点名 skill、不含安装路径）。**不改 grill 一行。**
 
-## 2. 播种 wiki
+## 2. 配置 Obsidian Wiki Source
+
+按 `docs/OBSIDIAN_WIKI_CN.md` 配置项目 `.shared-adapter/settings.json` 的 `wiki.provider: obsidian` / bindings、机器本地 registry，以及 Source 的 `_meta/wiki-source.md`。然后运行：
 
 ```bash
-./manage.sh bootstrap-wiki /path/to/your/project --template standard
-./manage.sh doctor /path/to/your/project      # 确认接线 + 绑定状态
+./manage.sh doctor /path/to/your/project
 ```
 
-`.adapter/wiki/` 就绪。也可以在 Claude Code 里用 `/grill-adapter:init-wiki` 让 agent 基于项目盘点初始化，或 `/grill-adapter:import-wiki` + `/grill-adapter:migrate-wiki` 导入已有文档。
+新项目应显示 `adoptionState: obsidian-native` 和 `Obsidian runtime healthy: yes`。已有 `.adapter/wiki/` / `.shared-adapter/wiki/` 的项目显示 `shadow-validation`：正式路径只读 Obsidian，legacy roots 原样保留用于 `/grill-adapter:migrate-wiki` 的 plan/verify，不能充当 runtime fallback。`bootstrap-wiki` 只保留给尚未设置 Obsidian provider 的 legacy 项目。
 
 ## 3. 跑一遍 grill → implement → update-wiki
 
 在对应运行时里对你的项目（Claude 用 `/skill`，Codex 用 `$plugin:skill`）：
 
 1. `/grill-with-docs`：描述需求。约定会在质询期自动提示调 `/grill-adapter:wiki-research` 披露相关 wiki。
-2. `/to-tickets`：规划期 `/grill-adapter:wiki-research`（plan）正式选 wiki → 生成 `.adapter/context/<feature-slug>.wiki-context.json` sidecar；ticket 发布后由真实 ticket 建 roster，再 `--finalize` 盖指纹。
-3. `/implement`：每个 ticket 前跑 `/grill-adapter:wiki-materialize <ticket>`，把该 ticket 的硬约束 wiki section 整段 reread 进上下文。改到 source-of-truth 保护路径时 `source-truth-lint` hook 会提醒。
+2. `/to-tickets`：规划期 `/grill-adapter:wiki-research`（plan）正式选 bound atomic Notes/Skill Cards → 生成 schema-v6 `.adapter/context/<feature-slug>.wiki-context.json` sidecar；ticket 发布后由真实 ticket 建 roster，再 `--finalize` 盖指纹。
+3. `/implement`：每个 ticket 前跑 `/grill-adapter:wiki-materialize <ticket>`，按 stable ID reread 该 ticket 的 hard Notes、所需 Skill Cards 和一跳 `depends_on`。改到 source-of-truth 保护路径时 `source-truth-lint` hook 会提醒。
 4. 各阶段发现 durable 候选时跑 `/grill-adapter:candidate-journal` 追加到同一 feature journal；`/code-review` 后跑 `/grill-adapter:update-wiki`，先校验/折叠 journal，再记录 keep/skip/defer 并处理回写。
 
 ## 4. 验证
@@ -62,7 +63,7 @@ cd grill-adapter
 
 ```
 ./manage.sh install|uninstall|verify|status <project> [--host grill|plain] [--runtime claude|codex|both]
-./manage.sh bootstrap-wiki <project> [--template standard]
+./manage.sh bootstrap-wiki <project> [--template standard]  # legacy only
 ./manage.sh init-wiki <project> [hint]
 ./manage.sh export-wiki-skills <wiki-repo> [--no-graph-ci]
 ./manage.sh doctor <project>

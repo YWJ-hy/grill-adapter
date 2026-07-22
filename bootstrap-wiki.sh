@@ -54,6 +54,7 @@ esac
 WIKI_ROOT="$REPO_ROOT/$WIKI_ROOT_REL"
 
 python3 - "$SCRIPT_DIR/scripts" "$REPO_ROOT" "$WIKI_ROOT_NAME" <<'PY'
+import json
 import sys
 from pathlib import Path
 
@@ -63,8 +64,17 @@ from wiki_common import enforce_legacy_wiki_writable, wiki_root_by_name
 
 try:
     project = Path(project_root).resolve()
+    settings_path = project / ".shared-adapter" / "settings.json"
+    if settings_path.is_file():
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+        if ((settings.get("wiki") or {}).get("provider")) == "obsidian":
+            raise PermissionError(
+                "legacy Wiki bootstrap is disabled while wiki.provider is obsidian; "
+                "configure bound Obsidian Sources for a new project, or use migrate-wiki "
+                "for an existing legacy Wiki"
+            )
     enforce_legacy_wiki_writable(project, wiki_root_by_name(project, root_name))
-except (PermissionError, ValueError) as exc:
+except (json.JSONDecodeError, PermissionError, ValueError) as exc:
     raise SystemExit(str(exc)) from exc
 PY
 

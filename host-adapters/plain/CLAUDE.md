@@ -43,6 +43,12 @@ For `wiki.provider: obsidian`, Capture must use `obsidian_wiki_propose_note_chan
 
 After all outcomes are recorded, `/grill-adapter:update-wiki` must show the exact repository/Note publish scope and obtain explicit Git publishing confirmation. It then uses its bundled resumable publisher to create one allowlisted draft PR per touched repository and coordinate peer PRs. On interruption, rerun the same publish step; never delete its local run manifest or manually recreate branches. Open PR content remains unavailable to formal research until merge, base synchronization, and revalidation.
 
+### Runtime health and adoption
+
+Before the first formal Obsidian selection, and after any binding, registry, repository-base, bridge, or migration change, require the operator to run `manage.sh doctor <project-root>` from their grill-adapter checkout. `adoptionState: shadow-validation` means the Obsidian path is active while legacy roots remain unchanged for migration evidence; it is not a legacy runtime fallback. Do not cut over until migration verify succeeds and the user separately confirms cutover. `adoptionState: cutover-complete` means only the migration-covered legacy roots are read-only archives.
+
+If Note apply or Git publishing is interrupted, preserve the candidate journal, write receipts, migration manifest, and publish run manifest. Rerun the same publish step or migration operation so it can reconcile recorded identities; never repair recovery by editing the Vault worktree, deleting manifests, or reading legacy content as a fallback.
+
 ### Debug
 
 After root-cause evidence narrows the failure, optionally run `/grill-adapter:wiki-research` (phase `debug`, ≤2 sections) for a targeted lookup. After a verified fix, run `/grill-adapter:break-loop` for a retrospective; it hands durable candidates to `/grill-adapter:update-wiki`.
