@@ -299,6 +299,7 @@ def load_bindings(
             frontmatter = parse_frontmatter(note_path.read_text(encoding="utf-8"))
             wiki_id = frontmatter.get("wiki_id")
             notes.append({
+                "sourceId": source_id,
                 "wikiId": wiki_id if isinstance(wiki_id, str) and wiki_id else None,
                 "path": relative.as_posix(),
                 "status": frontmatter.get("status"),
@@ -346,6 +347,9 @@ def load_bindings(
 def collect_legacy_root(root_name: str, wiki_root: Path) -> dict[str, Any]:
     if wiki_root.is_symlink():
         raise PlanError(f"legacy {root_name} Wiki root is a symbolic link: {wiki_root}")
+    for path in sorted(wiki_root.rglob("*")):
+        if path.is_symlink():
+            raise PlanError(f"legacy {root_name} Wiki input is a symbolic link: {path}")
     graph = build_wiki_index_graph(wiki_root)
     indexed_leaves = {path.resolve() for path in graph.leaves}
     indexed_indexes = {path.resolve() for path in graph.indexes}
@@ -553,16 +557,15 @@ def build_plan(
         confirmations.append({"code": code, "sourceItemIds": sorted(set(source_ids)), "detail": detail})
 
     target_by_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    target_by_path: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    target_by_path: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     target_cards: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for binding in bindings.values():
         for note in binding["notes"]:
-            target_by_path[note["path"]].append(note)
+            target_by_path[(note["sourceId"], note["path"])].append(note)
             if isinstance(note["wikiId"], str):
                 target_by_id[note["wikiId"]].append(note)
             if (
-                note["status"] == "active"
-                and isinstance(note["skillProvider"], str)
+                isinstance(note["skillProvider"], str)
                 and isinstance(note["skillName"], str)
             ):
                 target_cards[(note["skillProvider"], note["skillName"])].append(note)
@@ -679,7 +682,13 @@ def build_plan(
 
     for item in planned_notes:
         proposed_path = item.get("proposedPath")
-        path_matches = target_by_path.get(proposed_path, []) if isinstance(proposed_path, str) else []
+        target_source = item.get("targetSource")
+        target_source_id = target_source.get("sourceId") if isinstance(target_source, dict) else None
+        path_matches = (
+            target_by_path.get((target_source_id, proposed_path), [])
+            if isinstance(target_source_id, str) and isinstance(proposed_path, str)
+            else []
+        )
         path_conflicts = [note for note in path_matches if note.get("wikiId") != item.get("noteId")]
         if path_conflicts:
             occupied = ", ".join(

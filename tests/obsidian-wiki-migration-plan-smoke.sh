@@ -269,7 +269,7 @@ cat > "$PROJECT_SOURCE/existing/legacy-release-card.md" <<'MD'
 wiki_schema: grill-adapter.obsidian-note/v1
 wiki_id: project-source/skills/legacy-release-pack
 type: guide
-status: active
+status: archived
 summary: Existing release pack card with another stable ID.
 constraint_strength: hard
 skill_provider: claude-code-project
@@ -283,6 +283,19 @@ skill_triggers:
 ---
 
 # Legacy Release Pack
+MD
+mkdir -p "$SHARED_SOURCE/rules"
+cat > "$SHARED_SOURCE/rules/negative-rule.md" <<'MD'
+---
+wiki_schema: grill-adapter.obsidian-note/v1
+wiki_id: shared-source/rules/negative-rule
+type: guide
+status: active
+summary: A different Source may use the same relative suffix.
+constraint_strength: soft
+---
+
+# Shared negative rule
 MD
 for duplicate in one two; do
   cat > "$PROJECT_SOURCE/existing/foo-$duplicate.md" <<'MD'
@@ -381,6 +394,11 @@ soft_guidance = next(
 )
 assert soft_guidance["decision"] == "conflict"
 assert "occupied" in soft_guidance["decisionReason"], soft_guidance
+negative_plan = next(
+    item for item in plan["planItems"]
+    if item.get("noteId") == "project-source/rules/negative-rule" and item["sourceKind"] == "section"
+)
+assert negative_plan["decision"] == "create", negative_plan
 bad_pack = next(item for item in plan["planItems"] if item.get("noteId") == "project-source/skills/bad-pack")
 assert bad_pack["decision"] == "conflict"
 assert "valid version" in bad_pack["decisionReason"]
@@ -507,5 +525,20 @@ fi
 grep -Fq "symbolic link" "$TMP/pack-symlink.err" \
   || { printf 'Skill Pack symlink failure was not explicit\n' >&2; cat "$TMP/pack-symlink.err" >&2; exit 1; }
 unlink "$PROJECT/.claude/skills/release-pack/outside.md"
+
+LEGACY_INDEX="$PROJECT_WIKI/guides/index.md"
+LEGACY_INDEX_BACKUP="$TMP/guides-index.md"
+INVALID_LEGACY="$TMP/invalid-legacy.md"
+printf '\377' > "$INVALID_LEGACY"
+mv "$LEGACY_INDEX" "$LEGACY_INDEX_BACKUP"
+ln -s "$INVALID_LEGACY" "$LEGACY_INDEX"
+if python3 "$PLANNER" --project-root "$PROJECT" --registry "$TMP/registry.json" --wiki-root project > /dev/null 2> "$TMP/legacy-symlink.err"; then
+  printf 'Planner followed a legacy Wiki symlink before validation\n' >&2
+  exit 1
+fi
+grep -Fq "symbolic link" "$TMP/legacy-symlink.err" \
+  || { printf 'Legacy Wiki symlink was read before fail-closed validation\n' >&2; cat "$TMP/legacy-symlink.err" >&2; exit 1; }
+unlink "$LEGACY_INDEX"
+mv "$LEGACY_INDEX_BACKUP" "$LEGACY_INDEX"
 
 printf 'obsidian wiki migration plan smoke complete\n'
