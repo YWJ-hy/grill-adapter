@@ -53,6 +53,21 @@ esac
 
 WIKI_ROOT="$REPO_ROOT/$WIKI_ROOT_REL"
 
+python3 - "$SCRIPT_DIR/scripts" "$REPO_ROOT" "$WIKI_ROOT_NAME" <<'PY'
+import sys
+from pathlib import Path
+
+scripts_dir, project_root, root_name = sys.argv[1:]
+sys.path.insert(0, scripts_dir)
+from wiki_common import enforce_legacy_wiki_writable, wiki_root_by_name
+
+try:
+    project = Path(project_root).resolve()
+    enforce_legacy_wiki_writable(project, wiki_root_by_name(project, root_name))
+except (PermissionError, ValueError) as exc:
+    raise SystemExit(str(exc)) from exc
+PY
+
 list_templates() {
   find "$TEMPLATE_ROOT" -mindepth 1 -maxdepth 1 -type d -print | sort | while IFS= read -r template; do
     basename "$template"

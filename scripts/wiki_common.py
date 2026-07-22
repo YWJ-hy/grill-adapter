@@ -248,6 +248,18 @@ def enforce_legacy_wiki_writable(project_root: Path, root: WikiRoot) -> None:
         raise PermissionError(f"{root.display_path} is a read-only legacy archive after Obsidian cutover")
 
 
+def enforce_legacy_wiki_directory_writable(wiki_dir: Path | str) -> None:
+    """Apply the archive guard when --wiki-dir is a standard Wiki root or descendant."""
+    resolved = Path(wiki_dir).expanduser().resolve()
+    for candidate in (resolved, *resolved.parents):
+        if candidate.name != "wiki" or candidate.parent.name not in {".adapter", ".shared-adapter"}:
+            continue
+        project_root = candidate.parents[1]
+        for root in known_wiki_roots(project_root):
+            if root.path.resolve() == candidate:
+                enforce_legacy_wiki_writable(project_root, root)
+
+
 def _read_string_list(settings_path: Path, payload: dict, key: str) -> list[str]:
     value = payload.get(key, [])
     if value is None:

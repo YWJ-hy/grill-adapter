@@ -192,5 +192,36 @@ if python3 "${TARGET_DIR}/scripts/wiki_migrate_helper.py" --generate-indexes "${
   printf 'Expected migrate-wiki write modes to reject an archived legacy root\n' >&2
   exit 1
 fi
+if python3 "${TARGET_DIR}/scripts/wiki_migrate_helper.py" --generate-indexes "${TMP_PROJECT}" --wiki-dir "${TMP_PROJECT}/.adapter/wiki"; then
+  printf 'Expected migrate-wiki --wiki-dir to reject an archived legacy root\n' >&2
+  exit 1
+fi
+if python3 "${TARGET_DIR}/scripts/wiki_generate_section_index.py" --all --wiki-root project --project-root "${TMP_PROJECT}"; then
+  printf 'Expected section index generation to reject an archived legacy root\n' >&2
+  exit 1
+fi
+if python3 "${TARGET_DIR}/scripts/wiki_generate_section_index.py" --all --wiki-dir "${TMP_PROJECT}/.adapter/wiki"; then
+  printf 'Expected section index --wiki-dir to reject an archived legacy root\n' >&2
+  exit 1
+fi
+mkdir -p "${TMP_PROJECT}/.adapter/wiki/archived-subdir"
+if python3 "${TARGET_DIR}/scripts/wiki_migrate_helper.py" --generate-indexes "${TMP_PROJECT}" --wiki-dir "${TMP_PROJECT}/.adapter/wiki/archived-subdir"; then
+  printf 'Expected migrate-wiki descendant --wiki-dir to reject an archived legacy root\n' >&2
+  exit 1
+fi
+if python3 "${TARGET_DIR}/scripts/wiki_generate_section_index.py" --all --wiki-dir "${TMP_PROJECT}/.adapter/wiki/archived-subdir"; then
+  printf 'Expected section index descendant --wiki-dir to reject an archived legacy root\n' >&2
+  exit 1
+fi
+NESTED_WIKI="${TMP_PROJECT}/.adapter/wiki/archived-subdir/.adapter/wiki"
+mkdir -p "$NESTED_WIKI"
+if python3 "${TARGET_DIR}/scripts/wiki_migrate_helper.py" --generate-indexes "${TMP_PROJECT}" --wiki-dir "$NESTED_WIKI"; then
+  printf 'Expected migrate-wiki nested-root --wiki-dir to reject an outer archived root\n' >&2
+  exit 1
+fi
+if python3 "${TARGET_DIR}/scripts/wiki_generate_section_index.py" --all --wiki-dir "$NESTED_WIKI"; then
+  printf 'Expected section index nested-root --wiki-dir to reject an outer archived root\n' >&2
+  exit 1
+fi
 
 printf 'wiki authorization policy smoke test complete\n'

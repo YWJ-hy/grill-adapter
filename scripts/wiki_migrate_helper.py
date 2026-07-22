@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from wiki_common import (  # noqa: E402
     build_wiki_index_graph,
+    enforce_legacy_wiki_directory_writable,
     enforce_legacy_wiki_writable,
     existing_wiki_roots,
     repo_root,
@@ -233,11 +234,14 @@ def main() -> None:
     args = parser.parse_args()
 
     write_project = args.set_summaries or args.generate_indexes
-    if write_project and not args.wiki_dir:
-        project = Path(write_project).resolve()
+    if write_project:
         try:
-            for root in selected_wiki_roots(project, args.wiki_root, require_index=False):
-                enforce_legacy_wiki_writable(project, root)
+            if args.wiki_dir:
+                enforce_legacy_wiki_directory_writable(args.wiki_dir)
+            else:
+                project = Path(write_project).resolve()
+                for root in selected_wiki_roots(project, args.wiki_root, require_index=False):
+                    enforce_legacy_wiki_writable(project, root)
         except (PermissionError, ValueError) as exc:
             raise SystemExit(str(exc)) from exc
 

@@ -107,6 +107,11 @@ def stable_digest(entries: list[tuple[str, bytes]]) -> str:
     return f"sha256:{digest.hexdigest()}"
 
 
+def note_content_hash(contents: str) -> str:
+    canonical = contents.replace("\r\n", "\n")
+    return f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
+
+
 def file_entries(root: Path, prefix: str, include_meta: bool = True) -> list[tuple[str, bytes]]:
     if root.is_symlink():
         raise PlanError(f"snapshot root is a symbolic link: {root}")
@@ -296,12 +301,14 @@ def load_bindings(
             relative = note_path.relative_to(worktree_root)
             if "_meta" in note_path.relative_to(source_root).parts:
                 continue
-            frontmatter = parse_frontmatter(note_path.read_text(encoding="utf-8"))
+            contents = note_path.read_text(encoding="utf-8")
+            frontmatter = parse_frontmatter(contents)
             wiki_id = frontmatter.get("wiki_id")
             notes.append({
                 "sourceId": source_id,
                 "wikiId": wiki_id if isinstance(wiki_id, str) and wiki_id else None,
                 "path": relative.as_posix(),
+                "contentHash": note_content_hash(contents),
                 "status": frontmatter.get("status"),
                 "skillProvider": frontmatter.get("skill_provider"),
                 "skillName": frontmatter.get("skill_name"),
@@ -587,6 +594,8 @@ def build_plan(
             "targetSource": {"sourceId": binding["sourceId"], "role": binding["role"]} if binding else None,
             "noteId": None,
             "proposedPath": None,
+            "expectedPath": None,
+            "expectedBeforeHash": None,
             "noteType": page["pageType"],
             "constraintStrength": page["constraintStrength"],
             "edgeTransformation": [],
@@ -627,6 +636,8 @@ def build_plan(
             "targetSource": {"sourceId": binding["sourceId"], "role": binding["role"]} if binding else None,
             "noteId": None,
             "proposedPath": None,
+            "expectedPath": None,
+            "expectedBeforeHash": None,
             "noteType": "guide" if skill_name else section["pageType"],
             "constraintStrength": section["constraintStrength"],
             "edgeTransformation": [],
@@ -678,7 +689,13 @@ def build_plan(
                 item.update(decision="conflict", decisionReason=f"target Source contains duplicate Note ID {note_id}")
             add_confirmation("duplicate-id", [item["sourceItemId"] for item in items], f"target Source contains duplicate Note ID {note_id}")
         elif len(items) == 1 and len(target_matches) == 1 and items[0]["decision"] == "create":
-            items[0].update(decision="update", decisionReason=f"target Note already exists at {target_matches[0]['path']}")
+            target = target_matches[0]
+            items[0].update(
+                decision="update",
+                decisionReason=f"target Note already exists at {target['path']}",
+                expectedPath=target["path"],
+                expectedBeforeHash=target["contentHash"],
+            )
 
     for item in planned_notes:
         proposed_path = item.get("proposedPath")

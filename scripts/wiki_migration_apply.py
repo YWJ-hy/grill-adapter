@@ -128,6 +128,19 @@ def validate_plan(plan: dict[str, Any]) -> None:
     conflicts = [item.get("sourceItemId") for item in items if isinstance(item, dict) and item.get("decision") == "conflict"]
     if conflicts:
         raise MigrationError("migration plan still has unresolved conflicts: " + ", ".join(str(value) for value in conflicts))
+    for item in items:
+        if not isinstance(item, dict):
+            raise MigrationError("migration plan contains a non-object planItem")
+        decision = item.get("decision")
+        expected_path = item.get("expectedPath")
+        expected = item.get("expectedBeforeHash")
+        if decision == "update":
+            if not isinstance(expected_path, str) or not expected_path:
+                raise MigrationError(f"migration update lacks its reviewed target path: {item.get('sourceItemId')}")
+            if not isinstance(expected, str) or not re.fullmatch(r"sha256:[a-f0-9]{64}", expected):
+                raise MigrationError(f"migration update lacks its reviewed target hash: {item.get('sourceItemId')}")
+        if decision == "create" and (expected_path is not None or expected is not None):
+            raise MigrationError(f"migration create has an unexpected target snapshot: {item.get('sourceItemId')}")
 
 
 def selectors(plan: dict[str, Any]) -> tuple[str, str | None, str | None]:
@@ -328,6 +341,50 @@ def binding_snapshot(status: dict[str, Any], target_sources: list[dict[str, Any]
     return sorted(snapshot, key=lambda item: item["sourceId"])
 
 
+def folded_publish_journal(manifest: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schemaVersion": 1,
+        "featureSlug": manifest["migrationId"],
+        "candidates": [
+            {
+                "candidateId": f"migration-{index + 1}",
+                "status": "kept",
+                "writeReceipt": {
+                    "provider": "obsidian",
+                    "state": "applied",
+                    "operation": note["operation"],
+                    "sourceId": note["sourceId"],
+                    "repositoryRef": note["repositoryRef"],
+                    "bindingDigest": note["bindingDigest"],
+                    "wikiId": note["wikiId"],
+                    "path": note["path"],
+                    "beforeHash": note["beforeHash"],
+                    "afterHash": note["contentHash"],
+                },
+            }
+            for index, note in enumerate(manifest["notes"])
+        ],
+    }
+
+
+def finish_publication(
+    manifest: dict[str, Any],
+    path: Path,
+    project_root: Path,
+    registry: Path,
+) -> dict[str, Any]:
+    published = bundle_call("publish", folded_publish_journal(manifest), project_root, registry)
+    repositories = published.get("repositories")
+    if not isinstance(repositories, list) or any(
+        repo.get("state") != "published" for repo in repositories if isinstance(repo, dict)
+    ):
+        raise MigrationError("migration publisher did not return completed repositories")
+    manifest["repositories"] = repositories
+    manifest["state"] = "published"
+    atomic_write_json(path, manifest)
+    return public_manifest(manifest, path)
+
+
 def validate_manifest_plan(manifest: dict[str, Any], plan: dict[str, Any] | None = None) -> dict[str, Any]:
     if manifest.get("schemaVersion") != MANIFEST_SCHEMA or manifest.get("kind") != MIGRATION_KIND:
         raise MigrationError("migration manifest has an unsupported contract")
@@ -389,11 +446,6 @@ def assert_operation_coverage(manifest: dict[str, Any], plan: dict[str, Any]) ->
             raise MigrationError("migration Note mapping coverage differs from the immutable plan")
 
 
-def maybe_fail_after_bridge_write(source_item_id: str) -> None:
-    if os.environ.get("GRILL_ADAPTER_TEST_FAIL_AFTER_SOURCE_ITEM") == source_item_id:
-        raise MigrationError(f"injected interruption after bridge write for {source_item_id}")
-
-
 def apply_plan(args: argparse.Namespace) -> dict[str, Any]:
     if not args.confirmed:
         raise MigrationError("migration apply requires explicit confirmation (--confirmed)")
@@ -437,8 +489,12 @@ def apply_plan(args: argparse.Namespace) -> dict[str, Any]:
             else:
                 if len(matches) != 1:
                     raise MigrationError(f"update target wiki_id must resolve exactly once: {wiki_id}")
-                target_paths[wiki_id] = str(matches[0]["path"])
-                before_hashes[source_item_id] = str(matches[0]["contentHash"])
+                reviewed_path = item.get("expectedPath")
+                reviewed_hash = item.get("expectedBeforeHash")
+                if matches[0].get("path") != reviewed_path or matches[0].get("contentHash") != reviewed_hash:
+                    raise MigrationError(f"confirmed target Note changed after plan validation: {source_item_id}")
+                target_paths[wiki_id] = reviewed_path
+                before_hashes[source_item_id] = reviewed_hash
 
         operations = []
         for item in writable:
@@ -526,6 +582,9 @@ def apply_plan(args: argparse.Namespace) -> dict[str, Any]:
             raise MigrationError(f"migration write intent identity drift for {source_id}")
         prepared[source_id] = {"content": content, "seedContent": seed_content}
 
+    if manifest.get("state") == "publishing":
+        return finish_publication(manifest, path, project_root, registry)
+
     publish = bundle_call(
         "prepare-publish",
         {
@@ -600,7 +659,6 @@ def apply_plan(args: argparse.Namespace) -> dict[str, Any]:
         diff = result.get("diff") if isinstance(result.get("diff"), dict) else {}
         if diff.get("afterHash") != intent["seedHash"]:
             raise MigrationError(f"seed write receipt hash mismatch for {source_id}")
-        maybe_fail_after_bridge_write(source_id)
         seeded = {
             "sourceItemId": source_id,
             "sourceId": item["targetSource"]["sourceId"],
@@ -668,7 +726,6 @@ def apply_plan(args: argparse.Namespace) -> dict[str, Any]:
             diff = result.get("diff") if isinstance(result.get("diff"), dict) else {}
             if diff.get("afterHash") != after_hash:
                 raise MigrationError(f"write receipt hash mismatch for {source_id}")
-            maybe_fail_after_bridge_write(source_id)
             current_by_source[source_id] = {"contentHash": after_hash}
         note_receipt = {
             "sourceItemId": source_id,
@@ -692,37 +749,7 @@ def apply_plan(args: argparse.Namespace) -> dict[str, Any]:
     assert_operation_coverage({**manifest, "state": "published"}, stored_plan)
     manifest["state"] = "publishing"
     atomic_write_json(path, manifest)
-    folded = {
-        "schemaVersion": 1,
-        "featureSlug": manifest["migrationId"],
-        "candidates": [
-            {
-                "candidateId": f"migration-{index + 1}",
-                "status": "kept",
-                "writeReceipt": {
-                    "provider": "obsidian",
-                    "state": "applied",
-                    "operation": note["operation"],
-                    "sourceId": note["sourceId"],
-                    "repositoryRef": note["repositoryRef"],
-                    "bindingDigest": note["bindingDigest"],
-                    "wikiId": note["wikiId"],
-                    "path": note["path"],
-                    "beforeHash": note["beforeHash"],
-                    "afterHash": note["contentHash"],
-                },
-            }
-            for index, note in enumerate(manifest["notes"])
-        ],
-    }
-    published = bundle_call("publish", folded, project_root, registry)
-    repositories = published.get("repositories")
-    if not isinstance(repositories, list) or any(repo.get("state") != "published" for repo in repositories if isinstance(repo, dict)):
-        raise MigrationError("migration publisher did not return completed repositories")
-    manifest["repositories"] = repositories
-    manifest["state"] = "published"
-    atomic_write_json(path, manifest)
-    return public_manifest(manifest, path)
+    return finish_publication(manifest, path, project_root, registry)
 
 
 def gh_pr_state(url: str) -> dict[str, Any]:

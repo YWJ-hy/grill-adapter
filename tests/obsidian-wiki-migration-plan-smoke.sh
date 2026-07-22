@@ -376,6 +376,8 @@ decisions = {item["decision"] for item in plan["planItems"]}
 assert decisions >= {"create", "update", "skip", "conflict"}
 api = next(item for item in plan["planItems"] if item.get("noteId") == "project-source/rules/api-contract" and item["sourceKind"] == "section")
 assert api["decision"] == "update", api
+assert api["expectedPath"] == "Projects/example/existing/api-contract.md", api
+assert api["expectedBeforeHash"].startswith("sha256:"), api
 assert api["targetSource"]["sourceId"] == "project-source"
 assert api["proposedPath"] == "Projects/example/rules/api-contract.md"
 assert api["edgeTransformation"] == [{"property": "depends_on", "targetNoteId": "project-source/rules/soft-guidance"}]

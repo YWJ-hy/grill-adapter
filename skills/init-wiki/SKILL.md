@@ -24,6 +24,7 @@ Python scripts must not invent durable rules, choose final target ownership, or 
 - Do not auto-invoke the host's planning, implementation, review, completion, or verification skills before or after this skill.
 - Do not invoke the host's completion-verification step or similar completion checks for this skill.
 - Do not overwrite existing wiki pages.
+- Never write to a root listed in `.shared-adapter/settings.json` under `wiki.legacyRuntime.roots` when `mode` is `read-only-archive`; stop even if the user previously authorized updates.
 - Keep generated content lightweight, explicit about uncertainty, and grounded in observable project structure.
 - Prefer appending lightweight starter notes into existing indexed leaf wiki pages over inventing detailed contracts that have not been verified.
 - Choose `.shared-adapter/wiki/` only for neutral, portable knowledge intended to be shared across sibling projects; use `.adapter/wiki/` for project-specific knowledge.
@@ -49,7 +50,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/init-wiki.py . "<optional focus from the u
 
 4. Read relevant indexed wiki pages from the inventory, using root-prefixed paths.
 5. Decide whether starter wiki notes are useful and which root owns them.
-6. Before writing, honor the selected root's `wiki.updateAuthorization` policy from `.adapter/settings.json` or `.shared-adapter/settings.json`. Missing settings default to `skip` for existing page updates and `ask` for new document creation.
+6. Before writing, inspect `.shared-adapter/settings.json`. If the selected root is listed in `wiki.legacyRuntime.roots` with `mode: read-only-archive`, stop. Otherwise honor the selected root's `wiki.updateAuthorization` policy from `.adapter/settings.json` or `.shared-adapter/settings.json`. Missing settings default to `skip` for existing page updates and `ask` for new document creation.
 7. If writing, edit existing indexed leaf wiki pages directly with lightweight, clearly caveated starter content. If policy is `ask`, get explicit user authorization first; if it is `refuse`, do not write.
 8. Do not write hard contracts, validation matrices, or project conventions unless they are verified from code or user confirmation.
 9. Refresh indexed references for changed roots, for example:
@@ -97,6 +98,7 @@ Expected fields include:
 - [ ] The inventory script was run.
 - [ ] Relevant indexed wiki pages were read before writing.
 - [ ] Any written content complied with the selected root's `wiki.updateAuthorization` policy.
+- [ ] No selected root was a cut-over read-only legacy archive.
 - [ ] Any written content was agent-selected and grounded in observable project signals.
 - [ ] No unverified hard contract was created.
 - [ ] Ambiguous ownership was clarified with the user.

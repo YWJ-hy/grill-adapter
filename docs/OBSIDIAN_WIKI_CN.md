@@ -18,7 +18,7 @@ planner 先按正式治理规则校验 binding topology（重复 ID/root、root 
 
 PR 由用户审查/合并且 configured base worktree 同步后，`verify` 才运行。它先重算 manifest 内完整 plan 的 `planHash`、legacy source snapshot、binding/policy snapshot，并从 immutable plan + operation roster 推导完整 coverage，删除 receipt 行或改写 receipt 身份都会失败。随后核实所有 PR `MERGED` 与 base freshness，再通过 bundled `status/search/read-notes-by-wiki-ids/graph-neighbors` seam 检查唯一 ID、Source/path containment、schema/policy、精确 content hash、search identity、Skill Card availability、typed edges 与 hard Note 全文 reread。verify 不写 Note；任何人工修改都表现为 drift，绝不覆盖。
 
-`cutover` 需要另一次显式 `--confirmed`，并在写 settings 前重新跑完整 verify。若当前最新 `.adapter/context/*.wiki-context.json` 仍是 schema v5，则 fail-closed。成功后 `.shared-adapter/settings.json` 保持 `wiki.provider: obsidian`，并记录 `wiki.legacyRuntime.mode: read-only-archive`、confirmed plan 实际覆盖的旧 roots 和 migration manifest；未被 plan 选择的另一 root 不会被误归档。旧 Markdown/index/graph 不删除、不移动、不重写；legacy update/import/migration helper 会机械拒绝对 archive roots 的后续写入。
+`cutover` 需要另一次显式 `--confirmed`，并在写 settings 前重新跑完整 verify。若当前最新 `.adapter/context/*.wiki-context.json` 仍是 schema v5，则 fail-closed。成功后 `.shared-adapter/settings.json` 保持 `wiki.provider: obsidian`，并记录 `wiki.legacyRuntime.mode: read-only-archive`、confirmed plan 实际覆盖的旧 roots 和 migration manifest；未被 plan 选择的另一 root 不会被误归档。旧 Markdown/index/graph 不删除、不移动、不重写；legacy bootstrap/init/update/import/migration 路径都会拒绝对 archive roots 的后续写入。
 
 ## 运行边界
 

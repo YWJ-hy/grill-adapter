@@ -190,6 +190,46 @@ fs.writeFileSync(statePath, JSON.stringify(state));
 JS
 chmod +x "$TMP/gh"
 
+REAL_NODE="$(command -v node)"
+cat > "$TMP/node-wrapper" <<SH
+#!/usr/bin/env bash
+set -uo pipefail
+INPUT="$TMP/node-input.json"
+OUTPUT="$TMP/node-output.json"
+ERROR="$TMP/node-error.txt"
+cat > "\$INPUT"
+"$REAL_NODE" "\$@" < "\$INPUT" > "\$OUTPUT" 2> "\$ERROR"
+STATUS=\$?
+cat "\$OUTPUT"
+cat "\$ERROR" >&2
+if [[ \$STATUS -eq 0 && "\${2:-}" == apply-note-change \
+  && -n "\${FAKE_INTERRUPT_AFTER_BASE_UPDATE:-}" \
+  && ! -e "$TMP/node-interrupted" ]] \
+  && grep -Fq 'Projects/example/rules/base-contract.md' "\$INPUT"; then
+  : > "$TMP/node-interrupted"
+  printf 'injected interruption after bridge write\n' >&2
+  exit 99
+fi
+if [[ \$STATUS -eq 0 && "\${2:-}" == status \
+  && -n "\${FAKE_EDIT_AFTER_STATUS:-}" \
+  && ! -e "$TMP/node-status-edited" ]]; then
+  : > "$TMP/node-status-edited"
+  printf '\nHuman edit after plan validation.\n' >> "$VAULT/$SOURCE_ROOT/rules/base-contract.md"
+  git -C "$VAULT" add "$SOURCE_ROOT/rules/base-contract.md"
+  git -C "$VAULT" commit -m 'human edit after plan validation' >/dev/null
+  git -C "$VAULT" push origin main >/dev/null
+fi
+if [[ \$STATUS -eq 0 && "\${2:-}" == publish \
+  && -n "\${FAKE_INTERRUPT_AFTER_PUBLISH:-}" \
+  && ! -e "$TMP/node-publish-interrupted" ]]; then
+  : > "$TMP/node-publish-interrupted"
+  printf 'injected interruption after publisher completion\n' >&2
+  exit 99
+fi
+exit \$STATUS
+SH
+chmod +x "$TMP/node-wrapper"
+
 cat > "$PROJECT/.shared-adapter/settings.json" <<JSON
 {
   "wiki": {
@@ -260,14 +300,31 @@ fi
 grep -Fq 'explicit confirmation' "$TMP/unconfirmed.err"
 
 APPLY_OUT="$TMP/apply.json"
+# The reviewed update hash comes from the immutable plan. A human edit after the
+# full-plan revalidation must not become the accepted CAS baseline.
+cp "$VAULT/$SOURCE_ROOT/rules/base-contract.md" "$TMP/reviewed-base.md"
+export OBSIDIAN_WIKI_NODE="$TMP/node-wrapper"
+export FAKE_EDIT_AFTER_STATUS=1
+if python3 "$MIGRATOR" apply --project-root "$PROJECT" --plan "$PLAN" --confirmed > /dev/null 2> "$TMP/plan-race.err"; then
+  printf 'Migration apply accepted target drift after plan validation\n' >&2
+  exit 1
+fi
+unset OBSIDIAN_WIKI_NODE FAKE_EDIT_AFTER_STATUS
+grep -Fq 'confirmed target Note changed' "$TMP/plan-race.err"
+cp "$TMP/reviewed-base.md" "$VAULT/$SOURCE_ROOT/rules/base-contract.md"
+git -C "$VAULT" add "$SOURCE_ROOT/rules/base-contract.md"
+git -C "$VAULT" commit -m 'restore reviewed target snapshot' >/dev/null
+git -C "$VAULT" push origin main >/dev/null
+
 # The write intent must exist before the bridge call, and a crash after that call must
 # leave the exact migration result on its dedicated PR branch rather than on main.
-export GRILL_ADAPTER_TEST_FAIL_AFTER_SOURCE_ITEM='legacy:project:section:rules.md#base-contract'
+export OBSIDIAN_WIKI_NODE="$TMP/node-wrapper"
+export FAKE_INTERRUPT_AFTER_BASE_UPDATE=1
 if python3 "$MIGRATOR" apply --project-root "$PROJECT" --plan "$PLAN" --confirmed > /dev/null 2> "$TMP/interrupted.err"; then
   printf 'Migration apply ignored the post-bridge interruption failpoint\n' >&2
   exit 1
 fi
-unset GRILL_ADAPTER_TEST_FAIL_AFTER_SOURCE_ITEM
+unset OBSIDIAN_WIKI_NODE FAKE_INTERRUPT_AFTER_BASE_UPDATE
 grep -Fq 'injected interruption after bridge write' "$TMP/interrupted.err"
 ACTIVE_BRANCH="$(git -C "$VAULT" branch --show-current)"
 [[ "$ACTIVE_BRANCH" == grill-adapter/wiki/migration-* ]] || {
@@ -290,6 +347,16 @@ grep -Fq 'write intent drift' "$TMP/interrupted-drift.err"
 cp "$TMP/interrupted-update.md" "$UPDATED_NOTE"
 
 # The exact expected post-state is reconciled without a duplicate write.
+export OBSIDIAN_WIKI_NODE="$TMP/node-wrapper"
+export FAKE_INTERRUPT_AFTER_PUBLISH=1
+if python3 "$MIGRATOR" apply --project-root "$PROJECT" --plan "$PLAN" --confirmed > /dev/null 2> "$TMP/publish-interrupted.err"; then
+  printf 'Migration apply ignored the post-publisher interruption\n' >&2
+  exit 1
+fi
+unset OBSIDIAN_WIKI_NODE FAKE_INTERRUPT_AFTER_PUBLISH
+grep -Fq 'injected interruption after publisher completion' "$TMP/publish-interrupted.err"
+
+# Publisher state is the durable recovery source when the coordinator receipt was not persisted.
 python3 "$MIGRATOR" apply --project-root "$PROJECT" --plan "$PLAN" --confirmed > "$APPLY_OUT"
 python3 - "$APPLY_OUT" "$VAULT" "$FAKE_GH_STATE" <<'PY'
 import json, pathlib, subprocess, sys

@@ -73,6 +73,8 @@
       "targetSource": {"sourceId": "example-project", "role": "project"},
       "noteId": "example-project/backend/contracts/response-envelope",
       "proposedPath": "Projects/example/backend/contracts/response-envelope.md",
+      "expectedPath": null,
+      "expectedBeforeHash": null,
       "noteType": "constraint",
       "constraintStrength": "hard",
       "edgeTransformation": [],

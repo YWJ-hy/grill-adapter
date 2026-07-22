@@ -29,6 +29,8 @@ from wiki_section import (  # noqa: E402
 from wiki_common import (  # noqa: E402
     build_section_graph,
     build_wiki_index_graph,
+    enforce_legacy_wiki_directory_writable,
+    enforce_legacy_wiki_writable,
     existing_wiki_roots,
     repo_root,
     select_wiki_root,
@@ -326,11 +328,15 @@ def process_all(project_root: Path, wiki_root_selector: str, wiki_dir: Path | st
     (repo-root wiki layout) and ``wiki_root_selector`` is ignored.
     """
     if wiki_dir:
+        enforce_legacy_wiki_directory_writable(wiki_dir)
         roots = [wiki_root_from_dir(wiki_dir)]
     elif wiki_root_selector == "all":
         roots = existing_wiki_roots(project_root)
     else:
         roots = [select_wiki_root(project_root, wiki_root_selector)]
+    if not wiki_dir:
+        for root in roots:
+            enforce_legacy_wiki_writable(project_root, root)
     return process_roots(roots)
 
 
@@ -356,23 +362,30 @@ def main() -> None:
 
     project = Path(args.wiki_dir).resolve() if args.wiki_dir else (Path(args.project_root) if args.project_root else repo_root(Path.cwd()))
 
-    if args.all:
-        count = process_all(project, args.wiki_root, wiki_dir=args.wiki_dir)
-        print(f"\nGenerated {count} section index file(s).")
-    elif args.file_path:
-        wiki = wiki_root_from_dir(args.wiki_dir) if args.wiki_dir else select_wiki_root(project, "project" if args.wiki_root == "all" else args.wiki_root)
-        file_path = resolve_wiki_file(args.file_path, wiki.path, project)
-        if file_path is None:
-            print(f"Error: file not found under wiki root {wiki.path}: {args.file_path}", file=sys.stderr)
+    try:
+        if args.all:
+            count = process_all(project, args.wiki_root, wiki_dir=args.wiki_dir)
+            print(f"\nGenerated {count} section index file(s).")
+        elif args.file_path:
+            wiki = wiki_root_from_dir(args.wiki_dir) if args.wiki_dir else select_wiki_root(project, "project" if args.wiki_root == "all" else args.wiki_root)
+            if args.wiki_dir:
+                enforce_legacy_wiki_directory_writable(args.wiki_dir)
+            else:
+                enforce_legacy_wiki_writable(project, wiki)
+            file_path = resolve_wiki_file(args.file_path, wiki.path, project)
+            if file_path is None:
+                print(f"Error: file not found under wiki root {wiki.path}: {args.file_path}", file=sys.stderr)
+                sys.exit(1)
+            # A single edited page can shift the whole root's graph, so rebuild the
+            # root-level .graph.json before regenerating this file's index.
+            write_section_graph(wiki.path)
+            if not process_file(file_path):
+                print("No section markers found. No index generated.")
+        else:
+            parser.print_help()
             sys.exit(1)
-        # A single edited page can shift the whole root's graph, so rebuild the
-        # root-level .graph.json before regenerating this file's index.
-        write_section_graph(wiki.path)
-        if not process_file(file_path):
-            print("No section markers found. No index generated.")
-    else:
-        parser.print_help()
-        sys.exit(1)
+    except (PermissionError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@
       "skillDiscovery": [],
       "sourceItems": [{"sourceItemId": "legacy:project:section:backend/contracts.md#response-envelope", "kind": "section"}]
     },
-    "planItems": [{"sourceItemId": "legacy:project:section:backend/contracts.md#response-envelope", "sourceKind": "section", "targetSource": {"sourceId": "example-project", "role": "project"}, "noteId": "example-project/backend/contracts/response-envelope", "proposedPath": "Projects/example/backend/contracts/response-envelope.md", "noteType": "constraint", "constraintStrength": "hard", "edgeTransformation": [], "decision": "create", "decisionReason": "legacy section maps to one atomic Note"}],
+    "planItems": [{"sourceItemId": "legacy:project:section:backend/contracts.md#response-envelope", "sourceKind": "section", "targetSource": {"sourceId": "example-project", "role": "project"}, "noteId": "example-project/backend/contracts/response-envelope", "proposedPath": "Projects/example/backend/contracts/response-envelope.md", "expectedPath": null, "expectedBeforeHash": null, "noteType": "constraint", "constraintStrength": "hard", "edgeTransformation": [], "decision": "create", "decisionReason": "legacy section maps to one atomic Note"}],
     "confirmation": {"required": false, "issues": []},
     "summary": {"sourceItemCount": 1, "planItemCount": 1, "decisionCounts": {"create": 1, "update": 0, "skip": 0, "conflict": 0}, "confirmationIssueCount": 0}
   },
