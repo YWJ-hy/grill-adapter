@@ -15,6 +15,7 @@ type TestFoldedJournal = {
   candidates: Array<{
     candidateId: string;
     status: 'kept' | 'deferred';
+    adrProjection?: AdrProjection;
     writeReceipt: {
       provider: 'obsidian';
       state: 'applied' | 'proposed';
@@ -26,8 +27,18 @@ type TestFoldedJournal = {
       path: string;
       beforeHash: string | null;
       afterHash: string;
+      adrProjection?: AdrProjection;
     };
   }>;
+};
+
+type AdrProjection = {
+  authorityType: 'project-adr';
+  projectionType: 'execution-constraints';
+  sourceId: string;
+  sourcePath: string;
+  sourceContentHash: string;
+  targetScope: 'project';
 };
 
 function command(commandName: string, args: string[], cwd?: string): string {
@@ -41,6 +52,10 @@ function writeJson(filePath: string, value: unknown): void {
 
 function note(wikiId: string, summary: string, body: string): string {
   return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: constraint\nstatus: active\nagent_visible: true\nsummary: ${summary}\nconstraint_strength: hard\n---\n\n# Contract\n\n${body}\n`;
+}
+
+function adrProjectionNote(wikiId: string, projection: AdrProjection, body: string): string {
+  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: constraint\nstatus: active\nagent_visible: true\nsummary: Derived ADR execution constraints.\nconstraint_strength: hard\nadr_source_id: ${projection.sourceId}\nadr_source_path: ${projection.sourcePath}\nadr_source_content_hash: ${projection.sourceContentHash}\n---\n\n# Derived ADR execution constraints\n\n${body}\n`;
 }
 
 function manifest(sourceId: string, scope: 'project' | 'shared' = 'project'): string {
@@ -288,6 +303,63 @@ describe('Obsidian Wiki GitHub publishing', () => {
       .toThrow(/changes differ from the applied receipt allowlist/);
     expect(existsSync(path.join(input.projectDir, '.adapter', 'context', 'publish-contracts.wiki-publish.json'))).toBe(false);
     expect(command('git', ['branch', '--show-current'], input.worktreeRoot)).toBe('main');
+  });
+
+  it('verifies ADR authority identity against the project Source and staged Note', () => {
+    const projection: AdrProjection = {
+      authorityType: 'project-adr',
+      projectionType: 'execution-constraints',
+      sourceId: `project-adr:${'1'.repeat(64)}`,
+      sourcePath: 'docs/adr/0001-publish.md',
+      sourceContentHash: `sha256:${'2'.repeat(64)}`,
+      targetScope: 'project',
+    };
+
+    const valid = fixture();
+    const projected = adrProjectionNote(
+      'project/example/contract',
+      projection,
+      'Future publishers must validate the staged Note against its ADR identity.',
+    );
+    writeFileSync(path.join(valid.worktreeRoot, valid.notePath), projected, 'utf8');
+    valid.folded.candidates[0].adrProjection = projection;
+    valid.folded.candidates[0].writeReceipt.adrProjection = projection;
+    valid.folded.candidates[0].writeReceipt.afterHash = contentHash(projected);
+    expect(() => publishFromFoldedJournal(valid.folded, valid.env)).not.toThrow();
+
+    const stripped = fixture();
+    stripped.folded.candidates[0].adrProjection = projection;
+    stripped.folded.candidates[0].writeReceipt.adrProjection = projection;
+    expect(() => publishFromFoldedJournal(stripped.folded, stripped.env))
+      .toThrow(/ADR execution projection authority drift/);
+
+    const shared = fixture();
+    addSecondRepository(shared);
+    const sharedCandidate = shared.folded.candidates[1];
+    sharedCandidate.adrProjection = projection;
+    sharedCandidate.writeReceipt.adrProjection = projection;
+    expect(() => publishFromFoldedJournal(shared.folded, shared.env))
+      .toThrow(/ADR execution projection receipt must reference a project Source/);
+  });
+
+  it('ignores a skipped ADR projection while publishing kept applied receipts', () => {
+    const input = fixture();
+    input.folded.candidates.push({
+      candidateId: 'candidate-skipped-adr',
+      status: 'skipped',
+      adrProjection: {
+        authorityType: 'project-adr',
+        projectionType: 'execution-constraints',
+        sourceId: `project-adr:${'3'.repeat(64)}`,
+        sourcePath: 'docs/adr/0002-no-execution-constraints.md',
+        sourceContentHash: `sha256:${'4'.repeat(64)}`,
+        targetScope: 'project',
+      },
+    } as unknown as TestFoldedJournal['candidates'][number]);
+
+    const result = publishFromFoldedJournal(input.folded, input.env);
+
+    expect(result.repositories[0].paths).toEqual([input.notePath]);
   });
 
   it('ignores a recoverable proposed receipt while publishing kept applied receipts', () => {

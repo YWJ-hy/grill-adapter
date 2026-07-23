@@ -25,9 +25,10 @@ For triggered updates, include these sections in the target wiki page:
 
 ## Design Decision
 
-Record a qualifying decision on a `decision`-type page (set `type: decision` frontmatter on a
-new page — see `references/targeting.md`). An ADR that replaces an earlier one should carry a
-`[[supersedes: old-page#section]]` edge to the decision it overrides (see `references/graph-maintenance.md`).
+Record a qualifying non-ADR decision on a `decision`-type page (set `type: decision` frontmatter on
+a new page — see `references/targeting.md`). A normal Wiki decision that replaces an earlier one
+should carry a `[[supersedes: old-page#section]]` edge to the decision it overrides (see
+`references/graph-maintenance.md`).
 
 ```markdown
 ### Design Decision: <name>
@@ -45,6 +46,37 @@ new page — see `references/targeting.md`). An ADR that replaces an earlier one
 ...
 ```
 ```
+
+## ADR Execution Projection
+
+Use this only for a generated `adr_execution_projection` candidate. The project ADR is the sole
+authority; this Note contains only future implementation constraints and is always project-owned.
+
+```markdown
+---
+wiki_schema: grill-adapter.obsidian-note/v1
+wiki_id: <stable-wiki-id>
+type: constraint
+status: active
+agent_visible: true
+summary: <what implementation this projection constrains>
+constraint_strength: hard
+adr_source_id: project-adr:<sha256-of-normalized-source-path>
+adr_source_path: docs/adr/<adr>.md
+adr_source_content_hash: sha256:<canonical-adr-content-hash>
+---
+
+# <ADR title> - execution constraints
+
+> Derived projection. The project ADR above is authoritative for context, options, rationale,
+> status, and consequences. Edit the ADR, then regenerate this projection.
+
+- <durable obligation future implementation must follow>
+```
+
+Do not include the ADR's Context, Options Considered, Decision narrative, rationale, Status, or
+Consequences. If no durable execution obligation remains after removing those sections, skip the
+candidate instead of creating an empty or summary Note.
 
 Durable domain/business facts (not executable coding rules) belong on a `domain`-type page
 (`type: domain`); keep them as stable facts implementation must respect, not implementation detail.
@@ -100,6 +132,7 @@ Before finishing the update:
 - [ ] Did you route reusable workflow/process knowledge to a skill pack via `scaffold-practice-skill` instead of writing it as a wiki page?
 - [ ] Did you exclude local business logic, single-context branch rules, and code-obvious implementation details unless they passed the reuse threshold or the decision carve-out?
 - [ ] Did you separately apply the decision carve-out — promoting a hard-to-reverse, surprising, real-trade-off decision even when it does not reuse across modules?
+- [ ] For an ADR projection, did you preserve authority identity, target only the project Source, include only executable constraints, and declare the Note derived?
 - [ ] If you skipped all candidates, did you state an explicit skip reason instead of forcing a wiki edit?
 - [ ] Did you split multi-point input into atomic candidates?
 - [ ] Did you read relevant indexed wiki pages before writing?

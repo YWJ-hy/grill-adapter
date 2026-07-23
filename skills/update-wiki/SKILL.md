@@ -46,6 +46,42 @@ Before targeting Notes, compare the unresolved candidates with each other. If se
 
 For each candidate, invoke `candidate-journal outcome`: record `kept` only after the proposed Note/Card change succeeds, `skipped` with the durable-gate reason, or `deferred` while a conflict or authorization question remains recoverable. Later publishing is not a reason to defer an already applied Note: record it `kept` with an applied write receipt so publishing can consume the staged state. Never delete or rewrite the journal; retain it as the lifecycle receipt and never commit it. If it is missing, proceed with the normal end-of-flow review.
 
+### ADR execution projection candidates
+
+A folded candidate with `kind: adr_execution_projection` is not an ordinary decision candidate.
+Its `adrProjection` object identifies a project ADR as the authority and requests only a derived
+execution projection:
+
+1. Resolve `sourcePath` strictly inside the current project root and require a normalized path
+   under `docs/adr/` (including context-scoped `src/<context>/docs/adr/`). Recompute the canonical
+   UTF-8 content hash and require it to equal `sourceContentHash`; on mismatch, record `deferred`
+   and do not use stale candidate wording.
+2. Read the authoritative ADR and extract only durable obligations that future implementation must
+   follow. Do not copy its Context, Options Considered, rationale, Decision narrative, Status, or
+   Consequences. If there is no executable durable constraint, record `skipped` with
+   `Authoritative ADR has no durable execution constraint; no projection created.`
+3. Target a bound **project** Source only. Never neutralize this candidate into a Shared Source:
+   its project path and authority identity are essential meaning, not removable wording.
+4. Search project Notes by the exact `adr_source_id`. Zero matches means create one projection;
+   one match means update that Note in place; more than one match is an identity conflict and must
+   remain `deferred`. Never create a second Note for the same ADR source identity.
+5. Render a `type: constraint`, `constraint_strength: hard` atomic Note using the ADR Execution
+   Projection template. Put the reviewed constraint bullets in a temporary local file and run
+   `wiki_adr_projection.py --candidate <candidate-event.json> --constraints <constraints.md>
+   --wiki-id <wiki-id> --title <title>` to render it mechanically. Empty constraints return the
+   exact `skipped` reason above. The renderer copies `sourceId`, `sourcePath`, and
+   `sourceContentHash` into `adr_source_id`, `adr_source_path`, and `adr_source_content_hash`; the
+   body declares itself derived and directs edits to the ADR.
+
+The proposal and loopback apply boundaries independently reject incomplete projection metadata,
+Shared targets, duplicate `adr_source_id` values, and authority identity changes during update.
+Copy the write result's `adrProjection` object into every proposed/applied journal receipt using
+the matching `--adr-*` outcome flags. The journal refuses to keep an ADR candidate without an
+applied receipt whose authority identity exactly matches the candidate, so stripping the
+`adr_source_*` fields and writing generic Shared content cannot complete the ADR candidate.
+Ordinary `kind: decision` candidates not produced from a project ADR continue through the normal
+decision durable gate and template.
+
 ### Obsidian Note write path
 
 When `.shared-adapter/settings.json` selects `wiki.provider: obsidian`, never edit the Vault or its repository worktree directly. After semantic targeting and content review:
@@ -97,7 +133,7 @@ This pre-step is interruption-safe: rerunning it skips a candidate only when its
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/grill_context_to_candidates.py <repo-root> --feature-slug <feature-slug> --since <branch-point>
 ```
 
-grill's glossary/ADRs are tier-1 and the wiki is tier-2, so this bridge is how a day-to-day increment reaches the wiki. Do **not** route grill knowledge through `import-wiki` — that is a flat structural copy, not an increment. No grill knowledge files → skip this entirely.
+grill's glossary/ADRs are tier-1 and the wiki is tier-2, so this bridge is how a day-to-day increment reaches the wiki. For ADRs it emits metadata-only `adr_execution_projection` candidates rather than copying decision prose. Do **not** route grill knowledge through `import-wiki` — that is a flat structural copy, not an increment. No grill knowledge files → skip this entirely.
 
 ---
 

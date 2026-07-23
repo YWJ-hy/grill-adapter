@@ -13,6 +13,26 @@ function note(wikiId: string, body: string): string {
   return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: constraint\nstatus: active\nagent_visible: true\nsummary: Bridge contract\nconstraint_strength: hard\n---\n\n# Bridge contract\n\n${body}\n`;
 }
 
+function adrProjectionNote(wikiId: string, sourceId: string): string {
+  return `---
+wiki_schema: grill-adapter.obsidian-note/v1
+wiki_id: ${wikiId}
+type: constraint
+status: active
+agent_visible: true
+summary: Runtime execution constraints projected from the authoritative project ADR.
+constraint_strength: hard
+adr_source_id: ${sourceId}
+adr_source_path: src/runtime/docs/adr/0001-runtime.md
+adr_source_content_hash: sha256:${'a'.repeat(64)}
+---
+
+# Derived ADR execution constraints
+
+This Note is derived. Edit the authoritative ADR, not this projection.
+`;
+}
+
 function skillCard(wikiId: string, contractHash: string): string {
   return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: guide\nstatus: active\nagent_visible: true\nsummary: Bridge Skill Card\nskill_provider: claude-code-project\nskill_name: bridge-review\nskill_version: 1.0.0\nskill_contract_hash: ${contractHash}\nskill_roles:\n  - reviewer\nskill_triggers:\n  - bridge review\n---\n\n# Bridge review\n`;
 }
@@ -196,6 +216,49 @@ describe('Obsidian Wiki loopback write bridge', () => {
 
     expect((await bridgeRequest(bridge, 'validate', request)).status).toBe(403);
     expect((await bridgeRequest(bridge, 'apply', request)).status).toBe(403);
+  });
+
+  it('enforces project-only ADR projection ownership and source identity uniqueness', async () => {
+    const project = await fixture();
+    const authorityId = `project-adr:${'1'.repeat(64)}`;
+    const create = {
+      vaultSelector: 'Knowledge',
+      projectDir: project.projectDir,
+      sourceId: project.sourceId,
+      vaultRef: 'knowledge',
+      sourceRoot: project.sourceRoot,
+      operation: 'create',
+      path: `${project.sourceRoot}/RuntimeProjection.md`,
+      content: adrProjectionNote(`${project.sourceId}/adr/runtime`, authorityId),
+      expectedHash: null,
+      expectedWikiId: `${project.sourceId}/adr/runtime`,
+      authorized: true,
+    };
+    expect((await bridgeRequest(project.bridge, 'apply', create)).status).toBe(200);
+    const duplicate = {
+      ...create,
+      path: `${project.sourceRoot}/RuntimeProjectionDuplicate.md`,
+      content: adrProjectionNote(`${project.sourceId}/adr/runtime-duplicate`, authorityId),
+      expectedWikiId: `${project.sourceId}/adr/runtime-duplicate`,
+    };
+    expect((await bridgeRequest(project.bridge, 'validate', duplicate)).status).toBe(409);
+
+    const shared = await fixture(true);
+    const sharedCreate = {
+      vaultSelector: 'Knowledge',
+      projectDir: shared.projectDir,
+      sourceId: shared.sourceId,
+      vaultRef: 'knowledge',
+      sourceRoot: shared.sourceRoot,
+      operation: 'create',
+      path: `${shared.sourceRoot}/RuntimeProjection.md`,
+      content: adrProjectionNote(`${shared.sourceId}/adr/runtime`, authorityId),
+      expectedHash: null,
+      expectedWikiId: `${shared.sourceId}/adr/runtime`,
+      authorized: true,
+    };
+    expect((await bridgeRequest(shared.bridge, 'validate', sharedCreate)).status).toBe(403);
+    expect((await bridgeRequest(shared.bridge, 'apply', sharedCreate)).status).toBe(403);
   });
 
   it('rejects an unavailable Skill Card through the direct authenticated bridge boundary', async () => {

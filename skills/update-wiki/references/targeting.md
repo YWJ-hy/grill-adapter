@@ -45,6 +45,11 @@ Choose both the target root and the target page:
 - `.shared-adapter/wiki/` owns cross-project architecture, conventions, workflows, shared API contracts, shared component rules, and gotchas likely to apply to sibling projects.
 - `.adapter/wiki/` owns project-specific business rules, local integration details, deployment/environment details, local overrides, and decisions that should not affect sibling projects.
 
+An `adr_execution_projection` candidate is always project-owned. Search the bound project Source
+for its exact `adr_source_id`; update the sole match, create only when there is no match, and stop
+on duplicates. Its `sourcePath` and authority identity must never be neutralized into a Shared
+target.
+
 Prefer the most specific indexed leaf that owns the rule.
 Use broader guide wiki pages only when the candidate is a checklist or thinking prompt.
 

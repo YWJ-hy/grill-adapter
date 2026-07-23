@@ -15,6 +15,14 @@ import { parseAtomicNote } from './note.js';
 import { assertPathWithinBinding, normalizeVaultPath } from './retrieval.js';
 
 const HashSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+const AdrProjectionSchema = z.object({
+  authorityType: z.literal('project-adr'),
+  projectionType: z.literal('execution-constraints'),
+  sourceId: z.string().regex(/^project-adr:[a-f0-9]{64}$/),
+  sourcePath: z.string().min(1),
+  sourceContentHash: HashSchema,
+  targetScope: z.literal('project'),
+});
 const ReceiptIdentitySchema = z.object({
   provider: z.literal('obsidian'),
   operation: z.enum(['create', 'update']),
@@ -25,6 +33,7 @@ const ReceiptIdentitySchema = z.object({
   path: z.string().min(1),
   beforeHash: HashSchema.nullable(),
   afterHash: HashSchema,
+  adrProjection: AdrProjectionSchema.optional(),
 });
 const AppliedReceiptSchema = ReceiptIdentitySchema.extend({ state: z.literal('applied') });
 const WriteReceiptSchema = z.discriminatedUnion('state', [
@@ -38,7 +47,20 @@ const FoldedJournalSchema = z.object({
   candidates: z.array(z.object({
     candidateId: z.string().min(1),
     status: z.enum(['pending', 'superseded', 'kept', 'skipped', 'deferred']),
+    adrProjection: AdrProjectionSchema.optional(),
     writeReceipt: WriteReceiptSchema.optional(),
+  }).superRefine((candidate, context) => {
+    const candidateIdentity = candidate.adrProjection;
+    const receiptIdentity = candidate.writeReceipt?.adrProjection;
+    if (
+      candidate.writeReceipt !== undefined
+      && JSON.stringify(candidateIdentity) !== JSON.stringify(receiptIdentity)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'ADR projection candidate and write receipt authority identity must match',
+      });
+    }
   })),
 });
 
@@ -288,6 +310,24 @@ function validateReceipt(
   const note = parseAtomicNote(contents, notePath);
   if (note.wikiId !== receipt.wikiId) throw new Error(`write receipt wiki_id drift for ${notePath}`);
   if (note.contentHash !== receipt.afterHash) throw new Error(`write receipt afterHash drift for ${notePath}`);
+  if (receipt.adrProjection) {
+    if (binding.role !== 'project' || binding.manifest.scope !== 'project') {
+      throw new Error(`ADR execution projection receipt must reference a project Source: ${notePath}`);
+    }
+    const actualProjection = note.adrSourceId
+      ? {
+        authorityType: 'project-adr',
+        projectionType: 'execution-constraints',
+        sourceId: note.adrSourceId,
+        sourcePath: note.adrSourcePath,
+        sourceContentHash: note.adrSourceContentHash,
+        targetScope: 'project',
+      }
+      : undefined;
+    if (JSON.stringify(actualProjection) !== JSON.stringify(receipt.adrProjection)) {
+      throw new Error(`ADR execution projection authority drift for ${notePath}`);
+    }
+  }
   if (receipt.operation === 'create') {
     try {
       gitFile(binding.repository.baseBranch, notePath, env, worktreeRoot);
