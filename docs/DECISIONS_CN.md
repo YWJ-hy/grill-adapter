@@ -368,3 +368,9 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 - 复用已经审计过的 bridge/publisher，避免迁移拥有第二条绕过 policy、neutrality、CAS 或 Git allowlist 的写路径。
 - seed/finalize 让图结构和单 Note 写 API 兼容，同时 PR 只暴露最终状态。
 - archive 采用声明而非文件系统破坏操作，回滚只需恢复 settings，legacy 真相源仍可审计。
+
+## 决策 17：Obsidian rollout 采用单正式 runtime + 可诊断 shadow 状态
+
+**结论**：新项目以 `wiki.provider: obsidian` 的 bound Source 为正式 Wiki runtime。已有 legacy roots 的项目在切换 provider 后进入 `shadow-validation`：四触点只走 Obsidian，旧内容仅保留给 migration plan/coverage/verify，不作读取 fallback。`doctor` 对 active provider 做严格 health gate；`bootstrap-wiki` 拒绝在 active Obsidian provider 下重新播种 legacy root。只有 migration verify + 单独确认 cutover 后才进入 `cutover-complete`，并只归档 plan 覆盖的 roots。
+
+**原因**：双读或失败回退会把 binding/hash/base drift 变成静默使用旧知识，破坏 Carry/Bind 的 fail-closed 身份契约。显式 shadow 状态允许在不删除 legacy bytes 的情况下验收新路径，而 doctor 的非零退出给 release gate 一个稳定、可自动判断的运维边界。

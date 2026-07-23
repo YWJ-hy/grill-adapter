@@ -154,11 +154,12 @@ function notes(current = root) {
       : [];
   });
 }
-if (args[0] === 'vault') process.stdout.write('Knowledge\n');
-else if (args.includes('search')) process.stdout.write(JSON.stringify(notes().map((notePath) => ({ path: notePath }))));
+if (args[0] === 'vaults') process.stdout.write('Knowledge\n');
+else if (args.includes('search')) process.stdout.write(JSON.stringify(notes()));
 else if (args.includes('read')) {
-  const notePath = args[args.indexOf('read') + 1];
-  process.stdout.write(JSON.stringify({ path: notePath, content: fs.readFileSync(path.join(root, notePath), 'utf8') }));
+  const notePath = args.find((arg) => arg.startsWith('path='))?.slice('path='.length);
+  if (!notePath) process.exit(2);
+  process.stdout.write(fs.readFileSync(path.join(root, notePath), 'utf8'));
 } else process.exit(2);
 JS
 chmod +x "$TMP/obsidian"
@@ -510,5 +511,10 @@ assert archive["mode"] == "read-only-archive"
 assert archive["roots"] == [".adapter/wiki"]
 assert archive["migrationManifest"].endswith(".obsidian-migration.json")
 PY
+
+"$ROOT/doctor.sh" "$PROJECT" > "$TMP/doctor-cutover.out"
+grep -Fq 'adoptionState: cutover-complete' "$TMP/doctor-cutover.out"
+grep -Fq 'read-only legacy archives: .adapter/wiki' "$TMP/doctor-cutover.out"
+grep -Fq 'Obsidian runtime healthy: yes' "$TMP/doctor-cutover.out"
 
 printf 'obsidian wiki migration apply/verify/cutover smoke complete\n'

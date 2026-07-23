@@ -16,7 +16,7 @@ function runCli(args: string[], env: NodeJS.ProcessEnv): string {
       encoding: 'utf8',
       env: { ...process.env, ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
-    })).trim();
+    }));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Obsidian CLI ${args.join(' ')} failed: ${message}`);
@@ -32,22 +32,19 @@ function parseJson(value: string, operation: string): unknown {
 }
 
 export function searchNotes(vaultSelector: string, query: string, env: NodeJS.ProcessEnv): ObsidianSearchResult[] {
-  const value = parseJson(runCli([`vault=${vaultSelector}`, 'search', query, 'format=json'], env), 'search');
+  const value = parseJson(runCli([`vault=${vaultSelector}`, 'search', `query=${query}`, 'format=json'], env), 'search');
   if (!Array.isArray(value)) throw new Error('Obsidian CLI search JSON must be an array');
   return value.map((entry, index) => {
-    if (!entry || typeof entry !== 'object' || typeof (entry as Record<string, unknown>).path !== 'string') {
-      throw new Error(`Obsidian CLI search result ${index + 1} is missing path`);
+    if (typeof entry !== 'string' || !entry) {
+      throw new Error(`Obsidian CLI search result ${index + 1} must be a non-empty path string`);
     }
-    return { path: (entry as Record<string, string>).path };
+    return { path: entry };
   });
 }
 
 export function readNote(vaultSelector: string, notePath: string, env: NodeJS.ProcessEnv): ObsidianReadResult {
-  const value = parseJson(runCli([`vault=${vaultSelector}`, 'read', notePath, 'format=json'], env), 'read');
-  if (!value || typeof value !== 'object') throw new Error('Obsidian CLI read JSON must be an object');
-  const record = value as Record<string, unknown>;
-  if (typeof record.path !== 'string' || typeof record.content !== 'string') {
-    throw new Error('Obsidian CLI read JSON must contain path and content strings');
-  }
-  return { path: record.path, content: record.content };
+  return {
+    path: notePath,
+    content: runCli([`vault=${vaultSelector}`, 'read', `path=${notePath}`], env),
+  };
 }

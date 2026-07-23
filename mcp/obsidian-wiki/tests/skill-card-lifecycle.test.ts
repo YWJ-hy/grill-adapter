@@ -91,15 +91,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const args = process.argv.slice(2);
 const root = process.env.FAKE_OBSIDIAN_VAULT_ROOT;
-if (args[0] === 'vault') process.stdout.write('Knowledge\\n');
+if (args[0] === 'vaults') process.stdout.write('Knowledge\\n');
 else if (args.includes('search')) {
   const files = [];
   function walk(dir) { for (const name of fs.readdirSync(dir)) { const item = path.join(dir, name); if (fs.statSync(item).isDirectory() && name !== '.git') walk(item); else if (name.endsWith('.md')) files.push(path.relative(root, item).split(path.sep).join('/')); } }
   walk(root);
-  process.stdout.write(JSON.stringify(files.map((entry) => ({ path: entry }))));
+  process.stdout.write(JSON.stringify(files));
 } else if (args.includes('read')) {
-  const notePath = args[args.indexOf('read') + 1];
-  process.stdout.write(JSON.stringify({ path: notePath, content: fs.readFileSync(path.join(root, notePath), 'utf8') }));
+  const notePath = args.find((arg) => arg.startsWith('path='))?.slice('path='.length);
+  if (!notePath) process.exit(2);
+  process.stdout.write(fs.readFileSync(path.join(root, notePath), 'utf8'));
 } else process.exit(2);
 `, 'utf8');
     chmodSync(obsidianCli, 0o755);

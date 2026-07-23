@@ -42,6 +42,7 @@
 - **wiki 引擎 / section 图 / 执行期闭包**：`test-wiki-section.sh`、`wiki-section-{e2e,graph,index}-smoke.sh`、`wiki-context-{json-render,scaffold}-smoke.sh`、`obsidian-wiki-context-v6-smoke.sh`（metadata-only Obsidian Carry + v6 materialize fail-closed）、`ticket-roster-smoke.sh`（host 无关 ticket roster 边界 + fail-closed）、`wiki-materialize-task-smoke.sh`、`wiki-depends-on-closure-smoke.sh`、`wiki-graph-neighbors-smoke.sh`、`wiki-index-graph-smoke.sh`、`wiki-update-check-smoke.sh`、`wiki-page-type-smoke.sh`、`wiki-card-roles-smoke.sh`、`wiki-summary-backfill-smoke.sh`。
 - **wiki 授权 / 导入 / 导出 / 模板 / scaffold / 迁移**：`wiki-authorization-policy-smoke.sh`（含 cutover archive 的 update/import/migration 写保护）、`wiki-import-skill-path-smoke.sh`、`export-wiki-skills-smoke.sh`、`bootstrap-wiki-template-import.sh`（含 archive bootstrap 写保护）、`init-wiki-inventory-smoke.sh`、`scaffold-practice-skill-smoke.sh`、`obsidian-wiki-migration-plan-smoke.sh`（source/target 快照、update 审核 hash、逐项决策、确认门、确定性与零写入）、`obsidian-wiki-migration-apply-smoke.sh`（首写前专用 branch、持久 intent、崩溃恢复、CAS seed/finalize、publisher 对账恢复、typed edge/Card、幂等 PR、immutable-plan coverage、source/binding drift、merged-base verify、schema-v5 与 scoped cutover 门、legacy archive 不改写）。
 - **shared wiki（MCP / 绑定 / 中性化）**：`shared-wiki-mcp-{copyable,policy,pr}-smoke.sh`、`shared-wiki-{neutrality,submodule}-smoke.sh`。Obsidian Source bindings 的 MCP contract 在 `mcp/obsidian-wiki/tests/` 中覆盖。
+- **Obsidian rollout 运维面**：`obsidian-runtime-operations-smoke.sh` 覆盖 provider-aware bootstrap、doctor adoption state/health exit、release gate、host recovery 约定、plugin metadata 与最终验收文档。
 - **Lanhu 录入**：`lanhu-{confirmation-gate,contradiction-detection,effective-prd-sanitization,html-settings,scoped-evidence,selective-image-analysis,tree-prd-guardrails,url-root-selection}-smoke.sh`。
 - **source-of-truth**：`source-truth-settings-smoke.sh`。
 
@@ -68,10 +69,10 @@ codex plugin add grill-adapter@grill-adapter
 ./manage.sh uninstall <project-root> [--runtime claude|codex|both]
 ./manage.sh verify <project-root> [--host grill|plain]     # 校验该项目已接线
 ./manage.sh status [project-root]                          # 报告 plugin 启用（仅提示性）+ 约定块状态
-./manage.sh bootstrap-wiki <project-root> [--template name] [--wiki-root project|shared]
+./manage.sh bootstrap-wiki <project-root> [--template name] [--wiki-root project|shared]  # 仅 legacy runtime
 ./manage.sh init-wiki <project-root> [analysis-hint]       # 产出项目 inventory 供 agent 主导 wiki 初始化
 ./manage.sh export-wiki-skills <wiki-repo-root> [--no-graph-ci]
-./manage.sh doctor <project-root>                          # 诊断接线 + 本项目 shared-wiki 绑定
+./manage.sh doctor <project-root>                          # 诊断 active provider + adoption state；Obsidian unhealthy 非零退出
 ./manage.sh self-test [project-root]                       # 跑 smoke/regression 全套（<project-root> 是**项目**根，见 §4）
 ./manage.sh release-check <project-root>                   # 发布前总门（plugin 加载 → 接线 → verify → tests）
 ```
@@ -102,9 +103,11 @@ bash tests/host-conventions-smoke.sh "$PWD"
   6. **plugin 组件清单**：Claude 必须报满 13 skills / 3 agents / 3 hooks / 2 MCP；`tests/codex-plugin-smoke.sh` 必须通过 manifest 校验与隔离 marketplace 安装。
   7. **沙盒项目接线 + verify**：对临时项目 `install --host grill` 后 `verify`。
   8. **全套 smoke**：跑 `self-test.sh`。
-  9. **doctor**：对传入项目只读诊断。
+  9. **doctor**：对传入项目只读诊断；若 active provider 是 Obsidian，bundle/status/health 任一失败都会卡 release-check。
 
 任一步 FAIL，`release-check` 整体 FAIL。
+
+真实 Desktop、installed Claude Code/Codex、shadow-validation、migration verify/cutover 与中断恢复的最终验收记录按 `docs/OBSIDIAN_ACCEPTANCE_CN.md` 执行；smoke 和直接 CLI 不替代它。
 
 ### 4.1 隔离 Codex 集成验收的 provider 配置
 

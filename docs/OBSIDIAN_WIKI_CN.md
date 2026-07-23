@@ -181,7 +181,7 @@ publisher 每仓依次验证当前 binding digest、`publishing.mode: git-pr`、
 ./manage.sh doctor /path/to/project
 ```
 
-该命令会显示 legacy shared-wiki binding，并调用 `obsidian-wiki` bundle 输出 Source binding 状态。也可以直接运行：
+该命令会显示 legacy shared-wiki binding、active provider 和采用状态，并调用 `obsidian-wiki` bundle 校验 Source bindings。`wiki.provider: obsidian` 时，bundle 缺失、status 非法或 `healthy: false` 都让 doctor 非零退出；legacy provider 不会被强制要求配置 Obsidian。采用状态含：无 legacy root 的 `obsidian-native`、保留迁移证据但正式路径只走 Obsidian 的 `shadow-validation`、verify + 显式 cutover 后的 `cutover-complete`。任何状态都没有 legacy runtime fallback。也可以直接运行：
 
 ```bash
 CLAUDE_PROJECT_DIR=/path/to/project \

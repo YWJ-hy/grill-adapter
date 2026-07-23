@@ -1,7 +1,7 @@
 {
   "name": "grill-adapter",
   "version": "0.2.0",
-  "description": "Host-agnostic coding adapter with project wiki, Lanhu requirements intake, and source-of-truth verification for grill or plain Codex workflows.",
+  "description": "Host-agnostic coding adapter with governed Obsidian atomic Notes, Lanhu requirements intake, and source-of-truth verification for grill or plain Codex workflows.",
   "author": {
     "name": "yewenjie",
     "url": "https://github.com/YWJ-hy"
@@ -38,7 +38,7 @@
   "interface": {
     "displayName": "Grill Adapter",
     "shortDescription": "Add governed project knowledge and requirements intake to coding workflows",
-    "longDescription": "Adds Disclose, Carry, Bind, and Capture project-wiki touchpoints, Lanhu requirements intake, source-of-truth verification, hooks, and two bundled Wiki MCP servers without patching the host workflow.",
+    "longDescription": "Adds governed Obsidian atomic Notes and Skill Cards through Disclose, Carry, Bind, and Capture, plus Lanhu intake, source-of-truth verification, hooks, migration, and resumable GitHub draft-PR publishing without patching the host workflow.",
     "developerName": "yewenjie",
     "category": "Developer Tools",
     "capabilities": [

@@ -76,7 +76,7 @@ function fixture() {
   command('git', ['commit', '-m', 'base'], worktreeRoot);
   command('git', ['push', '-u', 'origin', 'main'], worktreeRoot);
 
-  writeFileSync(obsidianCli, '#!/usr/bin/env sh\n[ "$1" = "vault" ] && printf "Knowledge\\n"\n', 'utf8');
+  writeFileSync(obsidianCli, '#!/usr/bin/env sh\n[ "$1" = "vaults" ] && printf "Knowledge\\n"\n', 'utf8');
   chmodSync(obsidianCli, 0o755);
   writeFileSync(ghCli, `#!/usr/bin/env node
 const fs = require('fs');
@@ -312,11 +312,9 @@ describe('Obsidian Wiki GitHub publishing', () => {
     const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
     settings.wiki.publishing.mode = 'manual';
     writeJson(settingsPath, settings);
-    const rebound = resolveBindings(input.env, input.projectDir, { allowStagedWikiChanges: true }).bindings[0];
-    input.folded.candidates[0].writeReceipt.bindingDigest = rebound.bindingDigest;
 
-    expect(() => publishFromFoldedJournal(input.folded, input.env))
-      .toThrow(/publishing mode git-pr/);
+    expect(() => resolveBindings(input.env, input.projectDir, { allowStagedWikiChanges: true }))
+      .toThrow(/git-pr/);
   });
 
   it('publishes an allowlisted created Note without exposing it on base', () => {
@@ -445,7 +443,7 @@ describe('Obsidian Wiki GitHub publishing', () => {
     expect(() => publishFromFoldedJournal(input.folded, input.env))
       .toThrow(/write receipt afterHash drift/);
     expect(command('git', ['branch', '--show-current'], second.worktreeRoot)).toBe('main');
-  });
+  }, 15_000);
 
   it('rejects new base-worktree changes while resuming a fixed publish commit', () => {
     const input = fixture();

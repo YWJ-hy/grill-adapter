@@ -21914,7 +21914,7 @@ var BindingSchema = object({
 var ProjectSettingsSchema = object({
   wiki: object({
     provider: literal("obsidian"),
-    publishing: object({ mode: string2().min(1) }),
+    publishing: object({ mode: literal("git-pr") }),
     obsidian: object({
       bindings: array(BindingSchema).min(1),
       exclude: array(string2()).optional()
@@ -22178,7 +22178,7 @@ function validateVault(vault, env) {
     }
   }
   const executable = env.OBSIDIAN_WIKI_OBSIDIAN_CLI || "obsidian";
-  const listedVaults = commandOutput(executable, ["vault"]);
+  const listedVaults = commandOutput(executable, ["vaults"]);
   if (!listedVaults.split(/\r?\n/).some((line) => line.trim() === vault.selector)) {
     throw new Error(`Obsidian Vault selector is not available: ${vault.selector}`);
   }
@@ -22464,7 +22464,7 @@ function runCli(args, env) {
       encoding: "utf8",
       env: { ...process.env, ...env },
       stdio: ["ignore", "pipe", "pipe"]
-    })).trim();
+    }));
   } catch (error2) {
     const message = error2 instanceof Error ? error2.message : String(error2);
     throw new Error(`Obsidian CLI ${args.join(" ")} failed: ${message}`);
@@ -22478,23 +22478,20 @@ function parseJson(value, operation) {
   }
 }
 function searchNotes(vaultSelector, query, env) {
-  const value = parseJson(runCli([`vault=${vaultSelector}`, "search", query, "format=json"], env), "search");
+  const value = parseJson(runCli([`vault=${vaultSelector}`, "search", `query=${query}`, "format=json"], env), "search");
   if (!Array.isArray(value)) throw new Error("Obsidian CLI search JSON must be an array");
   return value.map((entry, index) => {
-    if (!entry || typeof entry !== "object" || typeof entry.path !== "string") {
-      throw new Error(`Obsidian CLI search result ${index + 1} is missing path`);
+    if (typeof entry !== "string" || !entry) {
+      throw new Error(`Obsidian CLI search result ${index + 1} must be a non-empty path string`);
     }
-    return { path: entry.path };
+    return { path: entry };
   });
 }
 function readNote(vaultSelector, notePath, env) {
-  const value = parseJson(runCli([`vault=${vaultSelector}`, "read", notePath, "format=json"], env), "read");
-  if (!value || typeof value !== "object") throw new Error("Obsidian CLI read JSON must be an object");
-  const record2 = value;
-  if (typeof record2.path !== "string" || typeof record2.content !== "string") {
-    throw new Error("Obsidian CLI read JSON must contain path and content strings");
-  }
-  return { path: record2.path, content: record2.content };
+  return {
+    path: notePath,
+    content: runCli([`vault=${vaultSelector}`, "read", `path=${notePath}`], env)
+  };
 }
 
 // src/retrieval.ts

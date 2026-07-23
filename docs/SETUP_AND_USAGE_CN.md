@@ -74,14 +74,15 @@ cd grill-adapter
 ./manage.sh status /path/to/your/project --runtime codex
 ```
 
-## 3. 播种项目 wiki
+## 3. 配置 Obsidian Wiki runtime
+
+新项目按 `OBSIDIAN_WIKI_CN.md` 创建/选择一个 Obsidian Source，提交 `_meta/wiki-source.md`，在项目 `.shared-adapter/settings.json` 声明 `wiki.provider: obsidian` 与 bindings，并在机器本地 registry 解析 `vaultRef` / `repositoryRef`。配置完成后运行：
 
 ```bash
-./manage.sh bootstrap-wiki /path/to/your/project --template standard
 ./manage.sh doctor /path/to/your/project
 ```
 
-`.adapter/wiki/` 就绪（标准模板：backend / frontend / guides）。或在 Claude Code 里 `/grill-adapter:init-wiki` 让 agent 基于项目盘点起草，`/grill-adapter:import-wiki` + `/grill-adapter:migrate-wiki` 导入并 section 化已有文档。已有 legacy Wiki 迁往 Obsidian 时仍从 `migrate-wiki` 进入，但按 plan → 确认 → 先建专用 PR branch、再 CAS apply/draft PR → 人工 merge/base sync → immutable-plan/source/binding verify → 单独确认 cutover 的生命周期执行；只有 plan 选择的旧目录会标记为 mechanically enforced read-only archive，不自动删除。
+新项目必须显示 `obsidian-native` + healthy 后才进入正式 research。已有 legacy Wiki 的项目会显示 `shadow-validation`；正式 Disclose/Carry/Bind/Capture 已只走 Obsidian，旧目录只用于 migration evidence，不作 fallback。迁移按 plan → 确认 → 专用 PR branch → CAS apply/draft PR → 人工 merge/base sync → immutable-plan/source/binding verify → 单独确认 cutover；只有 plan 覆盖的旧目录成为 mechanically enforced read-only archive，不自动删除。`bootstrap-wiki` 是 legacy-only，active Obsidian provider 会拒绝重新播种；其他 legacy 维护 skill 在 cutover 前仅用于迁移准备，cutover 后由 archive gate 机械拒绝写入。
 
 ## 4. 端到端走一遍
 
@@ -103,9 +104,9 @@ cd grill-adapter
 
 - **我没用 grill，用裸 Claude Code/Codex 行吗？** 行。`./manage.sh install /path/to/project --host plain --runtime <runtime>`，然后在对应时刻自己调同样的 skill。
 - **会改我的 grill 吗？** 不会。grill-adapter 零 skill patch。skill / agent / hook / MCP 全在 plugin 里自成一体；落到你仓库里的改动只有 `<project>/CLAUDE.md` 的那个约定块。
-- **shared-wiki MCP 没连上？** 跑 `./manage.sh doctor <project>` 看绑定；确认 plugin 已启用（`/plugin` 里看得到 grill-adapter）；确认 `.shared-adapter/settings.json` 的 `wiki.sharedMcp.repoUrl` 有值。没声明就是 fail-closed（无 MCP shared wiki），属正常。
+- **Obsidian Wiki 不健康？** 跑 `./manage.sh doctor <project>`；依次修复 settings、machine registry、Vault selector、Source manifest、repository remote/base/clean 状态与 bridge 配置。active Obsidian provider 的 doctor 非零退出，release-check 也会失败。
 - **MCP 只想在某一个项目里起？** 那就用 `--scope project` 装 plugin。plugin 自带的 MCP 不能单独设 scope，它跟着 plugin 的 scope 走。
-- **`/grill-adapter:wiki-materialize` 报 drift / 换绑？** 这是 fail-closed 设计：sidecar 记的 `sharedWiki.repoUrl` 和当前连的 repo 不一致，或 revision 漂移。回规划期确认 routing 后 `--bind-fingerprints` 重新钉，再继续。
+- **`/grill-adapter:wiki-materialize` 报 drift / 换绑？** 这是 fail-closed 设计：schema-v6 sidecar 的 binding digest、stable Note/Card identity、content hash、base sync 或 pack contract 与当前正式 Source 不一致。回规划期重新 research/scaffold/finalize，不能转读 legacy Wiki 绕过。
 - **怎么卸载？** 两步对应两步安装。
   1. **停用 plugin**：把 `grill-adapter@grill-adapter` 从项目 `.claude/settings.json` 的 `enabledPlugins` 删掉即可。注意 `claude plugin uninstall` 对 **project scope 会直接拒绝**（原话：「enabled at project scope (.claude/settings.json, shared with your team)」）——它不肯替你改一份团队共享的提交物。只想自己关掉、不动团队设置：`claude plugin disable grill-adapter@grill-adapter --scope local`。装在 `--scope user` 时 `claude plugin uninstall grill-adapter@grill-adapter` 才直接生效。
   2. **剥约定块**：`./manage.sh uninstall /path/to/your/project`（marker 包裹，干净移除，不动 `CLAUDE.md` 其余内容）。
