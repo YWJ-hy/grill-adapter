@@ -157,6 +157,21 @@ export function matchingBoundSkillCards(
   ));
 }
 
+export function matchingBoundAdrProjections(
+  note: Pick<AtomicNote, 'adrSourceId'>,
+  bindings: ResolvedBinding[],
+  env: NodeJS.ProcessEnv,
+  requireActiveAndVisible = false,
+): RetrievedNote[] {
+  if (!note.adrSourceId) return [];
+  return searchBoundNotes(
+    `[adr_source_id:${note.adrSourceId}]`,
+    bindings,
+    env,
+    requireActiveAndVisible,
+  ).filter((candidate) => candidate.adrSourceId === note.adrSourceId);
+}
+
 export function assertUniqueBoundSkillCard(
   note: RetrievedNote,
   bindings: ResolvedBinding[],

@@ -28,6 +28,31 @@ function note(wikiId: string, body: string, dependsOn?: string): string {
   return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: constraint\nstatus: active\nagent_visible: true\nsummary: Write tool contract\nconstraint_strength: hard\n${edge}---\n\n# Write tool contract\n\n${body}\n`;
 }
 
+function adrProjectionNote(
+  wikiId: string,
+  sourceId: string,
+  sourcePath = 'src/runtime/docs/adr/0001-runtime.md',
+  sourceContentHash = `sha256:${'a'.repeat(64)}`,
+): string {
+  return `---
+wiki_schema: grill-adapter.obsidian-note/v1
+wiki_id: ${wikiId}
+type: constraint
+status: active
+agent_visible: true
+summary: Runtime execution constraints projected from the authoritative project ADR.
+constraint_strength: hard
+adr_source_id: ${sourceId}
+adr_source_path: ${sourcePath}
+adr_source_content_hash: ${sourceContentHash}
+---
+
+# Derived ADR execution constraints
+
+This Note is derived. Edit the authoritative ADR, not this projection.
+`;
+}
+
 function skillCard(
   wikiId: string,
   name: string,
@@ -224,5 +249,71 @@ describe('bound Obsidian Note writes', () => {
 
     const shared = await fixture({ shared: true, update: 'direct' });
     await expect(proposeNoteChangeTool({ sourceId: shared.sourceId, operation: 'create', path: `${shared.sourceRoot}/New.md`, content: note(`${shared.sourceId}/new`, 'Contains acme-internal and secret-42.'), expectedHash: null }, shared.env)).rejects.toThrow(/neutrality/);
+  });
+
+  it('keeps ADR execution projections project-only and unique by authority identity', async () => {
+    const project = await fixture({ update: 'direct' });
+    const authorityId = `project-adr:${'1'.repeat(64)}`;
+    const firstPath = `${project.sourceRoot}/Decisions/runtime-projection.md`;
+    const first = adrProjectionNote(`${project.sourceId}/adr/runtime`, authorityId);
+    await expect(applyNoteChangeTool({
+      sourceId: project.sourceId,
+      operation: 'create',
+      path: firstPath,
+      content: first,
+      expectedHash: null,
+    }, project.env)).resolves.toMatchObject({
+      postWrite: { wikiId: `${project.sourceId}/adr/runtime` },
+      adrProjection: {
+        sourceId: authorityId,
+        sourcePath: 'src/runtime/docs/adr/0001-runtime.md',
+        targetScope: 'project',
+      },
+    });
+
+    const updated = adrProjectionNote(
+      `${project.sourceId}/adr/runtime`,
+      authorityId,
+      'src/runtime/docs/adr/0001-runtime.md',
+      `sha256:${'b'.repeat(64)}`,
+    );
+    await expect(applyNoteChangeTool({
+      sourceId: project.sourceId,
+      operation: 'update',
+      path: firstPath,
+      content: updated,
+      expectedHash: contentHash(first),
+    }, project.env)).resolves.toMatchObject({
+      postWrite: { wikiId: `${project.sourceId}/adr/runtime` },
+      adrProjection: {
+        sourceId: authorityId,
+        sourceContentHash: `sha256:${'b'.repeat(64)}`,
+      },
+    });
+
+    await expect(proposeNoteChangeTool({
+      sourceId: project.sourceId,
+      operation: 'create',
+      path: `${project.sourceRoot}/Decisions/runtime-duplicate.md`,
+      content: adrProjectionNote(`${project.sourceId}/adr/runtime-duplicate`, authorityId),
+      expectedHash: null,
+    }, project.env)).rejects.toThrow(/ADR source identity.*already exists/);
+
+    await expect(proposeNoteChangeTool({
+      sourceId: project.sourceId,
+      operation: 'update',
+      path: firstPath,
+      content: adrProjectionNote(`${project.sourceId}/adr/runtime`, `project-adr:${'2'.repeat(64)}`),
+      expectedHash: contentHash(updated),
+    }, project.env)).rejects.toThrow(/ADR source identity must be preserved/);
+
+    const shared = await fixture({ shared: true, update: 'direct' });
+    await expect(proposeNoteChangeTool({
+      sourceId: shared.sourceId,
+      operation: 'create',
+      path: `${shared.sourceRoot}/runtime-projection.md`,
+      content: adrProjectionNote(`${shared.sourceId}/adr/runtime`, authorityId),
+      expectedHash: null,
+    }, shared.env)).rejects.toThrow(/ADR execution projections.*project Source/);
   });
 });

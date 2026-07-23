@@ -22347,6 +22347,14 @@ var SkillNameSchema = string2().regex(/^[a-z0-9][a-z0-9-]*$/);
 var SkillVersionSchema = string2().regex(
   /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 );
+var ContentHashSchema = string2().regex(/^sha256:[a-f0-9]{64}$/);
+var AdrSourceIdSchema = string2().regex(/^project-adr:[a-f0-9]{64}$/);
+var AdrSourcePathSchema = string2().refine((value) => {
+  if (value.includes("\\") || value.startsWith("/")) return false;
+  const parts = value.split("/");
+  const hasAdrRoot = parts.some((part, index) => part === "docs" && parts[index + 1] === "adr");
+  return parts.length >= 3 && hasAdrRoot && parts.at(-1)?.endsWith(".md") === true && parts.every((part) => part !== "" && part !== "." && part !== "..");
+}, "ADR source path must be a normalized project-relative path under docs/adr");
 var uniqueList = (values) => new Set(values).size === values.length;
 var NoteSchema = object({
   wiki_schema: literal("grill-adapter.obsidian-note/v1"),
@@ -22360,6 +22368,9 @@ var NoteSchema = object({
   see_also: array(string2()).optional(),
   supersedes: array(string2()).optional(),
   contradicts: array(string2()).optional(),
+  adr_source_id: AdrSourceIdSchema.optional(),
+  adr_source_path: AdrSourcePathSchema.optional(),
+  adr_source_content_hash: ContentHashSchema.optional(),
   skill_roles: array(_enum(["implementer", "reviewer"])).min(1).refine(uniqueList, "Skill Card roles must be unique").optional(),
   skill_provider: literal("claude-code-project").optional(),
   skill_name: SkillNameSchema.optional(),
@@ -22431,6 +22442,18 @@ function parseAtomicNote(contents, description = "Note") {
   if (isSkillCard && note.type !== "guide") {
     throw new Error(`${description} Skill Card type must be guide`);
   }
+  const adrFields = [
+    note.adr_source_id,
+    note.adr_source_path,
+    note.adr_source_content_hash
+  ];
+  const isAdrProjection = adrFields.some((value) => value !== void 0);
+  if (isAdrProjection && adrFields.some((value) => value === void 0)) {
+    throw new Error(`${description} has incomplete ADR execution projection properties`);
+  }
+  if (isAdrProjection && (note.type !== "constraint" || note.constraint_strength !== "hard")) {
+    throw new Error(`${description} ADR execution projection must be a hard constraint`);
+  }
   return {
     wikiId: note.wiki_id,
     type: note.type,
@@ -22444,6 +22467,9 @@ function parseAtomicNote(contents, description = "Note") {
     skillVersion: note.skill_version,
     skillContractHash: note.skill_contract_hash,
     skillTriggers: note.skill_triggers ?? [],
+    adrSourceId: note.adr_source_id,
+    adrSourcePath: note.adr_source_path,
+    adrSourceContentHash: note.adr_source_content_hash,
     edges: {
       dependsOn: note.depends_on ?? [],
       seeAlso: note.see_also ?? [],
@@ -22616,6 +22642,15 @@ function matchingBoundSkillCards(note, bindings, env, requireActiveAndVisible = 
     requireActiveAndVisible
   ).filter((candidate) => candidate.skillProvider === note.skillProvider && candidate.skillName === note.skillName);
 }
+function matchingBoundAdrProjections(note, bindings, env, requireActiveAndVisible = false) {
+  if (!note.adrSourceId) return [];
+  return searchBoundNotes(
+    `[adr_source_id:${note.adrSourceId}]`,
+    bindings,
+    env,
+    requireActiveAndVisible
+  ).filter((candidate) => candidate.adrSourceId === note.adrSourceId);
+}
 function assertUniqueBoundSkillCard(note, bindings, env) {
   if (!note.skillProvider) return;
   const matches = matchingBoundSkillCards(note, bindings, env);
@@ -22729,6 +22764,14 @@ import {
 } from "node:fs";
 import path5 from "node:path";
 var HashSchema = string2().regex(/^sha256:[a-f0-9]{64}$/);
+var AdrProjectionSchema = object({
+  authorityType: literal("project-adr"),
+  projectionType: literal("execution-constraints"),
+  sourceId: string2().regex(/^project-adr:[a-f0-9]{64}$/),
+  sourcePath: string2().min(1),
+  sourceContentHash: HashSchema,
+  targetScope: literal("project")
+});
 var ReceiptIdentitySchema = object({
   provider: literal("obsidian"),
   operation: _enum(["create", "update"]),
@@ -22738,7 +22781,8 @@ var ReceiptIdentitySchema = object({
   wikiId: string2().min(1),
   path: string2().min(1),
   beforeHash: HashSchema.nullable(),
-  afterHash: HashSchema
+  afterHash: HashSchema,
+  adrProjection: AdrProjectionSchema.optional()
 });
 var AppliedReceiptSchema = ReceiptIdentitySchema.extend({ state: literal("applied") });
 var WriteReceiptSchema = discriminatedUnion("state", [
@@ -22751,7 +22795,17 @@ var FoldedJournalSchema = object({
   candidates: array(object({
     candidateId: string2().min(1),
     status: _enum(["pending", "superseded", "kept", "skipped", "deferred"]),
+    adrProjection: AdrProjectionSchema.optional(),
     writeReceipt: WriteReceiptSchema.optional()
+  }).superRefine((candidate, context) => {
+    const candidateIdentity = candidate.adrProjection;
+    const receiptIdentity = candidate.writeReceipt?.adrProjection;
+    if (candidate.writeReceipt !== void 0 && JSON.stringify(candidateIdentity) !== JSON.stringify(receiptIdentity)) {
+      context.addIssue({
+        code: "custom",
+        message: "ADR projection candidate and write receipt authority identity must match"
+      });
+    }
   }))
 });
 var RepositoryRunSchema = object({
@@ -22950,6 +23004,22 @@ function validateReceipt(receipt, binding, env, publishedCommit) {
   const note = parseAtomicNote(contents, notePath);
   if (note.wikiId !== receipt.wikiId) throw new Error(`write receipt wiki_id drift for ${notePath}`);
   if (note.contentHash !== receipt.afterHash) throw new Error(`write receipt afterHash drift for ${notePath}`);
+  if (receipt.adrProjection) {
+    if (binding.role !== "project" || binding.manifest.scope !== "project") {
+      throw new Error(`ADR execution projection receipt must reference a project Source: ${notePath}`);
+    }
+    const actualProjection = note.adrSourceId ? {
+      authorityType: "project-adr",
+      projectionType: "execution-constraints",
+      sourceId: note.adrSourceId,
+      sourcePath: note.adrSourcePath,
+      sourceContentHash: note.adrSourceContentHash,
+      targetScope: "project"
+    } : void 0;
+    if (JSON.stringify(actualProjection) !== JSON.stringify(receipt.adrProjection)) {
+      throw new Error(`ADR execution projection authority drift for ${notePath}`);
+    }
+  }
   if (receipt.operation === "create") {
     try {
       gitFile(binding.repository.baseBranch, notePath, env, worktreeRoot);
@@ -23286,6 +23356,9 @@ function searchTool(input, env = process.env) {
       skillVersion: note.skillVersion,
       skillContractHash: note.skillContractHash,
       skillTriggers: note.skillTriggers,
+      adrSourceId: note.adrSourceId,
+      adrSourcePath: note.adrSourcePath,
+      adrSourceContentHash: note.adrSourceContentHash,
       discoveryState: note.skillProvider ? "discoverable" : void 0,
       summary: note.summary,
       contentHash: note.contentHash,
@@ -23330,6 +23403,9 @@ function serializedNote(note) {
     skillVersion: note.skillVersion,
     skillContractHash: note.skillContractHash,
     skillTriggers: note.skillTriggers,
+    adrSourceId: note.adrSourceId,
+    adrSourcePath: note.adrSourcePath,
+    adrSourceContentHash: note.adrSourceContentHash,
     discoveryState: note.skillProvider ? "discoverable" : void 0,
     content: note.content,
     contentHash: note.contentHash,
@@ -23523,10 +23599,19 @@ function validateTypedLinks(note, bindings, env) {
 }
 function validateIdentity(input, binding, bindings, env, proposed) {
   const matches = searchBoundNotes(`[wiki_id:${proposed.wikiId}]`, bindings, env, false).filter((note) => note.wikiId === proposed.wikiId);
+  if (proposed.adrSourceId && binding.role !== "project") {
+    throw new Error("ADR execution projections may only be written to a project Source");
+  }
+  const matchingAdrProjections = matchingBoundAdrProjections(proposed, bindings, env);
   const matchingCards = matchingBoundSkillCards(proposed, bindings, env, false);
   if (input.operation === "create") {
     if (input.expectedHash !== null) throw new Error("Creating an Obsidian Note requires expectedHash: null");
     if (matches.length > 0) throw new Error(`Proposed wiki_id already exists in a bound Source: ${proposed.wikiId}`);
+    if (matchingAdrProjections.length > 0) {
+      throw new Error(
+        `ADR source identity ${proposed.adrSourceId} already exists in a bound Note; update that projection`
+      );
+    }
     if (matchingCards.length > 0) {
       throw new Error(
         `Skill Card identity ${proposed.skillProvider}/${proposed.skillName} already exists in a bound Source`
@@ -23536,6 +23621,18 @@ function validateIdentity(input, binding, bindings, env, proposed) {
   }
   if (!input.expectedHash) throw new Error("Updating an Obsidian Note requires expectedHash");
   const existing = readBoundNote(input.path, [binding], env, false);
+  if (existing.adrSourceId && !proposed.adrSourceId) {
+    throw new Error("An existing ADR execution projection cannot be converted to a plain Note");
+  }
+  if (existing.adrSourceId && existing.adrSourceId !== proposed.adrSourceId) {
+    throw new Error("ADR source identity must be preserved on update");
+  }
+  const conflictingAdrProjections = matchingAdrProjections.filter((note) => note.path !== existing.path || note.sourceId !== existing.sourceId);
+  if (conflictingAdrProjections.length > 0) {
+    throw new Error(
+      `ADR source identity ${proposed.adrSourceId} already exists in another bound Note`
+    );
+  }
   if (existing.skillProvider && !proposed.skillProvider) {
     throw new Error("An existing Skill Card cannot be converted to a plain Note");
   }
@@ -23591,7 +23688,15 @@ function prepareChange(input, env) {
       expectedWikiId: proposed.wikiId,
       authorized: input.authorized === true
     },
-    skillRegistration: pendingSkillRegistration(proposed)
+    skillRegistration: pendingSkillRegistration(proposed),
+    adrProjection: proposed.adrSourceId ? {
+      authorityType: "project-adr",
+      projectionType: "execution-constraints",
+      sourceId: proposed.adrSourceId,
+      sourcePath: proposed.adrSourcePath,
+      sourceContentHash: proposed.adrSourceContentHash,
+      targetScope: "project"
+    } : void 0
   };
 }
 function decorate(result, prepared) {
@@ -23607,7 +23712,8 @@ function decorate(result, prepared) {
     bindingDigest: prepared.binding.bindingDigest,
     policy: prepared.policy,
     authorizationRequired: prepared.policy === "confirm",
-    skillRegistration: prepared.skillRegistration
+    skillRegistration: prepared.skillRegistration,
+    adrProjection: prepared.adrProjection
   };
 }
 async function proposeNoteChangeTool(input, env = process.env) {
@@ -23801,20 +23907,42 @@ function atomicNoteFiles(root) {
   visit(root.resolvedRoot);
   return files;
 }
-function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoot, roots, projectRoots) {
+function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoot, roots, projectRoots, targetScope) {
   const noteFiles = [...roots.values()].flatMap(atomicNoteFiles);
   const existingNotes = noteFiles.map((file) => ({
     file,
     note: parseAtomicNote(readFileSync4(file, "utf8"), file)
   }));
   const identityMatches = existingNotes.filter(({ note }) => note.wikiId === proposed.wikiId);
+  if (proposed.adrSourceId && targetScope !== "project") {
+    throw new BridgeError(403, "ADR execution projections may only be written to a project Source");
+  }
+  const adrProjectionMatches = proposed.adrSourceId ? existingNotes.filter(({ note }) => note.adrSourceId === proposed.adrSourceId) : [];
   if (operation === "create" && identityMatches.length > 0) {
     throw new BridgeError(409, `Proposed wiki_id already exists in an allowed Source: ${proposed.wikiId}`);
+  }
+  if (operation === "create" && adrProjectionMatches.length > 0) {
+    throw new BridgeError(
+      409,
+      `ADR source identity ${proposed.adrSourceId} already exists in an allowed Note; update that projection`
+    );
   }
   if (operation === "update" && (identityMatches.length !== 1 || realpathSync2(identityMatches[0].file) !== realpathSync2(targetPath))) {
     throw new BridgeError(409, `Updated wiki_id does not resolve uniquely to its existing Note: ${proposed.wikiId}`);
   }
   const targetNote = operation === "update" ? identityMatches[0].note : void 0;
+  if (targetNote?.adrSourceId && !proposed.adrSourceId) {
+    throw new BridgeError(409, "An existing ADR execution projection cannot be converted to a plain Note");
+  }
+  if (targetNote?.adrSourceId && targetNote.adrSourceId !== proposed.adrSourceId) {
+    throw new BridgeError(409, "ADR source identity must be preserved on update");
+  }
+  if (operation === "update" && adrProjectionMatches.some(({ file }) => realpathSync2(file) !== realpathSync2(targetPath))) {
+    throw new BridgeError(
+      409,
+      `ADR source identity ${proposed.adrSourceId} already exists in another allowed Note`
+    );
+  }
   if (targetNote?.skillProvider && !proposed.skillProvider) {
     throw new BridgeError(409, "An existing Skill Card cannot be converted to a plain Note");
   }
@@ -23920,7 +24048,8 @@ ${request.content}`;
     change.targetPath,
     vaultRoot,
     roots,
-    projectRoots
+    projectRoots,
+    manifest.scope
   );
 }
 function validateChange(raw, options, vaultRoot, allowedRoots) {

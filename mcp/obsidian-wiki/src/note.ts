@@ -5,6 +5,17 @@ const SkillNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
 const SkillVersionSchema = z.string().regex(
   /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
 );
+const ContentHashSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+const AdrSourceIdSchema = z.string().regex(/^project-adr:[a-f0-9]{64}$/);
+const AdrSourcePathSchema = z.string().refine((value) => {
+  if (value.includes('\\') || value.startsWith('/')) return false;
+  const parts = value.split('/');
+  const hasAdrRoot = parts.some((part, index) => part === 'docs' && parts[index + 1] === 'adr');
+  return parts.length >= 3
+    && hasAdrRoot
+    && parts.at(-1)?.endsWith('.md') === true
+    && parts.every((part) => part !== '' && part !== '.' && part !== '..');
+}, 'ADR source path must be a normalized project-relative path under docs/adr');
 const uniqueList = <T>(values: T[]) => new Set(values).size === values.length;
 
 const NoteSchema = z.object({
@@ -19,6 +30,9 @@ const NoteSchema = z.object({
   see_also: z.array(z.string()).optional(),
   supersedes: z.array(z.string()).optional(),
   contradicts: z.array(z.string()).optional(),
+  adr_source_id: AdrSourceIdSchema.optional(),
+  adr_source_path: AdrSourcePathSchema.optional(),
+  adr_source_content_hash: ContentHashSchema.optional(),
   skill_roles: z.array(z.enum(['implementer', 'reviewer']))
     .min(1)
     .refine(uniqueList, 'Skill Card roles must be unique')
@@ -46,6 +60,9 @@ export type AtomicNote = {
   skillVersion: string | undefined;
   skillContractHash: string | undefined;
   skillTriggers: string[];
+  adrSourceId: string | undefined;
+  adrSourcePath: string | undefined;
+  adrSourceContentHash: string | undefined;
   edges: Record<'dependsOn' | 'seeAlso' | 'supersedes' | 'contradicts', string[]>;
   content: string;
   contentHash: string;
@@ -120,6 +137,21 @@ export function parseAtomicNote(contents: string, description = 'Note'): AtomicN
   if (isSkillCard && note.type !== 'guide') {
     throw new Error(`${description} Skill Card type must be guide`);
   }
+  const adrFields = [
+    note.adr_source_id,
+    note.adr_source_path,
+    note.adr_source_content_hash,
+  ];
+  const isAdrProjection = adrFields.some((value) => value !== undefined);
+  if (isAdrProjection && adrFields.some((value) => value === undefined)) {
+    throw new Error(`${description} has incomplete ADR execution projection properties`);
+  }
+  if (
+    isAdrProjection
+    && (note.type !== 'constraint' || note.constraint_strength !== 'hard')
+  ) {
+    throw new Error(`${description} ADR execution projection must be a hard constraint`);
+  }
   return {
     wikiId: note.wiki_id,
     type: note.type,
@@ -133,6 +165,9 @@ export function parseAtomicNote(contents: string, description = 'Note'): AtomicN
     skillVersion: note.skill_version,
     skillContractHash: note.skill_contract_hash,
     skillTriggers: note.skill_triggers ?? [],
+    adrSourceId: note.adr_source_id,
+    adrSourcePath: note.adr_source_path,
+    adrSourceContentHash: note.adr_source_content_hash,
     edges: {
       dependsOn: note.depends_on ?? [],
       seeAlso: note.see_also ?? [],

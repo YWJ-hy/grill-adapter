@@ -11,6 +11,10 @@ it applies the durable gate, sectionizes, sets `type:`, adds `[[page#section]]` 
 dedups, neutralizes, and authorizes. `update-wiki` only ever sees candidate events and never
 learns about CONTEXT.md, so it stays grill-agnostic (blueprint §9).
 
+An ADR is different from an ordinary decision candidate: the project ADR remains authoritative.
+The bridge emits only a project-scoped execution-projection request plus stable source/revision
+identity. It never copies Context, Decision, Options, Status, or Consequences into the journal.
+
 Do NOT route grill knowledge through `import-wiki` — that is a flat structural copy and
 would land a graph-less flat page. Bulk one-time backfill goes import-wiki -> migrate-wiki;
 day-to-day increments go through this bridge -> update-wiki.
@@ -99,26 +103,6 @@ def parse_glossary(lines: list[str], source_ref: str) -> list[dict]:
 _MD_HEADING = re.compile(r"^#{1,6}\s+(?P<title>.+?)\s*$")
 
 
-def _section(text: str, *names: str) -> str:
-    """Return the body of the first matching `## <name>` section (case-insensitive)."""
-    lines = text.splitlines()
-    lowered = {name.lower() for name in names}
-    out: list[str] = []
-    capturing = False
-    for line in lines:
-        h = re.match(r"^#{1,6}\s+(.+?)\s*$", line)
-        if h:
-            if capturing:
-                break
-            title = h.group(1).strip().lower().lstrip("0123456789. )")
-            if any(title.startswith(n) for n in lowered):
-                capturing = True
-            continue
-        if capturing and line.strip():
-            out.append(line.strip())
-    return _clean(" ".join(out))
-
-
 def parse_adr(text: str, source_ref: str) -> dict | None:
     title = ""
     for line in text.splitlines():
@@ -128,22 +112,34 @@ def parse_adr(text: str, source_ref: str) -> dict | None:
             break
     if not title:
         title = Path(source_ref).stem.replace("-", " ").replace("_", " ").strip()
-    decision = _section(text, "decision")
-    context = _section(text, "context")
-    consequences = _section(text, "consequences", "conséquences")
-    claim = title if not decision else f"{title} — {decision}"
-    why_parts = [p for p in (context, consequences) if p]
-    why = " / ".join(why_parts) if why_parts else "Architecture decision record captured from grill docs/adr."
-    if not claim.strip():
+    if not title.strip():
         return None
+    normalized_path = Path(source_ref).as_posix()
+    source_digest = hashlib.sha256(normalized_path.encode("utf-8")).hexdigest()
+    canonical_text = text.replace("\r\n", "\n").replace("\r", "\n")
+    content_digest = hashlib.sha256(canonical_text.encode("utf-8")).hexdigest()
     return {
         "taskId": None,
-        "kind": "decision",
-        "claim": claim[:400],
-        "why": why[:600],
-        "sourceRefs": [source_ref],
+        "kind": "adr_execution_projection",
+        "claim": (
+            f'Derive only future implementation constraints from the authoritative project ADR '
+            f'"{title}".'
+        )[:400],
+        "why": (
+            "The project ADR remains the sole authority for decision context, options, rationale, "
+            "status, and consequences; the Wiki may contain only its derived execution projection."
+        ),
+        "sourceRefs": [normalized_path],
         "carveOut": "",
-        "origin": "grill-context",
+        "origin": "grill-adr-projection",
+        "adrProjection": {
+            "authorityType": "project-adr",
+            "projectionType": "execution-constraints",
+            "sourceId": f"project-adr:{source_digest}",
+            "sourcePath": normalized_path,
+            "sourceContentHash": f"sha256:{content_digest}",
+            "targetScope": "project",
+        },
     }
 
 
@@ -240,6 +236,10 @@ def _configure_stdio() -> None:
 
 
 def _candidate_id(candidate: dict) -> str:
+    projection = candidate.get("adrProjection")
+    if isinstance(projection, dict):
+        source_digest = projection["sourceId"].split(":", 1)[1]
+        return "grill-adr-" + source_digest[:24]
     identity = json.dumps(
         {
             "kind": candidate["kind"],
@@ -268,6 +268,11 @@ def _candidate_event(candidate: dict, feature_slug: str) -> dict:
         taskId=candidate["taskId"],
         carveOut=bool(candidate["carveOut"]),
         origin=candidate["origin"],
+        **(
+            {"adrProjection": candidate["adrProjection"]}
+            if "adrProjection" in candidate
+            else {}
+        ),
     )
 
 

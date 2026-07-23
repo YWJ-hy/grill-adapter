@@ -12,6 +12,10 @@ Before writing to `.shared-adapter/wiki/`, rewrite the candidate into neutral/po
 
 If the knowledge depends on those identifiers, write it to `.adapter/wiki/` instead. If the rule is genuinely reusable but the source wording names the current system, replace the identifier with neutral terms such as `<system>`, `<service>`, `<tenant>`, or `<provider>`. If neutralizing would remove essential meaning, ask the user instead of guessing.
 
+`adr_execution_projection` is a hard exception to neutralization: it names a project ADR authority,
+so it may only target the project Source. Do not remove its ADR identity/path and publish the
+remaining text to Shared Wiki; that would detach the projection from its source of truth.
+
 The shared root may also configure `wiki.sharedNeutrality.blockedTerms` and `wiki.sharedNeutrality.blockedPatterns` in `.shared-adapter/settings.json`. Mechanical scripts reject matching shared-wiki paths, page bodies, imports, and refreshed indexes; this guard catches known identifiers but does not replace your semantic neutrality check.
 
 ## 10. Choose local edit or remote shared-wiki MCP PR

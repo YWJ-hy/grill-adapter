@@ -8,7 +8,7 @@ It defaults to [**grill** (mattpocock/skills)](https://github.com/mattpocock/ski
 
 ## What it solves
 
-A code assistant forgets your project's durable rules between sessions and across repos. grill-adapter gives your project a **wiki as tier-2 knowledge**: bound Obsidian atomic Notes with stable IDs, typed links, governed Skill Cards, and — crucially — **execution-time binding**, so the rules that constrain a task are reread from the synchronized Source while that task is implemented. grill's own `CONTEXT.md` glossary + `docs/adr/` are tier-1; grill-adapter bridges their increments into the candidate journal for reviewed publication.
+A code assistant forgets your project's durable rules between sessions and across repos. grill-adapter gives your project a **wiki as tier-2 knowledge**: bound Obsidian atomic Notes with stable IDs, typed links, governed Skill Cards, and — crucially — **execution-time binding**, so the rules that constrain a task are reread from the synchronized Source while that task is implemented. grill's own `CONTEXT.md` glossary + `docs/adr/` are tier-1; ADRs remain the sole decision authority, while the Wiki receives only project-scoped, identity-bound execution-constraint projections after review.
 
 ## The four wiki touchpoints (stable contract)
 
@@ -17,7 +17,7 @@ A code assistant forgets your project's durable rules between sessions and acros
 | **Disclose** | `/grill-adapter:wiki-research` skill -> `wiki-researcher` selects relevant bound Obsidian atomic Notes and only merged/base-synchronized Skill Cards whose local pack identity is available | `/grill-with-docs` |
 | **Carry** | schema-v6 `.wiki-context.json` records bound Source digests and metadata-only Note/Card identity, provider/version/contract hash, role routing, and ticket fingerprints | `/to-tickets` |
 | **Bind** | `/grill-adapter:wiki-readiness` first establishes/reuses a stable task roster and atomic readiness result; when `ready`, `/grill-adapter:wiki-materialize <ticket>` rereads routed hard Notes, role-required Cards, and a bounded 1-hop `depends_on` closure | `/implement` |
-| **Capture** | every stage appends to one feature journal; `scaffold-practice-skill` stages content-addressed Card candidates, and `/grill-adapter:update-wiki` reconciles final evidence, applies policy-compliant Note/Card changes, then publishes applied receipts as resumable per-repository draft PRs; open PRs remain pending | after `/code-review` |
+| **Capture** | every stage appends to one feature journal; ADR increments become metadata-only execution-projection candidates, `scaffold-practice-skill` stages content-addressed Card candidates, and `/grill-adapter:update-wiki` reconciles final evidence, applies policy-compliant Note/Card changes, then publishes applied receipts as resumable per-repository draft PRs; open PRs remain pending | after `/code-review` |
 
 Plus **source-of-truth** verify (`/grill-adapter:source-truth-check`) + lint hook and **break-loop** debugging retrospective (`/grill-adapter:break-loop`).
 

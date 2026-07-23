@@ -28,6 +28,7 @@ STAGES = {
 }
 CANDIDATE_TYPES = {"wiki_note", "skill_card"}
 CANDIDATE_KINDS = {
+    "adr_execution_projection",
     "decision",
     "gotcha",
     "contract",
@@ -35,6 +36,14 @@ CANDIDATE_KINDS = {
     "domain",
     "guide",
     "skill_registration",
+}
+ADR_PROJECTION_FIELDS = {
+    "authorityType",
+    "projectionType",
+    "sourceId",
+    "sourcePath",
+    "sourceContentHash",
+    "targetScope",
 }
 OUTCOME_STATUSES = {"kept", "skipped", "deferred"}
 FINAL_STATUSES = {"kept", "skipped", "superseded"}
@@ -56,7 +65,7 @@ WRITE_RECEIPT_FIELDS = {
     "provider", "state", "operation", "sourceId", "repositoryRef", "bindingDigest",
     "wikiId", "path", "beforeHash", "afterHash",
 }
-WRITE_RECEIPT_OPTIONAL_FIELDS = {"skillRegistration"}
+WRITE_RECEIPT_OPTIONAL_FIELDS = {"skillRegistration", "adrProjection"}
 WRITE_RECEIPT_IDENTITY_FIELDS = (WRITE_RECEIPT_FIELDS - {"state"}) | WRITE_RECEIPT_OPTIONAL_FIELDS
 SKILL_REGISTRATION_FIELDS = {
     "provider",
@@ -163,6 +172,8 @@ def _validate_write_receipt(receipt: Any, outcome_status: str) -> dict[str, Any]
         )
     if "skillRegistration" in receipt:
         _validate_skill_registration(receipt["skillRegistration"])
+    if "adrProjection" in receipt:
+        _validate_adr_projection(receipt["adrProjection"])
     return receipt
 
 
@@ -208,6 +219,50 @@ def _validate_skill_registration(registration: Any) -> dict[str, Any]:
     return registration
 
 
+def _validate_adr_projection(projection: Any) -> dict[str, Any]:
+    if not isinstance(projection, dict):
+        raise JournalError("adrProjection must be a JSON object")
+    _require_keys(projection, ADR_PROJECTION_FIELDS, set())
+    if projection["authorityType"] != "project-adr":
+        raise JournalError("adrProjection.authorityType must be project-adr")
+    if projection["projectionType"] != "execution-constraints":
+        raise JournalError("adrProjection.projectionType must be execution-constraints")
+    source_id = _require_text(projection["sourceId"], "adrProjection.sourceId", limit=76)
+    if not re.fullmatch(r"project-adr:[a-f0-9]{64}", source_id):
+        raise JournalError("adrProjection.sourceId must be project-adr:<lowercase sha256>")
+    source_path = _require_text(
+        projection["sourcePath"], "adrProjection.sourcePath", limit=1000
+    )
+    parsed_path = PurePosixPath(source_path)
+    path_parts = parsed_path.parts
+    has_adr_root = any(
+        path_parts[index:index + 2] == ("docs", "adr")
+        for index in range(len(path_parts) - 1)
+    )
+    if (
+        "\\" in source_path
+        or parsed_path.is_absolute()
+        or parsed_path.as_posix() != source_path
+        or any(part in {"", ".", ".."} for part in parsed_path.parts)
+        or len(parsed_path.parts) < 3
+        or not has_adr_root
+        or parsed_path.suffix != ".md"
+    ):
+        raise JournalError(
+            "adrProjection.sourcePath must be a normalized project-relative path under docs/adr"
+        )
+    source_hash = _require_text(
+        projection["sourceContentHash"], "adrProjection.sourceContentHash", limit=71
+    )
+    if not CONTENT_HASH_PATTERN.fullmatch(source_hash):
+        raise JournalError(
+            "adrProjection.sourceContentHash must be a canonical sha256 content hash"
+        )
+    if projection["targetScope"] != "project":
+        raise JournalError("adrProjection.targetScope must be project")
+    return projection
+
+
 def validate_event_shape(event: Any) -> dict[str, Any]:
     if not isinstance(event, dict):
         raise JournalError("event must be a JSON object")
@@ -220,7 +275,9 @@ def validate_event_shape(event: Any) -> dict[str, Any]:
         required = common | {
             "candidateId", "stage", "candidateType", "kind", "claim", "why", "sourceRefs",
         }
-        optional = {"taskId", "carveOut", "origin", "skillRegistration"}
+        optional = {
+            "taskId", "carveOut", "origin", "skillRegistration", "adrProjection",
+        }
     elif event_type == "supersede":
         required = common | {"candidateId", "byCandidateId", "reason"}
         optional = set()
@@ -251,6 +308,16 @@ def validate_event_shape(event: Any) -> dict[str, Any]:
             _validate_skill_registration(event["skillRegistration"])
         elif "skillRegistration" in event:
             raise JournalError("skillRegistration is only valid for skill_card candidates")
+        if event["kind"] == "adr_execution_projection":
+            if event["candidateType"] != "wiki_note":
+                raise JournalError("adr_execution_projection must be a wiki_note candidate")
+            if "adrProjection" not in event:
+                raise JournalError("adr_execution_projection requires adrProjection")
+            _validate_adr_projection(event["adrProjection"])
+        elif "adrProjection" in event:
+            raise JournalError(
+                "adrProjection is only valid for adr_execution_projection candidates"
+            )
         _require_text(event["claim"], "claim")
         _require_text(event["why"], "why")
         refs = event["sourceRefs"]
@@ -355,6 +422,7 @@ def fold_events(events: list[dict[str, Any]], expected_feature_slug: str | None 
                 previous_receipt = item.get("writeReceipt")
                 next_receipt = event.get("writeReceipt")
                 expected_skill_registration = item.get("skillRegistration")
+                expected_adr_projection = item.get("adrProjection")
                 if (
                     expected_skill_registration is not None
                     and event["status"] == "kept"
@@ -369,6 +437,7 @@ def fold_events(events: list[dict[str, Any]], expected_feature_slug: str | None 
                     )
                 if isinstance(next_receipt, dict):
                     receipt_skill_registration = next_receipt.get("skillRegistration")
+                    receipt_adr_projection = next_receipt.get("adrProjection")
                     if expected_skill_registration is not None:
                         if receipt_skill_registration != expected_skill_registration:
                             raise JournalError(
@@ -380,6 +449,30 @@ def fold_events(events: list[dict[str, Any]], expected_feature_slug: str | None 
                             f"candidate {candidate_id!r} is not a Skill Card but its write "
                             "receipt carries a Skill Card registration"
                         )
+                    if expected_adr_projection is not None:
+                        if receipt_adr_projection != expected_adr_projection:
+                            raise JournalError(
+                                f"candidate {candidate_id!r} write receipt does not match its "
+                                "ADR projection authority identity"
+                            )
+                    elif receipt_adr_projection is not None:
+                        raise JournalError(
+                            f"candidate {candidate_id!r} is not an ADR projection but its write "
+                            "receipt carries ADR projection identity"
+                        )
+                if (
+                    expected_adr_projection is not None
+                    and event["status"] == "kept"
+                    and (
+                        not isinstance(next_receipt, dict)
+                        or next_receipt.get("state") != "applied"
+                        or next_receipt.get("adrProjection") != expected_adr_projection
+                    )
+                ):
+                    raise JournalError(
+                        f"candidate {candidate_id!r} is an ADR projection; kept requires an "
+                        "applied write receipt bound to its authority identity"
+                    )
                 if (
                     item["status"] == "deferred"
                     and isinstance(previous_receipt, dict)
@@ -615,6 +708,12 @@ def build_parser() -> argparse.ArgumentParser:
     outcome_parser.add_argument("--skill-role", action="append", choices=sorted(SKILL_ROLES))
     outcome_parser.add_argument("--skill-trigger", action="append")
     outcome_parser.add_argument("--skill-summary")
+    outcome_parser.add_argument("--adr-authority-type")
+    outcome_parser.add_argument("--adr-projection-type")
+    outcome_parser.add_argument("--adr-source-id")
+    outcome_parser.add_argument("--adr-source-path")
+    outcome_parser.add_argument("--adr-source-content-hash")
+    outcome_parser.add_argument("--adr-target-scope")
 
     for command in ("validate", "fold"):
         command_parser = subparsers.add_parser(command)
@@ -713,6 +812,24 @@ def main() -> int:
                 "summary": args.skill_summary,
                 "discoveryState": "pending",
             }
+        adr_values = (
+            args.adr_authority_type,
+            args.adr_projection_type,
+            args.adr_source_id,
+            args.adr_source_path,
+            args.adr_source_content_hash,
+            args.adr_target_scope,
+        )
+        receipt_adr_projection = None
+        if any(value is not None for value in adr_values):
+            receipt_adr_projection = {
+                "authorityType": args.adr_authority_type,
+                "projectionType": args.adr_projection_type,
+                "sourceId": args.adr_source_id,
+                "sourcePath": args.adr_source_path,
+                "sourceContentHash": args.adr_source_content_hash,
+                "targetScope": args.adr_target_scope,
+            }
         receipt_args = (
             args.write_state,
             args.operation,
@@ -740,6 +857,11 @@ def main() -> int:
                 **(
                     {"skillRegistration": receipt_skill_registration}
                     if receipt_skill_registration is not None
+                    else {}
+                ),
+                **(
+                    {"adrProjection": receipt_adr_projection}
+                    if receipt_adr_projection is not None
                     else {}
                 ),
             }

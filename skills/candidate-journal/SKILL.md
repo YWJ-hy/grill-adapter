@@ -24,6 +24,11 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py append \
   [--task-id <ticket-id>] [--carve-out] [--origin <producer>]
 ```
 
+`adr_execution_projection` is a reserved generated kind. Do not append it by hand. The grill ADR
+bridge emits it with a strict `adrProjection` object containing the project ADR's stable source ID,
+project-relative path, content hash, and project-only target scope. Ordinary non-ADR decisions
+continue to use `kind=decision`.
+
 For `skill_card`, also pass every structured registration field. Prefer the scaffold helper's `stage-card` command, which computes the contract hash and appends these fields without hand calculation:
 
 ```bash
@@ -76,6 +81,11 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py outcome \
 ```
 
 For an Obsidian proposal that must pause, append `deferred` with `--write-state proposed`. If resumed Capture must re-propose after drift, append another deferred proposed receipt; the latest valid proposal replaces the folded recovery view without erasing history. A receipt-less re-deferral updates the reason but retains that latest proposal, so it cannot bypass the eventual identity check. After a successful apply, append `kept` with the same identity as that latest proposal and `--write-state applied`. Supply the exact `sourceId`, `repositoryRef`, `bindingDigest`, `wikiId`, path, operation, and diff hashes returned by the write tools; omit `--before-hash` only for create. For a Skill Card, also copy every field from the write result's `skillRegistration` using the same `--skill-*` flags as the candidate append example above. The helper requires an applied receipt for a kept Skill Card and rejects a missing or mismatched registration.
+
+For an `adr_execution_projection`, also copy the write result's complete `adrProjection` identity
+with `--adr-authority-type`, `--adr-projection-type`, `--adr-source-id`, `--adr-source-path`,
+`--adr-source-content-hash`, and `--adr-target-scope`. A proposed/applied receipt that omits or
+changes this identity cannot complete the ADR candidate.
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py outcome \

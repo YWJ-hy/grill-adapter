@@ -3,6 +3,7 @@ import { resolveBindings } from '../bindings.js';
 import { parseAtomicNote } from '../note.js';
 import {
   assertPathWithinBinding,
+  matchingBoundAdrProjections,
   matchingBoundSkillCards,
   readBoundNote,
   searchBoundNotes,
@@ -83,10 +84,19 @@ function validateIdentity(
 ): void {
   const matches = searchBoundNotes(`[wiki_id:${proposed.wikiId}]`, bindings, env, false)
     .filter((note) => note.wikiId === proposed.wikiId);
+  if (proposed.adrSourceId && binding.role !== 'project') {
+    throw new Error('ADR execution projections may only be written to a project Source');
+  }
+  const matchingAdrProjections = matchingBoundAdrProjections(proposed, bindings, env);
   const matchingCards = matchingBoundSkillCards(proposed, bindings, env, false);
   if (input.operation === 'create') {
     if (input.expectedHash !== null) throw new Error('Creating an Obsidian Note requires expectedHash: null');
     if (matches.length > 0) throw new Error(`Proposed wiki_id already exists in a bound Source: ${proposed.wikiId}`);
+    if (matchingAdrProjections.length > 0) {
+      throw new Error(
+        `ADR source identity ${proposed.adrSourceId} already exists in a bound Note; update that projection`,
+      );
+    }
     if (matchingCards.length > 0) {
       throw new Error(
         `Skill Card identity ${proposed.skillProvider}/${proposed.skillName} already exists in a bound Source`,
@@ -96,6 +106,20 @@ function validateIdentity(
   }
   if (!input.expectedHash) throw new Error('Updating an Obsidian Note requires expectedHash');
   const existing = readBoundNote(input.path, [binding], env, false);
+  if (existing.adrSourceId && !proposed.adrSourceId) {
+    throw new Error('An existing ADR execution projection cannot be converted to a plain Note');
+  }
+  if (existing.adrSourceId && existing.adrSourceId !== proposed.adrSourceId) {
+    throw new Error('ADR source identity must be preserved on update');
+  }
+  const conflictingAdrProjections = matchingAdrProjections.filter((note) => (
+    note.path !== existing.path || note.sourceId !== existing.sourceId
+  ));
+  if (conflictingAdrProjections.length > 0) {
+    throw new Error(
+      `ADR source identity ${proposed.adrSourceId} already exists in another bound Note`,
+    );
+  }
   if (existing.skillProvider && !proposed.skillProvider) {
     throw new Error('An existing Skill Card cannot be converted to a plain Note');
   }
@@ -132,6 +156,14 @@ type PreparedChange = {
   policy: 'direct' | 'confirm' | 'deny';
   request: BridgeChangeRequest;
   skillRegistration: ReturnType<typeof pendingSkillRegistration>;
+  adrProjection: {
+    authorityType: 'project-adr';
+    projectionType: 'execution-constraints';
+    sourceId: string;
+    sourcePath: string;
+    sourceContentHash: string;
+    targetScope: 'project';
+  } | undefined;
 };
 
 function prepareChange(input: NoteChangeInput, env: NodeJS.ProcessEnv): PreparedChange {
@@ -168,6 +200,16 @@ function prepareChange(input: NoteChangeInput, env: NodeJS.ProcessEnv): Prepared
       authorized: input.authorized === true,
     },
     skillRegistration: pendingSkillRegistration(proposed),
+    adrProjection: proposed.adrSourceId
+      ? {
+        authorityType: 'project-adr',
+        projectionType: 'execution-constraints',
+        sourceId: proposed.adrSourceId,
+        sourcePath: proposed.adrSourcePath!,
+        sourceContentHash: proposed.adrSourceContentHash!,
+        targetScope: 'project',
+      }
+      : undefined,
   };
 }
 
@@ -190,6 +232,7 @@ function decorate(result: Record<string, unknown>, prepared: PreparedChange) {
     policy: prepared.policy,
     authorizationRequired: prepared.policy === 'confirm',
     skillRegistration: prepared.skillRegistration,
+    adrProjection: prepared.adrProjection,
   };
 }
 

@@ -144,6 +144,7 @@ function validateTypedLinksAndIdentity(
   vaultRoot: string,
   roots: Map<string, GovernedRoot>,
   projectRoots: Map<string, GovernedRoot>,
+  targetScope: 'project' | 'shared',
 ): void {
   const noteFiles = [...roots.values()].flatMap(atomicNoteFiles);
   const existingNotes = noteFiles.map((file) => ({
@@ -151,8 +152,20 @@ function validateTypedLinksAndIdentity(
     note: parseAtomicNote(readFileSync(file, 'utf8'), file),
   }));
   const identityMatches = existingNotes.filter(({ note }) => note.wikiId === proposed.wikiId);
+  if (proposed.adrSourceId && targetScope !== 'project') {
+    throw new BridgeError(403, 'ADR execution projections may only be written to a project Source');
+  }
+  const adrProjectionMatches = proposed.adrSourceId
+    ? existingNotes.filter(({ note }) => note.adrSourceId === proposed.adrSourceId)
+    : [];
   if (operation === 'create' && identityMatches.length > 0) {
     throw new BridgeError(409, `Proposed wiki_id already exists in an allowed Source: ${proposed.wikiId}`);
+  }
+  if (operation === 'create' && adrProjectionMatches.length > 0) {
+    throw new BridgeError(
+      409,
+      `ADR source identity ${proposed.adrSourceId} already exists in an allowed Note; update that projection`,
+    );
   }
   if (operation === 'update' && (
     identityMatches.length !== 1
@@ -161,6 +174,21 @@ function validateTypedLinksAndIdentity(
     throw new BridgeError(409, `Updated wiki_id does not resolve uniquely to its existing Note: ${proposed.wikiId}`);
   }
   const targetNote = operation === 'update' ? identityMatches[0].note : undefined;
+  if (targetNote?.adrSourceId && !proposed.adrSourceId) {
+    throw new BridgeError(409, 'An existing ADR execution projection cannot be converted to a plain Note');
+  }
+  if (targetNote?.adrSourceId && targetNote.adrSourceId !== proposed.adrSourceId) {
+    throw new BridgeError(409, 'ADR source identity must be preserved on update');
+  }
+  if (
+    operation === 'update'
+    && adrProjectionMatches.some(({ file }) => realpathSync(file) !== realpathSync(targetPath))
+  ) {
+    throw new BridgeError(
+      409,
+      `ADR source identity ${proposed.adrSourceId} already exists in another allowed Note`,
+    );
+  }
   if (targetNote?.skillProvider && !proposed.skillProvider) {
     throw new BridgeError(409, 'An existing Skill Card cannot be converted to a plain Note');
   }
@@ -292,6 +320,7 @@ function enforceGovernance(
     vaultRoot,
     roots,
     projectRoots,
+    manifest.scope,
   );
 }
 
