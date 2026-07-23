@@ -1,6 +1,6 @@
 # grill-adapter 架构
 
-grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 与 Codex 插件形式发货**。它把 wiki / Lanhu / source-truth 作为独立 skill/agent-role/hook 挂进宿主工作流，**绝不 patch 宿主 skill**——只靠项目 `CLAUDE.md`/`AGENTS.md` 约定块 + plugin hook 接线。
+grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 与 Codex 插件形式发货**。它把 wiki / source-truth / break-loop 作为独立 skill/agent-role/hook 挂进宿主工作流，**绝不 patch 宿主 skill**——只靠项目 `CLAUDE.md`/`AGENTS.md` 约定块 + plugin hook 接线。
 
 ## 三层 + 多子系统同构
 
@@ -18,12 +18,11 @@ grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 
 │  各子系统的 host 无关触点                                  │
 │   （独立 skill/agent + host-adapter 约定 + 可选 hook）      │
 │   · wiki:        Disclose · Carry · Bind · Capture        │
-│   · Lanhu:       Intake                                   │
 │   · source-truth: Verify · Lint                          │
 │   · break-loop:  Debug-retrospective → Capture           │
 ├─────────────────────────────────────────────────────────┤
 │  引擎（从旧 adapter 原样移植）                             │
-│   scripts/* (wiki + lanhu + source_truth) · .graph.json  │
+│   scripts/* (wiki + source_truth) · .graph.json          │
 │   · shared-wiki MCP · 索引 · doctor · export · templates  │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -45,14 +44,13 @@ grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 
 
 ### 子系统触点
 
-- **Lanhu Intake**：`lanhu-requirements` skill + 2 个 analyst role prompt（`agents/lanhu-{frontend,backend}-requirements-analyst.md`，由 `lib/sync_role_prd.py` 生成）→ `.lanhu/.../index.md` 证据包（**只作输入**）。Claude Code 直接注册 agent；Codex 由 skill 读取同一 prompt 后派生通用 sub-agent。
 - **source-truth Verify**：`/grill-adapter:source-truth-check` skill（复用 `scripts/source_truth_settings.py`），规划期渲染 policy prompt（spec-pre/plan-pre/plan-review）。**Lint**：`hooks/source-truth-lint.sh`（PostToolUse/Stop）对真实 changed files 跑 `source_truth_common` lint。
 - **break-loop**：`/grill-adapter:break-loop` skill，调试复盘 → 交 `/grill-adapter:update-wiki`。
 - **Candidate Journal**：`/grill-adapter:candidate-journal` + `scripts/wiki_candidate_journal.py`。所有知识生产阶段只向同一 feature-scoped JSONL 追加 `candidate` / `supersede` / `outcome` 事件；Capture 前完整 replay，损坏、截断、冲突重复与非法状态转换 fail-closed。Obsidian outcome 可带严格的 `writeReceipt`，只保存 provider/repository/binding/Note/path/hash 写身份，不保存 Note body 或 secret；`proposed` 只能配 `deferred`，`applied` 只能配 `kept`。Skill Card 候选还强制 provider/name/version/contract hash/roles/triggers 与 `pending` 状态；其 kept receipt 必须携带与 staged registration 完全一致的 bridge-validated identity。`stage-card` 计算 pack hash 并幂等追加，不写 discovery index；同一 pack 只允许一张 Card；applied/open-PR Card 仍 pending，merge + base 同步后 MCP 重验通过才 discoverable。grill bridge 的完全相同 replay 按稳定 candidate identity 幂等跳过，使中断后的 Capture 能继续；journal 保留作恢复 receipt，不进入 Obsidian、不提交。
 
 ## 引擎组件
 
-- **执行层脚本 `scripts/*.py`**：`wiki_common`（1 跳邻居、depends-on 闭包等共享逻辑）、`wiki_context_render`（schema-v5 只读兼容，以及 schema-v6 Obsidian metadata Carry 的校验/渲染/scaffold/finalize；task 身份与指纹来自 host 产出的 ticket roster）、`wiki_materialize_task`（schema-v5 的单一固定取数器：本地 + github_mcp reread + 1 跳闭包）、`wiki_candidate_journal`（候选事件校验、锁内追加、生命周期 fold）、`wiki_migration_plan`（snapshot-bound no-write plan）、`wiki_migration_apply`（CAS apply / merged-base verify / cutover）、`wiki_generate_section_index` / `wiki_update_check` / `wiki_migrate_helper`、`wiki_graph_neighbors`、`wiki_section` / `wiki_read_section` / `wiki_select_target` / `wiki_apply_update` / `wiki_import` / `init-wiki` / `update-wiki`；`source_truth_settings` / `source_truth_common`；`lanhu_settings`；`scaffold_practice_skill`；`grill_context_to_candidates`（grill→journal 桥）。
+- **执行层脚本 `scripts/*.py`**：`wiki_common`（1 跳邻居、depends-on 闭包等共享逻辑）、`wiki_context_render`（schema-v5 只读兼容，以及 schema-v6 Obsidian metadata Carry 的校验/渲染/scaffold/finalize；task 身份与指纹来自 host 产出的 ticket roster）、`wiki_materialize_task`（schema-v5 的单一固定取数器：本地 + github_mcp reread + 1 跳闭包）、`wiki_candidate_journal`（候选事件校验、锁内追加、生命周期 fold）、`wiki_migration_plan`（snapshot-bound no-write plan）、`wiki_migration_apply`（CAS apply / merged-base verify / cutover）、`wiki_generate_section_index` / `wiki_update_check` / `wiki_migrate_helper`、`wiki_graph_neighbors`、`wiki_section` / `wiki_read_section` / `wiki_select_target` / `wiki_apply_update` / `wiki_import` / `init-wiki` / `update-wiki`；`source_truth_settings` / `source_truth_common`；`scaffold_practice_skill`；`grill_context_to_candidates`（grill→journal 桥）。
 - **obsidian-wiki MCP + write/publish bundle `mcp/obsidian-wiki/`**：同一提交型 bundle 暴露绑定只读工具、Note proposal/apply MCP/JSON CLI、可恢复 `publish` JSON CLI，以及独立 `serve-write-bridge` 入口。bridge 只监听 loopback，以 token 鉴权并对 bound Source 做 policy/neutrality/CAS 校验。publisher 只消费 journal 中 `kept+applied` receipts，按 `repositoryRef` 锁仓并在锁内重验 base/remote/path/hash；commit 前用 Git staged-tree object ID 保存可恢复身份，创建 allowlist commit + draft PR、协调 peer PR，并把 worktree 恢复到 clean base。run manifest 留在项目 `.adapter/context/`，开放 PR 不进入 formal read。
 - **shared-wiki MCP `mcp/shared-wiki/`**：TypeScript MCP server，随插件 MCP 声明自启；Claude Code 从 `CLAUDE_PROJECT_DIR`、Codex 从 MCP request 的 `x-codex-turn-metadata.workspaces`（并兼容标准 roots capability）定位项目，再读该项目 `.shared-adapter/settings.json` 自配置；直接 CLI 仍可从进程 cwd 定位。MCP server 先注册工具，首次调用时解析绑定，未声明或多 root 歧义均 fail-closed。其余 read/graph/CLI 与 bundle 不变式不变。
 - **模板、迁移与导出**：`wiki-template/`、`wiki-repo-skills/` + `wiki-repo-ci/`、`contracts/`。`wiki_migration_plan.py` fail-closed 产出 deterministic plan，并为 update 固化审核时 Note hash；`wiki_migration_apply.py` 在首个 bridge 写前固化完整 plan、binding/policy snapshot 与 CAS intent roster，并先切到专用 PR branch，再经两阶段 CAS 与 receipt publisher 写 draft PR。恢复只接受精确 before/seed/final state，`publishing` 中断从 publisher manifest 对账。verify 从不可变 plan 推导 coverage，重验 legacy source 与 binding/policy，只认 merged + synchronized base；cutover 另需确认、拒绝 active schema-v5 sidecar，并只把 plan 覆盖的 legacy root 标成机械只读 archive，bootstrap/init/update/import/migration 写路径都必须拒绝归档 root。契约示例还包括 migration plan/manifest、wiki context/selection、ticket roster、candidate journal 与 publish run manifest。
@@ -80,4 +78,3 @@ wiki 页被 `<!-- wiki-section:xxx summary="..." -->` 标记切成 section；sec
 - shared wiki 中性化：`blockedTerms`/`blockedPatterns`。
 - 换绑/revision 漂移 fail-closed。
 - Obsidian rollout 不引入 legacy runtime fallback；cutover 前 legacy roots 只供 migration verify，cutover 后只读归档。
-- Lanhu evidence-package 边界：只作输入，不写进 wiki / 最终 spec / 验收。

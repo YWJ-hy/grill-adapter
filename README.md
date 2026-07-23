@@ -1,6 +1,6 @@
 # grill-adapter
 
-A **host-agnostic Claude Code and Codex plugin** that adds three things to your coding workflow — a sectioned, cross-repo **project wiki**; **Lanhu (蓝湖) requirements intake**; and **source-of-truth** verification — as standalone skills, agent roles, and hooks. It **never patches a host skill**: it wires into your workflow through a project convention block (`CLAUDE.md` or `AGENTS.md`) and the plugin's own hooks, so host upgrades can't break it.
+A **host-agnostic Claude Code and Codex plugin** that adds a sectioned, cross-repo **project wiki**, **source-of-truth** verification, and **break-loop** debugging retrospectives as standalone skills, agent roles, and hooks. It **never patches a host skill**: it wires into your workflow through a project convention block (`CLAUDE.md` or `AGENTS.md`) and the plugin's own hooks, so host upgrades can't break it.
 
 It defaults to [**grill** (mattpocock/skills)](https://github.com/mattpocock/skills) as the front-end (`grill-with-docs → to-spec → to-tickets → implement → code-review`), and also runs on **plain Claude Code or Codex**.
 
@@ -19,7 +19,7 @@ A code assistant forgets your project's durable rules between sessions and acros
 | **Bind** | `/grill-adapter:wiki-materialize <ticket>` rereads routed hard Notes, role-required Cards, and a bounded 1-hop `depends_on` closure; Card sync/identity drift fails closed and output explicitly requires invoking the verified project skill | `/implement` |
 | **Capture** | every stage appends to one feature journal; `scaffold-practice-skill` stages content-addressed Card candidates, and `/grill-adapter:update-wiki` reconciles final evidence, applies policy-compliant Note/Card changes, then publishes applied receipts as resumable per-repository draft PRs; open PRs remain pending | after `/code-review` |
 
-Plus **Lanhu intake** (`/grill-adapter:lanhu-requirements`), **source-of-truth** verify (`/grill-adapter:source-truth-check`) + lint hook, and **break-loop** debugging retrospective (`/grill-adapter:break-loop`).
+Plus **source-of-truth** verify (`/grill-adapter:source-truth-check`) + lint hook and **break-loop** debugging retrospective (`/grill-adapter:break-loop`).
 
 ## Install (30 seconds, if you already have grill)
 
@@ -39,7 +39,7 @@ codex plugin marketplace add YWJ-hy/grill-adapter
 codex plugin add grill-adapter@grill-adapter
 ```
 
-Both runtimes discover **13 skills, 3 hook events, and 2 MCP servers**. Claude Code also registers the 3 files under `agents/` directly; Codex keeps those prompts as plugin payload and the two entry skills dispatch general sub-agents with the same role instructions. The legacy `shared-wiki` and Source-binding `obsidian-wiki` servers are registered together and start automatically. `obsidian-wiki` also exposes proposal/apply tools for governed Note writes plus a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server (setup: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
+Both runtimes discover **12 skills, 3 hook events, and 2 MCP servers**. Claude Code also registers `agents/wiki-researcher.md` directly; Codex keeps that prompt as plugin payload and `wiki-research` dispatches a general sub-agent with the same role instructions. The legacy `shared-wiki` and Source-binding `obsidian-wiki` servers are registered together and start automatically. `obsidian-wiki` also exposes proposal/apply tools for governed Note writes plus a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server (setup: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
 
 > **Claude Code scope is shared.** Skills, agents, hooks, and bundled MCP servers all take the plugin's scope. Codex's current `plugin add` command has no project/user scope flag; project isolation comes from explicit Wiki bindings and fail-closed policy.
 
@@ -79,7 +79,7 @@ Legacy Wiki migration to Obsidian runs through `/grill-adapter:migrate-wiki` (Cl
 
 ## Relationship to grill / Claude Code / Codex
 
-grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe to; grill-adapter never forks or edits it. grill-adapter adds wiki/Lanhu/source-truth touchpoints *around* grill by convention. On plain Claude Code or Codex you invoke the same skills yourself at the matching moments (see the runtime-specific `plain` host block).
+grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe to; grill-adapter never forks or edits it. grill-adapter adds wiki, source-truth, and break-loop touchpoints *around* grill by convention. On plain Claude Code or Codex you invoke the same skills yourself at the matching moments (see the runtime-specific `plain` host block).
 
 ## Documentation
 
@@ -92,7 +92,6 @@ grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe 
 | [`docs/OBSIDIAN_ACCEPTANCE_CN.md`](docs/OBSIDIAN_ACCEPTANCE_CN.md) | Desktop + installed Claude Code/Codex 最终验收、shadow validation 与恢复演练 |
 | [`docs/HOST_INTEGRATION_CN.md`](docs/HOST_INTEGRATION_CN.md) | host 适配器模型、grill/plain 约定块全文、plugin 安装模型 |
 | [`docs/USER_FLOW_CN.md`](docs/USER_FLOW_CN.md) | 最终用户端到端流程 |
-| [`docs/LANHU_CN.md`](docs/LANHU_CN.md) | Lanhu 需求录入专章 |
 | [`docs/DEVELOPMENT_CN.md`](docs/DEVELOPMENT_CN.md) | 开发与验收原则、测试分层 |
 | [`docs/DECISIONS_CN.md`](docs/DECISIONS_CN.md) | 为什么这么设计 |
 | [`docs/BUILD_PLAN_CN.md`](docs/BUILD_PLAN_CN.md) | 本项目的构建蓝图（存档） |

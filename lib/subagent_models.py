@@ -18,8 +18,6 @@ SHORT_MODEL_NAMES = AGENT_STANDARD_MODEL_NAMES
 ADAPTER_AGENT_IDS = frozenset(
     {
         'wiki-researcher',
-        'lanhu-frontend-requirements-analyst',
-        'lanhu-backend-requirements-analyst',
     }
 )
 

@@ -19,17 +19,8 @@ check() { if "$@"; then echo "  OK"; else echo "  FAIL"; fail=1; fi; }
 step "1. Python compiles (scripts + lib)"
 check python3 -m py_compile "$SCRIPT_DIR"/scripts/*.py "$SCRIPT_DIR"/lib/*.py
 
-step "2. role-prd sync is idempotent (no drift)"
-python3 "$SCRIPT_DIR/lib/sync_role_prd.py" sync "$SCRIPT_DIR" >/dev/null 2>&1 || true
-if git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
-  if [[ -z "$(git -C "$SCRIPT_DIR" status --porcelain -- agents/lanhu-*-requirements-analyst.md)" ]]; then
-    echo "  OK (analysts match sources)"
-  else
-    echo "  FAIL (sync produced drift; commit the regenerated analysts)"; fail=1
-  fi
-else
-  echo "  SKIP (not a git repo)"
-fi
+step "2. Removed capability residue check"
+check bash "$SCRIPT_DIR/tests/removed-capability-residue-smoke.sh" "$SCRIPT_DIR"
 
 step "3. Placeholder residue check"
 # __GRILL_ADAPTER_ROOT__ is dead in plugin content. Nothing install-time rewrites these files,
@@ -38,7 +29,7 @@ residue=0
 if grep -rn '__SUPERPOWER_ADAPTER' "$SCRIPT_DIR/scripts" "$SCRIPT_DIR/skills" "$SCRIPT_DIR/agents" "$SCRIPT_DIR/lib" "$SCRIPT_DIR/hooks" "$SCRIPT_DIR/contracts" 2>/dev/null; then
   echo "  FAIL (superpower-adapter placeholder residue)"; residue=1
 fi
-if grep -rn '__GRILL_ADAPTER_ROOT__' "$SCRIPT_DIR/skills" "$SCRIPT_DIR/agents" "$SCRIPT_DIR/role-prd" "$SCRIPT_DIR/host-adapters" 2>/dev/null; then
+if grep -rn '__GRILL_ADAPTER_ROOT__' "$SCRIPT_DIR/skills" "$SCRIPT_DIR/agents" "$SCRIPT_DIR/host-adapters" 2>/dev/null; then
   echo "  FAIL (dead __GRILL_ADAPTER_ROOT__ placeholder; use \${CLAUDE_PLUGIN_ROOT} in plugin content, and no install path at all in host-adapters)"; residue=1
 fi
 [[ $residue -eq 0 ]] && echo "  OK" || fail=1
@@ -86,12 +77,12 @@ step "6. Plugin loads with its full component inventory"
 if command -v claude >/dev/null 2>&1; then
   inventory="$(claude --plugin-dir "$SCRIPT_DIR" plugin details grill-adapter 2>&1 || true)"
   inv_fail=0
-  for expected in "Skills (13)" "Agents (3)" "Hooks (3)" "MCP servers (2)"; do
+  for expected in "Skills (12)" "Agents (1)" "Hooks (3)" "MCP servers (2)"; do
     if ! grep -qF "$expected" <<<"$inventory"; then
       echo "  FAIL (expected '$expected' in plugin inventory)"; inv_fail=1
     fi
   done
-  if [[ $inv_fail -eq 0 ]]; then echo "  OK (13 skills, 3 agents, 3 hooks, 2 MCP servers)"; else
+  if [[ $inv_fail -eq 0 ]]; then echo "  OK (12 skills, 1 agent, 3 hooks, 2 MCP servers)"; else
     sed 's/^/    /' <<<"$inventory" | head -12; fail=1
   fi
 else

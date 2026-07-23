@@ -27,7 +27,7 @@ for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN" "$HOOKS_JSON"; do
 done
 
 # Codex blocks carry the same touchpoints with native skill mentions.
-for skill in wiki-research wiki-materialize update-wiki candidate-journal source-truth-check lanhu-requirements break-loop; do
+for skill in wiki-research wiki-materialize update-wiki candidate-journal source-truth-check break-loop; do
   need "$CODEX_GRILL" "\$grill-adapter:$skill"
 done
 need "$CODEX_GRILL" '$mattpocock-skills:grill-with-docs'
@@ -47,13 +47,10 @@ need "$GRILL" '/grill-adapter:wiki-materialize'    # Bind
 need "$GRILL" '/grill-adapter:update-wiki'         # Capture
 need "$GRILL" '/grill-adapter:candidate-journal'   # feature journal
 need "$GRILL" '/grill-adapter:source-truth-check'  # source-of-truth Verify
-need "$GRILL" '/grill-adapter:lanhu-requirements'  # Lanhu Intake
 need "$GRILL" '/grill-adapter:break-loop'          # break-loop
 need "$GRILL" 'grill-with-docs'
 need "$GRILL" 'to-tickets'
 need "$GRILL" 'diagnosing-bugs'
-# Lanhu evidence boundary preserved
-need "$GRILL" 'input only'
 
 # plain block: same touchpoints, host-name-free framing
 need "$PLAIN" 'grill-adapter:host:plain:start'
@@ -87,6 +84,14 @@ for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
   deny "$f" 'CLAUDE_PLUGIN_ROOT'
   deny "$f" 'PLUGIN_ROOT'
   deny "$f" 'grill_context_to_candidates.py'
+done
+
+# Removed capabilities must not remain in project instructions for either runtime.
+REMOVED_CAPABILITY='lan''hu'
+REMOVED_CAPABILITY_CN=$'\u84dd\u6e56'
+for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
+  ! grep -Fiq "$REMOVED_CAPABILITY" "$f" || fail "$f still references a removed capability"
+  ! grep -Fq "$REMOVED_CAPABILITY_CN" "$f" || fail "$f still references a removed capability"
 done
 
 # ...and the grill->wiki bridge the blocks used to invoke now lives in the skill that

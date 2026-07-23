@@ -7,7 +7,7 @@ COMMAND="${1:-}"
 usage() {
   local code="${1:-1}"
   cat >&2 <<EOF
-grill-adapter — host-agnostic Claude Code/Codex adapter (wiki + Lanhu + source-truth)
+grill-adapter — host-agnostic Claude Code/Codex adapter (wiki + source-truth + break-loop)
 
 grill-adapter ships as a plugin bundle. These commands wire the one thing a plugin cannot
 touch: a project's CLAUDE.md (Claude Code), AGENTS.md (Codex), or both.

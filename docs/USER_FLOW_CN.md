@@ -3,8 +3,8 @@
 grill-adapter 是一个**宿主无关（host-agnostic）的 Claude Code adapter**：它由一个原本与 Superpowers 强耦合的 adapter fork 而来，现已解耦。它以**独立 skill + hook** 的形式，为宿主工作流补上三样能力：
 
 - 分节化、可跨仓库的**项目 wiki**；
-- **蓝湖（Lanhu）需求录入**；
-- **真实源校验 / lint（source-of-truth verify/lint）**。
+- **真实源校验 / lint（source-of-truth verify/lint）**；
+- **break-loop 调试复盘与知识回流**。
 
 核心原则：grill-adapter **从不 patch 任何宿主 skill**，只在宿主阶段之间挂接自己的 skill 与 hook。默认宿主是 **grill**（mattpocock/skills）：
 
@@ -36,7 +36,6 @@ Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specif
 
 | # | grill 阶段 | grill-adapter 触点 | 命令 | 产物 |
 | --- | --- | --- | --- | --- |
-| 0 | （可选）蓝湖录入 | 输入准备 | `/grill-adapter:lanhu-requirements <link> frontend\|backend` | `.lanhu/.../index.md` 证据包 |
 | 1 | `/grill-with-docs`（质询/发现） | Disclose | `/grill-adapter:wiki-research`（phase brainstorm） | 轻量上下文；durable 候选可追加 journal（不写 selection/context sidecar） |
 | 2 | `/to-spec` | Verify | `/grill-adapter:source-truth-check`（render spec-pre） | 真实源校验结果 |
 | 3 | `/to-tickets`（规划） | Disclose + Carry | `/grill-adapter:wiki-research`（phase plan）+ `wiki_context_render.py --scaffold` → 建 ticket roster → `--finalize` + `/grill-adapter:source-truth-check`（plan-pre / plan-review） | `.adapter/context/<feature-slug>.` 下的 `obsidian-wiki-selection.json`、schema-v6 `wiki-context.json`、`ticket-roster.json` |
@@ -47,18 +46,6 @@ Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specif
 ---
 
 ## 分步流程
-
-### 步骤 0 ·（可选）蓝湖需求录入
-
-当用户提供蓝湖链接时，先把原始需求梳理成证据包，供后续阶段引用。
-
-```
-/lanhu-requirements <link> frontend|backend
-```
-
-- 由 `lanhu-frontend-requirements-analyst` / `lanhu-backend-requirements-analyst` agent 完成解析。
-- 产出 `.lanhu/.../index.md` 证据包。
-- **边界**：证据包**只作输入**，不写进 wiki、不写进 spec、不写进验收标准、不写进测试。
 
 ### 步骤 1 · `/grill-with-docs`（质询/发现）— Disclose
 
@@ -228,13 +215,13 @@ grill-adapter 同时以 **Claude Code plugin** 与 **Codex plugin** 形式发布
 
 唯一不由 plugin 承载的是目标项目的 host 约定块：Claude 写 `CLAUDE.md`，Codex 写 `AGENTS.md`。由 `./manage.sh install <project> --host grill|plain --runtime claude|codex|both` 写入；块里只点名 skill，不含任何安装路径。
 
-**Skills（13）**：`wiki-research`、`wiki-materialize`、`candidate-journal`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`publish-shared-wiki`、`shared-wiki-mcp`、`scaffold-practice-skill`、`lanhu-requirements`、`break-loop`、`source-truth-check`。
+**Skills（12）**：`wiki-research`、`wiki-materialize`、`candidate-journal`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`publish-shared-wiki`、`shared-wiki-mcp`、`scaffold-practice-skill`、`break-loop`、`source-truth-check`。
 
-> 其中 `wiki-research` / `wiki-materialize` / `candidate-journal` / `update-wiki` / `source-truth-check` / `lanhu-requirements` / `break-loop` 直接出现在上面的端到端流程；`init-wiki` / `import-wiki` / `migrate-wiki` 是建库与 wiki 生命周期 skill，`migrate-wiki` 也承载 legacy → Obsidian 的 plan/apply/verify/cutover；`publish-shared-wiki` / `shared-wiki-mcp` 服务共享 wiki；`scaffold-practice-skill` 负责把可复用实践固化成技能包。
+> 其中 `wiki-research` / `wiki-materialize` / `candidate-journal` / `update-wiki` / `source-truth-check` / `break-loop` 直接出现在上面的端到端流程；`init-wiki` / `import-wiki` / `migrate-wiki` 是建库与 wiki 生命周期 skill，`migrate-wiki` 也承载 legacy → Obsidian 的 plan/apply/verify/cutover；`publish-shared-wiki` / `shared-wiki-mcp` 服务共享 wiki；`scaffold-practice-skill` 负责把可复用实践固化成技能包。
 >
 > 约定块里对 grill-adapter 自己的 skill 一律带命名空间调用（`/grill-adapter:wiki-research` 等）；grill 自带的 `/grill-with-docs`、`/to-spec`、`/implement` 等不加。
 
-**Agent roles（3）**：`wiki-researcher`、`lanhu-frontend-requirements-analyst`、`lanhu-backend-requirements-analyst`。Claude Code 直接注册；Codex 由入口 skill 读取同一 prompt 并派生通用 sub-agent。
+**Agent roles（1）**：`wiki-researcher`。Claude Code 直接注册；Codex 由入口 skill 读取同一 prompt 并派生通用 sub-agent。
 
 **MCP servers（2）**：`shared-wiki` 保留 schema-v5 shared Wiki 路径；`obsidian-wiki` 解析受约束的 Obsidian Source binding，并提供状态、Source、读取、proposal 与 apply 工具。两者随 plugin 自动启动，无需手工注册；`obsidian-wiki` 只操作当前项目 `.shared-adapter/settings.json` 声明的 binding，未绑定、Vault/仓库不健康或 policy 不兼容时 fail-closed。实际写入由另行启动、只监听 loopback 的 write bridge 完成，MCP 自身不开放 HTTP 端口。
 

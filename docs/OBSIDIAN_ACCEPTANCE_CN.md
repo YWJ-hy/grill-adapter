@@ -27,7 +27,7 @@ doctor 必须报告 `Obsidian runtime healthy: yes`。新项目没有 legacy roo
 以 marketplace 安装 plugin、对消费项目执行 `manage.sh install ... --runtime claude`，然后在该项目内真跑：
 
 ```text
-(可选 lanhu-requirements) -> grill-with-docs -> to-spec -> to-tickets
+grill-with-docs -> to-spec -> to-tickets
 -> implement -> code-review -> update-wiki
 ```
 
@@ -35,7 +35,7 @@ doctor 必须报告 `Obsidian runtime healthy: yes`。新项目没有 legacy roo
 
 ## 4. installed Codex
 
-以 marketplace 安装 plugin、执行 `manage.sh install ... --runtime codex`，在 Codex 中走同一条完整路径。记录实际 `model` 和 `provider`，确认两个 MCP server、13 skills 和 host `AGENTS.md` 约定都来自安装后的 plugin。隔离 `CODEX_HOME` 时必须保留 effective provider 配置；只验证 manifest 安装不算模型驱动集成验收。
+以 marketplace 安装 plugin、执行 `manage.sh install ... --runtime codex`，在 Codex 中走同一条完整路径。记录实际 `model` 和 `provider`，确认两个 MCP server、12 skills 和 host `AGENTS.md` 约定都来自安装后的 plugin。隔离 `CODEX_HOME` 时必须保留 effective provider 配置；只验证 manifest 安装不算模型驱动集成验收。
 
 ## 5. shadow-validation 与 cutover
 
