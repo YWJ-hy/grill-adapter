@@ -35,7 +35,7 @@ grill-with-docs -> to-spec -> to-tickets
 
 ## 4. installed Codex
 
-以 marketplace 安装 plugin、执行 `manage.sh install ... --runtime codex`，在 Codex 中走同一条完整路径。记录实际 `model` 和 `provider`，确认两个 MCP server、12 skills 和 host `AGENTS.md` 约定都来自安装后的 plugin。隔离 `CODEX_HOME` 时必须保留 effective provider 配置；只验证 manifest 安装不算模型驱动集成验收。
+以 marketplace 安装 plugin、执行 `manage.sh install ... --runtime codex`，在 Codex 中走同一条完整路径。记录实际 `model` 和 `provider`，确认两个 MCP server、13 skills 和 host `AGENTS.md` 约定都来自安装后的 plugin。至少另跑一次跳过 formal to-tickets、从 direct issue/manual 进入 `$grill-adapter:wiki-readiness` 的单任务路径，并确认 `disabled`/`no-relevant` 可继续、`broken` 不注入部分内容。隔离 `CODEX_HOME` 时必须保留 effective provider 配置；只验证 manifest 安装不算模型驱动集成验收。
 
 ## 5. shadow-validation 与 cutover
 
@@ -54,3 +54,28 @@ grill-with-docs -> to-spec -> to-tickets
 - installed Codex 完整路径结果
 - shadow-validation / migration verify / cutover 状态（适用时）
 - 中断恢复演练结果与 draft PR URL
+
+## 7. Issue #19 installed Codex direct-task 记录（2026-07-23）
+
+本记录只证明 #19 新增的「跳过 formal to-tickets，直接进入单任务 readiness」路径，不替代
+本页其余 Obsidian Desktop、完整主流程和发布恢复验收。
+
+- 环境：`codex-cli 0.144.6`，`model: gpt-5.6-sol`，`provider: custom`；隔离
+  `CODEX_HOME` 复制当前 effective provider 配置与认证，未复制项目数据。
+- 插件：从当前 `codex/issue-19-wiki-readiness` 工作树加入隔离 local marketplace，安装
+  `grill-adapter@grill-adapter`（plugin version `0.2.0`）；临时 Git 项目通过
+  `manage.sh install --host grill --runtime codex` 写入 `AGENTS.md` 约定。
+- 输入：confirmed conversational request，feature slug `issue-19-integration`，未经过
+  `/to-tickets`，项目故意不配置 Wiki provider。
+- 实际模型路径：Codex 注入并读取安装缓存中的 `$grill-adapter:wiki-readiness`，创建完整
+  manual brief，调用 `wiki_readiness.py prepare-manual` 生成固定 `taskId: manual` 的单任务
+  roster，再记录 `status: disabled`。
+- 机械结果：`wiki_readiness.py validate --task-id manual` 返回
+  `readiness disabled is valid for task manual`；receipt 为
+  `ticketSource: manual`、`contextDisposition: none`，task fingerprint 为
+  `f15ec79c0c3f8d6d56156f312e9a193f2945abcb6c1c1ea14fcc3f5409e9fd30`。
+- 边界：只生成 `.adapter/context/` 下的 brief/roster/receipt，没有 context sidecar、
+  Wiki research/materialize、产品文件修改或实现动作；验收后隔离临时目录已删除。
+
+结论：**PASS**。安装后的 Codex 能在 direct manual 入口建立稳定单任务身份，并在
+Wiki 未启用时记录可继续且不携带伪造约束的 `disabled` readiness。

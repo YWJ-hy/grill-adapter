@@ -323,7 +323,7 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 - 同一 feature identity 与 Carry/Bind sidecar 对齐，host 不需要暴露 plan 文档或引擎路径。
 
 **代价（已知并接受）**
-- 插件组件清单当前为 12 skills；release inventory 与双 runtime smoke 必须同步。
+- 插件组件清单当前为 13 skills；release inventory 与双 runtime smoke 必须同步。
 - 旧裸 candidate rows 不兼容新 journal，过渡中的活动 feature 必须重新经 skill 追加，不能混写或自动猜测迁移。
 
 ---

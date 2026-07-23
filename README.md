@@ -16,7 +16,7 @@ A code assistant forgets your project's durable rules between sessions and acros
 |---|---|---|
 | **Disclose** | `/grill-adapter:wiki-research` skill -> `wiki-researcher` selects relevant bound Obsidian atomic Notes and only merged/base-synchronized Skill Cards whose local pack identity is available | `/grill-with-docs` |
 | **Carry** | schema-v6 `.wiki-context.json` records bound Source digests and metadata-only Note/Card identity, provider/version/contract hash, role routing, and ticket fingerprints | `/to-tickets` |
-| **Bind** | `/grill-adapter:wiki-materialize <ticket>` rereads routed hard Notes, role-required Cards, and a bounded 1-hop `depends_on` closure; Card sync/identity drift fails closed and output explicitly requires invoking the verified project skill | `/implement` |
+| **Bind** | `/grill-adapter:wiki-readiness` first establishes/reuses a stable task roster and atomic readiness result; when `ready`, `/grill-adapter:wiki-materialize <ticket>` rereads routed hard Notes, role-required Cards, and a bounded 1-hop `depends_on` closure | `/implement` |
 | **Capture** | every stage appends to one feature journal; `scaffold-practice-skill` stages content-addressed Card candidates, and `/grill-adapter:update-wiki` reconciles final evidence, applies policy-compliant Note/Card changes, then publishes applied receipts as resumable per-repository draft PRs; open PRs remain pending | after `/code-review` |
 
 Plus **source-of-truth** verify (`/grill-adapter:source-truth-check`) + lint hook and **break-loop** debugging retrospective (`/grill-adapter:break-loop`).
@@ -39,7 +39,7 @@ codex plugin marketplace add YWJ-hy/grill-adapter
 codex plugin add grill-adapter@grill-adapter
 ```
 
-Both runtimes discover **12 skills, 3 hook events, and 2 MCP servers**. Claude Code also registers `agents/wiki-researcher.md` directly; Codex keeps that prompt as plugin payload and `wiki-research` dispatches a general sub-agent with the same role instructions. The legacy `shared-wiki` and Source-binding `obsidian-wiki` servers are registered together and start automatically. `obsidian-wiki` also exposes proposal/apply tools for governed Note writes plus a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server (setup: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
+Both runtimes discover **13 skills, 3 hook events, and 2 MCP servers**. Claude Code also registers `agents/wiki-researcher.md` directly; Codex keeps that prompt as plugin payload and `wiki-research` dispatches a general sub-agent with the same role instructions. The legacy `shared-wiki` and Source-binding `obsidian-wiki` servers are registered together and start automatically. `obsidian-wiki` also exposes proposal/apply tools for governed Note writes plus a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server (setup: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
 
 > **Claude Code scope is shared.** Skills, agents, hooks, and bundled MCP servers all take the plugin's scope. Codex's current `plugin add` command has no project/user scope flag; project isolation comes from explicit Wiki bindings and fail-closed policy.
 

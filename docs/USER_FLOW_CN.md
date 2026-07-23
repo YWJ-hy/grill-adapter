@@ -10,6 +10,7 @@ grill-adapter 是一个**宿主无关（host-agnostic）的 Claude Code adapter*
 
 ```
 /grill-with-docs → /to-spec → /to-tickets → /implement → /code-review
+已有 issue / 已确认对话需求 ─────→ /wiki-readiness → /implement
 （外加平行支线 /diagnosing-bugs）
 ```
 
@@ -39,7 +40,7 @@ Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specif
 | 1 | `/grill-with-docs`（质询/发现） | Disclose | `/grill-adapter:wiki-research`（phase brainstorm） | 轻量上下文；durable 候选可追加 journal（不写 selection/context sidecar） |
 | 2 | `/to-spec` | Verify | `/grill-adapter:source-truth-check`（render spec-pre） | 真实源校验结果 |
 | 3 | `/to-tickets`（规划） | Disclose + Carry | `/grill-adapter:wiki-research`（phase plan）+ `wiki_context_render.py --scaffold` → 建 ticket roster → `--finalize` + `/grill-adapter:source-truth-check`（plan-pre / plan-review） | `.adapter/context/<feature-slug>.` 下的 `obsidian-wiki-selection.json`、schema-v6 `wiki-context.json`、`ticket-roster.json` |
-| 4 | `/implement`（每 ticket） | Bind | 首个 ticket 前 `--fingerprint-preflight`；每个 v5/v6 sidecar 都运行 `/grill-adapter:wiki-materialize <ticket>` | 当前任务的权威硬约束、角色 Skill Card、1 跳闭包、lint；候选经 `/candidate-journal` 追加 |
+| 4 | `/implement`（每 ticket/direct task） | Readiness + Bind | 首次代码修改前 `/grill-adapter:wiki-readiness`；`ready` 时做 fingerprint preflight + `/grill-adapter:wiki-materialize <ticket>` | 稳定 task identity + readiness receipt；可用时注入权威硬约束/角色 Skill Card/1 跳闭包，否则按显式 fail-open 结果继续 |
 | 5 | `/code-review` 后 | Capture | `/grill-adapter:update-wiki`（内部先把 grill 增量转成 candidate events；Obsidian 先 propose diff 再经 write bridge CAS apply） | journal outcome receipt + staged Note change |
 | 6 | `/diagnosing-bugs` | Disclose + Capture | `/grill-adapter:wiki-research`（phase debug）→ `/grill-adapter:break-loop` → `/grill-adapter:update-wiki` | 根因复盘 + wiki 回写 |
 
@@ -111,30 +112,28 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
 
 - `.adapter/context/` 下的东西**一律不提交**——sidecar、roster、candidates 都是本地工作态，执行期在同一工作树就地读取，不 `git add -f`。
 
-### 步骤 4 · `/implement`（每 ticket）— Bind
+### 步骤 4 · `/implement`（每 ticket/direct task）— Readiness + Bind
 
-执行阶段以 ticket/reviewer 为单位，逐个 **reread 当前任务的权威硬约束**。schema-v5 materialize section 整段；schema-v6 只通过绑定的 Obsidian MCP 按 stable `wikiId` materialize 路由的 hard Note、当前角色所需 Skill Card 与直接 `depends_on` Note。sidecar 摘要永远不能替代运行期全文。
+首次代码修改前先调用 `/grill-adapter:wiki-readiness`，把所有入口统一成一个稳定执行任务：
 
-1. 首个 ticket 前做一次指纹预检：
+1. 正式拆票流程复用已有 finalized context、ticket roster、路由和 fingerprint，不做 late research，也不改写这些产物。
+2. 直接实现 tracker issue 时，以真实 issue 编号为 `taskId`、完整 issue body 为 `text`，机械生成单任务 roster；已确认的对话需求使用 `ticketSource: manual` + 固定 `taskId: manual`，完整实现简报是 fingerprint 输入，不隐式拆任务。
+3. 无匹配 formal context 时才做单任务 late formal selection + Carry。Wiki 未启用记为 `disabled`，健康但无相关知识记为 `no-relevant`；二者都不伪造 context，直接继续。
+4. Wiki 已配置但 health/research/Carry/Bind 任一失败记为 `broken`。向用户说明影响并让其选择停止修复或继续；adapter 不把它升级成不可绕过的实现门。继续时丢弃全部不完整/陈旧输出，不读取、不注入 sidecar 摘要或部分 materialize 内容。
+5. `ready` 时，执行阶段以 task 为单位 **reread 当前任务的权威硬约束**。schema-v5 materialize section 整段；schema-v6 只通过绑定的 Obsidian MCP 按 stable `wikiId` materialize 路由的 hard Note、当前角色所需 Skill Card 与直接 `depends_on` Note。sidecar 摘要永远不能替代运行期全文。
+
+   首先做指纹预检，再 bind：
 
    ```
    /wiki-materialize --fingerprint-preflight
-   ```
-
-2. 每个 ticket 执行前 bind：
-
-   ```
    /wiki-materialize <ticket>
    ```
 
-   - 背后跑 `wiki_materialize_task.py`，reread 权威全文。
-   - schema-v5 覆盖**本地** wiki 与 **github_mcp**（共享）wiki；schema-v6 只经 Obsidian MCP 读取受绑定 Source 的 stable-ID Note，不回退读 Vault 文件系统。
-   - 做**有界、去重 1 跳 depends-on / depends_on 闭包**：只把当前选择直接依赖的目标一并 materialize，不追二跳。
-   - schema-v6 对 binding digest、source/role、stable ID、content hash，以及 Skill Card remote-base 同步状态、provider/name/version/contract hash/triggers/roles/discovery state 任一漂移均 fail-closed；Card 命中后 materialize 还会明确要求调用对应 project skill，不能只读 Card 摘要；修复 Carry 后再执行。
+   背后仍由 `wiki_materialize_task.py` 唯一读取权威全文；schema-v5 覆盖本地 + `github_mcp`，schema-v6 只经 Obsidian MCP，并做有界、去重 1 跳闭包。binding/Note/Card/base/pack 任一漂移都让 Wiki 校验 fail-closed；宿主是否停止实现则由 readiness 的用户选择决定。
 
-3. `source-truth-lint` hook（PostToolUse / Stop）对**真实改动文件**做 lint；命中 **block / ask** 必须处理后才继续。
+6. readiness 结果写入 `.adapter/context/<feature-slug>.wiki-readiness.json`，只保存 task identity、fingerprint、状态和安全的 context 文件名引用，不保存 Note body。roster/context/receipt 都是本地工作态，不提交。
 
-4. 执行中涌现的 durable 决策 / 坑，调用 `/candidate-journal`（stage `implementation`）机械追加，留待步骤 5 捕获；禁止手写 JSONL。
+7. `source-truth-lint` hook（PostToolUse / Stop）对**真实改动文件**做 lint；命中 **block / ask** 必须处理后才继续。执行中涌现的 durable 决策 / 坑，经 `/candidate-journal`（stage `implementation`）机械追加，留待步骤 5 捕获。
 
 ### 步骤 5 · `/code-review` 后 — Capture
 
@@ -225,9 +224,9 @@ grill-adapter 同时以 **Claude Code plugin** 与 **Codex plugin** 形式发布
 
 唯一不由 plugin 承载的是目标项目的 host 约定块：Claude 写 `CLAUDE.md`，Codex 写 `AGENTS.md`。由 `./manage.sh install <project> --host grill|plain --runtime claude|codex|both` 写入；块里只点名 skill，不含任何安装路径。
 
-**Skills（12）**：`wiki-research`、`wiki-materialize`、`candidate-journal`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`publish-shared-wiki`、`shared-wiki-mcp`、`scaffold-practice-skill`、`break-loop`、`source-truth-check`。
+**Skills（13）**：`wiki-readiness`、`wiki-research`、`wiki-materialize`、`candidate-journal`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`publish-shared-wiki`、`shared-wiki-mcp`、`scaffold-practice-skill`、`break-loop`、`source-truth-check`。
 
-> 其中 `wiki-research` / `wiki-materialize` / `candidate-journal` / `update-wiki` / `source-truth-check` / `break-loop` 直接出现在上面的端到端流程；`init-wiki` / `import-wiki` / `migrate-wiki` 是建库与 wiki 生命周期 skill，`migrate-wiki` 也承载 legacy → Obsidian 的 plan/apply/verify/cutover；`publish-shared-wiki` / `shared-wiki-mcp` 服务共享 wiki；`scaffold-practice-skill` 负责把可复用实践固化成技能包。
+> 其中 `wiki-readiness` / `wiki-research` / `wiki-materialize` / `candidate-journal` / `update-wiki` / `source-truth-check` / `break-loop` 直接出现在上面的端到端流程；`init-wiki` / `import-wiki` / `migrate-wiki` 是建库与 wiki 生命周期 skill，`migrate-wiki` 也承载 legacy → Obsidian 的 plan/apply/verify/cutover；`publish-shared-wiki` / `shared-wiki-mcp` 服务共享 wiki；`scaffold-practice-skill` 负责把可复用实践固化成技能包。
 >
 > 约定块里对 grill-adapter 自己的 skill 一律带命名空间调用（`/grill-adapter:wiki-research` 等）；grill 自带的 `/grill-with-docs`、`/to-spec`、`/implement` 等不加。
 

@@ -48,7 +48,7 @@ codex plugin marketplace add YWJ-hy/grill-adapter
 codex plugin add grill-adapter@grill-adapter
 ```
 
-plugin 一启用，12 个 skill、1 个 agent、3 个 hook 和两个 MCP server（legacy `shared-wiki`、Source-binding `obsidian-wiki`）**一起注册、自动生效**——不往 `~/.claude/skills`、`~/.claude/agents` 拷文件，也不往你项目的 `.claude/settings.json` 里并 hook 片段。
+plugin 一启用，13 个 skill、1 个 agent、3 个 hook 和两个 MCP server（legacy `shared-wiki`、Source-binding `obsidian-wiki`）**一起注册、自动生效**——不往 `~/.claude/skills`、`~/.claude/agents` 拷文件，也不往你项目的 `.claude/settings.json` 里并 hook 片段。
 
 **关于 `--scope`**：skills / agents / hooks / MCP **共用 plugin 的 scope**，plugin 自带的 MCP 无法单独设 scope。想要 shared-wiki MCP 只在**这个项目**里起，就用 `--scope project`；想跨项目共用，用 `--scope user`。
 
@@ -93,7 +93,7 @@ cd grill-adapter
 | 1 质询/发现 | `/grill-with-docs` | Disclose：约定提示 `/grill-adapter:wiki-research`（brainstorm） | spec 草稿 |
 | 2 定 spec | `/to-spec` | source-truth Verify：`/grill-adapter:source-truth-check`（spec-pre） | spec |
 | 3 拆 ticket | `/to-tickets` | Disclose+Carry：`/grill-adapter:wiki-research`（plan）→ scaffold sidecar → 由真实 ticket 建 roster → `--finalize` | `.adapter/context/<feature-slug>.{wiki-context,ticket-roster}.json` |
-| 4 实现 | `/implement` | Bind：每 ticket `/grill-adapter:wiki-materialize <ticket>`；`source-truth-lint` hook | 代码 + 硬约束整段 reread |
+| 4 实现 | `/implement` | Readiness+Bind：首次修改前 `/grill-adapter:wiki-readiness`；`ready` 才按 task materialize；`source-truth-lint` hook | 稳定 task/receipt + 可用时的硬约束全文 |
 | 5 评审后 | `/code-review` → `/grill-adapter:update-wiki` | Capture：最终证据 reconcile → proposal/apply → 确认 scope 后按 repository 发布 resumable draft PR | applied receipt + `.wiki-publish.json` + draft PR |
 | 6 调试（如需） | `/diagnosing-bugs` → `/grill-adapter:break-loop` | debug Disclose + 复盘→Capture | 修复 + 复盘候选 |
 
@@ -114,7 +114,7 @@ cd grill-adapter
 ## 6. 验证你的安装
 
 ```bash
-claude --plugin-dir "$PWD" plugin details grill-adapter   # 不安装即加载：应报 12 skills / 1 agent / 3 hooks / 2 MCP servers
+claude --plugin-dir "$PWD" plugin details grill-adapter   # 不安装即加载：应报 13 skills / 1 agent / 3 hooks / 2 MCP servers
 ./manage.sh self-test                # 跑全套 smoke/regression（别传仓库根，见 DEVELOPMENT_CN.md）
 ./manage.sh release-check <project>  # 发布前总门（plugin 加载 + 沙盒接线 + verify + 全套 + doctor，非破坏）
 ```

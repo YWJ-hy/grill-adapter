@@ -25,9 +25,13 @@ Sidecars anchor on the feature, not on a plan file: they live in `.adapter/conte
 
 The sidecar is the record of which wiki constrains this feature. Nothing under `.adapter/context/` is committed — sidecar, roster, and candidates are local working state that execution reads in place. Never `git add -f` them.
 
-### Bind — before implementing each task
+### Wiki readiness + Bind — before implementing each task
 
-Run `/grill-adapter:wiki-materialize <task-id>` before every implementation or review task and `--fingerprint-preflight` once before the first task. Schema-v5 rereads hard local + `github_mcp` sections; schema-v6 rereads only the routed hard Obsidian Notes, reviewer/implementer-required Skill Cards, and their bounded de-duplicated 1-hop `depends_on` closure. A materialized Card explicitly requires invoking its verified project skill for the current role; metadata summaries never replace executable pack content. The command fails closed on binding, Note identity/content, base synchronization, or any Skill Card pack/metadata drift; repair Carry rather than bypassing it. The `source-truth-lint` hook lints real changed files; resolve any `block`/`ask` before completing the task.
+For every task, invoke `/grill-adapter:wiki-readiness` before the first code edit. It establishes one stable task identity: reuse a formal finalized context when present, create one full-body task for a direct tracker issue, or create one `manual` task from the confirmed conversational brief without silently splitting it.
+
+The skill performs late formal selection and Carry only when no formal context matches. `no-relevant` and `disabled` continue without Wiki context. A configured but invalid research/Carry/Bind path is `broken`: explain it and let the user stop or continue without Wiki context. On continue, partial or stale output must not be read, injected, or executed. Wiki validation stays fail-closed while host implementation availability stays fail-open.
+
+For `ready`, the skill runs `/grill-adapter:wiki-materialize <task-id>` with role `implementer` and performs the fingerprint preflight. Schema-v5 rereads hard local + `github_mcp` sections; schema-v6 rereads only the routed hard Obsidian Notes, implementer-required Skill Cards, and their bounded de-duplicated 1-hop `depends_on` closure. A materialized Card explicitly requires invoking its verified project skill for the current role; metadata summaries never replace executable pack content. The command fails closed on binding, Note identity/content, base synchronization, or any Skill Card pack/metadata drift; deliberate Carry repair is required instead of a blind fingerprint restamp. The `source-truth-lint` hook lints real changed files; resolve any `block`/`ask` before completing the task.
 
 While implementing, invoke `/grill-adapter:candidate-journal` with stage `implementation` for durable decisions/gotchas and keep going.
 
