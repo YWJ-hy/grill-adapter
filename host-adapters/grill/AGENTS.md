@@ -7,7 +7,6 @@ grill stage → grill-adapter touchpoint:
 
 | grill stage | do this |
 |---|---|
-| (before) Lanhu link given | Intake first |
 | `$mattpocock-skills:grill-with-docs` | Disclose wiki |
 | `$mattpocock-skills:to-spec` | source-of-truth Verify (spec) |
 | `$mattpocock-skills:to-tickets` | Disclose+Carry wiki, source-of-truth Verify (plan) |
@@ -18,10 +17,6 @@ grill stage → grill-adapter touchpoint:
 ### Candidate journal — throughout the workflow
 
 Whenever a stage surfaces a possible durable Wiki Note or executable Skill Card registration, run `$grill-adapter:candidate-journal append <feature-slug> <stage>` instead of writing Obsidian or hand-editing JSONL. Every stage targets the same `.adapter/context/<feature-slug>.wiki-candidates.jsonl` append-only journal. Use these stage values: `grill-with-docs`, `specification`, `tickets`, `implementation`, `review`, and `debugging`. Capture liberally; `$grill-adapter:update-wiki` remains the only semantic keep-or-skip gate.
-
-### Intake — Lanhu requirements (only when a Lanhu link is given)
-
-If the user provides a Lanhu URL/invite link or asks for Lanhu, before `$mattpocock-skills:grill-with-docs` run `$grill-adapter:lanhu-requirements <link> frontend|backend <optional name>`, confirm the generated `.lanhu/.../index.md` evidence package, then feed that package to `$mattpocock-skills:grill-with-docs` as requirements input. The evidence package is **input only**: never copy Lanhu content into wiki, spec, tickets, acceptance criteria, or tests. No Lanhu link → skip this entirely.
 
 ### Disclose — during `$mattpocock-skills:grill-with-docs`
 
@@ -82,5 +77,5 @@ Do not call `$grill-adapter:wiki-research` at the start of debugging. After Phas
 
 ### Boundary
 
-grill-adapter's standalone utility skills (`init-wiki`, `import-wiki`, `migrate-wiki`, `lanhu-requirements`, `shared-wiki-mcp`, `publish-shared-wiki`, `candidate-journal`, `update-wiki`, `scaffold-practice-skill`) are utilities, not grill workflow steps. Do not auto-invoke grill's planning/implementation/review/completion skills solely because one of them ran.
+grill-adapter's standalone utility skills (`init-wiki`, `import-wiki`, `migrate-wiki`, `shared-wiki-mcp`, `publish-shared-wiki`, `candidate-journal`, `update-wiki`, `scaffold-practice-skill`) are utilities, not grill workflow steps. Do not auto-invoke grill's planning/implementation/review/completion skills solely because one of them ran.
 <!-- grill-adapter:host:grill:end -->

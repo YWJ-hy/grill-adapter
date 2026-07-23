@@ -11,7 +11,7 @@ Use one `feature-slug` for the entire workflow. Choose the stage from `grill-wit
 
 ## Append
 
-Capture one atomic claim. Use `candidate-type=wiki_note` for facts, constraints, decisions, guides, conventions, and gotchas. Use `candidate-type=skill_card` only after `scaffold-practice-skill` has produced a valid executable pack identity. Include final evidence paths or issue references in `source-ref`; never use a Lanhu evidence package as a source.
+Capture one atomic claim. Use `candidate-type=wiki_note` for facts, constraints, decisions, guides, conventions, and gotchas. Use `candidate-type=skill_card` only after `scaffold-practice-skill` has produced a valid executable pack identity. Include final evidence paths or issue references in `source-ref`.
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py append \

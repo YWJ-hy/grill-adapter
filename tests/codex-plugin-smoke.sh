@@ -20,7 +20,12 @@ for server in manifest["mcpServers"].values():
     assert server["cwd"] == "."
     assert server["args"][0].startswith("./mcp/")
 assert manifest["interface"]["displayName"] == "Grill Adapter"
-assert len(list((root / "skills").glob("*/SKILL.md"))) == 13
+skills = list((root / "skills").glob("*/SKILL.md"))
+assert len(skills) == 12
+removed_capability = "lan" + "hu"
+assert not any(removed_capability in path.as_posix().lower() for path in skills)
+assert len(list((root / "agents").glob("*.md"))) == 1
+assert not any(removed_capability in path.as_posix().lower() for path in (root / "agents").glob("*.md"))
 
 hooks = json.loads((root / "hooks/hooks.json").read_text(encoding="utf-8"))
 assert set(hooks) == {"hooks"}, "Codex rejects unknown top-level hook fields"
@@ -42,6 +47,29 @@ if command -v codex >/dev/null 2>&1; then
   codex plugin add grill-adapter@grill-adapter --json >/dev/null || fail "Codex plugin add failed"
   codex plugin list | grep -q 'grill-adapter@grill-adapter.*installed, enabled' \
     || fail "Codex plugin is not installed and enabled"
+  codex debug prompt-input > "$SANDBOX/prompt-input.json" \
+    || fail "Codex could not render the installed prompt input"
+  python3 - "$SANDBOX/prompt-input.json" <<'PY' || exit 1
+import json
+import pathlib
+import re
+import sys
+
+prompt_input = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+skill_names = set()
+for message in prompt_input:
+    for content in message.get("content", []):
+        if not isinstance(content, dict):
+            continue
+        for line in content.get("text", "").splitlines():
+            match = re.match(r"^- (grill-adapter:[^:]+):", line)
+            if match:
+                skill_names.add(match.group(1))
+
+assert len(skill_names) == 12, sorted(skill_names)
+removed_capability = "lan" + "hu"
+assert not any(removed_capability in name.lower() for name in skill_names)
+PY
 else
   printf 'codex plugin CLI check SKIP (codex not found)\n'
 fi

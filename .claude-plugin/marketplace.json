@@ -9,7 +9,7 @@
     {
       "name": "grill-adapter",
       "source": "./",
-      "description": "Sectioned cross-repo project wiki, Lanhu requirements intake, and source-of-truth verify/lint for grill or plain Claude Code/Codex.",
+      "description": "Sectioned cross-repo project wiki, source-of-truth verify/lint, and debugging retrospectives for grill or plain Claude Code/Codex.",
       "category": "engineering",
       "keywords": [
         "wiki",

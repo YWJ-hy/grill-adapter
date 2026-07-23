@@ -2,7 +2,7 @@
 
 本文记录 grill-adapter 的关键设计决策及其**理由**，是一份 rationale（取舍）文档，不是使用手册。
 
-grill-adapter 是一个 **host-agnostic 的 Claude Code 适配器**，由一个成熟但与 Superpowers 深度耦合的 adapter 解耦而来。它**完整保留全部功能**（项目 wiki + 蓝湖 Lanhu 需求接入 + source-of-truth 真实源校验 + break-loop），只**丢掉唯一一件东西**：`native_skill_patch.py` 机制（往 Superpowers 自己的 skill 里打 6-9 个锚点补丁）。默认前端宿主 = **grill**（mattpocock/skills），同时也支持裸 Claude Code。
+grill-adapter 是一个 **host-agnostic 的 Claude Code 适配器**，由一个成熟但与 Superpowers 深度耦合的 adapter 解耦而来。当前产品边界包括项目 wiki、source-of-truth 真实源校验和 break-loop；原有的 `native_skill_patch.py` 机制（往 Superpowers 自己的 skill 里打 6-9 个锚点补丁）已被移除。默认前端宿主 = **grill**（mattpocock/skills），同时也支持裸 Claude Code。
 
 下面每条决策按 **背景 / 决策 / 理由** 三段展开。
 
@@ -235,7 +235,7 @@ shared wiki 采用**每项目绑定**：
 ## 决策 12：以 Claude Code 插件发货（取代决策 8）
 
 **背景**
-两级安装（用户级 skills/agents/payload + 项目级 hook/约定）有三个实际问题：12 个 skill + 3 个 agent 无差别出现在**每个**项目（包括不用 wiki 的），装卸靠 `manage.sh` 手工搬文件，shared-wiki MCP 还要用户手动 `claude mcp add-json` 注册。Claude Code 的插件机制恰好原生解决这三点。
+两级安装（用户级 skills/agents/payload + 项目级 hook/约定）有三个实际问题：12 个 skill + 1 个 agent 无差别出现在**每个**项目（包括不用 wiki 的），装卸靠 `manage.sh` 手工搬文件，shared-wiki MCP 还要用户手动 `claude mcp add-json` 注册。Claude Code 的插件机制恰好原生解决这三点。
 
 起点是一个更糟的提议：把 adapter 的 skill 直接塞进宿主插件目录（`~/.claude/plugins/cache/mattpocock/mattpocock-skills/`）。这条路**必须否掉**——见下方「否掉的方案」。
 
@@ -246,14 +246,12 @@ shared wiki 采用**每项目绑定**：
 - **hook 随插件注册**（`hooks/hooks.json`），不再并进项目 `.claude/settings.json`；`host-adapters/hooks.settings.json` 删除。
 - **MCP 随插件自启**（`.mcp.json`），`manage.sh mcp-registration` 删除。`npm run build` 改为 esbuild 单文件打包，**`dist/index.js` 提交进仓库**；类型检查拆到 `npm run typecheck`。
 - **`install.py` 只剩一件事**：写/剥目标项目 `CLAUDE.md` 的 host 约定块。`manifest.json` 只剩 `projectLevel.hostConventions`；`GRILL_ADAPTER_HOME` 移除。
-- **Lanhu 生成源 `agents/lanhu-requirements-analyst.common.md` → `role-prd/analyst.common.md`**。
 
 **理由**
 - **作用域**：`--scope project` 让 skills/agents/hooks/MCP 只在需要的项目出现，用户级命名空间不再被污染；这也正是宿主 grill 自己的安装方式。
 - **`${CLAUDE_PLUGIN_ROOT}` 比安装期替换更强**：插件升级后自动跟着走，而烤死的绝对路径会腐烂。
 - **约定块零路径是被逼出来的、不是洁癖**：它落在插件外，`${CLAUDE_PLUGIN_ROOT}` 不会被替换；而插件缓存路径带版本号（`.../0.2.0/`）、旧版本约 7 天后回收，烤死路径必然静默腐烂。只点名 skill 是唯一稳的形态。
 - **提交 bundle 是插件模型的硬约束**：插件缓存**没有安装期构建步骤**，`.mcp.json` 直接启动提交进去的那份。
-- **生成源不能放 `agents/`**：插件把 `agents/*.md` 全部注册成 agent，模板放那儿会变成幽灵 agent（实测：挪走前 `plugin details` 报 4 个 agent）。
 
 **否掉的方案：把 skill 装进宿主插件目录**
 - **版本化路径 + GC**：真实路径是 `cache/mattpocock/mattpocock-skills/1.2.0/`，宿主发 1.2.1 即换目录，写进去的东西失联，旧目录约 7 天后被回收。官方文档明言该目录是 ephemeral、不要往里写状态，跨插件写入不受支持。
@@ -275,7 +273,7 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 **决策**
 - 新增 `.codex-plugin/plugin.json`，复用现有 skills、hooks、MCP bundle 与 marketplace；Codex MCP 声明使用原生 `cwd: "."` + 相对 bundle 路径，不复制执行层。
 - `manage.sh` 增加独立的 `--runtime claude|codex|both` 维度；workflow host 仍由 `--host grill|plain` 决定。Claude 写 `CLAUDE.md`，Codex 写 `AGENTS.md`。
-- 保留 `agents/*.md` 为单一角色真相源。Claude 直接注册；Codex 由 `wiki-research` / `lanhu-requirements` 读取完整 prompt 后派生通用 sub-agent。
+- 保留 `agents/wiki-researcher.md` 为单一角色真相源。Claude 直接注册；Codex 由 `wiki-research` 读取完整 prompt 后派生通用 sub-agent。
 - hooks/MCP 配置使用两端都接受的严格 JSON 子集。MCP 项目根在 Claude Code 下取 `CLAUDE_PROJECT_DIR`，在 Codex 下取 MCP request 的 Git workspace metadata，并兼容标准 roots capability；直接 CLI 才回退进程 cwd。Codex 的 plugin MCP cwd 是插件根，不能充当消费项目根。
 - 发布门加入隔离 `CODEX_HOME` 下的真实 marketplace add + plugin add smoke；共享运行时改动最终仍需真跑完整 Codex 集成路径。
 
@@ -325,7 +323,7 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 - 同一 feature identity 与 Carry/Bind sidecar 对齐，host 不需要暴露 plan 文档或引擎路径。
 
 **代价（已知并接受）**
-- 插件组件从 12 增至 13 skills；release inventory 与双 runtime smoke 必须同步。
+- 插件组件清单当前为 12 skills；release inventory 与双 runtime smoke 必须同步。
 - 旧裸 candidate rows 不兼容新 journal，过渡中的活动 feature 必须重新经 skill 追加，不能混写或自动猜测迁移。
 
 ---
