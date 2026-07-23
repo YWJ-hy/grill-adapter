@@ -45,6 +45,16 @@ Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specif
 
 ---
 
+## 已知 grill 接线缺口（待设计）
+
+以下路径尚未实现完整接线。本节只记录问题，不代表当前运行时已经提供对应兜底：
+
+- **非连续 `/to-spec` 缺少条件式 Disclose**：标准主流程依赖同一上下文中较早的 `/grill-with-docs` brainstorm 结果；直接调用 `/to-spec`、从 `/wayfinder` 汇入、或经 prototype/handoff/compact 换会话后进入 `/to-spec` 时，当前不会先确认本流程是否已经披露相关 Wiki，可能到 `/to-tickets` 才发现冲突。
+- **长周期决策与独立设计入口缺少聚焦 Disclose**：`/wayfinder` 的 map/decision ticket、`/improve-codebase-architecture`，以及 `/triage` 进入 grilling/domain-modeling 的分支尚未查询相关 Wiki，可能重复已有调查或重新提出已沉淀的约束。通用 `/research` 仍应保持一手来源调查职责，不应被改造成 Wiki 查询入口。
+- **host 约定测试只证明触点名称存在**：当前 smoke 主要验证约定块包含各 adapter skill，尚未证明调用顺序、角色路由和替代流程语义。后续验收需覆盖 direct-to-spec、wayfinder 汇入、独立设计入口等真实 Codex 路径。
+
+---
+
 ## 分步流程
 
 ### 步骤 1 · `/grill-with-docs`（质询/发现）— Disclose
