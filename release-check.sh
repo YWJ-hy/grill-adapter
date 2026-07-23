@@ -77,12 +77,12 @@ step "6. Plugin loads with its full component inventory"
 if command -v claude >/dev/null 2>&1; then
   inventory="$(claude --plugin-dir "$SCRIPT_DIR" plugin details grill-adapter 2>&1 || true)"
   inv_fail=0
-  for expected in "Skills (12)" "Agents (1)" "Hooks (3)" "MCP servers (2)"; do
+  for expected in "Skills (13)" "Agents (1)" "Hooks (3)" "MCP servers (2)"; do
     if ! grep -qF "$expected" <<<"$inventory"; then
       echo "  FAIL (expected '$expected' in plugin inventory)"; inv_fail=1
     fi
   done
-  if [[ $inv_fail -eq 0 ]]; then echo "  OK (12 skills, 1 agent, 3 hooks, 2 MCP servers)"; else
+  if [[ $inv_fail -eq 0 ]]; then echo "  OK (13 skills, 1 agent, 3 hooks, 2 MCP servers)"; else
     sed 's/^/    /' <<<"$inventory" | head -12; fail=1
   fi
 else

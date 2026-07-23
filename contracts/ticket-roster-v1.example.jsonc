@@ -12,6 +12,10 @@
   //   grill, GitHub/Linear tracker  -> one entry per ticket issue (`gh issue view <n> --json body,title`);
   //                                    taskId is the issue number, text is the issue body.
   //   plain Claude Code             -> whatever the user points you at; taskId is any stable id.
+  //   direct tracker implementation -> exactly one entry; wiki_readiness.py prepare-issue copies the
+  //                                    real issue id/title and full body without rewriting it.
+  //   confirmed conversational work -> exactly one `manual` entry; the complete confirmed brief is
+  //                                    the fingerprint input and must not be silently split.
   //
   // Which form applies is recorded per repo by grill's `/setup-matt-pocock-skills` in
   // docs/agents/issue-tracker.md. Read that, do not guess.

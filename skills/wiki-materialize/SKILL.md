@@ -13,6 +13,7 @@ It does not patch any host skill. A host wires it in by convention:
 
 - **grill**: run `/grill-adapter:wiki-materialize <ticket>` per ticket at the start of `/implement`, before touching code for that ticket. `/implement` is never patched.
 - **plain Claude Code**: run `/grill-adapter:wiki-materialize <task-id>` yourself before implementing each task.
+- **unified implementation entry**: `wiki-readiness` runs this Bind step after it has reused or late-finalized the current task's context. It records `ready` only after successful implementer materialization.
 - The session-level `wiki-reread` hook only reminds the session about active bindings; the explicit per-ticket call is the only reread path.
 
 The ticket id is the `taskId` from the feature's ticket roster — the same id the sidecar's `destination.tasks` routes to. Your host's convention block says how its tickets are identified (grill local-markdown: the `NN` filename prefix; a real tracker: the issue number). Resolve the sidecar and roster from the working tree (inside the final worktree if one is used).
@@ -49,11 +50,16 @@ For a reviewer pass, use `--role reviewer`. To append directly into a handoff fi
 
 It fails closed on binding changes, missing or duplicate IDs, content or metadata drift, Skill Card policy violations, unreadable Notes, partial results, unavailable required MCP tools, and shared-wiki rebinding/revision drift. Do not hand-fetch Notes or sections, call MCP read tools yourself, or paste body text instead.
 
+When called by `wiki-readiness`, preserve this fail-closed behavior. A failure becomes a host-level
+`broken` readiness result: explain it and let the user stop or continue without Wiki context. Never
+return partial materialization as usable context, and never weaken validation to keep implementation
+moving.
+
 ---
 
 ## Boundaries
 
 - The emitted rereads are authoritative **hard constraints**, not additional search results. Verify compliance against the full section text; do not apply sibling sections or whole-page body.
-- During execution/review do not call `wiki-researcher`, dispatch another wiki-selection subagent, manually reread wiki roots, or reselect wiki pages. If the rendered constraints or hard rereads are missing or clearly insufficient, pause and return to planning to repair the feature's `.wiki-context.json` sidecar.
+- During execution/review do not call `wiki-researcher`, dispatch another wiki-selection subagent, manually reread wiki roots, or reselect wiki pages. `wiki-readiness` may perform single-task late Carry only before the first code edit when no formal context exists. After that point, repair Carry deliberately or continue through its explicit `broken` user choice without Wiki content.
 - Do not persist rendered task-context Markdown files during normal execution unless using an explicit `--append-to` handoff file.
 - This is a standalone utility skill, not a host development workflow step; do not auto-invoke the host's completion or verification skills because it ran.

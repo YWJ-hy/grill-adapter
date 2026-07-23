@@ -10,7 +10,7 @@ grill stage → grill-adapter touchpoint:
 | `$mattpocock-skills:grill-with-docs` | Disclose wiki |
 | `$mattpocock-skills:to-spec` | source-of-truth Verify (spec) |
 | `$mattpocock-skills:to-tickets` | Disclose+Carry wiki, source-of-truth Verify (plan) |
-| `$mattpocock-skills:implement` | Bind wiki per ticket |
+| `$mattpocock-skills:implement` | Wiki readiness + Bind per ticket |
 | `$mattpocock-skills:code-review` | Capture (update-wiki) |
 | `$mattpocock-skills:diagnosing-bugs` | conditional Disclose, then break-loop→Capture |
 
@@ -43,9 +43,13 @@ The sidecar **is** the record of which wiki constrains this feature — there is
 
 **Commit policy**: nothing under `.adapter/context/` is committed — not the sidecar, not the roster, not the candidates. They are local working state that execution reads in place from the same working tree. Never `git add -f` them.
 
-### Bind — during `$mattpocock-skills:implement`
+### Wiki readiness + Bind — during `$mattpocock-skills:implement`
 
-Run `$grill-adapter:wiki-materialize <ticket-id>` for every ticket. Schema-v5 rereads authoritative local + `github_mcp` sections; schema-v6 rereads only routed hard Obsidian Notes, role-required Skill Cards, and their bounded de-duplicated 1-hop `depends_on` closure through the bound Obsidian MCP. It fails closed on binding, identity/content, base synchronization, or any Skill Card pack/metadata drift; a materialized Card explicitly requires invoking its verified project skill for the current role, and metadata summaries never replace executable pack content. In both cases `<ticket-id>` is the roster `taskId` — the `NN` prefix for local-markdown tickets, the issue number for a real tracker. Run the one-time `--fingerprint-preflight` (with `--ticket-roster`) before the first ticket; it fails closed if a ticket's text changed after the wiki selection was bound, which means re-running `--finalize` before implementing.
+For every task, invoke `$grill-adapter:wiki-readiness` before the first code edit. It establishes one stable task identity and records an atomic readiness result for all three entry forms: reuse the formal finalized context for a planned ticket; create one full-body roster task for a direct tracker issue; or create one `manual` task from a confirmed conversational implementation brief without silently splitting it.
+
+The readiness skill reuses a valid finalized context unchanged. Otherwise it performs late formal selection and Carry for that single task. `no-relevant` and `disabled` continue without Wiki context. A configured but invalid research/Carry/Bind path is `broken`: explain the failure and let the user choose whether to stop or continue without Wiki context. If they continue, all partial or stale output must not be read, injected, or executed. Wiki validation remains fail-closed even though host implementation availability is fail-open.
+
+For `ready`, the skill runs `$grill-adapter:wiki-materialize <ticket-id>` with role `implementer`. Schema-v5 rereads authoritative local + `github_mcp` sections; schema-v6 rereads only routed hard Obsidian Notes, role-required Skill Cards, and their bounded de-duplicated 1-hop `depends_on` closure through the bound Obsidian MCP. It fails closed on binding, identity/content, base synchronization, or any Skill Card pack/metadata drift; a materialized Card explicitly requires invoking its verified project skill for the current role, and metadata summaries never replace executable pack content. In both cases `<ticket-id>` is the roster `taskId` — the `NN` prefix for local-markdown tickets, the issue number for a real tracker, or `manual` for a conversational brief. Run the one-time `--fingerprint-preflight` (with `--ticket-roster`) before materialization; ticket drift requires deliberate rerouting and `--finalize`, never a blind restamp.
 
 The `source-truth-lint` hook (PostToolUse/Stop) lints the real changed files during implementation. If it reports `block`, revert the `truth/edit: never` edit or route it upstream before completing the ticket; if `ask`, get explicit authorization or revert. Authorization never bypasses `truth/edit: never`.
 

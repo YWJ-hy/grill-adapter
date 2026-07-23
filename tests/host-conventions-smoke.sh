@@ -27,13 +27,14 @@ for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN" "$HOOKS_JSON"; do
 done
 
 # Codex blocks carry the same touchpoints with native skill mentions.
-for skill in wiki-research wiki-materialize update-wiki candidate-journal source-truth-check break-loop; do
+for skill in wiki-readiness wiki-research wiki-materialize update-wiki candidate-journal source-truth-check break-loop; do
   need "$CODEX_GRILL" "\$grill-adapter:$skill"
 done
 need "$CODEX_GRILL" '$mattpocock-skills:grill-with-docs'
 need "$CODEX_GRILL" '$mattpocock-skills:to-tickets'
 need "$CODEX_GRILL" '$mattpocock-skills:implement'
 need "$CODEX_PLAIN" '$grill-adapter:wiki-research'
+need "$CODEX_PLAIN" '$grill-adapter:wiki-readiness'
 need "$CODEX_PLAIN" '$grill-adapter:wiki-materialize'
 need "$CODEX_PLAIN" 'plain Codex host'
 
@@ -43,6 +44,7 @@ need "$GRILL" 'grill-adapter:host:grill:start'
 need "$GRILL" 'grill-adapter:host:grill:end'
 need "$GRILL" 'never patches any grill skill'
 need "$GRILL" '/grill-adapter:wiki-research'       # Disclose
+need "$GRILL" '/grill-adapter:wiki-readiness'      # implementation-entry readiness
 need "$GRILL" '/grill-adapter:wiki-materialize'    # Bind
 need "$GRILL" '/grill-adapter:update-wiki'         # Capture
 need "$GRILL" '/grill-adapter:candidate-journal'   # feature journal
@@ -55,6 +57,7 @@ need "$GRILL" 'diagnosing-bugs'
 # plain block: same touchpoints, host-name-free framing
 need "$PLAIN" 'grill-adapter:host:plain:start'
 need "$PLAIN" '/grill-adapter:wiki-research'
+need "$PLAIN" '/grill-adapter:wiki-readiness'
 need "$PLAIN" '/grill-adapter:wiki-materialize'
 need "$PLAIN" '/grill-adapter:update-wiki'
 need "$PLAIN" '/grill-adapter:candidate-journal'
@@ -71,6 +74,21 @@ for f in "$GRILL" "$PLAIN"; do
   need "$f" 'review'
   need "$f" 'debugging'
   need "$f" 'wiki-candidates.jsonl'
+done
+
+# The implementation entry is one readiness seam for formal tickets, direct tracker issues,
+# and confirmed conversational work. It must run before code changes and preserve fail-open host
+# availability without allowing broken or partial Wiki content into execution.
+for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
+  need "$f" 'before the first code edit'
+  need "$f" 'formal finalized context'
+  need "$f" 'direct tracker issue'
+  need "$f" 'manual'
+  need "$f" 'no-relevant'
+  need "$f" 'disabled'
+  need "$f" 'broken'
+  need "$f" 'continue without Wiki context'
+  need "$f" 'must not'
 done
 
 # Neither block may carry an install path: they land outside plugin content, where
