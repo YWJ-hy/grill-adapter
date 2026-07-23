@@ -35,6 +35,14 @@ For `ready`, the skill runs `$grill-adapter:wiki-materialize <task-id>` with rol
 
 While implementing, invoke `$grill-adapter:candidate-journal` with stage `implementation` for durable decisions/gotchas and keep going.
 
+### Reviewer Bind — before review subagents
+
+At review entry, identify the exact current task and reuse its implementation readiness receipt through `$grill-adapter:wiki-readiness`. Run its `review-handoff` command **before spawning** any isolated Standards and Spec review subagents. Do not perform late research, repair Carry, or require Wiki health before review.
+
+A valid `ready` receipt materializes only the current task's reviewer-routed hard constraints, direct `depends_on` closure, and reviewer-required Skill Cards. Give both axes the **same read-only handoff** file and require each to read it; the actual reviewer invokes every verified project skill required by a materialized Card. Standards and Spec retain their separate responsibilities and output structure.
+
+`no-relevant`, `disabled`, `broken`, `unknown`, and any receipt/render/materialize failure are a non-blocking caveat. Continue review without Wiki constraints and never inject stale, partial, or unverified output. Independent review with no exact task/receipt uses the same unknown path. After review completes, continue the normal Capture path below.
+
 ### Capture — after the work is reviewed/accepted
 
 Run `$grill-adapter:update-wiki` to validate/fold the journal, reconcile unresolved candidates against final review/code/spec evidence, explicitly consolidate related claims, and record keep/skip/defer for each final candidate. If the project keeps grill-style knowledge files (`CONTEXT.md`, `docs/adr/`), the skill first converts that increment into journal events via its own grill bridge (bridge, not `import-wiki`). The `wiki-capture` hook reminds only on pending/deferred work or an invalid journal.

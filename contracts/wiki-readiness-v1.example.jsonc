@@ -35,3 +35,6 @@
 // Host availability is fail-open: no-relevant and disabled continue automatically; broken offers
 // the user a stop-or-continue choice. Continuing never injects unverified Wiki content. Wiki
 // validation itself remains fail-closed, and fingerprint drift invalidates this receipt.
+// Before code-review subagents start, `review-handoff` revalidates this receipt and materializes
+// `ready` with role reviewer. Every other status/failure becomes a caveat-only handoff; the receipt
+// never stores reviewer Note bodies.

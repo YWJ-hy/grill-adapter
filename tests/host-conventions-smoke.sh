@@ -91,6 +91,30 @@ for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
   need "$f" 'must not'
 done
 
+# Review reuses the implementation readiness result before the host launches its isolated review
+# agents. Both axes receive one all-or-nothing reviewer handoff; no review path performs late
+# research or turns Wiki health into an availability dependency.
+for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
+  need "$f" 'review-handoff'
+  need "$f" 'before spawning'
+  need "$f" 'same read-only handoff'
+  need "$f" 'Standards'
+  need "$f" 'Spec'
+  need "$f" 'late research'
+  need "$f" 'non-blocking'
+  need "$f" 'partial'
+  need "$f" 'Capture'
+done
+python3 - "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN" <<'PY'
+import sys
+
+for path in sys.argv[1:]:
+    text = open(path, encoding="utf-8").read()
+    assert text.index("### Reviewer Bind") < text.index("### Capture"), (
+        f"{path}: Reviewer Bind must precede Capture"
+    )
+PY
+
 # Neither block may carry an install path: they land outside plugin content, where
 # ${CLAUDE_PLUGIN_ROOT} is never substituted, and a baked absolute path would rot on the
 # next plugin update (the cache path is version-scoped).

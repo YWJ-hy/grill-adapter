@@ -41,7 +41,7 @@ Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specif
 | 2 | `/to-spec` | Verify | `/grill-adapter:source-truth-check`（render spec-pre） | 真实源校验结果 |
 | 3 | `/to-tickets`（规划） | Disclose + Carry | `/grill-adapter:wiki-research`（phase plan）+ `wiki_context_render.py --scaffold` → 建 ticket roster → `--finalize` + `/grill-adapter:source-truth-check`（plan-pre / plan-review） | `.adapter/context/<feature-slug>.` 下的 `obsidian-wiki-selection.json`、schema-v6 `wiki-context.json`、`ticket-roster.json` |
 | 4 | `/implement`（每 ticket/direct task） | Readiness + Bind | 首次代码修改前 `/grill-adapter:wiki-readiness`；`ready` 时做 fingerprint preflight + `/grill-adapter:wiki-materialize <ticket>` | 稳定 task identity + readiness receipt；可用时注入权威硬约束/角色 Skill Card/1 跳闭包，否则按显式 fail-open 结果继续 |
-| 5 | `/code-review` 后 | Capture | `/grill-adapter:update-wiki`（内部先把 grill 增量转成 candidate events；Obsidian 先 propose diff 再经 write bridge CAS apply） | journal outcome receipt + staged Note change |
+| 5 | `/code-review` | Reviewer Bind + Capture | 启动 Standards/Spec sub-agents 前用 `/grill-adapter:wiki-readiness` 生成共享 reviewer handoff；review 完成后 `/grill-adapter:update-wiki` | 原子 reviewer context 或非阻塞 caveat；随后 journal outcome receipt + staged Note change |
 | 6 | `/diagnosing-bugs` | Disclose + Capture | `/grill-adapter:wiki-research`（phase debug）→ `/grill-adapter:break-loop` → `/grill-adapter:update-wiki` | 根因复盘 + wiki 回写 |
 
 ---
@@ -135,7 +135,11 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
 
 7. `source-truth-lint` hook（PostToolUse / Stop）对**真实改动文件**做 lint；命中 **block / ask** 必须处理后才继续。执行中涌现的 durable 决策 / 坑，经 `/candidate-journal`（stage `implementation`）机械追加，留待步骤 5 捕获。
 
-### 步骤 5 · `/code-review` 后 — Capture
+### 步骤 5 · `/code-review` — Reviewer Bind + Capture
+
+code-review 确定当前任务后、启动 Standards/Spec 两个隔离 reviewer 前，复用 implement 阶段的 readiness receipt 运行 `review-handoff`。`ready` 会重新校验 roster/fingerprint/context，并以 reviewer 角色只读取该任务的 hard Note、直接 `depends_on` 与 reviewer-required Skill Card；两轴读取同一个本地 handoff，但各自职责和输出结构不变。Card 到达实际 reviewer 后，其 `MUST invoke` project skill 要求必须执行。
+
+`no-relevant`、`disabled`、`broken`、无法确定 task 的 `unknown`，以及 receipt/context/Source/Card/revision/materialize 任一失败，都只生成不含 Wiki 正文的非阻塞 caveat。评审继续，不做 late research、不要求先修 Wiki，且失败路径会覆盖旧 handoff、丢弃所有部分输出。这里是“Wiki 内容完整性 fail-closed、宿主 review 可用性 fail-open”。
 
 review 通过后，把本轮新沉淀的知识回写 wiki。约定块只让你调一个 skill：
 

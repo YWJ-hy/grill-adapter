@@ -49,8 +49,12 @@ def _load_json(path: Path, label: str) -> dict[str, Any]:
 
 
 def _write_json(path: Path, value: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(value, ensure_ascii=False, indent=2) + "\n"
+    _write_text(path, text)
+
+
+def _write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     temp_name: str | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -426,6 +430,14 @@ def bind_readiness(
 
 
 def validate_readiness(receipt_path: Path, task_id: str) -> str:
+    _, _, entry, _ = _validated_readiness_task(receipt_path, task_id)
+    return f"readiness {entry['status']} is valid for task {entry['taskId']}"
+
+
+def _validated_readiness_task(
+    receipt_path: Path,
+    task_id: str,
+) -> tuple[dict[str, Any], Path, dict[str, Any], Path | None]:
     receipt = _load_json(receipt_path, "readiness receipt")
     _validate_receipt_shape(receipt)
     roster_path = receipt_path.parent / _safe_context_filename(receipt["rosterFile"], "rosterFile")
@@ -461,7 +473,176 @@ def validate_readiness(receipt_path: Path, task_id: str) -> str:
         context_path = receipt_path.parent / _safe_context_filename(entry["contextFile"], "contextFile")
         context = _validate_context(context_path, roster_path)
         _validate_context_identity(context, feature_slug, ticket_source, task_id)
-    return f"readiness {entry['status']} is valid for task {task_id}"
+    else:
+        context_path = None
+    return receipt, roster_path, entry, context_path
+
+
+def _review_handoff_text(
+    *,
+    status: str,
+    task_id: str | None,
+    detail: str,
+    rendered: str | None = None,
+    materialized: str | None = None,
+) -> str:
+    lines = [
+        "# Reviewer Wiki Context",
+        "",
+        f"- Status: {status}",
+        f"- Task ID: `{task_id}`" if task_id else "- Task ID: unknown",
+        "",
+    ]
+    if status != "ready":
+        lines.extend(
+            [
+                "## Non-blocking caveat",
+                "",
+                "No verified Wiki reviewer context is available for this review.",
+                f"This is a non-blocking caveat: {detail}",
+                "Continue both Standards and Spec review without Wiki constraints. Do not run late research or delay review.",
+                "",
+            ]
+        )
+        return "\n".join(lines)
+
+    lines.extend(
+        [
+            "Use this same read-only context for both isolated review axes:",
+            "",
+            "- Standards still reports only repository-standard and code-quality findings.",
+            "- Spec still reports only issue/spec completeness, correctness, and scope findings.",
+            "- Wiki constraints may inform either axis but must not merge or change their output structure.",
+            "",
+        ]
+    )
+    for block in (rendered, materialized):
+        if block and block.strip():
+            lines.extend([block.strip(), ""])
+    return "\n".join(lines)
+
+
+def review_handoff(
+    *,
+    receipt_path: Path | None,
+    task_id: str | None,
+    project_root: Path,
+    handoff_path: Path,
+    obsidian_wiki_cmd: str | None,
+    shared_wiki_cmd: str | None,
+) -> str:
+    if not project_root.is_dir():
+        raise ReadinessError(f"project root is not a directory: {project_root}")
+    context_dir = (project_root / ".adapter" / "context").resolve()
+    if handoff_path.resolve().parent != context_dir:
+        raise ReadinessError("review handoff must be a plain file in <project-root>/.adapter/context")
+
+    # A failed refresh must never leave an older reviewer handoff available to subagents.
+    handoff_path.unlink(missing_ok=True)
+
+    normalized_task_id = task_id.strip() if isinstance(task_id, str) and task_id.strip() else None
+    if receipt_path is None or normalized_task_id is None or not receipt_path.is_file():
+        _write_text(
+            handoff_path,
+            _review_handoff_text(
+                status="unknown",
+                task_id=normalized_task_id,
+                detail="the current task or its implementation readiness receipt could not be identified.",
+            ),
+        )
+        return f"wrote fail-open unknown reviewer handoff -> {handoff_path}"
+
+    try:
+        if receipt_path.resolve().parent != context_dir:
+            raise ReadinessError("readiness receipt is outside the current project .adapter/context")
+        _, _, entry, context_path = _validated_readiness_task(receipt_path, normalized_task_id)
+    except (ReadinessError, ValidationError, FingerprintError):
+        _write_text(
+            handoff_path,
+            _review_handoff_text(
+                status="broken",
+                task_id=normalized_task_id,
+                detail="the implementation readiness receipt or its bound context failed validation; all Wiki output was discarded.",
+            ),
+        )
+        return f"wrote fail-open broken reviewer handoff -> {handoff_path}"
+
+    status = entry["status"]
+    if status != "ready":
+        _write_text(
+            handoff_path,
+            _review_handoff_text(
+                status=status,
+                task_id=normalized_task_id,
+                detail=f"implementation readiness is {status}; no late research or reviewer materialization was attempted.",
+            ),
+        )
+        return f"wrote fail-open {status} reviewer handoff -> {handoff_path}"
+
+    if context_path is None:
+        raise ReadinessError("ready readiness did not resolve a Wiki context")
+
+    renderer = Path(__file__).with_name("wiki_context_render.py")
+    materializer = Path(__file__).with_name("wiki_materialize_task.py")
+    materialize_command = [
+        sys.executable,
+        str(materializer),
+        str(context_path),
+        "--task-id",
+        normalized_task_id,
+        "--role",
+        "reviewer",
+        "--project-root",
+        str(project_root),
+        "--strict",
+        "--execution-ready",
+    ]
+    if obsidian_wiki_cmd:
+        materialize_command.extend(["--obsidian-wiki-cmd", obsidian_wiki_cmd])
+    if shared_wiki_cmd:
+        materialize_command.extend(["--shared-wiki-cmd", shared_wiki_cmd])
+
+    try:
+        rendered = _run_context_command(
+            [
+                sys.executable,
+                str(renderer),
+                str(context_path),
+                "--task-id",
+                normalized_task_id,
+                "--role",
+                "reviewer",
+                "--strict",
+                "--execution-ready",
+            ],
+            "Reviewer Wiki task rendering",
+        )
+        materialized = _run_context_command(
+            materialize_command,
+            "Reviewer Wiki materialization",
+        )
+    except ReadinessError:
+        _write_text(
+            handoff_path,
+            _review_handoff_text(
+                status="materialize-failed",
+                task_id=normalized_task_id,
+                detail="reviewer render/materialize validation failed; partial and stale output was discarded.",
+            ),
+        )
+        return f"wrote fail-open materialize-failed reviewer handoff -> {handoff_path}"
+
+    _write_text(
+        handoff_path,
+        _review_handoff_text(
+            status="ready",
+            task_id=normalized_task_id,
+            detail="",
+            rendered=rendered,
+            materialized=materialized,
+        ),
+    )
+    return f"wrote ready reviewer handoff -> {handoff_path}"
 
 
 def main() -> int:
@@ -505,6 +686,17 @@ def main() -> int:
     validate.add_argument("--receipt", required=True)
     validate.add_argument("--task-id", required=True)
 
+    review = subparsers.add_parser(
+        "review-handoff",
+        help="Fail-open reviewer materialization from an existing implementation readiness receipt",
+    )
+    review.add_argument("--receipt")
+    review.add_argument("--task-id")
+    review.add_argument("--project-root", required=True)
+    review.add_argument("--handoff", required=True)
+    review.add_argument("--obsidian-wiki-cmd")
+    review.add_argument("--shared-wiki-cmd")
+
     args = parser.parse_args()
     try:
         if args.command == "prepare-issue":
@@ -546,8 +738,19 @@ def main() -> int:
                     args.reason,
                 )
             )
-        else:
+        elif args.command == "validate":
             print(validate_readiness(Path(args.receipt), args.task_id))
+        else:
+            print(
+                review_handoff(
+                    receipt_path=Path(args.receipt) if args.receipt else None,
+                    task_id=args.task_id,
+                    project_root=Path(args.project_root),
+                    handoff_path=Path(args.handoff),
+                    obsidian_wiki_cmd=args.obsidian_wiki_cmd,
+                    shared_wiki_cmd=args.shared_wiki_cmd,
+                )
+            )
         return 0
     except (ReadinessError, ValidationError, FingerprintError) as exc:
         print(f"Error: {exc}", file=sys.stderr)

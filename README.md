@@ -16,7 +16,7 @@ A code assistant forgets your project's durable rules between sessions and acros
 |---|---|---|
 | **Disclose** | `/grill-adapter:wiki-research` skill -> `wiki-researcher` selects relevant bound Obsidian atomic Notes and only merged/base-synchronized Skill Cards whose local pack identity is available | `/grill-with-docs` |
 | **Carry** | schema-v6 `.wiki-context.json` records bound Source digests and metadata-only Note/Card identity, provider/version/contract hash, role routing, and ticket fingerprints | `/to-tickets` |
-| **Bind** | `/grill-adapter:wiki-readiness` first establishes/reuses a stable task roster and atomic readiness result; when `ready`, `/grill-adapter:wiki-materialize <ticket>` rereads routed hard Notes, role-required Cards, and a bounded 1-hop `depends_on` closure | `/implement` |
+| **Bind** | `/grill-adapter:wiki-readiness` establishes/reuses a stable task receipt; `ready` rereads task-routed hard Notes, role-required Cards, and a bounded 1-hop `depends_on` closure for implementers, then revalidates the same receipt into one fail-open reviewer handoff shared by both review axes | `/implement` + before `/code-review` subagents |
 | **Capture** | every stage appends to one feature journal; ADR increments become metadata-only execution-projection candidates, `scaffold-practice-skill` stages content-addressed Card candidates, and `/grill-adapter:update-wiki` reconciles final evidence, applies policy-compliant Note/Card changes, then publishes applied receipts as resumable per-repository draft PRs; open PRs remain pending | after `/code-review` |
 
 Plus **source-of-truth** verify (`/grill-adapter:source-truth-check`) + lint hook and **break-loop** debugging retrospective (`/grill-adapter:break-loop`).
