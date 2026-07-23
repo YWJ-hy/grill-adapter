@@ -150,9 +150,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py review-handoff \
 
 The command revalidates the receipt, roster, fingerprint, and bound context. Only `ready` performs
 renderer + materializer with role `reviewer`; both must succeed before the handoff is atomically
-written. That path contains only the current task's routed hard constraints, direct `depends_on`
-closure, and reviewer-required Skill Cards. Follow every materialized Card's `MUST invoke` directive
-by invoking the verified project skill before reviewing.
+written. The renderer output is validation-only and is not exposed to reviewers. The handoff contains
+only the materializer's runtime-verified current-task hard constraints, direct `depends_on` closure,
+and reviewer-required Skill Cards. Follow every materialized Card's `MUST invoke` directive by
+invoking the verified project skill before reviewing.
 
 Give the **same read-only handoff file** to both subagents and require each to read it. Standards
 continues to report only its standards/code-quality axis; Spec continues to report only its

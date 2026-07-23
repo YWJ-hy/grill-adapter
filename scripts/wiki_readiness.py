@@ -208,6 +208,49 @@ def _run_context_command(command: list[str], label: str) -> str:
     return result.stdout
 
 
+def _render_and_materialize_context(
+    *,
+    context_path: Path,
+    task_id: str,
+    role: str,
+    project_root: Path,
+    obsidian_wiki_cmd: str | None = None,
+    shared_wiki_cmd: str | None = None,
+) -> tuple[str, str]:
+    renderer = Path(__file__).with_name("wiki_context_render.py")
+    materializer = Path(__file__).with_name("wiki_materialize_task.py")
+    common_args = [
+        str(context_path),
+        "--task-id",
+        task_id,
+        "--role",
+        role,
+        "--strict",
+        "--execution-ready",
+    ]
+    materialize_command = [
+        sys.executable,
+        str(materializer),
+        *common_args,
+        "--project-root",
+        str(project_root),
+    ]
+    if obsidian_wiki_cmd:
+        materialize_command.extend(["--obsidian-wiki-cmd", obsidian_wiki_cmd])
+    if shared_wiki_cmd:
+        materialize_command.extend(["--shared-wiki-cmd", shared_wiki_cmd])
+
+    rendered = _run_context_command(
+        [sys.executable, str(renderer), *common_args],
+        f"{role.capitalize()} Wiki task rendering",
+    )
+    materialized = _run_context_command(
+        materialize_command,
+        f"{role.capitalize()} Wiki materialization",
+    )
+    return rendered, materialized
+
+
 def _validate_context_identity(
     context: dict[str, Any],
     feature_slug: str,
@@ -383,37 +426,11 @@ def bind_readiness(
     context = _validate_context(context_path, roster_path)
     _validate_context_identity(context, feature_slug, ticket_source, task_id)
 
-    renderer = Path(__file__).with_name("wiki_context_render.py")
-    materializer = Path(__file__).with_name("wiki_materialize_task.py")
-    rendered = _run_context_command(
-        [
-            sys.executable,
-            str(renderer),
-            str(context_path),
-            "--task-id",
-            task_id,
-            "--role",
-            "implementer",
-            "--strict",
-            "--execution-ready",
-        ],
-        "Wiki task rendering",
-    )
-    materialized_output = _run_context_command(
-        [
-            sys.executable,
-            str(materializer),
-            str(context_path),
-            "--task-id",
-            task_id,
-            "--role",
-            "implementer",
-            "--project-root",
-            str(project_root),
-            "--strict",
-            "--execution-ready",
-        ],
-        "Wiki materialization",
+    rendered, materialized_output = _render_and_materialize_context(
+        context_path=context_path,
+        task_id=task_id,
+        role="implementer",
+        project_root=project_root,
     )
 
     record_readiness(
@@ -483,7 +500,6 @@ def _review_handoff_text(
     status: str,
     task_id: str | None,
     detail: str,
-    rendered: str | None = None,
     materialized: str | None = None,
 ) -> str:
     lines = [
@@ -516,9 +532,8 @@ def _review_handoff_text(
             "",
         ]
     )
-    for block in (rendered, materialized):
-        if block and block.strip():
-            lines.extend([block.strip(), ""])
+    if materialized and materialized.strip():
+        lines.extend([materialized.strip(), ""])
     return "\n".join(lines)
 
 
@@ -582,44 +597,14 @@ def review_handoff(
     if context_path is None:
         raise ReadinessError("ready readiness did not resolve a Wiki context")
 
-    renderer = Path(__file__).with_name("wiki_context_render.py")
-    materializer = Path(__file__).with_name("wiki_materialize_task.py")
-    materialize_command = [
-        sys.executable,
-        str(materializer),
-        str(context_path),
-        "--task-id",
-        normalized_task_id,
-        "--role",
-        "reviewer",
-        "--project-root",
-        str(project_root),
-        "--strict",
-        "--execution-ready",
-    ]
-    if obsidian_wiki_cmd:
-        materialize_command.extend(["--obsidian-wiki-cmd", obsidian_wiki_cmd])
-    if shared_wiki_cmd:
-        materialize_command.extend(["--shared-wiki-cmd", shared_wiki_cmd])
-
     try:
-        rendered = _run_context_command(
-            [
-                sys.executable,
-                str(renderer),
-                str(context_path),
-                "--task-id",
-                normalized_task_id,
-                "--role",
-                "reviewer",
-                "--strict",
-                "--execution-ready",
-            ],
-            "Reviewer Wiki task rendering",
-        )
-        materialized = _run_context_command(
-            materialize_command,
-            "Reviewer Wiki materialization",
+        _, materialized = _render_and_materialize_context(
+            context_path=context_path,
+            task_id=normalized_task_id,
+            role="reviewer",
+            project_root=project_root,
+            obsidian_wiki_cmd=obsidian_wiki_cmd,
+            shared_wiki_cmd=shared_wiki_cmd,
         )
     except ReadinessError:
         _write_text(
@@ -638,7 +623,6 @@ def review_handoff(
             status="ready",
             task_id=normalized_task_id,
             detail="",
-            rendered=rendered,
             materialized=materialized,
         ),
     )

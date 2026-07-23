@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${1:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 READINESS="$ROOT/scripts/wiki_readiness.py"
 RENDER="$ROOT/scripts/wiki_context_render.py"
+JOURNAL_CLI="$ROOT/scripts/wiki_candidate_journal.py"
 SKILL="$ROOT/skills/wiki-readiness/SKILL.md"
 HOST_TEST="$ROOT/tests/host-conventions-smoke.sh"
 
@@ -77,6 +78,18 @@ cat > "$CONTEXT" <<JSON
       "contentHash":"sha256:${SHA_A}",
       "bindingDigest":"${SHA_B}",
       "destination":{"kind":"task-bound","reason":"Issue 21 changes review.","tasks":["21"]}
+    },
+    {
+      "sourceId":"project",
+      "role":"project",
+      "path":"Notes/review-background.md",
+      "wikiId":"review-background",
+      "type":"guide",
+      "constraintStrength":"soft",
+      "summary":"UNVERIFIED SOFT SUMMARY MUST NOT REACH REVIEWERS",
+      "contentHash":"sha256:${SHA_C}",
+      "bindingDigest":"${SHA_B}",
+      "destination":{"kind":"task-bound","reason":"Background only.","tasks":["21"]}
     }
   ],
   "requiredSkills": [
@@ -230,6 +243,95 @@ need "$HANDOFF" "Standards"
 need "$HANDOFF" "Spec"
 need "$HANDOFF" "same read-only context"
 deny "$HANDOFF" "implementation-only-card"
+deny "$HANDOFF" "UNVERIFIED SOFT SUMMARY"
+
+# Two isolated consumers read the same handoff path and retain independent output shapes. The
+# handoff remains byte-identical, then the normal post-review Capture lifecycle reconciles a
+# review-stage candidate without touching Wiki content.
+HANDOFF_BEFORE="$(shasum -a 256 "$HANDOFF" | awk '{print $1}')"
+STANDARDS_RESULT="$TMP/standards-review.json"
+SPEC_RESULT="$TMP/spec-review.json"
+consume_review_axis() {
+  python3 - "$HANDOFF" "$1" "$2" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+handoff_path = Path(sys.argv[1])
+axis = sys.argv[2]
+output_path = Path(sys.argv[3])
+text = handoff_path.read_text(encoding="utf-8")
+assert "AUTHORITATIVE REVIEW BOUNDARY" in text
+assert "MUST invoke project skill `review-runtime`" in text
+output_path.write_text(
+    json.dumps(
+        {
+            "axis": axis,
+            "handoffPath": str(handoff_path),
+            "handoffSha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "findings": [],
+        },
+        indent=2,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+PY
+}
+consume_review_axis Standards "$STANDARDS_RESULT" &
+STANDARDS_PID=$!
+consume_review_axis Spec "$SPEC_RESULT" &
+SPEC_PID=$!
+wait "$STANDARDS_PID"
+wait "$SPEC_PID"
+python3 - "$STANDARDS_RESULT" "$SPEC_RESULT" <<'PY'
+import json
+import sys
+
+standards = json.load(open(sys.argv[1], encoding="utf-8"))
+spec = json.load(open(sys.argv[2], encoding="utf-8"))
+assert standards["axis"] == "Standards"
+assert spec["axis"] == "Spec"
+assert standards["handoffPath"] == spec["handoffPath"]
+assert standards["handoffSha256"] == spec["handoffSha256"]
+assert standards["findings"] == []
+assert spec["findings"] == []
+PY
+HANDOFF_AFTER="$(shasum -a 256 "$HANDOFF" | awk '{print $1}')"
+[[ "$HANDOFF_BEFORE" == "$HANDOFF_AFTER" ]] || fail "review consumers mutated the shared handoff"
+
+CAPTURE_JOURNAL="$CTX_DIR/reviewer.wiki-candidates.jsonl"
+python3 "$JOURNAL_CLI" append \
+  --journal "$CAPTURE_JOURNAL" \
+  --feature-slug reviewer \
+  --event-id review-complete \
+  --candidate-id reviewer-handoff-contract \
+  --stage review \
+  --candidate-type wiki_note \
+  --kind convention \
+  --claim "Both review axes consume one verified read-only handoff." \
+  --why "Capture evaluates durable knowledge only after Standards and Spec finish." \
+  --source-ref "issue:#21" >/dev/null
+python3 "$JOURNAL_CLI" outcome \
+  --journal "$CAPTURE_JOURNAL" \
+  --feature-slug reviewer \
+  --event-id capture-reviewed \
+  --candidate-id reviewer-handoff-contract \
+  --status skipped \
+  --reason "The host conventions already capture this reviewed behavior." >/dev/null
+python3 "$JOURNAL_CLI" fold \
+  --journal "$CAPTURE_JOURNAL" \
+  --feature-slug reviewer |
+  python3 -c '
+import json
+import sys
+
+folded = json.load(sys.stdin)
+assert folded["eventCount"] == 2
+assert folded["counts"]["pending"] == 0
+assert folded["counts"]["skipped"] == 1
+'
 
 # Independent review with no task/receipt is fail-open and performs no Wiki read.
 UNKNOWN="$CTX_DIR/unknown.wiki-review.md"
