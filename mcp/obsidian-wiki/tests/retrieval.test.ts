@@ -47,7 +47,8 @@ function fixture() {
   const vaultRoot = path.join(root, 'vault');
   const remoteRoot = path.join(root, 'knowledge.git');
   const registryPath = path.join(root, 'registry.json');
-  const obsidianCli = path.join(root, 'obsidian');
+  const obsidianCli = path.join(root, process.platform === 'win32' ? 'obsidian.cmd' : 'obsidian');
+  const obsidianScript = process.platform === 'win32' ? path.join(root, 'obsidian.js') : obsidianCli;
   const sourceRoot = path.join(vaultRoot, 'Projects', 'example');
   const skillPack = path.join(projectDir, '.claude', 'skills', 'review-runtime');
   mkdirSync(skillPack, { recursive: true });
@@ -99,7 +100,7 @@ function fixture() {
   execFileSync('git', ['-C', vaultRoot, 'add', '.']);
   execFileSync('git', ['-C', vaultRoot, 'commit', '-m', 'fixture']);
   execFileSync('git', ['-C', vaultRoot, 'push', '--set-upstream', 'origin', 'main']);
-  writeFileSync(obsidianCli, `#!/usr/bin/env node
+  writeFileSync(obsidianScript, `#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
 const args = process.argv.slice(2);
@@ -129,7 +130,11 @@ else if (args.includes('read')) {
   process.stdout.write(process.env.FAKE_OBSIDIAN_MUTATE_SECOND_READ === 'true' && readCount === 1 ? content.replace('Rule body.', 'Changed body.') : content);
 } else process.exit(2);
 `, 'utf8');
-  chmodSync(obsidianCli, 0o755);
+  if (process.platform === 'win32') {
+    writeFileSync(obsidianCli, `@echo off\r\n"${process.execPath}" "%~dp0obsidian.js" %*\r\n`, 'utf8');
+  } else {
+    chmodSync(obsidianCli, 0o755);
+  }
   writeJson(path.join(projectDir, '.shared-adapter', 'settings.json'), {
     wiki: {
       provider: 'obsidian',
@@ -231,7 +236,7 @@ describe('Obsidian Wiki retrieval', () => {
     searchTool({ query: 'note' }, { ...env, FAKE_OBSIDIAN_CALLS: callsPath });
 
     const calls = readFileSync(callsPath, 'utf8');
-    expect(calls).toContain('vault=Knowledge search query=note path:"Projects/example" format=json');
+    expect(calls).toMatch(/vault=Knowledge search query=note path:"?Projects\/example"? format=json/);
     expect(calls).toContain('vault=Knowledge read path=Projects/example/Visible.md');
     rmSync(callsPath, { force: true });
   });

@@ -76,6 +76,24 @@ codex plugin add grill-adapter@grill-adapter
 ./manage.sh release-check <project-root>                   # 发布前总门（plugin 加载 → 接线 → verify → tests）
 ```
 
+### Windows / macOS shell 入口
+
+macOS/Linux 直接使用上面的 `.sh` 命令。Windows 的 `bash` 可能只是
+`C:\Windows\System32\bash.exe` WSL shim；当 WSL 没有 `/bin/bash` 时不要调用它。
+项目提供 PowerShell 转发入口，自动探测 Git Bash、MSYS2 或 Cygwin，并保留同一套
+退出码和参数：
+
+```powershell
+.\manage.ps1 install <project-root> --host grill --runtime both
+.\manage.ps1 self-test
+.\release-check.ps1 <project-root>
+.\tests\run-smoke.ps1 -Name install-project-wiring-smoke.sh
+```
+
+resolver 会实际执行 `bash -lc 'exit 0'` 排除 WSL shim。若机器上有多个 Bash，可设置
+`GRILL_ADAPTER_BASH` 为真实 `bash.exe` 的绝对路径。找不到可用 Bash 时，入口会明确提示
+安装 Git for Windows；无需修改现有 smoke 的 Bash 实现。
+
 跑**单个**测试（约定：`$1` = grill-adapter 根，`$2` = 项目根）：
 
 ```bash

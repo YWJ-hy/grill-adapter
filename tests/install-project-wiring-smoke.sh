@@ -11,6 +11,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${1:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 INSTALL="$ROOT/lib/install.py"
+source "${SCRIPT_DIR}/_windows-compat.bash"
 
 SANDBOX="$(mktemp -d)"; PROJ="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX" "$PROJ"' EXIT
@@ -29,8 +30,8 @@ REMOVED_DIR="$PROJ/.$REMOVED_KEY"
 mkdir -p "$REMOVED_DIR" "$PROJ/.adapter"
 printf 'historical user artifact\n' > "$REMOVED_DIR/index.md"
 printf '{"%s":{"role":"frontend"}}\n' "$REMOVED_KEY" > "$PROJ/.adapter/settings.json"
-ARTIFACT_HASH="$(sha256sum "$REMOVED_DIR/index.md" | cut -d' ' -f1)"
-SETTINGS_HASH="$(sha256sum "$PROJ/.adapter/settings.json" | cut -d' ' -f1)"
+ARTIFACT_HASH="$(sha256_file "$REMOVED_DIR/index.md")"
+SETTINGS_HASH="$(sha256_file "$PROJ/.adapter/settings.json")"
 
 python3 "$INSTALL" install "$PROJ" --host grill >/dev/null 2>&1 || fail "install failed"
 
@@ -97,11 +98,11 @@ grep -q 'Pre-existing Codex content.' "$PROJ/AGENTS.md" || fail "Codex uninstall
 # A dual-runtime project can wire and verify both instruction files in one command.
 python3 "$INSTALL" install "$PROJ" --host grill --runtime both >/dev/null 2>&1 || fail "dual-runtime install failed"
 python3 "$INSTALL" verify "$PROJ" --host grill --runtime both >/dev/null 2>&1 || fail "dual-runtime verify failed"
-sha256sum "$REMOVED_DIR/index.md" | grep -q "$ARTIFACT_HASH" || fail "install/verify changed a historical artifact"
-sha256sum "$PROJ/.adapter/settings.json" | grep -q "$SETTINGS_HASH" || fail "install/verify changed legacy settings"
+[[ "$(sha256_file "$REMOVED_DIR/index.md")" == "$ARTIFACT_HASH" ]] || fail "install/verify changed a historical artifact"
+[[ "$(sha256_file "$PROJ/.adapter/settings.json")" == "$SETTINGS_HASH" ]] || fail "install/verify changed legacy settings"
 bash "$ROOT/doctor.sh" "$PROJ" >/dev/null 2>&1 || fail "doctor rejected unrelated legacy settings"
-sha256sum "$REMOVED_DIR/index.md" | grep -q "$ARTIFACT_HASH" || fail "doctor changed a historical artifact"
-sha256sum "$PROJ/.adapter/settings.json" | grep -q "$SETTINGS_HASH" || fail "doctor changed legacy settings"
+[[ "$(sha256_file "$REMOVED_DIR/index.md")" == "$ARTIFACT_HASH" ]] || fail "doctor changed a historical artifact"
+[[ "$(sha256_file "$PROJ/.adapter/settings.json")" == "$SETTINGS_HASH" ]] || fail "doctor changed legacy settings"
 python3 "$INSTALL" uninstall "$PROJ" --runtime both >/dev/null 2>&1 || fail "dual-runtime uninstall failed"
 
 printf 'install project-wiring smoke OK\n'

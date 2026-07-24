@@ -22063,6 +22063,7 @@ function commandOutput(command, args, workingDirectory) {
     return String(execFileSync(command, args, {
       cwd: workingDirectory,
       encoding: "utf8",
+      shell: process.platform === "win32" && /\.(?:cmd|bat)$/i.test(command),
       stdio: ["ignore", "pipe", "pipe"]
     })).trim();
   } catch (error2) {
@@ -22489,6 +22490,7 @@ function runCli(args, env) {
     return String(execFileSync2(executable, args, {
       encoding: "utf8",
       env: { ...process.env, ...env },
+      shell: process.platform === "win32" && /\.(?:cmd|bat)$/i.test(executable),
       stdio: ["ignore", "pipe", "pipe"]
     }));
   } catch (error2) {
@@ -22841,6 +22843,7 @@ function runCommand(executable, args, env, workingDirectory) {
       cwd: workingDirectory,
       env,
       encoding: "utf8",
+      shell: process.platform === "win32" && /\.(?:cmd|bat)$/i.test(executable),
       stdio: ["ignore", "pipe", "pipe"]
     })).trim();
   } catch (error2) {

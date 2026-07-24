@@ -33,6 +33,15 @@ cd grill-adapter
 
 只把 grill 约定块写进你项目的 `CLAUDE.md`/`AGENTS.md`（marker 包裹，只点名 skill、不含安装路径）。**不改 grill 一行。**
 
+Windows 如果 `bash` 指向没有 `/bin/bash` 的 WSL shim，请改用仓库提供的 PowerShell 入口：
+
+```powershell
+.\manage.ps1 install <project-root> --host grill --runtime both
+.\manage.ps1 self-test
+```
+
+它会自动选择 Git Bash；也可以通过 `GRILL_ADAPTER_BASH` 指定 `bash.exe`。
+
 ## 2. 配置 Obsidian Wiki Source
 
 按 `docs/OBSIDIAN_WIKI_CN.md` 配置项目 `.shared-adapter/settings.json` 的 `wiki.provider: obsidian` / bindings、机器本地 registry，以及 Source 的 `_meta/wiki-source.md`。然后运行：

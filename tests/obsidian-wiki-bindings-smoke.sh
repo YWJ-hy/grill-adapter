@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-TMP_DIR="$(mktemp -d)"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_windows-compat.bash"
+TMP_DIR="$(portable_tmpdir)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 cp -R "$ROOT_DIR/mcp/obsidian-wiki" "$TMP_DIR/obsidian-wiki-mcp"

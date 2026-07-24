@@ -6,7 +6,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${1:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
-TMP="$(mktemp -d)"
+source "${SCRIPT_DIR}/_windows-compat.bash"
+TMP="$(portable_tmpdir)"
 trap 'rm -rf "$TMP"' EXIT
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
@@ -14,6 +15,10 @@ need() { grep -Fq "$2" "$1" || fail "$1 missing: $2"; }
 
 PROJECT="$TMP/project"
 FAKE_BIN="$TMP/bin"
+FAKE_BIN_PATH="$FAKE_BIN"
+if command -v cygpath >/dev/null 2>&1; then
+  FAKE_BIN_PATH="$(cygpath -u "$FAKE_BIN")"
+fi
 mkdir -p "$PROJECT/.shared-adapter" "$PROJECT/.adapter/wiki" "$FAKE_BIN"
 printf '# legacy content\n' > "$PROJECT/.adapter/wiki/index.md"
 
@@ -43,11 +48,24 @@ cat > "$PROJECT/.shared-adapter/settings.json" <<'JSON'
 }
 JSON
 
-cat > "$FAKE_BIN/node" <<'SH'
+if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* ]]; then
+  cat > "$FAKE_BIN/node" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "${FAKE_OBSIDIAN_STATUS:?}"
 SH
-chmod +x "$FAKE_BIN/node"
+  chmod +x "$FAKE_BIN/node"
+  cat > "$FAKE_BIN/node.cmd" <<'CMD'
+@echo off
+echo %FAKE_OBSIDIAN_STATUS%
+CMD
+else
+  cat > "$FAKE_BIN/node" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "${FAKE_OBSIDIAN_STATUS:?}"
+SH
+  chmod +x "$FAKE_BIN/node"
+fi
+hash -r
 
 if "$ROOT/bootstrap-wiki.sh" "$PROJECT" --template standard >"$TMP/bootstrap.out" 2>"$TMP/bootstrap.err"; then
   fail "bootstrap-wiki accepted an active Obsidian provider"
@@ -56,7 +74,7 @@ need "$TMP/bootstrap.err" 'legacy Wiki bootstrap is disabled while wiki.provider
 need "$TMP/bootstrap.err" 'migrate-wiki'
 
 HEALTHY='{"healthy":true,"provider":"obsidian","bindings":[{"sourceId":"project-source"}],"errors":[],"warnings":[]}'
-PATH="$FAKE_BIN:$PATH" FAKE_OBSIDIAN_STATUS="$HEALTHY" \
+PATH="$FAKE_BIN_PATH:$PATH" FAKE_OBSIDIAN_STATUS="$HEALTHY" \
   "$ROOT/doctor.sh" "$PROJECT" >"$TMP/doctor-shadow.out"
 need "$TMP/doctor-shadow.out" 'adoptionState: shadow-validation'
 need "$TMP/doctor-shadow.out" 'Obsidian runtime healthy: yes'
@@ -76,7 +94,7 @@ settings["wiki"]["legacyRuntime"] = {
 path.write_text(json.dumps(settings), encoding="utf-8")
 PY
 
-if PATH="$FAKE_BIN:$PATH" FAKE_OBSIDIAN_STATUS="$HEALTHY" \
+if PATH="$FAKE_BIN_PATH:$PATH" FAKE_OBSIDIAN_STATUS="$HEALTHY" \
   "$ROOT/doctor.sh" "$PROJECT" >"$TMP/doctor-forged-cutover.out" 2>&1; then
   fail "doctor accepted cutover settings without a completed migration receipt"
 fi
@@ -111,7 +129,7 @@ cat > "$PROJECT/.adapter/context/migration.json" <<'JSON'
 JSON
 
 cp "$PROJECT/.adapter/context/migration.json" "$TMP/migration-before-doctor.json"
-if PATH="$FAKE_BIN:$PATH" FAKE_OBSIDIAN_STATUS="$HEALTHY" \
+if PATH="$FAKE_BIN_PATH:$PATH" FAKE_OBSIDIAN_STATUS="$HEALTHY" \
   "$ROOT/doctor.sh" "$PROJECT" >"$TMP/doctor-incomplete-receipt.out" 2>&1; then
   fail "doctor accepted an incomplete migration receipt"
 fi
@@ -129,7 +147,7 @@ manifest["state"] = "cutover"
 path.write_text(json.dumps(manifest), encoding="utf-8")
 PY
 
-if PATH="$FAKE_BIN:$PATH" FAKE_OBSIDIAN_STATUS="$HEALTHY" \
+if PATH="$FAKE_BIN_PATH:$PATH" FAKE_OBSIDIAN_STATUS="$HEALTHY" \
   "$ROOT/doctor.sh" "$PROJECT" >"$TMP/doctor-forged-receipt.out" 2>&1; then
   fail "doctor accepted a hand-written migration receipt"
 fi
@@ -146,7 +164,7 @@ path.write_text(json.dumps(settings), encoding="utf-8")
 PY
 
 UNHEALTHY='{"healthy":false,"provider":"obsidian","bindings":[],"errors":["repository base is stale"],"warnings":[]}'
-if PATH="$FAKE_BIN:$PATH" FAKE_OBSIDIAN_STATUS="$UNHEALTHY" \
+if PATH="$FAKE_BIN_PATH:$PATH" FAKE_OBSIDIAN_STATUS="$UNHEALTHY" \
   "$ROOT/doctor.sh" "$PROJECT" >"$TMP/doctor-unhealthy.out" 2>&1; then
   fail "doctor accepted an unhealthy active Obsidian provider"
 fi
@@ -162,14 +180,13 @@ settings = json.loads(path.read_text(encoding="utf-8"))
 settings["wiki"]["provider"] = "unknown-provider"
 path.write_text(json.dumps(settings), encoding="utf-8")
 PY
-if PATH="$FAKE_BIN:$PATH" FAKE_OBSIDIAN_STATUS="$HEALTHY" \
+if PATH="$FAKE_BIN_PATH:$PATH" FAKE_OBSIDIAN_STATUS="$HEALTHY" \
   "$ROOT/doctor.sh" "$PROJECT" >"$TMP/doctor-provider.out" 2>&1; then
   fail "doctor accepted an unsupported Wiki provider"
 fi
 need "$TMP/doctor-provider.out" 'unsupported wiki.provider: unknown-provider'
 
-need "$ROOT/release-check.sh" 'check bash "$SCRIPT_DIR/doctor.sh" "$PROJECT_ROOT"'
-if grep -Fq 'doctor.sh" "$PROJECT_ROOT" || true' "$ROOT/release-check.sh"; then
+if ! grep -Fq 'doctor.sh" "$PROJECT_ROOT"' "$ROOT/release-check.sh"; then
   fail "release-check still ignores doctor failures"
 fi
 

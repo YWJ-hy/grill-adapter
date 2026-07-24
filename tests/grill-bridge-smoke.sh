@@ -7,10 +7,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${1:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 BRIDGE="$ROOT/scripts/grill_context_to_candidates.py"
+source "${SCRIPT_DIR}/_windows-compat.bash"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
-T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+T="$(portable_tmpdir)"; trap 'rm -rf "$T"' EXIT
 cat > "$T/CONTEXT.md" <<'MD'
 # Glossary
 - **Idempotency Key** — a client token that dedupes retried writes.
@@ -205,10 +206,10 @@ python3 "$ROOT/scripts/wiki_candidate_journal.py" validate \
   --journal "$JOURNAL" --feature-slug feature-a >/dev/null || fail "bridge journal did not validate"
 
 # Replaying the same increment is an idempotent recovery no-op.
-BEFORE="$(shasum -a 256 "$JOURNAL" | awk '{print $1}')"
+BEFORE="$(sha256_file "$JOURNAL")"
 python3 "$BRIDGE" "$T" --feature-slug feature-a --all >/dev/null 2>&1 \
   || fail "bridge could not resume after its candidates were already appended"
-AFTER="$(shasum -a 256 "$JOURNAL" | awk '{print $1}')"
+AFTER="$(sha256_file "$JOURNAL")"
 [[ "$BEFORE" == "$AFTER" ]] || fail "identical bridge replay mutated the journal"
 
 # A stable bridge identity with different payload is a conflict, not an idempotent replay.
@@ -221,11 +222,11 @@ events = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlin
 events[0]["claim"] += " conflicting edit"
 path.write_text("".join(json.dumps(event, separators=(",", ":")) + "\n" for event in events), encoding="utf-8")
 PY
-BEFORE="$(shasum -a 256 "$CONFLICT_JOURNAL" | awk '{print $1}')"
+BEFORE="$(sha256_file "$CONFLICT_JOURNAL")"
 if python3 "$BRIDGE" "$T" --feature-slug feature-a --all --out "$CONFLICT_JOURNAL" >/dev/null 2>&1; then
   fail "bridge treated conflicting candidate content as an identical replay"
 fi
-AFTER="$(shasum -a 256 "$CONFLICT_JOURNAL" | awk '{print $1}')"
+AFTER="$(sha256_file "$CONFLICT_JOURNAL")"
 [[ "$BEFORE" == "$AFTER" ]] || fail "rejected bridge conflict mutated the journal"
 
 printf 'grill bridge smoke OK\n'

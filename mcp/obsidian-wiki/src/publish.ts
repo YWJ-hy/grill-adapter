@@ -112,6 +112,7 @@ function runCommand(
       cwd: workingDirectory,
       env,
       encoding: 'utf8',
+      shell: process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(executable),
       stdio: ['ignore', 'pipe', 'pipe'],
     })).trim();
   } catch (error) {

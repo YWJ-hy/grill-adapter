@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASH_BIN="${GRILL_ADAPTER_BASH:-${BASH:-$(command -v bash)}}"
 COMMAND="${1:-}"
 
 usage() {
@@ -44,7 +45,7 @@ case "$COMMAND" in
     ;;
   bootstrap-wiki)
     require_project_root "${1:-}"
-    exec "$SCRIPT_DIR/bootstrap-wiki.sh" "$@"
+    exec "$BASH_BIN" "$SCRIPT_DIR/bootstrap-wiki.sh" "$@"
     ;;
   init-wiki)
     require_project_root "${1:-}"
@@ -60,14 +61,14 @@ case "$COMMAND" in
     ;;
   doctor)
     require_project_root "${1:-}"
-    exec "$SCRIPT_DIR/doctor.sh" "$@"
+    exec "$BASH_BIN" "$SCRIPT_DIR/doctor.sh" "$@"
     ;;
   self-test)
-    exec "$SCRIPT_DIR/self-test.sh" "$@"
+    exec "$BASH_BIN" "$SCRIPT_DIR/self-test.sh" "$@"
     ;;
   release-check)
     require_project_root "${1:-}"
-    exec "$SCRIPT_DIR/release-check.sh" "$@"
+    exec "$BASH_BIN" "$SCRIPT_DIR/release-check.sh" "$@"
     ;;
   help|-h|--help)
     usage 0

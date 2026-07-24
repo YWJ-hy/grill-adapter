@@ -70,8 +70,9 @@ function fixture() {
   const worktreeRoot = path.join(root, 'knowledge');
   const remoteRoot = path.join(root, 'knowledge.git');
   const registryPath = path.join(root, 'registry.json');
-  const obsidianCli = path.join(root, 'obsidian');
-  const ghCli = path.join(root, 'gh');
+  const obsidianCli = path.join(root, process.platform === 'win32' ? 'obsidian.cmd' : 'obsidian');
+  const ghCli = path.join(root, process.platform === 'win32' ? 'gh.cmd' : 'gh');
+  const ghScript = process.platform === 'win32' ? path.join(root, 'gh.js') : ghCli;
   const ghState = path.join(root, 'gh-state.json');
   const sourceRoot = 'Projects/example';
   const notePath = `${sourceRoot}/contract.md`;
@@ -91,9 +92,13 @@ function fixture() {
   command('git', ['commit', '-m', 'base'], worktreeRoot);
   command('git', ['push', '-u', 'origin', 'main'], worktreeRoot);
 
-  writeFileSync(obsidianCli, '#!/usr/bin/env sh\n[ "$1" = "vaults" ] && printf "Knowledge\\n"\n', 'utf8');
-  chmodSync(obsidianCli, 0o755);
-  writeFileSync(ghCli, `#!/usr/bin/env node
+  if (process.platform === 'win32') {
+    writeFileSync(obsidianCli, '@echo off\r\nif "%1"=="vaults" echo Knowledge\r\n', 'utf8');
+  } else {
+    writeFileSync(obsidianCli, '#!/usr/bin/env sh\n[ "$1" = "vaults" ] && printf "Knowledge\\n"\n', 'utf8');
+    chmodSync(obsidianCli, 0o755);
+  }
+  writeFileSync(ghScript, `#!/usr/bin/env node
 const fs = require('fs');
 const args = process.argv.slice(2);
 const statePath = process.env.FAKE_GH_STATE;
@@ -132,7 +137,11 @@ if (args[1] === 'list') {
 }
 fs.writeFileSync(statePath, JSON.stringify(state));
 `, 'utf8');
-  chmodSync(ghCli, 0o755);
+  if (process.platform === 'win32') {
+    writeFileSync(ghCli, `@echo off\r\n"${process.execPath}" "%~dp0gh.js" %*\r\n`, 'utf8');
+  } else {
+    chmodSync(ghCli, 0o755);
+  }
 
   writeJson(path.join(projectDir, '.shared-adapter', 'settings.json'), {
     wiki: {
@@ -416,7 +425,7 @@ describe('Obsidian Wiki GitHub publishing', () => {
     const input = fixture();
     input.env.FAKE_GH_FAIL_AFTER_CREATE = '1';
 
-    expect(() => publishFromFoldedJournal(input.folded, input.env)).toThrow(/gh .*pr create.* failed/);
+    expect(() => publishFromFoldedJournal(input.folded, input.env)).toThrow(/gh(?:\.cmd)? .*pr create.* failed/);
     expect(command('git', ['branch', '--show-current'], input.worktreeRoot)).toBe('main');
 
     const result = publishFromFoldedJournal(input.folded, input.env);
@@ -534,7 +543,7 @@ describe('Obsidian Wiki GitHub publishing', () => {
     const second = addSecondRepository(input);
     input.env.FAKE_GH_FAIL_CREATE_NUMBER = '2';
 
-    expect(() => publishFromFoldedJournal(input.folded, input.env)).toThrow(/gh .*pr create.* failed/);
+    expect(() => publishFromFoldedJournal(input.folded, input.env)).toThrow(/gh(?:\.cmd)? .*pr create.* failed/);
     expect(command('git', ['branch', '--show-current'], input.worktreeRoot)).toBe('main');
     expect(command('git', ['branch', '--show-current'], second.worktreeRoot)).toBe('main');
 

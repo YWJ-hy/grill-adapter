@@ -8,7 +8,8 @@ ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 PLANNER="$ROOT/scripts/wiki_migration_plan.py"
 SKILL="$ROOT/skills/migrate-wiki/SKILL.md"
 CONTRACT="$ROOT/contracts/obsidian-migration-plan-v1.example.jsonc"
-TMP="$(mktemp -d)"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_windows-compat.bash"
+TMP="$(portable_tmpdir)"
 trap 'rm -rf "$TMP"' EXIT
 
 [[ -f "$SKILL" ]] || { printf 'Missing migrate-wiki skill\n' >&2; exit 1; }
@@ -313,9 +314,10 @@ MD
 done
 
 snapshot() {
-  find "$PROJECT/.adapter" "$PROJECT/.shared-adapter" "$PROJECT/.claude" "$VAULT_REPO" -type f -print0 \
-    | LC_ALL=C sort -z \
-    | xargs -0 shasum -a 256
+  sha256_tree "$PROJECT/.adapter"
+  sha256_tree "$PROJECT/.shared-adapter"
+  sha256_tree "$PROJECT/.claude"
+  sha256_tree "$VAULT_REPO"
 }
 
 BEFORE="$(snapshot)"
@@ -497,6 +499,17 @@ OUTSIDE_NOTE="$TMP/outside-note.md"
 cat > "$OUTSIDE_NOTE" <<'MD'
 # Outside target Note
 MD
+
+# Windows without Developer Mode may not permit symlink creation. The planner's symlink
+# rejection is covered on platforms that can create real links; keep the rest of this smoke
+# useful on locked-down Windows checkouts.
+SYMLINK_PROBE="$TMP/.symlink-probe"
+if ! ln -s "$OUTSIDE_NOTE" "$SYMLINK_PROBE" 2>/dev/null || [[ ! -L "$SYMLINK_PROBE" ]]; then
+  printf 'obsidian migration plan smoke passed (symlink checks skipped: platform does not permit symlinks)\n'
+  exit 0
+fi
+unlink "$SYMLINK_PROBE"
+
 ln -s "$OUTSIDE_NOTE" "$PROJECT_SOURCE/symlink-note.md"
 if python3 "$PLANNER" --project-root "$PROJECT" --registry "$TMP/registry.json" --wiki-root project > /dev/null 2> "$TMP/note-symlink.err"; then
   printf 'Planner followed a target Note symlink\n' >&2

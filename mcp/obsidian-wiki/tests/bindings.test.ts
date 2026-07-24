@@ -25,7 +25,7 @@ function fixture(bindings: unknown[], manifests: Array<{ root: string; sourceId:
   const projectDir = path.join(root, 'project');
   const vaultRoot = path.join(root, 'vault');
   const registryPath = path.join(root, 'registry.json');
-  const obsidianCli = path.join(root, 'obsidian');
+  const obsidianCli = path.join(root, process.platform === 'win32' ? 'obsidian.cmd' : 'obsidian');
   mkdirSync(vaultRoot, { recursive: true });
   execFileSync('git', ['init', '--initial-branch=main', vaultRoot]);
   execFileSync('git', ['-C', vaultRoot, 'config', 'user.name', 'Test User']);
@@ -39,8 +39,12 @@ function fixture(bindings: unknown[], manifests: Array<{ root: string; sourceId:
   writeFileSync(path.join(vaultRoot, '.gitkeep'), '', 'utf8');
   execFileSync('git', ['-C', vaultRoot, 'add', '.']);
   execFileSync('git', ['-C', vaultRoot, 'commit', '-m', 'fixture']);
-  writeFileSync(obsidianCli, '#!/usr/bin/env sh\n[ "$1" = "vaults" ] && printf "Knowledge\\n"\n', 'utf8');
-  chmodSync(obsidianCli, 0o755);
+  if (process.platform === 'win32') {
+    writeFileSync(obsidianCli, '@echo off\r\nif "%1"=="vaults" echo Knowledge\r\n', 'utf8');
+  } else {
+    writeFileSync(obsidianCli, '#!/usr/bin/env sh\n[ "$1" = "vaults" ] && printf "Knowledge\\n"\n', 'utf8');
+    chmodSync(obsidianCli, 0o755);
+  }
   writeJson(path.join(projectDir, '.shared-adapter', 'settings.json'), {
     wiki: { provider: 'obsidian', publishing: { mode: 'git-pr' }, obsidian: { bindings } },
   });
@@ -245,8 +249,12 @@ describe('Obsidian Wiki Source bindings', () => {
     expect(resolveBindings(testEnvironment(dirty)).errors.join(' ')).toMatch(/worktree must be clean/);
 
     const missingVault = fixture([validBinding], [{ root: 'Projects/example', sourceId: 'project', scope: 'project' }]);
-    writeFileSync(missingVault.obsidianCli, '#!/usr/bin/env sh\nprintf "Different Vault\\n"\n', 'utf8');
-    chmodSync(missingVault.obsidianCli, 0o755);
+    if (process.platform === 'win32') {
+      writeFileSync(missingVault.obsidianCli, '@echo off\r\necho Different Vault\r\n', 'utf8');
+    } else {
+      writeFileSync(missingVault.obsidianCli, '#!/usr/bin/env sh\nprintf "Different Vault\\n"\n', 'utf8');
+      chmodSync(missingVault.obsidianCli, 0o755);
+    }
     expect(resolveBindings(testEnvironment(missingVault)).errors.join(' ')).toMatch(/Vault selector is not available/);
 
     const locked = fixture([validBinding], [{ root: 'Projects/example', sourceId: 'project', scope: 'project' }]);

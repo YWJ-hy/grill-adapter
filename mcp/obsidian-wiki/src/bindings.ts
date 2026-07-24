@@ -251,6 +251,7 @@ function commandOutput(command: string, args: string[], workingDirectory?: strin
     return String(execFileSync(command, args, {
       cwd: workingDirectory,
       encoding: 'utf8',
+      shell: process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(command),
       stdio: ['ignore', 'pipe', 'pipe'],
     })).trim();
   } catch (error) {

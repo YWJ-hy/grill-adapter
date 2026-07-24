@@ -6,6 +6,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASH_BIN="${GRILL_ADAPTER_BASH:-${BASH:-$(command -v bash)}}"
 TESTS_DIR="$SCRIPT_DIR/tests"
 
 if [[ ! -d "$TESTS_DIR" ]]; then
@@ -35,7 +36,7 @@ for t in "$TESTS_DIR"/*.sh; do
     tr -d '\r' < "$t" > "$normalized"
     executable="$normalized"
   fi
-  if bash "$executable" "$SCRIPT_DIR" "$PROJECT_ROOT" >/tmp/grill-selftest-$$.log 2>&1; then
+  if "$BASH_BIN" "$executable" "$SCRIPT_DIR" "$PROJECT_ROOT" >/tmp/grill-selftest-$$.log 2>&1; then
     printf 'PASS  %s\n' "$name"
     pass=$((pass+1))
   else

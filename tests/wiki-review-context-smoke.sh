@@ -11,8 +11,9 @@ RENDER="$ROOT/scripts/wiki_context_render.py"
 JOURNAL_CLI="$ROOT/scripts/wiki_candidate_journal.py"
 SKILL="$ROOT/skills/wiki-readiness/SKILL.md"
 HOST_TEST="$ROOT/tests/host-conventions-smoke.sh"
+source "${SCRIPT_DIR}/_windows-compat.bash"
 
-TMP="$(mktemp -d)"
+TMP="$(portable_tmpdir)"
 trap 'rm -rf "$TMP"' EXIT
 PROJECT="$TMP/project"
 CTX_DIR="$PROJECT/.adapter/context"
@@ -248,7 +249,7 @@ deny "$HANDOFF" "UNVERIFIED SOFT SUMMARY"
 # Two isolated consumers read the same handoff path and retain independent output shapes. The
 # handoff remains byte-identical, then the normal post-review Capture lifecycle reconciles a
 # review-stage candidate without touching Wiki content.
-HANDOFF_BEFORE="$(shasum -a 256 "$HANDOFF" | awk '{print $1}')"
+HANDOFF_BEFORE="$(sha256_file "$HANDOFF")"
 STANDARDS_RESULT="$TMP/standards-review.json"
 SPEC_RESULT="$TMP/spec-review.json"
 consume_review_axis() {
@@ -298,7 +299,7 @@ assert standards["handoffSha256"] == spec["handoffSha256"]
 assert standards["findings"] == []
 assert spec["findings"] == []
 PY
-HANDOFF_AFTER="$(shasum -a 256 "$HANDOFF" | awk '{print $1}')"
+HANDOFF_AFTER="$(sha256_file "$HANDOFF")"
 [[ "$HANDOFF_BEFORE" == "$HANDOFF_AFTER" ]] || fail "review consumers mutated the shared handoff"
 
 CAPTURE_JOURNAL="$CTX_DIR/reviewer.wiki-candidates.jsonl"

@@ -6,6 +6,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASH_BIN="${GRILL_ADAPTER_BASH:-${BASH:-$(command -v bash)}}"
 PROJECT_ROOT="${1:-}"
 if [[ -z "$PROJECT_ROOT" ]]; then
   printf 'Usage: %s <project-root>\n' "$0" >&2
@@ -20,7 +21,7 @@ step "1. Python compiles (scripts + lib)"
 check python3 -m py_compile "$SCRIPT_DIR"/scripts/*.py "$SCRIPT_DIR"/lib/*.py
 
 step "2. Removed capability residue check"
-check bash "$SCRIPT_DIR/tests/removed-capability-residue-smoke.sh" "$SCRIPT_DIR"
+check "$BASH_BIN" "$SCRIPT_DIR/tests/removed-capability-residue-smoke.sh" "$SCRIPT_DIR"
 
 step "3. Placeholder residue check"
 # __GRILL_ADAPTER_ROOT__ is dead in plugin content. Nothing install-time rewrites these files,
@@ -89,7 +90,7 @@ else
   echo "  SKIP (claude CLI not found)"
 fi
 
-if bash "$SCRIPT_DIR/tests/codex-plugin-smoke.sh" "$SCRIPT_DIR"; then
+if "$BASH_BIN" "$SCRIPT_DIR/tests/codex-plugin-smoke.sh" "$SCRIPT_DIR"; then
   echo "  OK (Codex manifest + isolated marketplace install)"
 else
   echo "  FAIL (Codex plugin smoke)"; fail=1
@@ -107,10 +108,10 @@ check python3 "$SCRIPT_DIR/lib/install.py" verify "$SANDBOX_PROJECT" --host gril
 rm -f /tmp/grill-rc-install.$$.log
 
 step "8. Smoke/regression suite"
-if bash "$SCRIPT_DIR/self-test.sh" "$SANDBOX_PROJECT"; then echo "  OK"; else echo "  FAIL"; fail=1; fi
+if "$BASH_BIN" "$SCRIPT_DIR/self-test.sh" "$SANDBOX_PROJECT"; then echo "  OK"; else echo "  FAIL"; fail=1; fi
 
 step "9. doctor on the passed project (read-only)"
-check bash "$SCRIPT_DIR/doctor.sh" "$PROJECT_ROOT"
+check "$BASH_BIN" "$SCRIPT_DIR/doctor.sh" "$PROJECT_ROOT"
 
 echo ""
 if [[ $fail -eq 0 ]]; then

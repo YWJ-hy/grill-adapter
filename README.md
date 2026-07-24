@@ -65,6 +65,8 @@ New to grill? Follow [`docs/SETUP_AND_USAGE_CN.md`](docs/SETUP_AND_USAGE_CN.md),
 
 `manage.sh` only covers project wiring and the wiki utilities; the plugin itself is managed by `claude plugin` / `/plugin` or `codex plugin`.
 
+On macOS/Linux, run the Bash entrypoints directly. On Windows, `C:\Windows\System32\bash.exe` is often only the WSL launcher; if WSL has no `/bin/bash`, use the PowerShell entrypoints below. They select a working Git Bash/MSYS2/Cygwin installation automatically.
+
 ```
 ./manage.sh install|uninstall|verify|status <project> [--host grill|plain] [--runtime claude|codex|both]
 ./manage.sh bootstrap-wiki <project> [--template name] [--wiki-root project|shared]  # legacy only
@@ -74,6 +76,15 @@ New to grill? Follow [`docs/SETUP_AND_USAGE_CN.md`](docs/SETUP_AND_USAGE_CN.md),
 ./manage.sh self-test [project]
 ./manage.sh release-check <project>
 ```
+
+```powershell
+.\manage.ps1 install <project> --host grill --runtime both
+.\manage.ps1 self-test
+.\release-check.ps1 <project>
+.\tests\run-smoke.ps1 -Name install-project-wiring-smoke.sh
+```
+
+Install Git for Windows if no usable Bash is found. To select a non-default installation, set `GRILL_ADAPTER_BASH` to its `bash.exe` path.
 
 Legacy Wiki migration to Obsidian runs through `/grill-adapter:migrate-wiki` (Claude) or `$grill-adapter:migrate-wiki` (Codex): deterministic no-write plan -> explicit confirmation -> dedicated PR branches + governed CAS apply -> one draft PR per repository -> merge/base sync -> read-only runtime verify -> separate cutover confirmation. Apply persists the full plan, binding/policy snapshot, and every CAS intent before the first bridge write; interrupted runs reconcile only exact expected states and never write migration content on base. Verify rejects open PRs, stale bases, source/binding/coverage drift, missing/duplicate/out-of-Source Notes, hash/search/edge/pack drift, and never overwrites human edits. Cutover reruns verify, rejects an active schema-v5 sidecar, and preserves only the plan-selected legacy roots byte-for-byte as mechanically enforced read-only archives.
 

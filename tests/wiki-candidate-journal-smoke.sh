@@ -6,10 +6,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${1:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 JOURNAL_CLI="$ROOT/scripts/wiki_candidate_journal.py"
+source "${SCRIPT_DIR}/_windows-compat.bash"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
-T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+T="$(portable_tmpdir)"; trap 'rm -rf "$T"' EXIT
 JOURNAL="$T/.adapter/context/feature-a.wiki-candidates.jsonl"
 
 append_candidate() {
@@ -196,7 +197,7 @@ assert item["writeReceipt"]["state"] == "proposed"
 assert item["writeReceipt"]["afterHash"] == "sha256:5555555555555555555555555555555555555555555555555555555555555555"
 ' || fail "receipt-less re-deferral discarded the latest valid proposal"
 
-PROPOSAL_BEFORE="$(shasum -a 256 "$JOURNAL" | awk '{print $1}')"
+PROPOSAL_BEFORE="$(sha256_file "$JOURNAL")"
 if python3 "$JOURNAL_CLI" outcome \
   --journal "$JOURNAL" --feature-slug feature-a --event-id evt-capture-missing \
   --candidate-id cand-capture --status kept \
@@ -213,7 +214,7 @@ if python3 "$JOURNAL_CLI" outcome \
   --before-hash "$BEFORE_HASH" --after-hash "$AFTER_HASH" >/dev/null 2>&1; then
   fail "proposed receipt transitioned to a mismatched applied identity"
 fi
-PROPOSAL_AFTER="$(shasum -a 256 "$JOURNAL" | awk '{print $1}')"
+PROPOSAL_AFTER="$(sha256_file "$JOURNAL")"
 [[ "$PROPOSAL_BEFORE" == "$PROPOSAL_AFTER" ]] \
   || fail "rejected proposed-to-applied transition mutated the journal"
 capture_outcome evt-capture-applied kept \
@@ -288,7 +289,7 @@ assert d["counts"]["kept"] == 2
 ' || fail "fold did not apply supersede and outcome lifecycle events"
 
 # Duplicate identities and illegal terminal transitions fail without changing the journal.
-BEFORE="$(shasum -a 256 "$JOURNAL" | awk '{print $1}')"
+BEFORE="$(sha256_file "$JOURNAL")"
 if append_candidate evt-7 cand-replacement review wiki_note decision x y z >/dev/null 2>&1; then
   fail "duplicate candidateId was accepted"
 fi
@@ -313,7 +314,7 @@ if python3 "$JOURNAL_CLI" outcome \
   --write-state proposed --operation update --source-id project-wiki >/dev/null 2>&1; then
   fail "partial Capture write receipt was accepted"
 fi
-AFTER="$(shasum -a 256 "$JOURNAL" | awk '{print $1}')"
+AFTER="$(sha256_file "$JOURNAL")"
 [[ "$BEFORE" == "$AFTER" ]] || fail "rejected append mutated the journal"
 
 # A valid final JSON object without its newline is treated as a truncated append.

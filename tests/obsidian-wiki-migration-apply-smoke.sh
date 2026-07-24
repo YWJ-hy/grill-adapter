@@ -7,7 +7,8 @@ MIGRATOR="$ROOT/scripts/wiki_migration_apply.py"
 BUNDLE="$ROOT/mcp/obsidian-wiki/dist/index.js"
 SKILL="$ROOT/skills/migrate-wiki/SKILL.md"
 MANIFEST_CONTRACT="$ROOT/contracts/obsidian-migration-manifest-v1.example.jsonc"
-TMP="$(mktemp -d)"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_windows-compat.bash"
+TMP="$(portable_tmpdir)"
 BRIDGE_PID=""
 cleanup() {
   if [[ -n "$BRIDGE_PID" ]]; then kill "$BRIDGE_PID" 2>/dev/null || true; fi
@@ -192,6 +193,21 @@ JS
 chmod +x "$TMP/gh"
 
 REAL_NODE="$(command -v node)"
+OBSIDIAN_CLI="$TMP/obsidian"
+GH_CLI="$TMP/gh"
+if command -v cygpath >/dev/null 2>&1; then
+  WINDOWS_NODE="$(cygpath -m "$REAL_NODE")"
+  OBSIDIAN_CLI="$TMP/obsidian.cmd"
+  GH_CLI="$TMP/gh.cmd"
+  cat > "$OBSIDIAN_CLI" <<CMD
+@echo off
+"$WINDOWS_NODE" "%~dp0obsidian" %*
+CMD
+  cat > "$GH_CLI" <<CMD
+@echo off
+"$WINDOWS_NODE" "%~dp0gh" %*
+CMD
+fi
 cat > "$TMP/node-wrapper" <<SH
 #!/usr/bin/env bash
 set -uo pipefail
@@ -230,6 +246,15 @@ fi
 exit \$STATUS
 SH
 chmod +x "$TMP/node-wrapper"
+NODE_WRAPPER_CMD="$TMP/node-wrapper"
+if command -v cygpath >/dev/null 2>&1; then
+  WINDOWS_BASH="$(cygpath -m "${BASH:-$(command -v bash)}")"
+  NODE_WRAPPER_CMD="$TMP/node-wrapper.cmd"
+  cat > "$NODE_WRAPPER_CMD" <<CMD
+@echo off
+"$WINDOWS_BASH" "$TMP/node-wrapper" %*
+CMD
+fi
 
 cat > "$PROJECT/.shared-adapter/settings.json" <<JSON
 {
@@ -272,8 +297,8 @@ JSON
 
 export CLAUDE_PROJECT_DIR="$PROJECT"
 export OBSIDIAN_WIKI_REGISTRY="$TMP/registry.json"
-export OBSIDIAN_WIKI_OBSIDIAN_CLI="$TMP/obsidian"
-export OBSIDIAN_WIKI_GH_CLI="$TMP/gh"
+export OBSIDIAN_WIKI_OBSIDIAN_CLI="$OBSIDIAN_CLI"
+export OBSIDIAN_WIKI_GH_CLI="$GH_CLI"
 export FAKE_OBSIDIAN_VAULT_ROOT="$VAULT"
 export FAKE_GH_STATE="$TMP/gh-state.json"
 export TEST_BRIDGE_TOKEN="migration-token"
@@ -304,14 +329,15 @@ APPLY_OUT="$TMP/apply.json"
 # The reviewed update hash comes from the immutable plan. A human edit after the
 # full-plan revalidation must not become the accepted CAS baseline.
 cp "$VAULT/$SOURCE_ROOT/rules/base-contract.md" "$TMP/reviewed-base.md"
-export OBSIDIAN_WIKI_NODE="$TMP/node-wrapper"
+export OBSIDIAN_WIKI_NODE="$NODE_WRAPPER_CMD"
 export FAKE_EDIT_AFTER_STATUS=1
 if python3 "$MIGRATOR" apply --project-root "$PROJECT" --plan "$PLAN" --confirmed > /dev/null 2> "$TMP/plan-race.err"; then
   printf 'Migration apply accepted target drift after plan validation\n' >&2
   exit 1
 fi
 unset OBSIDIAN_WIKI_NODE FAKE_EDIT_AFTER_STATUS
-grep -Fq 'confirmed target Note changed' "$TMP/plan-race.err"
+grep -Fq 'confirmed target Note changed' "$TMP/plan-race.err" \
+  || { cat "$TMP/plan-race.err" >&2; exit 1; }
 cp "$TMP/reviewed-base.md" "$VAULT/$SOURCE_ROOT/rules/base-contract.md"
 git -C "$VAULT" add "$SOURCE_ROOT/rules/base-contract.md"
 git -C "$VAULT" commit -m 'restore reviewed target snapshot' >/dev/null
@@ -319,7 +345,7 @@ git -C "$VAULT" push origin main >/dev/null
 
 # The write intent must exist before the bridge call, and a crash after that call must
 # leave the exact migration result on its dedicated PR branch rather than on main.
-export OBSIDIAN_WIKI_NODE="$TMP/node-wrapper"
+export OBSIDIAN_WIKI_NODE="$NODE_WRAPPER_CMD"
 export FAKE_INTERRUPT_AFTER_BASE_UPDATE=1
 if python3 "$MIGRATOR" apply --project-root "$PROJECT" --plan "$PLAN" --confirmed > /dev/null 2> "$TMP/interrupted.err"; then
   printf 'Migration apply ignored the post-bridge interruption failpoint\n' >&2
@@ -335,20 +361,20 @@ ACTIVE_BRANCH="$(git -C "$VAULT" branch --show-current)"
 UPDATED_NOTE="$VAULT/$SOURCE_ROOT/rules/base-contract.md"
 cp "$UPDATED_NOTE" "$TMP/interrupted-update.md"
 printf '\nHuman edit during interrupted migration.\n' >> "$UPDATED_NOTE"
-DRIFTED_HASH="$(shasum -a 256 "$UPDATED_NOTE")"
+DRIFTED_HASH="$(sha256_file "$UPDATED_NOTE")"
 if python3 "$MIGRATOR" apply --project-root "$PROJECT" --plan "$PLAN" --confirmed > /dev/null 2> "$TMP/interrupted-drift.err"; then
   printf 'Migration resume overwrote a human edit after an interrupted update\n' >&2
   exit 1
 fi
 grep -Fq 'write intent drift' "$TMP/interrupted-drift.err"
-[[ "$(shasum -a 256 "$UPDATED_NOTE")" == "$DRIFTED_HASH" ]] || {
+[[ "$(sha256_file "$UPDATED_NOTE")" == "$DRIFTED_HASH" ]] || {
   printf 'Migration resume changed the drifted Note\n' >&2
   exit 1
 }
 cp "$TMP/interrupted-update.md" "$UPDATED_NOTE"
 
 # The exact expected post-state is reconciled without a duplicate write.
-export OBSIDIAN_WIKI_NODE="$TMP/node-wrapper"
+export OBSIDIAN_WIKI_NODE="$NODE_WRAPPER_CMD"
 export FAKE_INTERRUPT_AFTER_PUBLISH=1
 if python3 "$MIGRATOR" apply --project-root "$PROJECT" --plan "$PLAN" --confirmed > /dev/null 2> "$TMP/publish-interrupted.err"; then
   printf 'Migration apply ignored the post-publisher interruption\n' >&2
@@ -496,9 +522,9 @@ if python3 "$MIGRATOR" cutover --project-root "$PROJECT" --manifest "$MANIFEST" 
 fi
 grep -Fq 'explicit confirmation' "$TMP/unconfirmed-cutover.err"
 
-LEGACY_BEFORE="$(find "$PROJECT/.adapter/wiki" -type f -print0 | sort -z | xargs -0 shasum -a 256)"
+LEGACY_BEFORE="$(sha256_tree "$PROJECT/.adapter/wiki")"
 python3 "$MIGRATOR" cutover --project-root "$PROJECT" --manifest "$MANIFEST" --confirmed > "$TMP/cutover.json"
-LEGACY_AFTER="$(find "$PROJECT/.adapter/wiki" -type f -print0 | sort -z | xargs -0 shasum -a 256)"
+LEGACY_AFTER="$(sha256_tree "$PROJECT/.adapter/wiki")"
 [[ "$LEGACY_BEFORE" == "$LEGACY_AFTER" ]] || { printf 'Cutover modified the legacy archive\n' >&2; exit 1; }
 python3 - "$TMP/cutover.json" "$PROJECT/.shared-adapter/settings.json" <<'PY'
 import json, sys

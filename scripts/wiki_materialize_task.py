@@ -508,7 +508,9 @@ def _invoke_obsidian_cli(cmd: dict[str, Any], project_root: Path, request: dict[
     except OSError as exc:
         raise MaterializeError(f"failed to launch Obsidian Wiki MCP CLI {argv!r}: {exc}") from exc
     if proc.returncode != 0:
-        detail = (proc.stderr or "").strip() or (proc.stdout or "").strip()
+        # A failed MCP process may have emitted partial Note content on stdout. Never copy it
+        # into a fail-open reviewer handoff or other diagnostic surface.
+        detail = (proc.stderr or "").strip() or f"exit code {proc.returncode}; stdout discarded"
         raise MaterializeError(f"Obsidian Wiki MCP CLI failed (exit {proc.returncode}): {detail}")
     try:
         result = json.loads((proc.stdout or "").strip().splitlines()[-1])

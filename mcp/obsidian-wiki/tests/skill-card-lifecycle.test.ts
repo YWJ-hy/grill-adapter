@@ -49,8 +49,10 @@ describe('reviewed Skill Card lifecycle', () => {
     const remoteRoot = path.join(root, 'knowledge.git');
     const sourceRoot = 'Projects/example';
     const registryPath = path.join(root, 'registry.json');
-    const obsidianCli = path.join(root, 'obsidian');
-    const ghCli = path.join(root, 'gh');
+    const obsidianCli = path.join(root, process.platform === 'win32' ? 'obsidian.cmd' : 'obsidian');
+    const obsidianScript = process.platform === 'win32' ? path.join(root, 'obsidian.js') : obsidianCli;
+    const ghCli = path.join(root, process.platform === 'win32' ? 'gh.cmd' : 'gh');
+    const ghScript = process.platform === 'win32' ? path.join(root, 'gh.js') : ghCli;
     const journal = path.join(projectDir, '.adapter', 'context', 'card-lifecycle.wiki-candidates.jsonl');
 
     command('git', ['init', '--bare', '--initial-branch=main', remoteRoot]);
@@ -86,7 +88,7 @@ describe('reviewed Skill Card lifecycle', () => {
     ]));
     expect(staged.discoveryState).toBe('pending');
 
-    writeFileSync(obsidianCli, `#!/usr/bin/env node
+    writeFileSync(obsidianScript, `#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
 const args = process.argv.slice(2);
@@ -103,8 +105,12 @@ else if (args.includes('search')) {
   process.stdout.write(fs.readFileSync(path.join(root, notePath), 'utf8'));
 } else process.exit(2);
 `, 'utf8');
-    chmodSync(obsidianCli, 0o755);
-    writeFileSync(ghCli, `#!/usr/bin/env node
+    if (process.platform === 'win32') {
+      writeFileSync(obsidianCli, `@echo off\r\n"${process.execPath}" "%~dp0obsidian.js" %*\r\n`, 'utf8');
+    } else {
+      chmodSync(obsidianCli, 0o755);
+    }
+    writeFileSync(ghScript, `#!/usr/bin/env node
 const args = process.argv.slice(2);
 if (args[0] !== 'pr') process.exit(2);
 if (args[1] === 'list') process.stdout.write('');
@@ -112,7 +118,11 @@ else if (args[1] === 'create') process.stdout.write('https://github.com/acme/kno
 else if (args[1] === 'edit') process.stdout.write(args[2] + '\\n');
 else process.exit(2);
 `, 'utf8');
-    chmodSync(ghCli, 0o755);
+    if (process.platform === 'win32') {
+      writeFileSync(ghCli, `@echo off\r\n"${process.execPath}" "%~dp0gh.js" %*\r\n`, 'utf8');
+    } else {
+      chmodSync(ghCli, 0o755);
+    }
 
     writeJson(path.join(projectDir, '.shared-adapter', 'settings.json'), {
       wiki: {

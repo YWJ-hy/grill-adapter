@@ -70,7 +70,8 @@ async function fixture(options: { shared?: boolean; update?: string } = {}) {
   const sourceId = options.shared ? 'engineering-shared' : 'project';
   const sourcePath = path.join(vaultRoot, sourceRoot);
   const registryPath = path.join(root, 'registry.json');
-  const obsidianCli = path.join(root, 'obsidian');
+  const obsidianCli = path.join(root, process.platform === 'win32' ? 'obsidian.cmd' : 'obsidian');
+  const obsidianScript = process.platform === 'win32' ? path.join(root, 'obsidian.js') : obsidianCli;
   mkdirSync(path.join(sourcePath, '_meta'), { recursive: true });
   writeFileSync(path.join(sourcePath, '_meta', 'wiki-source.md'), manifest(sourceId, options.shared ? 'shared' : 'project', options.update), 'utf8');
   const initial = note(`${sourceId}/existing`, 'Initial body.', `${sourceRoot}/Dependency`);
@@ -83,7 +84,7 @@ async function fixture(options: { shared?: boolean; update?: string } = {}) {
   execFileSync('git', ['-C', vaultRoot, 'remote', 'add', 'origin', 'https://github.com/acme/knowledge.git']);
   execFileSync('git', ['-C', vaultRoot, 'add', '.']);
   execFileSync('git', ['-C', vaultRoot, 'commit', '-m', 'fixture']);
-  writeFileSync(obsidianCli, `#!/usr/bin/env node
+  writeFileSync(obsidianScript, `#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
 const args = process.argv.slice(2);
@@ -100,7 +101,11 @@ else if (args.includes('search')) {
   process.stdout.write(fs.readFileSync(path.join(vaultRoot, notePath), 'utf8'));
 } else process.exit(2);
 `, 'utf8');
-  chmodSync(obsidianCli, 0o755);
+  if (process.platform === 'win32') {
+    writeFileSync(obsidianCli, `@echo off\r\n"${process.execPath}" "%~dp0obsidian.js" %*\r\n`, 'utf8');
+  } else {
+    chmodSync(obsidianCli, 0o755);
+  }
   writeJson(path.join(projectDir, '.shared-adapter', 'settings.json'), {
     wiki: { provider: 'obsidian', publishing: { mode: 'git-pr' }, obsidian: { bindings: [{ sourceId, role: options.shared ? 'shared' : 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: sourceRoot, access: { read: true, update: options.update ?? 'confirm' } }] } },
   });

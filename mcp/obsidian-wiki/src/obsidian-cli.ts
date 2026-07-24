@@ -15,6 +15,7 @@ function runCli(args: string[], env: NodeJS.ProcessEnv): string {
     return String(execFileSync(executable, args, {
       encoding: 'utf8',
       env: { ...process.env, ...env },
+      shell: process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(executable),
       stdio: ['ignore', 'pipe', 'pipe'],
     }));
   } catch (error) {
