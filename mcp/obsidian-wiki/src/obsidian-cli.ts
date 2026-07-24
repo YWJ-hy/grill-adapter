@@ -33,7 +33,9 @@ function parseJson(value: string, operation: string): unknown {
 }
 
 export function searchNotes(vaultSelector: string, query: string, env: NodeJS.ProcessEnv): ObsidianSearchResult[] {
-  const value = parseJson(runCli([`vault=${vaultSelector}`, 'search', `query=${query}`, 'format=json'], env), 'search');
+  const output = runCli([`vault=${vaultSelector}`, 'search', `query=${query}`, 'format=json'], env);
+  if (output.trim() === 'No matches found.') return [];
+  const value = parseJson(output, 'search');
   if (!Array.isArray(value)) throw new Error('Obsidian CLI search JSON must be an array');
   return value.map((entry, index) => {
     if (typeof entry !== 'string' || !entry) {

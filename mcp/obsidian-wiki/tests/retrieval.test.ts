@@ -107,18 +107,21 @@ const args = process.argv.slice(2);
 const vaultRoot = process.env.FAKE_OBSIDIAN_VAULT_ROOT;
 if (process.env.FAKE_OBSIDIAN_CALLS) fs.appendFileSync(process.env.FAKE_OBSIDIAN_CALLS, args.join(' ') + '\\n');
 if (args[0] === 'vaults') process.stdout.write('Knowledge\\n');
-else if (args.includes('search')) process.stdout.write(JSON.stringify([
-  'Projects/example/Visible.md',
-  'Projects/example/Dependency.md',
-  'Projects/example/Transitive.md',
-  'Projects/example/Archived.md',
-  'Projects/example/Private.md',
-  'Projects/example/ReviewSkill.md',
-  'Projects/example/StaleSkill.md',
-  'Projects/example/MissingSkill.md',
-  'Projects/example/DuplicateSkill.md',
-  'Projects/other/Other.md',
-]));
+else if (args.includes('search')) {
+  if (process.env.FAKE_OBSIDIAN_NO_MATCHES === 'true') process.stdout.write('No matches found.\\n');
+  else process.stdout.write(JSON.stringify([
+    'Projects/example/Visible.md',
+    'Projects/example/Dependency.md',
+    'Projects/example/Transitive.md',
+    'Projects/example/Archived.md',
+    'Projects/example/Private.md',
+    'Projects/example/ReviewSkill.md',
+    'Projects/example/StaleSkill.md',
+    'Projects/example/MissingSkill.md',
+    'Projects/example/DuplicateSkill.md',
+    'Projects/other/Other.md',
+  ]));
+}
 else if (args.includes('read')) {
   const notePath = args.find((arg) => arg.startsWith('path='))?.slice('path='.length);
   if (!notePath) process.exit(2);
@@ -165,6 +168,13 @@ afterEach(() => {
 });
 
 describe('Obsidian Wiki retrieval', () => {
+  it('treats the real CLI zero-match sentinel as an empty search result', () => {
+    const { env } = fixture();
+
+    expect(searchTool({ query: 'missing' }, { ...env, FAKE_OBSIDIAN_NO_MATCHES: 'true' }))
+      .toEqual({ notes: [] });
+  });
+
   it('searches only active agent-visible Notes under readable bound Sources', () => {
     const { env } = fixture();
 
