@@ -264,7 +264,9 @@ def _invoke_cli(
     except OSError as exc:
         raise MaterializeError(f"failed to launch shared-wiki MCP CLI {argv!r}: {exc}") from exc
     if proc.returncode != 0:
-        detail = (proc.stderr or "").strip() or (proc.stdout or "").strip()
+        # A failed MCP process may have emitted partial section content on stdout. Never copy it
+        # into a fail-open reviewer handoff or other diagnostic surface.
+        detail = (proc.stderr or "").strip() or f"exit code {proc.returncode}; stdout discarded"
         raise MaterializeError(f"shared-wiki MCP CLI failed (exit {proc.returncode}): {detail}")
     out = (proc.stdout or "").strip()
     if not out:

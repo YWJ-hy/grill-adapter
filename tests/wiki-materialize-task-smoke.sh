@@ -98,6 +98,10 @@ repo = os.environ.get("FAKE_REPO_URL", "https://github.com/YWJ-hy/shared-wiki.gi
 rev = os.environ.get("FAKE_REVISION", "47a929320ac726eac7c10a56288035dcca382cd2")
 revision = {"commitSha": rev, "shortSha": rev[:12], "ref": "HEAD"}
 
+if os.environ.get("FAKE_FAIL"):
+    print("PARTIAL UNVERIFIED SHARED WIKI CONTENT")
+    sys.exit(7)
+
 if sub == "graph-neighbors":
     # FAKE_NO_GRAPH_NEIGHBORS stands in for a shared-wiki MCP deployment that predates the
     # subcommand: error like the real "Unknown subcommand" path so closure must degrade.
@@ -197,6 +201,23 @@ if FAKE_REVISION="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" run_materialize --ta
 fi
 if ! grep -Fq 'revision drift' "$TMP/err3"; then
   printf 'Case 3: expected revision drift error, got: %s\n' "$(cat "$TMP/err3")" >&2
+  exit 1
+fi
+
+# --- Case 3b: failed shared-wiki CLI must discard partial stdout ---
+OUT3C="$TMP/task-1-partial.md"
+: > "$OUT3C"
+if FAKE_FAIL=1 run_materialize --task-id 1 --shared-wiki-cmd "$FAKE_CMD" --append-to "$OUT3C" > "$TMP/out3c" 2> "$TMP/err3c"; then
+  printf 'Case 3b: expected partial-output CLI failure\n' >&2
+  exit 1
+fi
+if grep -Fq 'PARTIAL UNVERIFIED SHARED WIKI CONTENT' "$TMP/err3c" || \
+   grep -Fq 'PARTIAL UNVERIFIED SHARED WIKI CONTENT' "$TMP/out3c"; then
+  printf 'Case 3b: failed shared-wiki CLI leaked partial stdout\n' >&2
+  exit 1
+fi
+if ! grep -Fq 'stdout discarded' "$TMP/err3c"; then
+  printf 'Case 3b: expected stdout-discarded diagnostic, got: %s\n' "$(cat "$TMP/err3c")" >&2
   exit 1
 fi
 

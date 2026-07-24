@@ -106,7 +106,7 @@ def bundle_call(subcommand: str, payload: dict[str, Any] | None, project_root: P
     except OSError as exc:
         raise MigrationError(f"cannot run bundled Obsidian Wiki CLI: {exc}") from exc
     if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip() or f"exit {completed.returncode}"
+        detail = completed.stderr.strip() or f"exit {completed.returncode}; stdout discarded"
         raise MigrationError(f"Obsidian Wiki {subcommand} failed: {detail}")
     try:
         value = json.loads(completed.stdout)
