@@ -57,7 +57,7 @@ Wiki constraint.
 When the current task already exists in a formal finalized context:
 
 1. Run the existing `wiki_context_render.py --fingerprint-preflight --strict --execution-ready
-   --ticket-roster ...` command. Ticket text drift returns to Carry for deliberate rerouting and
+   --project-root <project-root> --ticket-roster ...` command. Ticket text drift returns to Carry for deliberate rerouting and
    re-finalization; never restamp merely to silence drift.
 2. Use the readiness `bind` command. It runs the existing task renderer and fixed
    `wiki_materialize_task.py` fetcher with role `implementer`, captures both outputs, and records
@@ -110,7 +110,7 @@ Non-ready statuses must not receive `--context`; the recorder rejects it mechani
 
 ## 4. Broken Wiki is a user-selectable host gate
 
-Any configured Wiki status, research, Carry, fingerprint, or materialization failure is `broken`.
+Any configured Wiki status, research, Carry, fingerprint, or materialization failure, including an ADR authority identity/path/content drift, is `broken`.
 Explain the failed validation and its impact before implementation, then ask whether to stop and
 repair Wiki or continue without Wiki context. The adapter has no mandatory implementation block.
 

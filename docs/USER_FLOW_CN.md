@@ -129,7 +129,7 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
    /wiki-materialize <ticket>
    ```
 
-   背后仍由 `wiki_materialize_task.py` 唯一读取权威全文；schema-v5 覆盖本地 + `github_mcp`，schema-v6 只经 Obsidian MCP，并做有界、去重 1 跳闭包。binding/Note/Card/base/pack 任一漂移都让 Wiki 校验 fail-closed；宿主是否停止实现则由 readiness 的用户选择决定。
+   背后仍由 `wiki_materialize_task.py` 唯一读取权威全文；schema-v5 覆盖本地 + `github_mcp`，schema-v6 只经 Obsidian MCP，并做有界、去重 1 跳闭包。ADR-backed projection 还会在项目根内重算 `adrSourceId`、路径和 `adrSourceContentHash`；缺失、越界、格式错误或内容漂移都让 Wiki 校验 fail-closed，不输出旧/部分投影。binding/Note/Card/base/pack 任一漂移都让 Wiki 校验 fail-closed；宿主是否停止实现则由 readiness 的用户选择决定。
 
 6. readiness 结果写入 `.adapter/context/<feature-slug>.wiki-readiness.json`，只保存 task identity、fingerprint、状态和安全的 context 文件名引用，不保存 Note body。roster/context/receipt 都是本地工作态，不提交。
 
@@ -139,7 +139,7 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
 
 code-review 确定当前任务后、启动 Standards/Spec 两个隔离 reviewer 前，复用 implement 阶段的 readiness receipt 运行 `review-handoff`。`ready` 会重新校验 roster/fingerprint/context，并以 reviewer 角色只读取该任务的 hard Note、直接 `depends_on` 与 reviewer-required Skill Card；两轴读取同一个本地 handoff，但各自职责和输出结构不变。Card 到达实际 reviewer 后，其 `MUST invoke` project skill 要求必须执行。
 
-`no-relevant`、`disabled`、`broken`、无法确定 task 的 `unknown`，以及 receipt/context/Source/Card/revision/materialize 任一失败，都只生成不含 Wiki 正文的非阻塞 caveat。评审继续，不做 late research、不要求先修 Wiki，且失败路径会覆盖旧 handoff、丢弃所有部分输出。这里是“Wiki 内容完整性 fail-closed、宿主 review 可用性 fail-open”。
+   `no-relevant`、`disabled`、`broken`、无法确定 task 的 `unknown`，以及 receipt/context/Source/Card/ADR authority/revision/materialize 任一失败，都只生成不含 Wiki 正文的非阻塞 caveat。评审继续，不做 late research、不要求先修 Wiki，且失败路径会覆盖旧 handoff、丢弃所有部分输出。这里是“Wiki 内容验证 fail-closed、宿主 review 可用性 fail-open”。
 
 review 通过后，把本轮新沉淀的知识回写 wiki。约定块只让你调一个 skill：
 

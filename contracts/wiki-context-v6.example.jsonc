@@ -37,6 +37,9 @@
       "summary": "Preserve the transaction boundary for runtime writes.",
       "contentHash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       "bindingDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "adrSourceId": "project-adr:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+      "adrSourcePath": "docs/adr/0001-runtime.md",
+      "adrSourceContentHash": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
       "destination": {
         "kind": "task-bound",
         "reason": "Only the runtime implementation ticket changes this boundary.",

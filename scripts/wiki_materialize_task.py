@@ -49,6 +49,7 @@ from wiki_context_render import (  # noqa: E402
     _validate_context,
     reread_entries,
 )
+from adr_identity import AdrIdentityError, validate_identity  # noqa: E402
 from wiki_section import (  # noqa: E402
     extract_document_context_from_index,
     extract_section,
@@ -527,6 +528,19 @@ def _assert_v6_note_matches(expected: dict[str, Any], actual: dict[str, Any], ro
             raise MaterializeError(f"Obsidian Note {key} drift for {identity}")
     if actual.get("summary") != expected.get("summary"):
         raise MaterializeError(f"Obsidian Note summary drift for {identity}")
+    expected_adr = (
+        expected.get("adrSourceId"),
+        expected.get("adrSourcePath"),
+        expected.get("adrSourceContentHash"),
+    )
+    actual_adr = (
+        actual.get("adrSourceId"),
+        actual.get("adrSourcePath"),
+        actual.get("adrSourceContentHash"),
+    )
+    if any(value is not None for value in expected_adr + actual_adr):
+        if actual_adr != expected_adr:
+            raise MaterializeError(f"ADR projection identity drift for {identity}")
     if is_skill:
         for key in (
             "skillProvider",
@@ -548,6 +562,20 @@ def _assert_v6_note_matches(expected: dict[str, Any], actual: dict[str, Any], ro
         raise MaterializeError(f"hard Note policy violation for {identity}: runtime Note is no longer hard")
     if not isinstance(actual.get("content"), str) or not actual["content"].strip():
         raise MaterializeError(f"Obsidian Note has no readable content: {identity}")
+
+
+def _validate_adr_authority(project_root: Path, note: dict[str, Any], identity: str) -> None:
+    if not note.get("adrSourceId"):
+        return
+    try:
+        validate_identity(
+            project_root,
+            note["adrSourceId"],
+            note["adrSourcePath"],
+            note["adrSourceContentHash"],
+        )
+    except (AdrIdentityError, KeyError, TypeError) as exc:
+        raise MaterializeError(f"ADR projection authority validation failed for {identity}: {exc}") from exc
 
 
 def _v6_materialize(data: dict[str, Any], task_id: str | None, role: str, project_root: Path, explicit_cmd: str | None) -> list[dict[str, Any]]:
@@ -579,6 +607,7 @@ def _v6_materialize(data: dict[str, Any], task_id: str | None, role: str, projec
         actual = by_id.get(expected["wikiId"])
         if actual is None:
             raise MaterializeError(f"Obsidian Wiki MCP returned no Note for {expected['wikiId']}")
+        _validate_adr_authority(project_root, expected, expected["wikiId"])
         _assert_v6_note_matches(expected, actual, role, is_skill)
         materialized.append(
             {
@@ -634,6 +663,7 @@ def _v6_materialize(data: dict[str, Any], task_id: str | None, role: str, projec
                 raise MaterializeError(f"duplicate or missing depends_on Note for {wiki_id}")
             if not isinstance(actual.get("content"), str) or not actual["content"].strip():
                 raise MaterializeError(f"depends_on Note policy violation for {wiki_id}")
+            _validate_adr_authority(project_root, actual, wiki_id)
             seen_ids.add(str(actual["wikiId"]))
             materialized.append({"displayPath": actual["path"], "sectionId": actual["wikiId"], "content": actual["content"], "closedVia": closed_via[wiki_id], "revision": None, "caveats": []})
     if hard_note_ids:
@@ -685,7 +715,7 @@ def main() -> int:
 
     try:
         data = _load_context(Path(args.context_path))
-        _validate_context(data, args.strict, args.execution_ready)
+        _validate_context(data, args.strict, args.execution_ready, project_root)
         if data.get("schemaVersion") == 6:
             materialized = _v6_materialize(data, args.task_id, args.role, project_root, args.obsidian_wiki_cmd)
             if not materialized:
