@@ -49,7 +49,6 @@ function validatePackage() {
     "contracts",
     "host-adapters",
     "mcp/obsidian-wiki/dist/index.js",
-    "mcp/shared-wiki/dist/index.js",
   ];
   const missing = required.filter((relative) => !existsSync(join(PACKAGE_ROOT, relative)));
   if (missing.length > 0) {

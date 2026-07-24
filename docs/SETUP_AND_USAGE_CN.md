@@ -49,11 +49,11 @@ codex plugin marketplace add YWJ-hy/grill-adapter
 codex plugin add grill-adapter@grill-adapter
 ```
 
-plugin 一启用，13 个 skill、1 个 agent、3 个 hook 和两个 MCP server（legacy `shared-wiki`、Source-binding `obsidian-wiki`）**一起注册、自动生效**——不往 `~/.claude/skills`、`~/.claude/agents` 拷文件，也不往你项目的 `.claude/settings.json` 里并 hook 片段。
+plugin 一启用，11 个 skill、1 个 agent、3 个 hook 和一个 Source-binding `obsidian-wiki` MCP server **一起注册、自动生效**——不往 `~/.claude/skills`、`~/.claude/agents` 拷文件，也不往你项目的 `.claude/settings.json` 里并 hook 片段。
 
-**关于 `--scope`**：skills / agents / hooks / MCP **共用 plugin 的 scope**，plugin 自带的 MCP 无法单独设 scope。想要 shared-wiki MCP 只在**这个项目**里起，就用 `--scope project`；想跨项目共用，用 `--scope user`。
+**关于 `--scope`**：skills / agents / hooks / MCP **共用 plugin 的 scope**，plugin 自带的 MCP 无法单独设 scope。
 
-shared-wiki MCP 装好即自动启动（工具名带 `mcp__plugin_grill-adapter_shared-wiki__` 前缀），**不需要再手工注册**。要不要真连上一个跨 repo 共享 wiki，取决于你项目里的**绑定声明**（见下）：server 启动读 `CLAUDE_PROJECT_DIR`，从该项目的 `.shared-adapter/settings.json` 的 `wiki.sharedMcp` 自配置；没声明的项目自动 fail-closed，属正常。
+`obsidian-wiki` MCP 装好即自动启动，读取项目 `.shared-adapter/settings.json` 中显式声明的 Obsidian Source bindings；未绑定或健康检查失败时 fail-closed。
 
 ### 2.2 给项目写约定块
 
@@ -135,7 +135,7 @@ grill-adapter doctor /path/to/your/project
 ## 6. 验证你的安装
 
 ```bash
-claude --plugin-dir "$PWD" plugin details grill-adapter   # 不安装即加载：应报 13 skills / 1 agent / 3 hooks / 2 MCP servers
+claude --plugin-dir "$PWD" plugin details grill-adapter   # 不安装即加载：应报 11 skills / 1 agent / 3 hooks / 1 MCP server
 ./manage.sh self-test                # 跑全套 smoke/regression（别传仓库根，见 DEVELOPMENT_CN.md）
 ./manage.sh release-check <project>  # 发布前总门（plugin 加载 + 沙盒接线 + verify + 全套 + doctor，非破坏）
 ```

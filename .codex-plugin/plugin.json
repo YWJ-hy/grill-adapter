@@ -19,13 +19,6 @@
   ],
   "skills": "./skills/",
   "mcpServers": {
-    "shared-wiki": {
-      "cwd": ".",
-      "command": "node",
-      "args": [
-        "./mcp/shared-wiki/dist/index.js"
-      ]
-    },
     "obsidian-wiki": {
       "cwd": ".",
       "command": "node",

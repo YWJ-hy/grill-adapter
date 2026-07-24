@@ -17,22 +17,7 @@ from adr_identity import AdrIdentityError, source_id_for_path, validate_identity
 
 KIND = "grill-adapter.wiki-context"
 SCHEMA_VERSION = 6
-LEGACY_SCHEMA_VERSION = 5
-SUPPORTED_SCHEMA_VERSIONS = {LEGACY_SCHEMA_VERSION, SCHEMA_VERSION}
-CONSTRAINT_CATEGORIES = ("implementation", "test", "review", "general")
-ROLE_CATEGORIES = {
-    "implementer": ("implementation", "test", "general"),
-    "reviewer": ("implementation", "test", "review", "general"),
-}
-# Map the renderer's task role onto the card-marker binding role (wiki_section.KNOWN_BINDING_ROLES).
-# A section may declare `roles` (stamped mechanically from a discovery-card marker) to bind to only
-# some roles; render + reread skip a section whose roles exclude the active role. Absent roles =
-# binds to every role (historical behavior; non-card sections never carry roles).
-ROLE_TO_BINDING = {"implementer": "implement", "reviewer": "review"}
-# Source anchors are bounded pointers into a section, not the section body -- the authoritative full
-# text always comes from the reread. A long excerpt is soft-capped at render (the only place an anchor
-# reaches an execution prompt) so a verbose selection cannot bloat per-task injection.
-MAX_SOURCE_ANCHOR_EXCERPT = 200
+SUPPORTED_SCHEMA_VERSIONS = {SCHEMA_VERSION}
 DESTINATION_KINDS = {"task-bound", "global", "planning-only"}
 SCAFFOLD_GENERATED_BY = "grill-adapter"
 # taskRouting block emitted by --scaffold. These are the pre-confirmation values: the author flips
@@ -113,31 +98,8 @@ def _load_json(path: Path, label: str) -> dict[str, Any]:
 
 def _load_context(path: Path) -> dict[str, Any]:
     if path.suffix == ".md":
-        raise ValidationError("Legacy .wiki-context.md is not supported; schemaVersion 5 JSON is read-only compatibility and new planning must create a schemaVersion 6 Obsidian sidecar.")
+        raise ValidationError("Legacy .wiki-context.md is not supported; create a schemaVersion 6 Obsidian sidecar.")
     return _load_json(path, "wiki context")
-
-
-def _section_id(section: dict[str, Any]) -> str:
-    section_id = section.get("sectionId") or section.get("section_name")
-    if not section_id:
-        raise ValidationError("section must include sectionId or section_name")
-    return str(section_id)
-
-
-def _section_key(page: dict[str, Any], section: dict[str, Any]) -> tuple[str, str, str, str]:
-    root = str(page.get("root") or "")
-    source = str(page.get("source") or "")
-    path = str(page.get("localPath") or page.get("wikiPath") or page.get("displayPath") or page.get("path") or "")
-    return (root, source, path, _section_id(section))
-
-
-def _iter_sections(data: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
-    pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    for page in _as_list(data.get("wikiPages"), "wikiPages"):
-        page_obj = _as_dict(page, "wikiPages[]")
-        for section in _as_list(page_obj.get("sections"), "sections"):
-            pairs.append((page_obj, _as_dict(section, "sections[]")))
-    return pairs
 
 
 def _validate_task_fingerprint(task_ref: dict[str, Any], field: str) -> None:
@@ -297,72 +259,7 @@ def _validate_v6_execution_ready(data: dict[str, Any]) -> None:
 
 
 def _validate_execution_ready(data: dict[str, Any]) -> None:
-    if data.get("schemaVersion") == SCHEMA_VERSION:
-        _validate_v6_execution_ready(data)
-        return
-    task_routing = _as_dict(data.get("taskRouting"), "taskRouting")
-    if task_routing.get("status") != "confirmed":
-        raise ValidationError("taskRouting.status must be confirmed for execution-ready wiki context")
-    if task_routing.get("selectedSectionsFrozen") is not True:
-        raise ValidationError("taskRouting.selectedSectionsFrozen must be true for execution-ready wiki context")
-
-    # taskWikiRefs is the task roster + fingerprint anchor only. In schemaVersion 5 there are no per-task
-    # wiki refs and no globalWikiRefs collection; routing lives entirely on each section's destination.
-    # Collect valid task ids first so task-bound sections can be checked against them.
-    task_refs = _as_list(data.get("taskWikiRefs"), "taskWikiRefs")
-    task_ids: set[str] = set()
-    for index, task_ref in enumerate(task_refs):
-        task_obj = _as_dict(task_ref, f"taskWikiRefs[{index}]")
-        task_id = task_obj.get("taskId")
-        if not isinstance(task_id, str) or not task_id.strip():
-            raise ValidationError(f"taskWikiRefs[{index}].taskId is required")
-        if task_id in task_ids:
-            raise ValidationError(f"taskWikiRefs[{index}].taskId duplicates {task_id}")
-        task_ids.add(task_id)
-        if not isinstance(task_obj.get("taskTitle"), str) or not task_obj.get("taskTitle", "").strip():
-            raise ValidationError(f"taskWikiRefs[{index}].taskTitle is required")
-        _validate_task_fingerprint(task_obj, f"taskWikiRefs[{index}]")
-
-    for page, section in _iter_sections(data):
-        key = _section_key(page, section)
-        destination = _as_dict(section.get("destination"), f"section {key}.destination")
-        kind = destination.get("kind")
-        if kind not in DESTINATION_KINDS:
-            raise ValidationError(f"section {key}.destination.kind must be one of {', '.join(sorted(DESTINATION_KINDS))}")
-        if not str(destination.get("reason") or "").strip():
-            raise ValidationError(f"section {key}.destination.reason is required")
-        relevance = section.get("relevance")
-        if (section.get("hardConstraint") or relevance == "direct") and kind == "planning-only":
-            raise ValidationError(f"hard/direct section {key} cannot have planning-only destination")
-        # Hard constraints are authoritative and must be reread in full at execution time, not
-        # only distilled into planning bullets. render_reread_list() silently skips hard sections
-        # that lack a reread block, so requiring it here is a load-bearing backstop: do not relax it
-        # to save planning tokens (guarded by tests/wiki-context-json-render-smoke.sh HARD_NO_REREAD).
-        if section.get("hardConstraint"):
-            reread = section.get("reread")
-            if not isinstance(reread, dict) or not reread:
-                raise ValidationError(
-                    f"hard-constraint section {key} must include a reread block so execution can reread the full section text"
-                )
-        # Routing: task-bound sections name the plan tasks they bind to (the one genuinely authored
-        # mapping); global/planning-only carry no task list. globalWikiRefs/wikiRefs are gone -- the
-        # renderer derives task scope straight from destination.kind and destination.tasks.
-        tasks = destination.get("tasks")
-        if kind == "task-bound":
-            task_list = _as_list(tasks, f"section {key}.destination.tasks")
-            if not task_list:
-                raise ValidationError(f"task-bound section {key} must list one or more plan task ids in destination.tasks")
-            seen_tasks: set[str] = set()
-            for bound_id in task_list:
-                if not isinstance(bound_id, str) or not bound_id.strip():
-                    raise ValidationError(f"section {key}.destination.tasks entries must be non-empty task id strings")
-                if bound_id in seen_tasks:
-                    raise ValidationError(f"section {key}.destination.tasks duplicates {bound_id}")
-                seen_tasks.add(bound_id)
-                if bound_id not in task_ids:
-                    raise ValidationError(f"task-bound section {key}.destination.tasks references unknown task id {bound_id}")
-        elif tasks:
-            raise ValidationError(f"{kind} section {key} must not set destination.tasks")
+    _validate_v6_execution_ready(data)
 
 
 def _validate_v6_context(
@@ -436,200 +333,10 @@ def _validate_context(
     execution_ready: bool = False,
     project_root: Path | None = None,
 ) -> list[str]:
-    caveats: list[str] = []
     schema_version = data.get("schemaVersion")
     if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
-        raise ValidationError(f"schemaVersion must be one of {', '.join(str(version) for version in sorted(SUPPORTED_SCHEMA_VERSIONS))}")
-    if schema_version == SCHEMA_VERSION:
-        return _validate_v6_context(data, execution_ready, project_root)
-    if data.get("kind") != KIND:
-        raise ValidationError(f"kind must be {KIND}")
-
-    # Optional shared-wiki identity (which github_mcp shared wiki this plan was built against).
-    # Tolerated when absent; lightly type-checked when present so execution can compare it to the
-    # connected server's repoUrl and detect rebinding drift.
-    shared_wiki = data.get("sharedWiki")
-    if shared_wiki is not None:
-        shared_wiki_obj = _as_dict(shared_wiki, "sharedWiki")
-        repo_url = shared_wiki_obj.get("repoUrl")
-        if repo_url is not None and (not isinstance(repo_url, str) or not repo_url.strip()):
-            raise ValidationError("sharedWiki.repoUrl must be a non-empty string when present")
-
-    pages = _as_list(data.get("wikiPages"), "wikiPages")
-    for page_index, page in enumerate(pages):
-        page_obj = _as_dict(page, f"wikiPages[{page_index}]")
-        _as_dict(page_obj.get("documentContext"), f"wikiPages[{page_index}].documentContext")
-        if "maintenanceWarnings" in page_obj:
-            _as_list(page_obj.get("maintenanceWarnings"), f"wikiPages[{page_index}].maintenanceWarnings")
-        sections = _as_list(page_obj.get("sections"), f"wikiPages[{page_index}].sections")
-        for section_index, section in enumerate(sections):
-            section_obj = _as_dict(section, f"wikiPages[{page_index}].sections[{section_index}]")
-            if strict and "documentContext" in section_obj:
-                raise ValidationError(f"wikiPages[{page_index}].sections[{section_index}].documentContext is not allowed; documentContext belongs on the page")
-            section_id = section_obj.get("sectionId") or section_obj.get("section_name")
-            if not section_id:
-                raise ValidationError(f"wikiPages[{page_index}].sections[{section_index}] must include sectionId or section_name")
-            constraints = _as_dict(section_obj.get("constraints"), f"wikiPages[{page_index}].sections[{section_index}].constraints")
-            unknown = sorted(set(constraints) - set(CONSTRAINT_CATEGORIES))
-            if unknown:
-                message = f"wikiPages[{page_index}].sections[{section_index}].constraints contains unsupported categories: {', '.join(unknown)}"
-                if strict:
-                    raise ValidationError(message)
-                caveats.append(message)
-            for category in CONSTRAINT_CATEGORIES:
-                _as_list(constraints.get(category), f"wikiPages[{page_index}].sections[{section_index}].constraints.{category}")
-            if strict and "appliesTo" in section_obj:
-                raise ValidationError(f"wikiPages[{page_index}].sections[{section_index}].appliesTo is removed in schemaVersion {SCHEMA_VERSION}; bind tasks via section.destination.tasks instead")
-            if "sourceAnchors" in section_obj:
-                _as_list(section_obj.get("sourceAnchors"), f"wikiPages[{page_index}].sections[{section_index}].sourceAnchors")
-            if "roles" in section_obj:
-                where = f"wikiPages[{page_index}].sections[{section_index}].roles"
-                role_values = _as_list(section_obj.get("roles"), where)
-                known = set(ROLE_TO_BINDING.values())
-                unknown = [r for r in role_values if not (isinstance(r, str) and r in known)]
-                if not role_values or unknown:
-                    raise ValidationError(
-                        f"{where} must be a non-empty subset of {sorted(known)} (got {section_obj.get('roles')!r})"
-                    )
-    if "maintenanceWarnings" in data:
-        _as_list(data.get("maintenanceWarnings"), "maintenanceWarnings")
-    if execution_ready:
-        _validate_execution_ready(data)
-    return caveats
-
-
-def _selected_pages(data: dict[str, Any], section_keys: set[tuple[str, str, str, str]] | None = None) -> list[dict[str, Any]]:
-    selected: list[dict[str, Any]] = []
-    for page in _as_list(data.get("wikiPages"), "wikiPages"):
-        page_obj = dict(_as_dict(page, "wikiPages[]"))
-        sections = []
-        for section in _as_list(page_obj.get("sections"), "sections"):
-            section_obj = _as_dict(section, "sections[]")
-            if section_keys is not None and _section_key(page_obj, section_obj) not in section_keys:
-                continue
-            sections.append(section_obj)
-        if sections:
-            page_obj["sections"] = sections
-            selected.append(page_obj)
-    return selected
-
-
-def _task_section_keys(data: dict[str, Any], task_id: str) -> set[tuple[str, str, str, str]]:
-    # The task must exist in the taskWikiRefs roster (preserves the "unknown task id" guard for rendering).
-    matches = [
-        _as_dict(task_ref, "taskWikiRefs[]")
-        for task_ref in _as_list(data.get("taskWikiRefs"), "taskWikiRefs")
-        if _as_dict(task_ref, "taskWikiRefs[]").get("taskId") == task_id
-    ]
-    if len(matches) != 1:
-        raise ValidationError(f"taskWikiRefs must contain exactly one entry for taskId {task_id}")
-    # Routing is read straight from each section's destination: global sections reach every task; a
-    # task-bound section reaches this task only when its destination.tasks lists this task id.
-    keys: set[tuple[str, str, str, str]] = set()
-    for page, section in _iter_sections(data):
-        destination = section.get("destination")
-        if not isinstance(destination, dict):
-            continue
-        kind = destination.get("kind")
-        if kind == "global":
-            keys.add(_section_key(page, section))
-        elif kind == "task-bound" and task_id in _as_list(destination.get("tasks"), "destination.tasks"):
-            keys.add(_section_key(page, section))
-    return keys
-
-
-def _section_roles(section: dict[str, Any]) -> list[str] | None:
-    """Return a section's binding-role restriction, or None when it binds to every role.
-
-    A section restricts to a subset only when `roles` is a non-empty list of known binding
-    roles that is a strict subset; anything else (absent, empty, unknown-only, or all roles)
-    means no restriction. Non-card sections never carry `roles`, so they always return None.
-    """
-    raw = section.get("roles")
-    if not isinstance(raw, list) or not raw:
-        return None
-    known = set(ROLE_TO_BINDING.values())
-    roles = [role for role in raw if role in known]
-    if not roles or len(set(roles)) == len(known):
-        return None
-    return roles
-
-
-def _role_allows(section: dict[str, Any], role: str) -> bool:
-    """Whether a section is visible to the active task role given its `roles` restriction."""
-    roles = _section_roles(section)
-    if roles is None:
-        return True
-    return ROLE_TO_BINDING.get(role, role) in roles
-
-
-def _append_document_context(lines: list[str], display: str, context: dict[str, Any]) -> None:
-    """Render the page heading plus its bounded document context, content-first.
-
-    The heading folds the wiki path (its `.adapter/` vs `.shared-adapter/` prefix already
-    signals the root) and the human title into one line; the overview renders as a blockquote. The
-    machine plumbing an execution/reviewer subagent never acts on -- root/source/localPath/wikiPath
-    metadata rows, the `.index.md` context-source path, the standalone "Document Context" heading --
-    is dropped: nothing downstream parses this Markdown (it is Read once and discarded), so those
-    rows were pure per-task token cost.
-    """
-    title = context.get("title")
-    # The companion-index H1 is the canonical "Sections: <rel-path>" marker (migrate-wiki / scaffold
-    # seed), not a human title -- folding it in would just echo the page path already in the heading.
-    # Keep a genuine title (rare in practice); drop the structural placeholder.
-    if isinstance(title, str) and title.strip().startswith("Sections:"):
-        title = None
-    heading = f"### `{display}`"
-    if title:
-        heading += f" — {title}"
-    lines.append(heading)
-    if context.get("overview"):
-        lines.append(f"> {context['overview']}")
-    if context.get("scope"):
-        lines.append(f"- Scope: {context['scope']}")
-    for caveat in _as_list(context.get("caveats"), "documentContext.caveats"):
-        lines.append(f"- Caveat: {caveat}")
-
-
-def _append_constraints(lines: list[str], constraints: dict[str, Any], role: str) -> None:
-    for category in ROLE_CATEGORIES[role]:
-        items = _as_list(constraints.get(category), f"constraints.{category}")
-        if not items:
-            continue
-        # Bold label, not a heading: sections already render at h4, so a category h4 would collide.
-        lines.append(f"**{category.capitalize()} constraints:**")
-        for item in items:
-            lines.append(f"- {item}")
-
-
-def _truncate_excerpt(value: Any) -> str:
-    """Soft-cap a source-anchor excerpt to a bounded pointer length with an ellipsis hint.
-
-    Anchors are pointers, not authoritative text (that is the reread's job), so a pathologically long
-    excerpt is trimmed here rather than rejected -- non-destructive to the stored selection, bounded in
-    the execution prompt. The trailing hint tells the reader where the full text lives.
-    """
-    if value is None:
-        return ""
-    text = str(value)
-    if len(text) <= MAX_SOURCE_ANCHOR_EXCERPT:
-        return text
-    return text[:MAX_SOURCE_ANCHOR_EXCERPT].rstrip() + "… (truncated; reread the section for full text)"
-
-
-def _append_source_anchors(lines: list[str], anchors: Any) -> None:
-    source_anchors = _as_list(anchors, "sourceAnchors")
-    if not source_anchors:
-        return
-    lines.append("**Source anchors:**")
-    for anchor in source_anchors:
-        if isinstance(anchor, dict):
-            heading = anchor.get("heading")
-            excerpt = _truncate_excerpt(anchor.get("excerpt"))
-            prefix = f"{heading}: " if heading else ""
-            lines.append(f"- {prefix}{excerpt}".rstrip())
-        else:
-            lines.append(f"- {_truncate_excerpt(anchor)}")
+        raise ValidationError("schemaVersion must be 6; legacy contexts are migration input only and cannot be executed")
+    return _validate_v6_context(data, execution_ready, project_root)
 
 
 def _v6_task_notes(data: dict[str, Any], task_id: str | None, role: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -688,209 +395,25 @@ def _render_v6_markdown(data: dict[str, Any], role: str, task_id: str | None) ->
 
 
 def render_markdown(data: dict[str, Any], role: str, task_id: str | None = None) -> str:
-    if data.get("schemaVersion") == SCHEMA_VERSION:
-        return _render_v6_markdown(data, role, task_id)
-    section_keys = _task_section_keys(data, task_id) if task_id else None
-    pages = _selected_pages(data, section_keys)
-    if not pages:
-        if task_id:
-            return f"No selected wiki constraints for task `{task_id}` and role `{role}`."
-        return "No selected wiki constraints for this role."
-
-    lines: list[str] = ["## Wiki Constraints", ""]
-    if task_id:
-        lines.append(f"- Task ID: `{task_id}`")
-        lines.append("")
-    shared_wiki = data.get("sharedWiki")
-    if isinstance(shared_wiki, dict):
-        repo_url = shared_wiki.get("repoUrl")
-        revision = shared_wiki.get("revision")
-        commit = None
-        if isinstance(revision, dict):
-            commit = revision.get("commitSha") or revision.get("shortSha") or revision.get("ref")
-        identity_bits: list[str] = []
-        if repo_url:
-            identity_bits.append(f"repo `{repo_url}`")
-        if commit:
-            identity_bits.append(f"revision `{commit}`")
-        if identity_bits:
-            # Identity only. The drift check ("confirm the MCP still serves this repo") is not the
-            # subagent's job: wiki_materialize_task.py already fails closed on sharedWiki rebinding
-            # and revision drift before appending the rereads this file gets Read alongside.
-            lines.append(f"- Shared wiki source: {', '.join(identity_bits)}")
-            lines.append("")
-    for page in pages:
-        display = page.get("displayPath") or page.get("path") or page.get("wikiPath") or "unknown wiki page"
-        _append_document_context(lines, display, _as_dict(page.get("documentContext"), "documentContext"))
-        for caveat in _as_list(page.get("caveats"), "page.caveats"):
-            lines.append(f"- Caveat: {caveat}")
-        lines.append("")
-
-        for section in _as_list(page.get("sections"), "sections"):
-            # A role-restricted section (roles stamped from a discovery-card marker) is invisible
-            # to roles it does not bind — e.g. a review-only skill card never reaches implementers.
-            if not _role_allows(section, role):
-                continue
-            section_id = section.get("sectionId") or section.get("section_name")
-            hard = bool(section.get("hardConstraint"))
-            # Execution render carries only what the implementer/reviewer acts on for this task: the
-            # section id + binding strength (folded into the heading), relevanceTo + reason (separate
-            # fields, never merged), and the constraints. Planning/routing bookkeeping is dropped
-            # (relevance/confidence selection signals, destination kind/reason -- routing is already
-            # resolved: this section only renders because it routed to this task), and so is the
-            # `#### Reread` pointer block: it duplicated the page metadata above and the section's full
-            # text below, which materialize appends verbatim under "## Hard Wiki Constraint Rereads".
-            lines.append(f"#### `{section_id}` · {'hard' if hard else 'soft'}")
-            if section.get("relevanceTo"):
-                lines.append(f"- Relevance: {section['relevanceTo']}")
-            if section.get("reason"):
-                lines.append(f"- Why: {section['reason']}")
-            for caveat in _as_list(section.get("caveats"), "section.caveats"):
-                lines.append(f"- Caveat: {caveat}")
-            _append_constraints(lines, _as_dict(section.get("constraints"), "constraints"), role)
-            # Source anchors are a lossy pointer into the section body. For a hard constraint the
-            # authoritative full text is appended below, so an anchor there is pure duplication; render
-            # anchors only for soft (no-reread) sections, where they are the sole verbatim provenance.
-            if not hard:
-                _append_source_anchors(lines, section.get("sourceAnchors"))
-            lines.append("")
-    for caveat in _as_list(data.get("caveats"), "caveats"):
-        lines.append(f"- Context caveat: {caveat}")
-    return "\n".join(lines).rstrip()
-
-
-def _load_local_section_graph(root_name: str) -> dict[str, Any] | None:
-    """Load a local wiki root's derived .graph.json, or None if unavailable.
-
-    Works for both ``project`` (``.adapter/wiki``) and a locally checked-out
-    ``shared`` wiki (``.shared-adapter/wiki``). Read lazily and defensively:
-    depends-on closure is an additive convenience, so any failure to locate/parse the
-    graph must degrade to "no closure", never break rereads. The github_mcp shared wiki
-    has no local graph; its closure is computed by wiki_materialize_task.py against the
-    remote graph instead.
-    """
-    try:
-        from wiki_common import repo_root, select_wiki_root  # local import keeps the renderer stdlib-only otherwise
-
-        wiki = select_wiki_root(repo_root(Path.cwd()), root_name)
-        graph_path = wiki.path / ".graph.json"
-        if not graph_path.is_file():
-            return None
-        graph = json.loads(graph_path.read_text(encoding="utf-8"))
-        return graph if isinstance(graph, dict) else None
-    except Exception:
-        return None
-
-
-def _depends_on_closure_entries(
-    local_source_nodes: dict[str, list[str]],
-    emitted_keys: set[tuple[str, str]],
-) -> list[dict[str, Any]]:
-    """1-hop selection-time closure of depends-on edges for LOCAL hard-constraint sections.
-
-    ``local_source_nodes`` maps a local root name (``project`` / ``shared``) to its
-    selected hard-constraint ``page#section`` nodes. For each root we load that wiki's own
-    derived .graph.json and pull each section's ``depends-on`` targets into the reread set,
-    so a load-bearing dependency is never left behind a link at execution. Bounded to one
-    hop (a target's own depends-on edges are NOT followed) and deduped against the directly
-    emitted rereads. Returns synthesized reread entries (same local root, section-level
-    targets only); page-level depends-on targets are skipped (not rereadable as a section).
-
-    github_mcp shared sections are intentionally NOT handled here: their graph is remote, so
-    wiki_materialize_task.py closes them via the shared-wiki graph-neighbors CLI. Both paths
-    share wiki_common.depends_on_closure_targets, so what counts as a closed edge never forks.
-    """
-    from wiki_common import depends_on_closure_targets, one_hop_neighbors  # keep renderer stdlib-only otherwise
-
-    entries: list[dict[str, Any]] = []
-    for root_name, source_nodes in local_source_nodes.items():
-        if not source_nodes:
-            continue
-        graph = _load_local_section_graph(root_name)
-        if not graph:
-            continue
-        slices = one_hop_neighbors(graph, source_nodes)
-        for closed_via, local_path, section_id in depends_on_closure_targets(slices, source_nodes):
-            key = (root_name, f"{local_path}#{section_id}")
-            if key in emitted_keys:
-                continue
-            emitted_keys.add(key)
-            entries.append({
-                "root": root_name,
-                "source": "local",
-                "displayPath": local_path,
-                "localPath": local_path,
-                "wikiPath": local_path,
-                "sectionId": section_id,
-                "reread": {"localPath": local_path, "sectionId": section_id, "includeDocumentContext": True},
-                "closureType": "depends-on",
-                "closedVia": closed_via,
-            })
-    return entries
+    return _render_v6_markdown(data, role, task_id)
 
 
 def reread_entries(data: dict[str, Any], role: str = "implementer", task_id: str | None = None) -> list[dict[str, Any]]:
-    """Task-scoped hard-constraint reread set as structured entries (the data behind --reread-list).
-
-    Exposed so an orchestrator (wiki_materialize_task.py) can consume the same selection the
-    renderer emits as JSONL — both go through this one function so the reread set never forks.
-    Each entry carries the page identity (root/source/localPath/wikiPath/revision), the section
-    id, and the section's reread block; local (project or locally checked-out shared) hard
-    sections additionally seed the 1-hop depends-on closure appended at the end. A github_mcp
-    shared section's closure is computed downstream by wiki_materialize_task.py (remote graph).
-    """
-    if data.get("schemaVersion") == SCHEMA_VERSION:
-        notes, _ = _v6_task_notes(data, task_id, role)
-        return [
-            {
-                "sourceId": note["sourceId"],
-                "role": note["role"],
-                "path": note["path"],
-                "wikiId": note["wikiId"],
-                "contentHash": note["contentHash"],
-                "bindingDigest": note["bindingDigest"],
-                "summary": note["summary"],
-            }
-            for note in notes
-            if note.get("constraintStrength") == "hard"
-        ]
-    section_keys = _task_section_keys(data, task_id) if task_id else None
-    entries: list[dict[str, Any]] = []
-    emitted_keys: set[tuple[str, str]] = set()
-    local_source_nodes: dict[str, list[str]] = {"project": [], "shared": []}
-
-    for page in _selected_pages(data, section_keys):
-        root = page.get("root")
-        root_key = root if root in ("project", "shared") else "project"
-        source = page.get("source") or "local"
-        local_path = page.get("localPath")
-        for section in _as_list(page.get("sections"), "sections"):
-            if not section.get("hardConstraint") or not section.get("reread"):
-                continue
-            # Honor the section's role binding here too: a review-only card's full-text reread
-            # must not be injected into an implementer prompt (and vice versa).
-            if not _role_allows(section, role):
-                continue
-            section_id = section.get("sectionId") or section.get("section_name")
-            entry = {
-                "root": root,
-                "source": page.get("source"),
-                "displayPath": page.get("displayPath"),
-                "localPath": local_path,
-                "wikiPath": page.get("wikiPath"),
-                "revision": page.get("revision"),
-                "sectionId": section_id,
-                "reread": section.get("reread"),
-            }
-            entries.append({key: value for key, value in entry.items() if value is not None})
-            # Track local hard sections (project or locally checked-out shared) so we can close
-            # their depends-on edges below; github_mcp sections have no local graph here.
-            if source == "local" and local_path and section_id:
-                emitted_keys.add((root_key, f"{local_path}#{section_id}"))
-                local_source_nodes[root_key].append(f"{local_path}#{section_id}")
-
-    entries.extend(_depends_on_closure_entries(local_source_nodes, emitted_keys))
-    return entries
+    """Return task-scoped hard Obsidian Note metadata as JSONL-ready entries."""
+    notes, _ = _v6_task_notes(data, task_id, role)
+    return [
+        {
+            "sourceId": note["sourceId"],
+            "role": note["role"],
+            "path": note["path"],
+            "wikiId": note["wikiId"],
+            "contentHash": note["contentHash"],
+            "bindingDigest": note["bindingDigest"],
+            "summary": note["summary"],
+        }
+        for note in notes
+        if note.get("constraintStrength") == "hard"
+    ]
 
 
 def render_reread_list(data: dict[str, Any], role: str = "implementer", task_id: str | None = None) -> str:
@@ -1041,154 +564,6 @@ def bind_fingerprints(data: dict[str, Any], roster_path: Path) -> tuple[int, int
     return len(sidecar_tasks), changed, sorted(sidecar_tasks)
 
 
-def _default_destination_kind(section: dict[str, Any]) -> str:
-    """Starting-guess routing for a freshly scaffolded section.
-
-    hard/direct sections may never be planning-only (execution-ready validation rejects that), so they
-    default to task-bound; soft context defaults to planning-only. The author confirms or overrides the
-    kind and MUST supply a non-empty destination.reason before --execution-ready passes.
-    """
-    if section.get("hardConstraint") or section.get("relevance") == "direct":
-        return "task-bound"
-    return "planning-only"
-
-
-def _derive_reread(page: dict[str, Any], section_id: str) -> dict[str, Any]:
-    """Mechanically build the reread block every hardConstraint section needs.
-
-    Derivable entirely from the page identity plus the section id, this removes the single most common
-    authoring omission (a hard section missing reread, which fails execution-ready validation). Mirrors
-    the page's path shape: localPath for local pages, wikiPath for github_mcp pages.
-    """
-    reread: dict[str, Any] = {"root": page.get("root"), "source": page.get("source")}
-    if page.get("localPath"):
-        reread["localPath"] = page["localPath"]
-    if page.get("wikiPath"):
-        reread["wikiPath"] = page["wikiPath"]
-    reread["sectionId"] = section_id
-    reread["includeDocumentContext"] = True
-    return {key: value for key, value in reread.items() if value is not None}
-
-
-def _read_card_roles(page: dict[str, Any], section_id: str) -> list[str] | None:
-    """Read a section's binding-role restriction from its source wiki file, or None.
-
-    Role binding is intrinsic to the skill and authoritative on the discovery-card marker, so the
-    generator stamps it mechanically rather than trusting the researcher selection to carry it.
-    Only project-local pages have a readable marker file; the path is resolved like the rest of the
-    tool's relative paths (CWD = project root). Any failure — non-local page, missing file, parse
-    error — degrades to None ("binds to every role"), never a hard error. extract_section_roles
-    returns a value only for a strict-subset restriction, so unrestricted cards stamp nothing.
-    """
-    if page.get("root") not in (None, "project") or page.get("source") not in (None, "local"):
-        return None
-    candidate = page.get("displayPath") or page.get("path")
-    if not candidate:
-        return None
-    try:
-        path = Path(candidate)
-        if not path.is_file():
-            return None
-        from wiki_section import extract_section_roles  # local import keeps the renderer stdlib-only otherwise
-
-        return extract_section_roles(path.read_text(encoding="utf-8")).get(section_id)
-    except Exception:
-        return None
-
-
-def _scaffold_section(page: dict[str, Any], raw_section: Any, page_index: int, section_index: int) -> dict[str, Any]:
-    where = f"selection wikiPages[{page_index}].sections[{section_index}]"
-    section = _as_dict(raw_section, where)
-    section_id = section.get("sectionId") or section.get("section_name")
-    if not section_id:
-        raise ValidationError(f"{where} must include sectionId or section_name")
-    section_id = str(section_id)
-
-    out: dict[str, Any] = {"sectionId": section_id}
-    for field_name in ("readDepth", "relevance", "confidence", "reason", "relevanceTo"):
-        if section.get(field_name) is not None:
-            out[field_name] = section[field_name]
-    out["hardConstraint"] = bool(section.get("hardConstraint"))
-
-    constraints = _as_dict(section.get("constraints") or {}, f"{where}.constraints")
-    unknown = sorted(set(constraints) - set(CONSTRAINT_CATEGORIES))
-    if unknown:
-        raise ValidationError(f"{where}.constraints contains unsupported categories: {', '.join(unknown)}")
-    # Keep only non-empty categories so the sidecar the planning agent reads (and every per-task
-    # render) carry no empty buckets. _as_list still validates each present value is a list; an absent
-    # category degrades to empty downstream (_as_list(None) -> []), so dropping empties is lossless.
-    out["constraints"] = {
-        category: items
-        for category in CONSTRAINT_CATEGORIES
-        if (items := _as_list(constraints.get(category), f"{where}.constraints.{category}"))
-    }
-
-    # destination.kind is a starting guess; reason stays empty on purpose so the author must justify
-    # routing before --execution-ready (which requires a non-empty reason for every section) passes.
-    # A task-bound default also seeds an empty tasks list for the author to fill with plan task ids
-    # once --scaffold-tasks has populated the task roster.
-    default_kind = _default_destination_kind(section)
-    out["destination"] = {"kind": default_kind, "reason": ""}
-    if default_kind == "task-bound":
-        out["destination"]["tasks"] = []
-    if out["hardConstraint"]:
-        out["reread"] = _derive_reread(page, section_id)
-    # Stamp the card's role binding from the authoritative marker (project-local pages only);
-    # only a strict-subset restriction is recorded, so ordinary sections carry no `roles`.
-    roles = _read_card_roles(page, section_id)
-    if roles:
-        out["roles"] = roles
-    if "sourceAnchors" in section:
-        out["sourceAnchors"] = _as_list(section.get("sourceAnchors"), f"{where}.sourceAnchors")
-    if "caveats" in section:
-        out["caveats"] = _as_list(section.get("caveats"), f"{where}.caveats")
-    return out
-
-
-def _scaffold_page(raw_page: Any, page_index: int) -> dict[str, Any]:
-    where = f"selection wikiPages[{page_index}]"
-    page = _as_dict(raw_page, where)
-    if not any(page.get(key) for key in ("displayPath", "localPath", "wikiPath", "path")):
-        raise ValidationError(f"{where} must include one of displayPath, localPath, wikiPath, or path")
-
-    out: dict[str, Any] = {}
-    for field_name in ("root", "source", "displayPath", "localPath", "wikiPath", "path", "revision"):
-        if page.get(field_name) is not None:
-            out[field_name] = page[field_name]
-    out["documentContext"] = _as_dict(page.get("documentContext") or {}, f"{where}.documentContext")
-    if "caveats" in page:
-        out["caveats"] = _as_list(page.get("caveats"), f"{where}.caveats")
-    if "maintenanceWarnings" in page:
-        out["maintenanceWarnings"] = _as_list(page.get("maintenanceWarnings"), f"{where}.maintenanceWarnings")
-
-    raw_sections = _as_list(page.get("sections"), f"{where}.sections")
-    out["sections"] = [
-        _scaffold_section(out, raw_section, page_index, section_index)
-        for section_index, raw_section in enumerate(raw_sections)
-    ]
-    return out
-
-
-def _scaffold_shared_wiki(selection: dict[str, Any], pages: list[dict[str, Any]]) -> dict[str, Any] | None:
-    # Record shared-wiki identity only when a github_mcp page is actually selected (mirrors the
-    # contract: omit the block entirely otherwise). Identity comes from the researcher's
-    # sharedWikiSource (shared_wiki_status) so execution can later detect rebinding drift.
-    if not any(page.get("source") == "github_mcp" for page in pages):
-        return None
-    source = selection.get("sharedWikiSource")
-    if not isinstance(source, dict):
-        return None
-    repo_url = source.get("repoUrl")
-    if not isinstance(repo_url, str) or not repo_url.strip():
-        return None
-    shared: dict[str, Any] = {"source": "github_mcp", "repoUrl": repo_url}
-    if source.get("baseBranch"):
-        shared["baseBranch"] = source["baseBranch"]
-    if isinstance(source.get("revision"), dict):
-        shared["revision"] = source["revision"]
-    return shared
-
-
 def _scaffold_v6_destination(note: dict[str, Any], is_skill: bool = False) -> None:
     hard = not is_skill and note.get("constraintStrength") == "hard"
     note["destination"] = {"kind": "task-bound" if hard or is_skill else "planning-only", "reason": ""}
@@ -1232,7 +607,6 @@ def scaffold_from_selection(
     The generator carries only binding, Note identity, path, hash, summary, and declared Skill Card
     roles. It adds task routing plus default destinations; the author then supplies routing reasons and
     task-bound task ids. taskWikiRefs remain empty until the host-produced ticket roster is finalized.
-    Legacy section selections cannot create a new schema-v5 sidecar during this transition.
     """
     if ticket_source is not None and ticket_source not in TICKET_SOURCES:
         raise ValidationError(f"Unknown ticketSource {ticket_source!r}; expected one of {', '.join(sorted(TICKET_SOURCES))}")
@@ -1240,13 +614,13 @@ def scaffold_from_selection(
         raise ValidationError("Obsidian selection.phase must be plan before Carry can scaffold a sidecar")
     if selection.get("status") not in {"ok", "partial"}:
         raise ValidationError("Obsidian selection.status must be ok or partial before Carry can scaffold a sidecar")
-    if "wikiNotes" in selection or "wikiBindings" in selection or "requiredSkills" in selection:
-        return _scaffold_v6_from_selection(selection, feature_slug, ticket_source)
-    raise ValidationError(
-        "Legacy section selection cannot create a new schemaVersion 5 sidecar. "
-        "schemaVersion 5 is read-only during the Obsidian transition; run wiki-research against bound "
-        "Obsidian Sources and scaffold contracts/obsidian-wiki-selection-v1.example.jsonc into schemaVersion 6."
-    )
+    if not any(key in selection for key in ("wikiNotes", "wikiBindings", "requiredSkills")):
+        raise ValidationError(
+            "Obsidian selection must contain wikiNotes, wikiBindings, or requiredSkills"
+        )
+    return _scaffold_v6_from_selection(selection, feature_slug, ticket_source)
+
+
 def scaffold_tasks(data: dict[str, Any], roster_path: Path) -> tuple[list[str], list[str]]:
     """Scaffold one taskWikiRefs entry per roster ticket (the task roster + fingerprint anchor).
 
@@ -1292,9 +666,8 @@ def _write_context(path: Path, data: dict[str, Any]) -> None:
 
 def main() -> int:
     _configure_stdio()
-    parser = argparse.ArgumentParser(description="Validate and render schemaVersion 5 compatibility or schemaVersion 6 Obsidian wiki context JSON.")
+    parser = argparse.ArgumentParser(description="Validate and render schemaVersion 6 Obsidian wiki context JSON.")
     parser.add_argument("context_path", help="Path to .adapter/context/<feature-slug>.wiki-context.json")
-    parser.add_argument("--task", action="append", default=[], help="Deprecated compatibility option; selected wiki context is not filtered by task string")
     parser.add_argument("--task-id", help="Render only wiki refs bound to the finalized ticket id, plus global refs")
     parser.add_argument("--ticket-roster", help="Path to the host-produced ticket roster JSON (.adapter/context/<feature-slug>.ticket-roster.json) used as the task identity + fingerprint source")
     parser.add_argument("--project-root", help="Project root used to revalidate ADR projection authority (defaults to the current directory)")
@@ -1327,9 +700,8 @@ def main() -> int:
             _validate_context(data, args.strict, execution_ready=False, project_root=project_root)
             context_path = Path(args.context_path)
             _write_context(context_path, data)
-            selected_count = len(data["wikiNotes"]) if data.get("schemaVersion") == SCHEMA_VERSION else len(data["wikiPages"])
-            selected_label = "Note(s)" if data.get("schemaVersion") == SCHEMA_VERSION else "page(s)"
-            summary = f"scaffolded wiki context with {selected_count} {selected_label} -> {args.context_path}"
+            selected_count = len(data["wikiNotes"])
+            summary = f"scaffolded wiki context with {selected_count} Note(s) -> {args.context_path}"
             # The selection is a transient intermediate: scaffolding is its only consumer (execution reads
             # the generated sidecar, never the selection). Remove it on success so only the plan and its
             # .wiki-context.json persist. A malformed selection raises above before this write, so a failed

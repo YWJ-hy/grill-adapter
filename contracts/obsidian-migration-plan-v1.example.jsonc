@@ -16,6 +16,15 @@
   "targetSources": [
     {"sourceId": "example-project", "role": "project", "root": "Projects/example"}
   ],
+  // Optional. Present when `--legacy-shared-wiki-url` supplied the shared migration source.
+  // The planner clones this repository read-only and pins the resolved commit in sourceSnapshot.
+  "legacySources": {
+    "shared": {
+      "kind": "git",
+      "repoUrl": "https://github.com/example/legacy-shared-wiki.git",
+      "revision": "0123456789abcdef0123456789abcdef01234567"
+    }
+  },
   "inventory": {
     "pages": [
       {

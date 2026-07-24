@@ -1,9 +1,5 @@
 {
   "mcpServers": {
-    "shared-wiki": {
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/shared-wiki/dist/index.js"]
-    },
     "obsidian-wiki": {
       "command": "node",
       "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/obsidian-wiki/dist/index.js"]

@@ -222,7 +222,6 @@ def _render_and_materialize_context(
     role: str,
     project_root: Path,
     obsidian_wiki_cmd: str | None = None,
-    shared_wiki_cmd: str | None = None,
 ) -> tuple[str, str]:
     renderer = Path(__file__).with_name("wiki_context_render.py")
     materializer = Path(__file__).with_name("wiki_materialize_task.py")
@@ -244,8 +243,6 @@ def _render_and_materialize_context(
     ]
     if obsidian_wiki_cmd:
         materialize_command.extend(["--obsidian-wiki-cmd", obsidian_wiki_cmd])
-    if shared_wiki_cmd:
-        materialize_command.extend(["--shared-wiki-cmd", shared_wiki_cmd])
     renderer_args = [*common_args, "--project-root", str(project_root)]
 
     rendered = _run_context_command(
@@ -552,7 +549,6 @@ def review_handoff(
     project_root: Path,
     handoff_path: Path,
     obsidian_wiki_cmd: str | None,
-    shared_wiki_cmd: str | None,
 ) -> str:
     if not project_root.is_dir():
         raise ReadinessError(f"project root is not a directory: {project_root}")
@@ -612,7 +608,6 @@ def review_handoff(
             role="reviewer",
             project_root=project_root,
             obsidian_wiki_cmd=obsidian_wiki_cmd,
-            shared_wiki_cmd=shared_wiki_cmd,
         )
     except ReadinessError as exc:
         _write_text(
@@ -687,7 +682,6 @@ def main() -> int:
     review.add_argument("--project-root", required=True)
     review.add_argument("--handoff", required=True)
     review.add_argument("--obsidian-wiki-cmd")
-    review.add_argument("--shared-wiki-cmd")
 
     args = parser.parse_args()
     try:
@@ -740,7 +734,6 @@ def main() -> int:
                     project_root=Path(args.project_root),
                     handoff_path=Path(args.handoff),
                     obsidian_wiki_cmd=args.obsidian_wiki_cmd,
-                    shared_wiki_cmd=args.shared_wiki_cmd,
                 )
             )
         return 0

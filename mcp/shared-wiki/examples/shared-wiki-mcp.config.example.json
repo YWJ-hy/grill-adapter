@@ -1,9 +1,0 @@
-{
-  "repoUrl": "https://github.com/YWJ-hy/shared-wiki.git",
-  "baseBranch": "master",
-  "remote": "origin",
-  "wikiRoot": ".",
-  "displayRoot": ".shared-adapter/wiki",
-  "cacheDir": "~/.cache/grill-adapter/shared-wiki-mcp",
-  "draftPr": true
-}

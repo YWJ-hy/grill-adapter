@@ -36,7 +36,7 @@ grill-with-docs -> to-spec -> to-tickets
 
 ## 4. installed Codex
 
-以 marketplace 安装 plugin、执行 `manage.sh install ... --runtime codex`，在 Codex 中走同一条完整路径。记录实际 `model` 和 `provider`，确认两个 MCP server、13 skills 和 host `AGENTS.md` 约定都来自安装后的 plugin。确认 code-review 在两个 sub-agent 前复用 receipt，两个轴读取同一 reviewer handoff；Wiki 故障只报告 caveat 且 review 仍完成。至少另跑一次跳过 formal to-tickets、从 direct issue/manual 进入 `$grill-adapter:wiki-readiness` 的单任务路径，并确认 `disabled`/`no-relevant` 可继续、`broken` 不注入部分内容。隔离 `CODEX_HOME` 时必须保留 effective provider 配置；只验证 manifest 安装不算模型驱动集成验收。
+以 marketplace 安装 plugin、执行 `manage.sh install ... --runtime codex`，在 Codex 中走同一条完整路径。记录实际 `model` 和 `provider`，确认一个 Obsidian MCP server、11 skills 和 host `AGENTS.md` 约定都来自安装后的 plugin。确认 code-review 在两个 sub-agent 前复用 receipt，两个轴读取同一 reviewer handoff；Wiki 故障只报告 caveat 且 review 仍完成。至少另跑一次跳过 formal to-tickets、从 direct issue/manual 进入 `$grill-adapter:wiki-readiness` 的单任务路径，并确认 `disabled`/`no-relevant` 可继续、`broken` 不注入部分内容。隔离 `CODEX_HOME` 时必须保留 effective provider 配置；只验证 manifest 安装不算模型驱动集成验收。
 
 ## 5. shadow-validation 与 cutover
 

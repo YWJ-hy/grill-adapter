@@ -31,7 +31,6 @@
     "lib/*.py",
     "manifest.json",
     "mcp/obsidian-wiki/dist",
-    "mcp/shared-wiki/dist",
     "README.md",
     "QUICKSTART_CN.md",
     "LICENSE",

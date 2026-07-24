@@ -17,8 +17,5 @@
       }
     }
   },
-  "buildSteps": {
-    "sharedWikiMcp": "mcp/shared-wiki"
-  },
   "removedPaths": []
 }

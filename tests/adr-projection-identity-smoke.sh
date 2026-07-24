@@ -122,11 +122,11 @@ def fake_cli(_cmd, _project_root, request, subcommand):
     return {"neighbors": {wiki_id: [] for wiki_id in request["wikiIds"]}}
 
 materializer._invoke_obsidian_cli = fake_cli
-result = materializer._v6_materialize(context, "T1", "implementer", project, "unused")
+result = materializer._materialize(context, "T1", "implementer", project, "unused")
 assert result[0]["content"] == "AUTHORITATIVE ADR PROJECTION"
 (project / "docs/adr/0001-runtime.md").write_text("# Runtime boundary\n\nChanged authority.\n", encoding="utf-8")
 try:
-    materializer._v6_materialize(context, "T1", "implementer", project, "unused")
+    materializer._materialize(context, "T1", "implementer", project, "unused")
 except materializer.MaterializeError as exc:
     assert "ADR projection authority validation failed" in str(exc)
 else:

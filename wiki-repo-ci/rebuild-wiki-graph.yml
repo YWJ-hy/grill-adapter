@@ -2,7 +2,7 @@
 #
 # Rebuilds the wiki's root .graph.json (section edges + backlinks) and directory
 # index summaries after a PR merges into the default branch. Consumer PRs (incl.
-# the shared-wiki MCP PR flow) carry their own companion *.index.md, but the
+# legacy migration flow) carry their own companion *.index.md, but the
 # cross-page aggregate .graph.json cannot ride in those patches, so it would
 # otherwise go stale until a maintainer re-ran update-wiki/migrate-wiki by hand.
 #

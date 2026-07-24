@@ -3,7 +3,6 @@ __pycache__/
 *.pyc
 
 # Node deps
-mcp/shared-wiki/node_modules/
 node_modules/
 
 # MCP dist/ directories are deliberately NOT ignored: the plugin cache has no install-time
@@ -12,7 +11,6 @@ node_modules/
 
 # Machine-local install/config artifacts
 grill-adapter.config.json
-shared-wiki-mcp.config.json
 manifest-output.json
 
 # OS

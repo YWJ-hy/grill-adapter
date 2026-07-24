@@ -1,6 +1,6 @@
 # npm 发布与本地升级
 
-根级 `grill-adapter` npm 包承载完整 plugin payload 和统一 `grill-adapter` CLI。`@grill-adapter/obsidian-wiki` 与 `@grill-adapter/shared-wiki-mcp` 仍是独立 MCP 包；根包不会把它们的源码或 `node_modules` 打进 tarball，只携带已经构建好的 `dist/index.js`。
+根级 `grill-adapter` npm 包承载完整 plugin payload 和统一 `grill-adapter` CLI。`@grill-adapter/obsidian-wiki` 是唯一独立 MCP 包；根包不会把它的源码或 `node_modules` 打进 tarball，只携带已经构建好的 `dist/index.js`。
 
 ## 发布前
 
@@ -11,7 +11,7 @@ npm run pack:dry
 npm run test:package
 ```
 
-`prepack` 会检查 `.claude-plugin/plugin.json`、`.codex-plugin/plugin.json`、`manifest.json` 与根 `package.json` 的版本一致，并检查插件 skills、hooks、contracts、脚本和两个 MCP bundle 都在包内。
+`prepack` 会检查 `.claude-plugin/plugin.json`、`.codex-plugin/plugin.json`、`manifest.json` 与根 `package.json` 的版本一致，并检查插件 skills、hooks、contracts、脚本和 Obsidian MCP bundle 都在包内。
 
 ## 版本
 

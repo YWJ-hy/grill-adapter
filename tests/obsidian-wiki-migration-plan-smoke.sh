@@ -441,6 +441,43 @@ assert any(
 assert plan["summary"]["confirmationIssueCount"] == len(confirmation["issues"])
 PY
 
+REMOTE_SHARED="$TMP/legacy-shared-repo"
+mkdir -p "$REMOTE_SHARED"
+cp "$SHARED_WIKI/index.md" "$REMOTE_SHARED/index.md"
+cp "$SHARED_WIKI/portable.md" "$REMOTE_SHARED/portable.md"
+cat > "$REMOTE_SHARED/remote-only.md" <<'MD'
+# Remote-only legacy Note
+
+Prefer a portable shared contract.
+MD
+git -C "$REMOTE_SHARED" init -q
+git -C "$REMOTE_SHARED" add .
+git -C "$REMOTE_SHARED" -c user.name=test -c user.email=test@example.com commit -q -m 'seed legacy shared wiki'
+REMOTE_PLAN="$TMP/remote-plan.json"
+python3 "$PLANNER" \
+  --project-root "$PROJECT" \
+  --registry "$TMP/registry.json" \
+  --wiki-root shared \
+  --shared-source-id shared-source \
+  --legacy-shared-wiki-url "$REMOTE_SHARED" > "$REMOTE_PLAN"
+python3 - "$REMOTE_PLAN" "$REMOTE_SHARED" <<'PY'
+import json
+import subprocess
+import sys
+
+plan = json.load(open(sys.argv[1], encoding="utf-8"))
+source = plan["legacySources"]["shared"]
+assert source["kind"] == "git"
+assert source["repoUrl"] == sys.argv[2]
+assert source["revision"] == subprocess.check_output(
+    ["git", "-C", sys.argv[2], "rev-parse", "HEAD"], text=True
+).strip()
+assert any(
+    page["legacyRoot"] == "shared" and page["path"] == "remote-only.md"
+    for page in plan["inventory"]["pages"]
+)
+PY
+
 SETTINGS="$PROJECT/.shared-adapter/settings.json"
 SETTINGS_BACKUP="$TMP/settings.backup.json"
 cp "$SETTINGS" "$SETTINGS_BACKUP"

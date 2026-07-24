@@ -54,7 +54,7 @@ It creates a commented JSONC example and a non-overwriting active config under
 move the active file. The plugin MCP and the independently running bridge use
 the same config; the bridge remains loopback-only and token-authenticated.
 
-Both runtimes discover **13 skills, 3 hook events, and 2 MCP servers**. Claude Code also registers `agents/wiki-researcher.md` directly; Codex keeps that prompt as plugin payload and `wiki-research` dispatches a general sub-agent with the same role instructions. The legacy `shared-wiki` and Source-binding `obsidian-wiki` servers are registered together and start automatically. `obsidian-wiki` also exposes proposal/apply tools for governed Note writes plus a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server (setup: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
+Both runtimes discover **11 skills, 3 hook events, and 1 MCP server**. Claude Code also registers `agents/wiki-researcher.md` directly; Codex keeps that prompt as plugin payload and `wiki-research` dispatches a general sub-agent with the same role instructions. The `obsidian-wiki` server starts with the plugin and exposes bound Source reads, governed Note proposal/apply tools, and a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server (setup: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
 
 > **Claude Code scope is shared.** Skills, agents, hooks, and bundled MCP servers all take the plugin's scope. Codex's current `plugin add` command has no project/user scope flag; project isolation comes from explicit Wiki bindings and fail-closed policy.
 
@@ -68,7 +68,7 @@ cd grill-adapter
 ./manage.sh doctor /path/to/your/project                   # validate active provider + adoption state
 ```
 
-For a new project, configure Obsidian Source bindings and the machine-local registry from [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md); `doctor` must report `obsidian-native` and healthy before formal research. `bootstrap-wiki` remains a legacy-only utility for projects that have not adopted `wiki.provider: obsidian`. Existing legacy projects use the migration flow below and remain in `shadow-validation` until verified cutover; there is no legacy runtime fallback.
+For a new project, configure Obsidian Source bindings and the machine-local registry from [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md); `doctor` must report `obsidian-native` and healthy before formal research. Existing legacy projects use `migrate-wiki`; for a GitHub-backed legacy shared Wiki, pass its repository URL explicitly to the migration planner. There is no legacy runtime fallback.
 
 - The convention block is marker-delimited and **names skills only — it carries no install path**, so plugin upgrades can't rot it. Claude Code uses `CLAUDE.md`; Codex uses `AGENTS.md`.
 - **Zero host-skill patching.** To remove: drop `grill-adapter@grill-adapter` from the project's `.claude/settings.json` `enabledPlugins` (a project-scope plugin is a committed, team-shared setting, so `claude plugin uninstall` deliberately refuses to remove it for you — use `claude plugin disable grill-adapter@grill-adapter --scope local` to switch it off for yourself only), then `./manage.sh uninstall /path/to/your/project` to strip the convention block.

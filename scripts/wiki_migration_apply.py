@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -16,7 +18,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from wiki_migration_plan import PLAN_KIND, PlanError, build_plan  # noqa: E402
+from wiki_migration_plan import PLAN_KIND, PlanError, _clone_legacy_shared_wiki, build_plan  # noqa: E402
 from wiki_section import extract_all_sections  # noqa: E402
 
 
@@ -32,6 +34,15 @@ EDGE_TYPES = {
 
 class MigrationError(RuntimeError):
     pass
+
+
+_LEGACY_SHARED_CLONES: dict[str, Path] = {}
+
+
+@atexit.register
+def _cleanup_legacy_shared_clones() -> None:
+    for checkout in _LEGACY_SHARED_CLONES.values():
+        shutil.rmtree(checkout.parent, ignore_errors=True)
 
 
 def read_json(path: Path, description: str) -> dict[str, Any]:
@@ -159,10 +170,34 @@ def selectors(plan: dict[str, Any]) -> tuple[str, str | None, str | None]:
     return root_selector, by_role.get("project"), by_role.get("shared")
 
 
+def legacy_shared_wiki_url(plan: dict[str, Any]) -> str | None:
+    sources = plan.get("legacySources")
+    shared = sources.get("shared") if isinstance(sources, dict) else None
+    url = shared.get("repoUrl") if isinstance(shared, dict) else None
+    return url if isinstance(url, str) and url.strip() else None
+
+
+def legacy_shared_root(project_root: Path, plan: dict[str, Any]) -> Path:
+    url = legacy_shared_wiki_url(plan)
+    if not url:
+        return project_root / ".shared-adapter" / "wiki"
+    if url not in _LEGACY_SHARED_CLONES:
+        checkout, _ = _clone_legacy_shared_wiki(url)
+        _LEGACY_SHARED_CLONES[url] = checkout
+    return _LEGACY_SHARED_CLONES[url]
+
+
 def assert_plan_current(plan: dict[str, Any], project_root: Path, registry: Path) -> None:
     root_selector, project_source, shared_source = selectors(plan)
     try:
-        current = build_plan(project_root, registry, root_selector, project_source, shared_source)
+        current = build_plan(
+            project_root,
+            registry,
+            root_selector,
+            project_source,
+            shared_source,
+            legacy_shared_wiki_url=legacy_shared_wiki_url(plan),
+        )
     except (PlanError, OSError, ValueError) as exc:
         raise MigrationError(f"cannot revalidate migration plan inputs: {exc}") from exc
     if current != plan:
@@ -178,7 +213,14 @@ def assert_plan_current(plan: dict[str, Any], project_root: Path, registry: Path
 def assert_resume_source_current(plan: dict[str, Any], project_root: Path, registry: Path) -> None:
     root_selector, project_source, shared_source = selectors(plan)
     try:
-        current = build_plan(project_root, registry, root_selector, project_source, shared_source)
+        current = build_plan(
+            project_root,
+            registry,
+            root_selector,
+            project_source,
+            shared_source,
+            legacy_shared_wiki_url=legacy_shared_wiki_url(plan),
+        )
     except (PlanError, OSError, ValueError) as exc:
         raise MigrationError(f"cannot revalidate migration source during resume: {exc}") from exc
     if current.get("sourceSnapshot") != plan.get("sourceSnapshot"):
@@ -210,7 +252,7 @@ def legacy_record_maps(plan: dict[str, Any]) -> tuple[dict[str, dict[str, Any]],
 
 def note_body(item: dict[str, Any], record: dict[str, Any], project_root: Path, plan: dict[str, Any]) -> str:
     root_name = record["legacyRoot"]
-    root = project_root / (".adapter/wiki" if root_name == "project" else ".shared-adapter/wiki")
+    root = project_root / ".adapter" / "wiki" if root_name == "project" else legacy_shared_root(project_root, plan)
     path = root / record["path"]
     if path.is_symlink():
         raise MigrationError(f"legacy migration input became a symbolic link: {path}")

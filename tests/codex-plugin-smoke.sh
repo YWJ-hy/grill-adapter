@@ -15,7 +15,7 @@ root = pathlib.Path(sys.argv[1])
 manifest = json.loads((root / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))
 assert manifest["name"] == "grill-adapter"
 assert manifest["skills"] == "./skills/"
-assert set(manifest["mcpServers"]) == {"shared-wiki", "obsidian-wiki"}
+assert set(manifest["mcpServers"]) == {"obsidian-wiki"}
 for server in manifest["mcpServers"].values():
     assert server["cwd"] == "."
     assert server["args"][0].startswith("./mcp/")
@@ -24,7 +24,7 @@ default_prompts = manifest["interface"]["defaultPrompt"]
 assert len(default_prompts) <= 3, "Codex ignores interface.defaultPrompt when more than 3 prompts are declared"
 assert any("readiness" in prompt.lower() for prompt in default_prompts)
 skills = list((root / "skills").glob("*/SKILL.md"))
-assert len(skills) == 13
+assert len(skills) == 11
 assert root / "skills" / "wiki-readiness" / "SKILL.md" in skills
 removed_capability = "lan" + "hu"
 assert not any(removed_capability in path.as_posix().lower() for path in skills)
@@ -37,7 +37,7 @@ assert {"SessionStart", "PostToolUse", "Stop"}.issubset(hooks["hooks"])
 
 mcp = json.loads((root / ".mcp.json").read_text(encoding="utf-8"))
 assert set(mcp) == {"mcpServers"}
-assert set(mcp["mcpServers"]) == {"shared-wiki", "obsidian-wiki"}
+assert set(mcp["mcpServers"]) == {"obsidian-wiki"}
 for server in mcp["mcpServers"].values():
     assert server["args"][0].startswith("${CLAUDE_PLUGIN_ROOT}/mcp/")
 PY
@@ -70,7 +70,7 @@ for message in prompt_input:
             if match:
                 skill_names.add(match.group(1))
 
-assert len(skill_names) == 13, sorted(skill_names)
+assert len(skill_names) == 11, sorted(skill_names)
 assert "grill-adapter:wiki-readiness" in skill_names
 removed_capability = "lan" + "hu"
 assert not any(removed_capability in name.lower() for name in skill_names)

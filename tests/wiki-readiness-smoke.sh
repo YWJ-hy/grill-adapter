@@ -157,12 +157,14 @@ fi
 [[ ! -f "$RECEIPT" ]] || fail "failed Bind wrote a ready receipt"
 need "$TMP/failed-bind.stderr" "materialization"
 
-# Reuse an already-finalized formal-ticket context through the real local fixed materializer.
+# Reuse an already-finalized formal-ticket context through the Obsidian materializer.
 FORMAL_ROSTER="$CTX_DIR/formal-feature.ticket-roster.json"
+FORMAL_SELECTION="$TMP/formal-feature.obsidian-wiki-selection.json"
 FORMAL_CONTEXT="$CTX_DIR/formal-feature.wiki-context.json"
 FORMAL_RECEIPT="$CTX_DIR/formal-feature.wiki-readiness.json"
-PROJECT_WIKI="$TMP/project/.adapter/wiki"
-mkdir -p "$PROJECT_WIKI"
+FORMAL_SNAPSHOT="sha256:6240d8cadfd2df3df96ee005f0349145191b5b219b922c3c93aab9c7f2bd2e6e"
+FORMAL_BINDING="d44631c6c041e294a6823d3986d7195e517e84038cfad4f2f78ee71d4a1e8798"
+FORMAL_CONTENT="sha256:ab31c6c9848e035118b3dc7a8c9926d5862f5802e0a567c70873b0e082ae943b"
 cat > "$FORMAL_ROSTER" <<'JSON'
 {
   "featureSlug": "formal-feature",
@@ -176,81 +178,88 @@ cat > "$FORMAL_ROSTER" <<'JSON'
   ]
 }
 JSON
-cat > "$PROJECT_WIKI/runtime.md" <<'MD'
-# Runtime
-
-<!-- wiki-section:execution-boundary -->
-## Execution boundary
-
-Formal execution boundary must be materialized before implementation.
-<!-- /wiki-section:execution-boundary -->
-MD
-cat > "$PROJECT_WIKI/runtime.index.md" <<'MD'
-# Runtime
-
-> Formal runtime constraints.
-
-| section | description | strength |
-|---|---|---|
-| execution-boundary | Formal execution boundary | hard |
-MD
-cat > "$FORMAL_CONTEXT" <<'JSON'
+cat > "$FORMAL_SELECTION" <<JSON
 {
-  "schemaVersion": 5,
-  "kind": "grill-adapter.wiki-context",
-  "generatedBy": "grill-adapter",
-  "featureSlug": "formal-feature",
-  "ticketSource": "grill-local-scratch",
-  "taskRouting": {
-    "status": "confirmed",
-    "ticketRosterFormat": "grill-adapter-ticket-roster-v1",
-    "fingerprintAlgorithm": "sha256:grill-adapter-task-text-v1",
-    "selectedSectionsFrozen": true,
-    "refreshPolicy": "refresh-taskWikiRefs-and-fingerprints-only"
-  },
-  "wikiPages": [
+  "status": "ok",
+  "phase": "plan",
+  "snapshotHash": "${FORMAL_SNAPSHOT}",
+  "wikiBindings": [
     {
-      "root": "project",
-      "source": "local",
-      "displayPath": "runtime.md",
-      "localPath": "runtime.md",
-      "wikiPath": "runtime.md",
-      "documentContext": {
-        "title": "Runtime",
-        "overview": "Formal runtime constraints.",
-        "contextSource": "runtime.index.md"
-      },
-      "sections": [
-        {
-          "sectionId": "execution-boundary",
-          "hardConstraint": true,
-          "relevance": "direct",
-          "reason": "Formal execution constraint.",
-          "relevanceTo": "Implementation",
-          "constraints": {
-            "implementation": ["Materialize the formal execution boundary."]
-          },
-          "destination": {
-            "kind": "task-bound",
-            "reason": "The formal ticket implements this boundary.",
-            "tasks": ["01"]
-          },
-          "reread": {
-            "root": "project",
-            "source": "local",
-            "localPath": "runtime.md",
-            "sectionId": "execution-boundary",
-            "includeDocumentContext": true
-          }
-        }
-      ]
+      "sourceId": "project-runtime",
+      "role": "project",
+      "bindingDigest": "${FORMAL_BINDING}"
     }
   ],
-  "taskWikiRefs": [],
-  "caveats": []
+  "wikiNotes": [
+    {
+      "sourceId": "project-runtime",
+      "role": "project",
+      "path": "Projects/example/Runtime/execution-boundary.md",
+      "wikiId": "project/runtime/execution-boundary",
+      "type": "constraint",
+      "constraintStrength": "hard",
+      "summary": "Formal execution boundary must be materialized before implementation.",
+      "contentHash": "${FORMAL_CONTENT}",
+      "bindingDigest": "${FORMAL_BINDING}"
+    }
+  ],
+  "requiredSkills": [],
+  "caveats": [],
+  "maintenanceWarnings": []
 }
 JSON
+python3 "$RENDER" "$FORMAL_CONTEXT" --scaffold "$FORMAL_SELECTION" \
+  --feature-slug formal-feature --ticket-source grill-local-scratch --strict >/dev/null
+python3 - "$FORMAL_CONTEXT" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+context = json.load(open(path, encoding="utf-8"))
+context["wikiNotes"][0]["destination"].update({
+    "reason": "The formal ticket implements this boundary.",
+    "tasks": ["01"],
+})
+context["taskRouting"]["status"] = "confirmed"
+context["taskRouting"]["selectedSectionsFrozen"] = True
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(context, handle, indent=2)
+    handle.write("\n")
+PY
 python3 "$RENDER" "$FORMAL_CONTEXT" --finalize --strict --ticket-roster "$FORMAL_ROSTER" >/dev/null
+
+FAKE_OBSIDIAN="$TMP/fake-obsidian"
+cat > "$FAKE_OBSIDIAN" <<'PY'
+#!/usr/bin/env python3
+import json
+import sys
+
+request = json.load(sys.stdin)
+wiki_id = "project/runtime/execution-boundary"
+if sys.argv[1] == "read-notes-by-wiki-ids":
+    assert request == {"wikiIds": [wiki_id]}
+    print(json.dumps({
+        "notes": [{
+            "sourceId": "project-runtime",
+            "role": "project",
+            "path": "Projects/example/Runtime/execution-boundary.md",
+            "wikiId": wiki_id,
+            "type": "constraint",
+            "constraintStrength": "hard",
+            "summary": "Formal execution boundary must be materialized before implementation.",
+            "contentHash": "sha256:ab31c6c9848e035118b3dc7a8c9926d5862f5802e0a567c70873b0e082ae943b",
+            "bindingDigest": "d44631c6c041e294a6823d3986d7195e517e84038cfad4f2f78ee71d4a1e8798",
+            "content": "Formal execution boundary must be materialized before implementation.",
+        }],
+        "snapshotHash": "sha256:6240d8cadfd2df3df96ee005f0349145191b5b219b922c3c93aab9c7f2bd2e6e",
+    }))
+elif sys.argv[1] == "graph-neighbors":
+    assert request == {"wikiIds": [wiki_id]}
+    print(json.dumps({"neighbors": {wiki_id: []}}))
+else:
+    raise SystemExit(f"unexpected command: {sys.argv[1]}")
+PY
+chmod +x "$FAKE_OBSIDIAN"
 
 CONTEXT_HASH_BEFORE="$(python3 - "$FORMAL_CONTEXT" <<'PY'
 import hashlib
@@ -264,7 +273,7 @@ import sys
 print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())
 PY
 )"
-python3 "$READINESS" bind \
+OBSIDIAN_WIKI_MCP_CMD="$FAKE_OBSIDIAN" python3 "$READINESS" bind \
   --receipt "$FORMAL_RECEIPT" \
   --roster "$FORMAL_ROSTER" \
   --context "$FORMAL_CONTEXT" \

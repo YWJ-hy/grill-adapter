@@ -175,7 +175,7 @@ def generate_index(
     The table carries section name, description, and constraint strength — the fields the
     wiki-researcher reads for section-level relevance. Knowledge-graph relationships are
     NOT rendered here: they live in ``.graph.json`` and are queried mechanically
-    (``wiki_graph_neighbors.py`` / the shared-wiki MCP) rather than parsed from this table.
+    (``wiki_graph_neighbors.py`` / Obsidian migration tooling) rather than parsed from this table.
     """
     text = file_path.read_text(encoding="utf-8")
     section_ids = list_section_ids(text)

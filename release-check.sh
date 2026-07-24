@@ -40,7 +40,7 @@ step "4. MCP typecheck + build + tests"
 # plugin-bundled MCP. The plugin cache has no install-time build step.
 if command -v npm >/dev/null 2>&1; then
   mcp_fail=0
-  for mcp in shared-wiki obsidian-wiki; do
+  for mcp in obsidian-wiki; do
     if ( cd "$SCRIPT_DIR/mcp/$mcp" && npm install --no-audit --no-fund >/dev/null 2>&1 && npm run typecheck >/dev/null 2>&1 && npm run build >/dev/null 2>&1 && npm test >/dev/null 2>&1 ); then
       echo "  OK ($mcp)"
     else
@@ -58,7 +58,7 @@ if ! git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   echo "  SKIP (not a git repo)"
 else
   bundle_fail=0
-  for mcp in shared-wiki obsidian-wiki; do
+  for mcp in obsidian-wiki; do
     bundle="$SCRIPT_DIR/mcp/$mcp/dist/index.js"
     if [[ ! -f "$bundle" ]]; then
       echo "  FAIL ($mcp has no bundle; run npm run build and commit dist/index.js)"; bundle_fail=1
@@ -78,12 +78,12 @@ step "6. Plugin loads with its full component inventory"
 if command -v claude >/dev/null 2>&1; then
   inventory="$(claude --plugin-dir "$SCRIPT_DIR" plugin details grill-adapter 2>&1 || true)"
   inv_fail=0
-  for expected in "Skills (13)" "Agents (1)" "Hooks (3)" "MCP servers (2)"; do
+  for expected in "Skills (11)" "Agents (1)" "Hooks (3)" "MCP servers (1)"; do
     if ! grep -qF "$expected" <<<"$inventory"; then
       echo "  FAIL (expected '$expected' in plugin inventory)"; inv_fail=1
     fi
   done
-  if [[ $inv_fail -eq 0 ]]; then echo "  OK (13 skills, 1 agent, 3 hooks, 2 MCP servers)"; else
+  if [[ $inv_fail -eq 0 ]]; then echo "  OK (11 skills, 1 agent, 3 hooks, 1 MCP server)"; else
     sed 's/^/    /' <<<"$inventory" | head -12; fail=1
   fi
 else

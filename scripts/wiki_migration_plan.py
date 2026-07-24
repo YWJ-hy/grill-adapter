@@ -11,9 +11,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import posixpath
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -50,6 +54,39 @@ EDGE_PROPERTIES = {
 
 class PlanError(RuntimeError):
     pass
+
+
+def _clone_legacy_shared_wiki(repo_url: str) -> tuple[Path, str]:
+    """Clone a user-provided legacy Git repository into a disposable read-only workspace."""
+    if not isinstance(repo_url, str) or not repo_url.strip():
+        raise PlanError("--legacy-shared-wiki-url must be a non-empty Git repository URL")
+    temporary = Path(tempfile.mkdtemp(prefix="grill-adapter-legacy-wiki-"))
+    checkout = temporary / "wiki"
+    try:
+        completed = subprocess.run(
+            ["git", "clone", "--depth", "1", "--no-tags", repo_url, str(checkout)],
+            text=True,
+            encoding="utf-8",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if completed.returncode != 0:
+            detail = completed.stderr.strip() or completed.stdout.strip() or f"exit {completed.returncode}"
+            raise PlanError(f"could not clone legacy shared Wiki {repo_url}: {detail}")
+        revision = subprocess.run(
+            ["git", "-C", str(checkout), "rev-parse", "HEAD"],
+            text=True,
+            encoding="utf-8",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if revision.returncode != 0 or not revision.stdout.strip():
+            raise PlanError(f"could not resolve legacy shared Wiki revision for {repo_url}")
+        return checkout, revision.stdout.strip()
+    except OSError as exc:
+        raise PlanError(f"could not run git while reading legacy shared Wiki {repo_url}: {exc}") from exc
 
 
 def read_json(path: Path, description: str) -> dict[str, Any]:
@@ -119,6 +156,8 @@ def file_entries(root: Path, prefix: str, include_meta: bool = True) -> list[tup
         return []
     entries = []
     for path in sorted(root.rglob("*")):
+        if ".git" in path.relative_to(root).parts:
+            continue
         if path.is_symlink():
             raise PlanError(f"snapshot input is a symbolic link: {path}")
         if not path.is_file() or (not include_meta and "_meta" in path.relative_to(root).parts):
@@ -355,6 +394,8 @@ def collect_legacy_root(root_name: str, wiki_root: Path) -> dict[str, Any]:
     if wiki_root.is_symlink():
         raise PlanError(f"legacy {root_name} Wiki root is a symbolic link: {wiki_root}")
     for path in sorted(wiki_root.rglob("*")):
+        if ".git" in path.relative_to(wiki_root).parts:
+            continue
         if path.is_symlink():
             raise PlanError(f"legacy {root_name} Wiki input is a symbolic link: {path}")
     graph = build_wiki_index_graph(wiki_root)
@@ -366,6 +407,8 @@ def collect_legacy_root(root_name: str, wiki_root: Path) -> dict[str, Any]:
     skills: list[dict[str, Any]] = []
 
     for path in sorted(wiki_root.rglob("*.md")):
+        if ".git" in path.relative_to(wiki_root).parts:
+            continue
         if path.is_symlink():
             raise PlanError(f"legacy {root_name} Wiki input is a symbolic link: {path}")
         relative = path.relative_to(wiki_root).as_posix()
@@ -516,11 +559,32 @@ def build_plan(
     root_selector: str,
     project_source_id: str | None = None,
     shared_source_id: str | None = None,
+    legacy_shared_wiki_url: str | None = None,
+    _legacy_shared_root: Path | None = None,
+    _legacy_shared_revision: str | None = None,
 ) -> dict[str, Any]:
+    if legacy_shared_wiki_url and _legacy_shared_root is None:
+        checkout, revision = _clone_legacy_shared_wiki(legacy_shared_wiki_url)
+        try:
+            return build_plan(
+                project_root,
+                registry_path,
+                root_selector,
+                project_source_id=project_source_id,
+                shared_source_id=shared_source_id,
+                legacy_shared_wiki_url=legacy_shared_wiki_url,
+                _legacy_shared_root=checkout,
+                _legacy_shared_revision=revision,
+            )
+        finally:
+            shutil.rmtree(checkout.parent, ignore_errors=True)
+
     roots = {
         "project": project_root / ".adapter" / "wiki",
         "shared": project_root / ".shared-adapter" / "wiki",
     }
+    if _legacy_shared_root is not None:
+        roots["shared"] = _legacy_shared_root
     selected = [root_selector] if root_selector in roots else ["project", "shared"]
     bindings, target_entries = load_bindings(
         project_root,
@@ -806,7 +870,7 @@ def build_plan(
     ordered_plan = [plan_items[source["sourceItemId"]] for source in inventory["sourceItems"]]
     decision_counts = Counter(item["decision"] for item in ordered_plan)
 
-    return {
+    plan = {
         "schemaVersion": 1,
         "kind": PLAN_KIND,
         "generatedBy": "grill-adapter",
@@ -828,6 +892,25 @@ def build_plan(
             "confirmationIssueCount": len(confirmations),
         },
     }
+    if legacy_shared_wiki_url:
+        plan["legacySources"] = {
+            "shared": {
+                "kind": "git",
+                "repoUrl": legacy_shared_wiki_url,
+                "revision": _legacy_shared_revision,
+            }
+        }
+        source_entries.append(
+            (
+                "legacy-source/shared",
+                f"{legacy_shared_wiki_url}\n{_legacy_shared_revision or ''}\n".encode("utf-8"),
+            )
+        )
+        plan["sourceSnapshot"] = {
+            "algorithm": "sha256:grill-adapter-obsidian-migration-snapshot-v1",
+            "digest": stable_digest(source_entries),
+        }
+    return plan
 
 
 def configure_stdio() -> None:
@@ -844,8 +927,15 @@ def main() -> None:
     parser.add_argument("--wiki-root", choices=["project", "shared", "all"], default="all")
     parser.add_argument("--project-source-id", default=None, help="Select the target project Source when configuration is ambiguous")
     parser.add_argument("--shared-source-id", default=None, help="Select the target Shared Source when multiple shared bindings exist")
+    parser.add_argument(
+        "--legacy-shared-wiki-url",
+        default=None,
+        help="Optional Git repository URL for a legacy shared Wiki; cloned read-only for this migration plan",
+    )
     args = parser.parse_args()
     project_root = Path(args.project_root).expanduser().resolve()
+    if args.legacy_shared_wiki_url and args.wiki_root == "project":
+        parser.error("--legacy-shared-wiki-url requires --wiki-root shared or all")
     registry_value = args.registry or __import__("os").environ.get("OBSIDIAN_WIKI_REGISTRY")
     registry_path = Path(registry_value).expanduser().resolve() if registry_value else Path.home() / ".config" / "grill-adapter" / "obsidian-wiki.json"
     try:
@@ -855,6 +945,7 @@ def main() -> None:
             args.wiki_root,
             project_source_id=args.project_source_id,
             shared_source_id=args.shared_source_id,
+            legacy_shared_wiki_url=args.legacy_shared_wiki_url,
         )
     except (PlanError, OSError, ValueError) as exc:
         print(f"migration plan failed: {exc}", file=sys.stderr)

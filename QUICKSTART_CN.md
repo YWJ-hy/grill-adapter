@@ -20,7 +20,7 @@ codex plugin marketplace add YWJ-hy/grill-adapter
 codex plugin add grill-adapter@grill-adapter
 ```
 
-13 个 skill、3 个 hook 事件、两个 MCP **一起注册、自动生效**。Claude 直接注册 1 个 agent；Codex 由入口 skill 派生同角色 sub-agent。MCP 装好即自动启动，无需手工注册。
+11 个 skill、3 个 hook 事件、一个 Obsidian MCP **一起注册、自动生效**。Claude 直接注册 1 个 agent；Codex 由入口 skill 派生同角色 sub-agent。MCP 装好即自动启动，无需手工注册。
 
 **② 给项目写约定块**（plugin 唯一管不到的东西）：
 

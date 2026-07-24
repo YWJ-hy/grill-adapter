@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Schema v5 remains readable during the Obsidian transition, but planning may not create a
-# new v5 sidecar. The public scaffold seam accepts only an Obsidian metadata selection and
-# produces schema v6; its full contract is covered by obsidian-wiki-context-v6-smoke.sh.
+# Legacy selections and contexts are migration input only. The public scaffold seam accepts
+# only an Obsidian metadata selection and produces schema v6.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -20,13 +19,17 @@ if python3 "$SCRIPT" "$CONTEXT" --scaffold "$SELECTION" --feature-slug legacy --
   printf 'Expected legacy selection scaffold to fail\n' >&2
   exit 1
 fi
-grep -q 'schemaVersion 5 is read-only' /tmp/wiki-v5-scaffold.out
+grep -q 'Obsidian selection must contain wikiNotes, wikiBindings, or requiredSkills' /tmp/wiki-v5-scaffold.out
 if [[ ! -f "$SELECTION" ]]; then
   printf 'Expected rejected legacy selection to remain available for migration\n' >&2
   exit 1
 fi
 
 printf '{"schemaVersion":5,"kind":"grill-adapter.wiki-context","wikiPages":[]}' > "$CONTEXT"
-python3 "$SCRIPT" "$CONTEXT" --validate-only --strict >/dev/null
+if python3 "$SCRIPT" "$CONTEXT" --validate-only --strict >/tmp/wiki-v5-validate.out 2>&1; then
+  printf 'Expected legacy context validation to fail\n' >&2
+  exit 1
+fi
+grep -q 'legacy contexts are migration input only' /tmp/wiki-v5-validate.out
 
 printf 'wiki-context scaffold transition smoke test complete\n'

@@ -31,11 +31,6 @@ DEFAULT_SHARED_WIKI_NEUTRALITY = {
     "blockedTerms": [],
     "blockedPatterns": [],
 }
-# Per-project shared-wiki MCP connection block (.shared-adapter/settings.json
-# -> wiki.sharedMcp). This is the same block the MCP server self-configures from
-# via CLAUDE_PROJECT_DIR; the adapter reads it only to report binding state.
-# cacheDir is intentionally not a project-level field (machine-local).
-SHARED_MCP_STRING_FIELDS = ("repoUrl", "baseBranch", "remote", "wikiRoot", "displayRoot")
 ENTRY_STUB = "# Project Wiki\n\nUse this file as the entry point for project-specific wiki pages.\n\n" + AUTO_START + "\n" + AUTO_END + "\n"
 
 
@@ -311,41 +306,6 @@ def load_shared_wiki_neutrality_policy(project_root: Path, root: WikiRoot) -> di
         except re.error as exc:
             raise ValueError(f"Invalid wiki.sharedNeutrality.blockedPatterns entry in {settings_path}: {pattern!r}: {exc}") from exc
     return policy
-
-
-def load_shared_wiki_mcp_binding(project_root: Path) -> dict[str, object] | None:
-    """Read the per-project shared-wiki MCP connection block.
-
-    Returns None when `.shared-adapter/settings.json` declares no
-    `wiki.sharedMcp` block (the project binds no shared wiki MCP -> fail-closed,
-    no MCP shared wiki for this project), otherwise a dict of the recognized
-    connection fields. This is the same block the MCP server self-configures from
-    via CLAUDE_PROJECT_DIR; the adapter reads it only to report binding state
-    (e.g. doctor). Unknown keys are ignored to match the server; cacheDir is not a
-    project-level field. Field types are validated so doctor surfaces mistakes.
-    """
-    settings_path = project_root.resolve() / SHARED_SETTINGS_REL
-    wiki_settings = _wiki_settings_from_payload(_load_settings_payload(settings_path), settings_path)
-    binding = wiki_settings.get("sharedMcp")
-    if binding is None:
-        return None
-    if not isinstance(binding, dict):
-        raise ValueError(f"wiki.sharedMcp must be an object in {settings_path}")
-
-    result: dict[str, object] = {}
-    for key in SHARED_MCP_STRING_FIELDS:
-        value = binding.get(key)
-        if value is None:
-            continue
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError(f"wiki.sharedMcp.{key} must be a non-empty string in {settings_path}")
-        result[key] = value
-    draft = binding.get("draftPr")
-    if draft is not None:
-        if not isinstance(draft, bool):
-            raise ValueError(f"wiki.sharedMcp.draftPr must be a boolean in {settings_path}")
-        result["draftPr"] = draft
-    return result
 
 
 def shared_wiki_neutrality_violations(project_root: Path, root: WikiRoot, text: str, label: str) -> list[str]:
@@ -871,10 +831,8 @@ def depends_on_closure_targets(
 ) -> list[tuple[str, str, str]]:
     """1-hop ``depends-on`` section targets out of a neighbors slice map.
 
-    Shared closure primitive used by both the renderer's selection-time closure
-    (``wiki_context_render._depends_on_closure_entries``, local graphs) and the
-    materializer's github_mcp closure (``wiki_materialize_task``, the remote shared
-    graph) so the two paths never fork on what counts as a closed edge.
+    Shared closure primitive used by the renderer's selection-time closure for
+    local project/shared graphs.
 
     For each requested ``source_node``, return ``(closed_via_node, target_page,
     target_section)`` for every outgoing edge whose ``type`` is ``depends-on`` and
