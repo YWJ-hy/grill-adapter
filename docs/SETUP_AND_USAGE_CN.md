@@ -7,6 +7,7 @@
 - **Claude Code 或 Codex**（CLI / app）。已登录可用。
 - **Python 3.9+**（`python3 --version`）。
 - **Node.js ≥ 20**（`node --version`）——供 bundled Wiki MCP servers 运行；plugin 里已带打包好的 bundle，**不需要你构建**。
+- **可选：npm 全局工具包**——用于维护本机 Obsidian 配置和启动 write bridge。
 
 ## 1. 装 grill（mattpocock/skills）
 
@@ -76,7 +77,16 @@ cd grill-adapter
 
 ## 3. 配置 Obsidian Wiki runtime
 
-新项目按 `OBSIDIAN_WIKI_CN.md` 创建/选择一个 Obsidian Source，提交 `_meta/wiki-source.md`，在项目 `.shared-adapter/settings.json` 声明 `wiki.provider: obsidian` 与 bindings，并在机器本地 registry 解析 `vaultRef` / `repositoryRef`。配置完成后运行：
+新项目按 `OBSIDIAN_WIKI_CN.md` 创建/选择一个 Obsidian Source，提交 `_meta/wiki-source.md`，在项目 `.shared-adapter/settings.json` 声明 `wiki.provider: obsidian` 与 bindings。推荐安装本机管理工具，统一维护 registry 和 bridge 配置：
+
+```bash
+npm install --global @grill-adapter/obsidian-wiki
+obsidian-wiki init
+obsidian-wiki doctor
+obsidian-wiki bridge start
+```
+
+也可以用 `obsidian-wiki config set-location <path>` 修改配置文件位置。配置完成后运行：
 
 ```bash
 ./manage.sh doctor /path/to/your/project
@@ -103,7 +113,7 @@ cd grill-adapter
 
 - **我没用 grill，用裸 Claude Code/Codex 行吗？** 行。`./manage.sh install /path/to/project --host plain --runtime <runtime>`，然后在对应时刻自己调同样的 skill。
 - **会改我的 grill 吗？** 不会。grill-adapter 零 skill patch。skill / agent / hook / MCP 全在 plugin 里自成一体；落到你仓库里的改动只有 `<project>/CLAUDE.md` 的那个约定块。
-- **Obsidian Wiki 不健康？** 跑 `./manage.sh doctor <project>`；依次修复 settings、machine registry、Vault selector、Source manifest、repository remote/base/clean 状态与 bridge 配置。active Obsidian provider 的 doctor 非零退出，release-check 也会失败。
+- **Obsidian Wiki 不健康？** 先跑 `obsidian-wiki doctor`，再跑 `./manage.sh doctor <project>`；依次修复 settings、统一本机配置、Vault selector、Source manifest、repository remote/base/clean 状态与 bridge 配置。active Obsidian provider 的 doctor 非零退出，release-check 也会失败。
 - **MCP 只想在某一个项目里起？** 那就用 `--scope project` 装 plugin。plugin 自带的 MCP 不能单独设 scope，它跟着 plugin 的 scope 走。
 - **`/grill-adapter:wiki-materialize` 报 drift / 换绑？** 这是 fail-closed 设计：schema-v6 sidecar 的 binding digest、stable Note/Card identity、content hash、base sync 或 pack contract 与当前正式 Source 不一致。回规划期重新 research/scaffold/finalize，不能转读 legacy Wiki 绕过。
 - **怎么卸载？** 两步对应两步安装。

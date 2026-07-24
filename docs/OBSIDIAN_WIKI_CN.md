@@ -62,9 +62,40 @@ review 后 `update-wiki` 先 validate/fold，以最终 review + 已验证 code/t
 
 每个项目最多一个 `role: project` binding，可有多个 `role: shared` binding。`sourceId` 与 `(vaultRef, root)` 均不可重复，同一 Vault 内的 root 也不得互为父子，避免较宽 root 覆盖较窄 Source 的访问策略。`root` 必须是 Vault 内相对目录，不能包含绝对路径或 `..`。
 
+## 本机统一配置与 npm CLI
+
+可以安装随插件源码一起构建的本机管理工具：
+
+```bash
+npm install --global @grill-adapter/obsidian-wiki
+obsidian-wiki init
+```
+
+`init` 默认生成：
+
+```text
+~/.config/grill-adapter/obsidian-wiki.example.jsonc
+~/.config/grill-adapter/obsidian-wiki.jsonc
+```
+
+`example.jsonc` 是带字段说明的模板，active 配置只在不存在时生成，不会覆盖用户已有配置。统一配置把 Vault selector、Vault worktree、bridge URL/token 环境变量、允许写入的 Source roots、项目白名单和 Git repository 信息放在同一个本机文件中；不提交项目仓库，也不放入 `.shared-adapter/settings.json`。
+
+维护命令：
+
+```bash
+obsidian-wiki config path
+obsidian-wiki config set-location /path/to/obsidian-wiki.jsonc
+obsidian-wiki config validate
+obsidian-wiki doctor
+obsidian-wiki bridge start
+obsidian-wiki bridge status
+```
+
+MCP 和 bridge 使用相同的配置发现顺序：`--config`、`OBSIDIAN_WIKI_CONFIG`、CLI 写入的 location pointer、默认 JSONC 路径，最后兼容旧的 `OBSIDIAN_WIKI_REGISTRY` 与 JSON 文件。bridge 仍然是独立的 loopback HTTP 进程，但不再需要手动拼接 Vault/root/project 环境变量；`bridge start` 从统一配置读取它们。token 仍由配置中声明的环境变量提供，不写入 example 文件。
+
 ## 本机 Registry
 
-本机在 `~/.config/grill-adapter/obsidian-wiki.json` 保存不应提交的信息。测试或受控环境可用 `OBSIDIAN_WIKI_REGISTRY` 覆盖其路径。
+旧版 registry 结构仍受支持。本机默认配置现在是 `~/.config/grill-adapter/obsidian-wiki.jsonc`；测试或受控环境可用 `OBSIDIAN_WIKI_CONFIG` 覆盖路径，`OBSIDIAN_WIKI_REGISTRY` 作为兼容变量保留。
 
 ```json
 {
@@ -136,7 +167,14 @@ printf '%s' '{"wikiIds":["project/grill-adapter/architecture/runtime"]}' \
 
 ## 受控写桥
 
-写桥是 `obsidian-wiki` bundle 的独立本机服务入口，不随 MCP 自动监听端口。启动时必须明确 Vault、允许写入的 Source roots 与 token；host 固定为 loopback（默认 `127.0.0.1`），不能绑定 `0.0.0.0` 或外网地址：
+写桥是 `obsidian-wiki` bundle 的独立本机服务入口，不随 MCP 自动监听端口。推荐安装 npm CLI 后从统一 JSONC 配置启动：
+
+```bash
+npm install --global @grill-adapter/obsidian-wiki
+obsidian-wiki bridge start
+```
+
+`bridge start` 从配置中读取 Vault、允许写入的 Source roots、项目白名单、端口和 token 环境变量；host 固定为 loopback（默认 `127.0.0.1`），不能绑定 `0.0.0.0` 或外网地址。旧版环境变量入口仍可用：
 
 ```bash
 export OBSIDIAN_WIKI_BRIDGE_TOKEN='<machine-local-random-token>'

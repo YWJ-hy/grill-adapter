@@ -19,6 +19,7 @@ import { parseSourceManifest, type SourceManifest } from './bindings.js';
 import { isLoopbackHost } from './loopback.js';
 import { normalizeWritePolicy, stricterPolicy, type WritePolicy } from './policy.js';
 import { atomicExchange } from './atomic-exchange.js';
+import { resolveBridgeConfig } from './config.js';
 
 const HASH = /^sha256:[a-f0-9]{64}$/;
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
@@ -507,6 +508,10 @@ export async function startWriteBridge(options: WriteBridgeOptions): Promise<Wri
 
   const server = createServer(async (request, response) => {
     try {
+      if (request.method === 'GET' && request.url === '/health') {
+        respond(response, 200, { ok: true, service: 'obsidian-wiki-write-bridge' });
+        return;
+      }
       if (request.method !== 'POST') throw new BridgeError(405, 'Write bridge accepts POST requests only');
       const route = request.url;
       if (route !== '/v1/notes/validate' && route !== '/v1/notes/apply') throw new BridgeError(404, 'Unknown write bridge route');
@@ -537,31 +542,45 @@ export async function startWriteBridge(options: WriteBridgeOptions): Promise<Wri
 }
 
 export async function runWriteBridgeFromEnvironment(env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  const tokenEnv = env.OBSIDIAN_WIKI_BRIDGE_TOKEN_ENV ?? 'OBSIDIAN_WIKI_BRIDGE_TOKEN';
+  let configured: ReturnType<typeof resolveBridgeConfig> | undefined;
+  const hasLegacyBridgeEnvironment = Boolean(
+    env.OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT
+      && env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR
+      && env.OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS
+      && env.OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS,
+  );
+  if (!hasLegacyBridgeEnvironment) {
+    configured = resolveBridgeConfig(env, undefined, env.OBSIDIAN_WIKI_BRIDGE_VAULT_REF);
+  }
+  const tokenEnv = env.OBSIDIAN_WIKI_BRIDGE_TOKEN_ENV
+    ?? configured?.config.tokenEnv
+    ?? 'OBSIDIAN_WIKI_BRIDGE_TOKEN';
   const token = env[tokenEnv];
+  const vaultRoot = env.OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT ?? configured?.config.vaultRoot;
+  const vaultSelector = env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR ?? configured?.config.selector;
   const rootsRaw = env.OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS;
   const projectsRaw = env.OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS;
-  if (!env.OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT || !env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR || !rootsRaw || !projectsRaw || !token) {
-    throw new Error('Write bridge requires OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT, OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR, OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS, OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS, and its token environment variable');
+  const roots = rootsRaw ? JSON.parse(rootsRaw) : configured?.config.allowedRoots;
+  const projects = projectsRaw ? JSON.parse(projectsRaw) : configured?.config.projectDirs;
+  if (!vaultRoot || !vaultSelector || !roots || !projects || !token) {
+    throw new Error('Write bridge requires a unified Obsidian Wiki config or OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT, OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR, OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS, OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS, and its token environment variable');
   }
-  const roots = JSON.parse(rootsRaw);
   if (!Array.isArray(roots) || roots.some((value) => typeof value !== 'string')) {
-    throw new Error('OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS must be a JSON array of strings');
+    throw new Error('Obsidian Wiki bridge allowedRoots must be an array of strings');
   }
-  const projects = JSON.parse(projectsRaw);
   if (!Array.isArray(projects) || projects.some((value) => typeof value !== 'string')) {
-    throw new Error('OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS must be a JSON array of strings');
+    throw new Error('Obsidian Wiki bridge projectDirs must be an array of strings');
   }
   const bridge = await startWriteBridge({
-    vaultRoot: env.OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT,
-    vaultSelector: env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR,
+    vaultRoot,
+    vaultSelector,
     allowedRoots: roots,
     projectDirs: projects,
     token,
-    host: env.OBSIDIAN_WIKI_BRIDGE_HOST ?? '127.0.0.1',
-    port: Number(env.OBSIDIAN_WIKI_BRIDGE_PORT ?? '27124'),
+    host: env.OBSIDIAN_WIKI_BRIDGE_HOST ?? configured?.config.host ?? '127.0.0.1',
+    port: Number(env.OBSIDIAN_WIKI_BRIDGE_PORT ?? configured?.config.port ?? '27124'),
   });
-  process.stdout.write(`${JSON.stringify({ url: bridge.url, vaultSelector: env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR, allowedRoots: roots })}\n`);
+  process.stdout.write(`${JSON.stringify({ url: bridge.url, vaultSelector, allowedRoots: roots, registryPath: configured?.registryPath })}\n`);
   await new Promise<void>((resolve) => {
     process.once('SIGINT', resolve);
     process.once('SIGTERM', resolve);

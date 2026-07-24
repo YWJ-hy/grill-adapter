@@ -39,6 +39,21 @@ codex plugin marketplace add YWJ-hy/grill-adapter
 codex plugin add grill-adapter@grill-adapter
 ```
 
+For Obsidian runtime configuration and the loopback write bridge, install the
+companion local CLI once:
+
+```bash
+npm install --global @grill-adapter/obsidian-wiki
+obsidian-wiki init
+obsidian-wiki doctor
+obsidian-wiki bridge start
+```
+
+It creates a commented JSONC example and a non-overwriting active config under
+`~/.config/grill-adapter/`. Use `obsidian-wiki config set-location <path>` to
+move the active file. The plugin MCP and the independently running bridge use
+the same config; the bridge remains loopback-only and token-authenticated.
+
 Both runtimes discover **13 skills, 3 hook events, and 2 MCP servers**. Claude Code also registers `agents/wiki-researcher.md` directly; Codex keeps that prompt as plugin payload and `wiki-research` dispatches a general sub-agent with the same role instructions. The legacy `shared-wiki` and Source-binding `obsidian-wiki` servers are registered together and start automatically. `obsidian-wiki` also exposes proposal/apply tools for governed Note writes plus a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server (setup: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
 
 > **Claude Code scope is shared.** Skills, agents, hooks, and bundled MCP servers all take the plugin's scope. Codex's current `plugin add` command has no project/user scope flag; project isolation comes from explicit Wiki bindings and fail-closed policy.
@@ -112,6 +127,7 @@ grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe 
 - Claude Code or Codex (CLI/app)
 - Python 3.9+
 - Node.js ≥ 20 (to run the bundled Wiki MCP servers; the plugin ships prebuilt bundles — nothing to build)
+- npm (only if using the Obsidian runtime CLI)
 
 ## License
 

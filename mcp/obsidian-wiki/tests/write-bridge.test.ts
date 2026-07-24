@@ -121,6 +121,16 @@ afterEach(async () => {
 });
 
 describe('Obsidian Wiki loopback write bridge', () => {
+  it('exposes an unauthenticated local health endpoint for the CLI', async () => {
+    const { bridge } = await fixture();
+    const response = await fetch(`${bridge.url}/health`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      service: 'obsidian-wiki-write-bridge',
+    });
+  });
+
   it('validates without writing, then atomically applies an expected-hash update', async () => {
     const { vaultRoot, projectDir, sourceRoot, initial, bridge } = await fixture();
     const proposed = note('project/example/bridge', 'Updated body.');

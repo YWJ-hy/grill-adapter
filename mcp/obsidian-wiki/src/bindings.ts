@@ -3,6 +3,12 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import * as z from 'zod/v4';
+import {
+  loadRegistry,
+  parseJsonc,
+  type Repository,
+  type Vault,
+} from './config.js';
 import { normalizeWritePolicy, stricterPolicy, type WritePolicy } from './policy.js';
 import { isLoopbackHost } from './loopback.js';
 
@@ -28,29 +34,6 @@ const ProjectSettingsSchema = z.object({
     }),
   }),
 });
-
-const VaultSchema = z.object({
-  selector: z.string().min(1),
-  bridgeUrl: z.string().url().optional(),
-  bridgeTokenEnv: z.string().min(1).optional(),
-});
-
-const RepositorySchema = z.object({
-  worktreeRoot: z.string().min(1),
-  remote: z.string().min(1),
-  expectedRemote: z.string().min(1),
-  baseBranch: z.string().min(1),
-  syncBeforeResearch: z.boolean().optional(),
-  allowStaleRead: z.boolean().optional(),
-});
-
-const RegistrySchema = z.object({
-  vaults: z.record(z.string().min(1), VaultSchema),
-  repositories: z.record(z.string().min(1), RepositorySchema),
-});
-
-type Vault = z.infer<typeof VaultSchema>;
-type Repository = z.infer<typeof RepositorySchema>;
 
 type VaultHealth = {
   selector: string;
@@ -153,6 +136,11 @@ function requireRegularFile(filePath: string, message: string): void {
   if (!existsSync(filePath) || !lstatSync(filePath).isFile()) throw new Error(message);
 }
 
+function readJsonFile(filePath: string, description: string): unknown {
+  requireRegularFile(filePath, `${description} not found: ${filePath}`);
+  return parseJsonc(readFileSync(filePath, 'utf8'), filePath);
+}
+
 function parseScalar(raw: string): string | boolean {
   const value = raw.trim();
   if (value === 'true') return true;
@@ -211,15 +199,6 @@ export function parseSourceManifest(contents: string, manifestPath = '_meta/wiki
     blockedTerms: Array.isArray(values.blocked_terms) ? values.blocked_terms.map(String) : [],
     blockedPatterns: Array.isArray(values.blocked_patterns) ? values.blocked_patterns.map(String) : [],
   };
-}
-
-function readJsonFile(filePath: string, description: string): unknown {
-  requireRegularFile(filePath, `${description} not found: ${filePath}`);
-  try {
-    return JSON.parse(readFileSync(filePath, 'utf8'));
-  } catch (error) {
-    throw new Error(`Invalid JSON in ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
-  }
 }
 
 function bindingDigest(binding: Omit<ResolvedBinding, 'bindingDigest'>): string {
@@ -407,8 +386,7 @@ export function resolveBindings(
   const projectDir = path.resolve(env.CLAUDE_PROJECT_DIR ?? workingDirectory);
   const settingsPath = path.join(projectDir, '.shared-adapter', 'settings.json');
   const settings = ProjectSettingsSchema.parse(readJsonFile(settingsPath, 'Project settings'));
-  const registryPath = path.resolve(env.OBSIDIAN_WIKI_REGISTRY ?? path.join(process.env.HOME ?? '', '.config', 'grill-adapter', 'obsidian-wiki.json'));
-  const registry = RegistrySchema.parse(readJsonFile(registryPath, 'Obsidian Wiki registry'));
+  const { registry, registryPath } = loadRegistry(env);
   const errors: string[] = [];
   const warnings: string[] = [];
   const bindings: ResolvedBinding[] = [];

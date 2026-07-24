@@ -3229,8 +3229,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path7) {
-      let input = path7;
+    function removeDotSegments(path8) {
+      let input = path8;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3482,8 +3482,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path7, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path7 && path7 !== "/" ? path7 : void 0;
+        const [path8, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path8 && path8 !== "/" ? path8 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -7132,10 +7132,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path7) {
-  if (!path7)
+function getElementAtPath(obj, path8) {
+  if (!path8)
     return obj;
-  return path7.reduce((acc, key) => acc?.[key], obj);
+  return path8.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7544,11 +7544,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path7, issues) {
+function prefixIssues(path8, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path7);
+    iss.path.unshift(path8);
     return iss;
   });
 }
@@ -7695,16 +7695,16 @@ function flattenError(error2, mapper = (issue2) => issue2.message) {
 }
 function formatError(error2, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error3, path7 = []) => {
+  const processError = (error3, path8 = []) => {
     for (const issue2 of error3.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path7, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path8, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path8, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path8, ...issue2.path]);
       } else {
-        const fullpath = [...path7, ...issue2.path];
+        const fullpath = [...path8, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -14291,8 +14291,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path7, errorMaps, issueData } = params;
-  const fullPath = [...path7, ...issueData.path || []];
+  const { data, path: path8, errorMaps, issueData } = params;
+  const fullPath = [...path8, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -14407,11 +14407,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path7, key) {
+  constructor(parent, value, path8, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path7;
+    this._path = path8;
     this._key = key;
   }
   get path() {
@@ -21859,13 +21859,275 @@ var EMPTY_COMPLETION_RESULT = {
 };
 
 // src/tools/status.ts
-import path2 from "node:path";
+import path3 from "node:path";
 
 // src/bindings.ts
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync as existsSync2, lstatSync, readFileSync as readFileSync2, realpathSync } from "node:fs";
+import path2 from "node:path";
+
+// src/config.ts
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
+var BridgeSchema = object({
+  url: string2().url().optional(),
+  host: string2().min(1).optional(),
+  port: number2().int().positive().optional(),
+  tokenEnv: string2().min(1).optional(),
+  vaultRoot: string2().min(1).optional(),
+  allowedRoots: array(string2().min(1)).optional(),
+  projectDirs: array(string2().min(1)).optional()
+}).optional();
+var RawVaultSchema = object({
+  selector: string2().min(1),
+  vaultRoot: string2().min(1).optional(),
+  bridgeUrl: string2().url().optional(),
+  bridgeTokenEnv: string2().min(1).optional(),
+  bridge: BridgeSchema
+});
+var RepositorySchema = object({
+  worktreeRoot: string2().min(1),
+  remote: string2().min(1),
+  expectedRemote: string2().min(1),
+  baseBranch: string2().min(1),
+  syncBeforeResearch: boolean2().optional(),
+  allowStaleRead: boolean2().optional()
+});
+var RawRegistrySchema = object({
+  version: number2().int().positive().optional(),
+  vaults: record(string2().min(1), RawVaultSchema),
+  repositories: record(string2().min(1), RepositorySchema)
+});
+var DEFAULT_CONFIG_DIR = path.join(os.homedir(), ".config", "grill-adapter");
+var DEFAULT_CONFIG_PATH = path.join(DEFAULT_CONFIG_DIR, "obsidian-wiki.jsonc");
+var LEGACY_CONFIG_PATH = path.join(DEFAULT_CONFIG_DIR, "obsidian-wiki.json");
+var LOCATION_POINTER_PATH = path.join(DEFAULT_CONFIG_DIR, "obsidian-wiki-location.json");
+var CONFIG_EXAMPLE = `{
+  // Schema version for this local machine configuration.
+  "version": 1,
+
+  "vaults": {
+    "engineering-knowledge": {
+      // Name shown by the Obsidian CLI (run: obsidian vaults).
+      "selector": "Engineering-Knowledge",
+
+      // Absolute path to the Git worktree opened as this Vault.
+      "vaultRoot": "/Users/me/Knowledge/Engineering-Knowledge",
+
+      "bridge": {
+        // Loopback URL used by the MCP client to call the write bridge.
+        "url": "http://127.0.0.1:27124",
+
+        // Environment variable containing the bridge bearer token.
+        "tokenEnv": "OBSIDIAN_WIKI_BRIDGE_TOKEN",
+
+        // Vault-relative Source roots that the bridge may write.
+        "allowedRoots": [
+          "Projects/my-app"
+        ],
+
+        // Absolute project directories allowed to request writes.
+        "projectDirs": [
+          "/Users/me/dev/my-app"
+        ]
+      }
+    }
+  },
+
+  "repositories": {
+    "engineering-wiki-all": {
+      // Same path as the Vault worktree above.
+      "worktreeRoot": "/Users/me/Knowledge/Engineering-Knowledge",
+      "remote": "origin",
+      "expectedRemote": "github.com/example/engineering-wiki",
+      "baseBranch": "main",
+
+      // Research normally proves the base branch is current before reading.
+      "syncBeforeResearch": true,
+      "allowStaleRead": false
+    }
+  }
+}
+`;
+function stripJsoncComments(contents) {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+  for (let index = 0; index < contents.length; index += 1) {
+    const character = contents[index];
+    const next = contents[index + 1];
+    if (lineComment) {
+      if (character === "\n" || character === "\r") {
+        lineComment = false;
+        output += character;
+      } else {
+        output += " ";
+      }
+      continue;
+    }
+    if (blockComment) {
+      if (character === "*" && next === "/") {
+        blockComment = false;
+        output += "  ";
+        index += 1;
+      } else {
+        output += character === "\n" || character === "\r" ? character : " ";
+      }
+      continue;
+    }
+    if (inString) {
+      output += character;
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      output += character;
+    } else if (character === "/" && next === "/") {
+      lineComment = true;
+      output += "  ";
+      index += 1;
+    } else if (character === "/" && next === "*") {
+      blockComment = true;
+      output += "  ";
+      index += 1;
+    } else {
+      output += character;
+    }
+  }
+  return output;
+}
+function stripTrailingCommas(contents) {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < contents.length; index += 1) {
+    const character = contents[index];
+    if (inString) {
+      output += character;
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      output += character;
+      continue;
+    }
+    if (character === ",") {
+      let lookahead = index + 1;
+      while (lookahead < contents.length && /\s/.test(contents[lookahead])) lookahead += 1;
+      if (contents[lookahead] === "}" || contents[lookahead] === "]") continue;
+    }
+    output += character;
+  }
+  return output;
+}
+function parseJsonc(contents, filePath = "configuration") {
+  try {
+    return JSON.parse(stripTrailingCommas(stripJsoncComments(contents)));
+  } catch (error2) {
+    throw new Error(`Invalid JSONC in ${filePath}: ${error2 instanceof Error ? error2.message : String(error2)}`);
+  }
+}
+function requireRegularFile(filePath, description) {
+  if (!existsSync(filePath)) throw new Error(`${description} not found: ${filePath}`);
+}
+function readLocationPointer() {
+  if (!existsSync(LOCATION_POINTER_PATH)) return void 0;
+  const raw = parseJsonc(readFileSync(LOCATION_POINTER_PATH, "utf8"), LOCATION_POINTER_PATH);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || typeof raw.configPath !== "string") {
+    throw new Error(`Invalid Obsidian Wiki config location pointer: ${LOCATION_POINTER_PATH}`);
+  }
+  return path.resolve(raw.configPath);
+}
+function resolveConfigPath(env = process.env, explicitPath) {
+  const configured = explicitPath ?? env.OBSIDIAN_WIKI_CONFIG ?? env.OBSIDIAN_WIKI_REGISTRY ?? readLocationPointer();
+  if (configured) return path.resolve(configured);
+  if (existsSync(DEFAULT_CONFIG_PATH)) return DEFAULT_CONFIG_PATH;
+  return LEGACY_CONFIG_PATH;
+}
+function normalizeVault(raw) {
+  const bridge = raw.bridge;
+  const bridgeUrl = raw.bridgeUrl ?? bridge?.url;
+  const bridgeTokenEnv = raw.bridgeTokenEnv ?? bridge?.tokenEnv;
+  const bridgeUrlValue = bridgeUrl ? new URL(bridgeUrl) : void 0;
+  return {
+    selector: raw.selector,
+    vaultRoot: raw.vaultRoot ?? bridge?.vaultRoot,
+    bridgeUrl,
+    bridgeTokenEnv,
+    bridgeHost: bridge?.host ?? bridgeUrlValue?.hostname,
+    bridgePort: bridge?.port ?? (bridgeUrlValue ? Number(bridgeUrlValue.port || "27124") : void 0),
+    bridgeAllowedRoots: bridge?.allowedRoots,
+    bridgeProjectDirs: bridge?.projectDirs
+  };
+}
+function loadRegistry(env = process.env, explicitPath) {
+  const registryPath = resolveConfigPath(env, explicitPath);
+  requireRegularFile(registryPath, "Obsidian Wiki registry");
+  const parsed = RawRegistrySchema.parse(parseJsonc(readFileSync(registryPath, "utf8"), registryPath));
+  return {
+    registry: {
+      version: parsed.version,
+      vaults: Object.fromEntries(Object.entries(parsed.vaults).map(([ref, vault]) => [ref, normalizeVault(vault)])),
+      repositories: parsed.repositories
+    },
+    registryPath
+  };
+}
+function resolveBridgeConfig(env = process.env, explicitPath, requestedVaultRef) {
+  const loaded = loadRegistry(env, explicitPath);
+  const candidates = Object.entries(loaded.registry.vaults).filter(([, vault2]) => vault2.vaultRoot && (vault2.bridgeAllowedRoots?.length ?? 0) > 0 && (vault2.bridgeProjectDirs?.length ?? 0) > 0);
+  const selected = requestedVaultRef ? candidates.find(([ref]) => ref === requestedVaultRef) : candidates.length === 1 ? candidates[0] : void 0;
+  if (!selected) {
+    const available = candidates.map(([ref]) => ref).join(", ") || "none";
+    throw new Error(`Cannot select a configured Obsidian Wiki bridge Vault${requestedVaultRef ? `: ${requestedVaultRef}` : ""}. Available: ${available}`);
+  }
+  const [vaultRef, vault] = selected;
+  const tokenEnv = env.OBSIDIAN_WIKI_BRIDGE_TOKEN_ENV ?? vault.bridgeTokenEnv ?? "OBSIDIAN_WIKI_BRIDGE_TOKEN";
+  return {
+    registryPath: loaded.registryPath,
+    config: {
+      vaultRef,
+      selector: vault.selector,
+      vaultRoot: vault.vaultRoot,
+      url: vault.bridgeUrl,
+      host: env.OBSIDIAN_WIKI_BRIDGE_HOST ?? vault.bridgeHost ?? "127.0.0.1",
+      port: Number(env.OBSIDIAN_WIKI_BRIDGE_PORT ?? vault.bridgePort ?? "27124"),
+      tokenEnv,
+      allowedRoots: vault.bridgeAllowedRoots,
+      projectDirs: vault.bridgeProjectDirs
+    }
+  };
+}
+function initConfig(configPath) {
+  const target = path.resolve(configPath ?? DEFAULT_CONFIG_PATH);
+  const examplePath = target.endsWith(".jsonc") ? target.replace(/\.jsonc$/, ".example.jsonc") : target.endsWith(".json") ? target.replace(/\.json$/, ".example.json") : `${target}.example.jsonc`;
+  mkdirSync(path.dirname(target), { recursive: true });
+  if (!existsSync(examplePath)) writeFileSync(examplePath, CONFIG_EXAMPLE, { encoding: "utf8", mode: 384 });
+  const created = !existsSync(target);
+  if (created) writeFileSync(target, CONFIG_EXAMPLE, { encoding: "utf8", mode: 384 });
+  return { configPath: target, examplePath, created };
+}
+function setConfigLocation(configPath) {
+  const target = path.resolve(configPath);
+  mkdirSync(DEFAULT_CONFIG_DIR, { recursive: true });
+  writeFileSync(
+    LOCATION_POINTER_PATH,
+    `${JSON.stringify({ configPath: target }, null, 2)}
+`,
+    { encoding: "utf8", mode: 384 }
+  );
+  return target;
+}
 
 // src/policy.ts
 var POLICY_RANK = {
@@ -21921,33 +22183,16 @@ var ProjectSettingsSchema = object({
     })
   })
 });
-var VaultSchema = object({
-  selector: string2().min(1),
-  bridgeUrl: string2().url().optional(),
-  bridgeTokenEnv: string2().min(1).optional()
-});
-var RepositorySchema = object({
-  worktreeRoot: string2().min(1),
-  remote: string2().min(1),
-  expectedRemote: string2().min(1),
-  baseBranch: string2().min(1),
-  syncBeforeResearch: boolean2().optional(),
-  allowStaleRead: boolean2().optional()
-});
-var RegistrySchema = object({
-  vaults: record(string2().min(1), VaultSchema),
-  repositories: record(string2().min(1), RepositorySchema)
-});
 function environmentForMcpRequest(env, requestMeta, workingDirectory = process.cwd()) {
   if (env.CLAUDE_PROJECT_DIR) return env;
   const turnMeta = requestMeta?.["x-codex-turn-metadata"];
   const isCodexRequest = turnMeta !== null && typeof turnMeta === "object" && !Array.isArray(turnMeta);
   const workspaces = isCodexRequest ? turnMeta.workspaces : void 0;
-  const workspaceDirs = workspaces !== null && typeof workspaces === "object" && !Array.isArray(workspaces) ? Object.keys(workspaces).filter((workspace) => path.isAbsolute(workspace)) : [];
-  const configuredProjectDirs = [...new Set(workspaceDirs.map((dir) => path.resolve(dir)))].filter((dir) => existsSync(path.join(dir, ".shared-adapter", "settings.json")));
+  const workspaceDirs = workspaces !== null && typeof workspaces === "object" && !Array.isArray(workspaces) ? Object.keys(workspaces).filter((workspace) => path2.isAbsolute(workspace)) : [];
+  const configuredProjectDirs = [...new Set(workspaceDirs.map((dir) => path2.resolve(dir)))].filter((dir) => existsSync2(path2.join(dir, ".shared-adapter", "settings.json")));
   if (!isCodexRequest) {
-    const projectDir = path.resolve(workingDirectory);
-    if (existsSync(path.join(projectDir, ".shared-adapter", "settings.json"))) {
+    const projectDir = path2.resolve(workingDirectory);
+    if (existsSync2(path2.join(projectDir, ".shared-adapter", "settings.json"))) {
       return { ...env, CLAUDE_PROJECT_DIR: projectDir };
     }
   }
@@ -21962,15 +22207,19 @@ function environmentForMcpRequest(env, requestMeta, workingDirectory = process.c
   return { ...env, CLAUDE_PROJECT_DIR: configuredProjectDirs[0] };
 }
 function normalizeRoot(value) {
-  if (path.isAbsolute(value)) throw new Error("binding root must be a relative path");
-  const normalized = path.posix.normalize(value.replaceAll("\\", "/"));
+  if (path2.isAbsolute(value)) throw new Error("binding root must be a relative path");
+  const normalized = path2.posix.normalize(value.replaceAll("\\", "/"));
   if (normalized === "." || normalized === ".." || normalized.startsWith("../")) {
     throw new Error("binding root must name a directory inside the Vault");
   }
   return normalized.replace(/^\.\//, "");
 }
-function requireRegularFile(filePath, message) {
-  if (!existsSync(filePath) || !lstatSync(filePath).isFile()) throw new Error(message);
+function requireRegularFile2(filePath, message) {
+  if (!existsSync2(filePath) || !lstatSync(filePath).isFile()) throw new Error(message);
+}
+function readJsonFile(filePath, description) {
+  requireRegularFile2(filePath, `${description} not found: ${filePath}`);
+  return parseJsonc(readFileSync2(filePath, "utf8"), filePath);
 }
 function parseScalar(raw) {
   const value = raw.trim();
@@ -22026,14 +22275,6 @@ function parseSourceManifest(contents, manifestPath = "_meta/wiki-source.md") {
     blockedTerms: Array.isArray(values.blocked_terms) ? values.blocked_terms.map(String) : [],
     blockedPatterns: Array.isArray(values.blocked_patterns) ? values.blocked_patterns.map(String) : []
   };
-}
-function readJsonFile(filePath, description) {
-  requireRegularFile(filePath, `${description} not found: ${filePath}`);
-  try {
-    return JSON.parse(readFileSync(filePath, "utf8"));
-  } catch (error2) {
-    throw new Error(`Invalid JSON in ${filePath}: ${error2 instanceof Error ? error2.message : String(error2)}`);
-  }
 }
 function bindingDigest(binding) {
   const canonical = [
@@ -22113,7 +22354,7 @@ function stagedWikiChangesAreAllowed(worktreeRoot, roots) {
   });
 }
 function validateRepository(repository, allowedStagedRoots = [], allowedBranch) {
-  if (!existsSync(repository.worktreeRoot)) {
+  if (!existsSync2(repository.worktreeRoot)) {
     throw new Error(`repository worktree not found: ${repository.worktreeRoot}`);
   }
   const worktreeRoot = realpathSync(repository.worktreeRoot);
@@ -22128,13 +22369,13 @@ function validateRepository(repository, allowedStagedRoots = [], allowedBranch) 
   if (currentBranch !== repository.baseBranch && currentBranch !== allowedBranch) {
     throw new Error(`repository must be on baseBranch ${repository.baseBranch}, found ${currentBranch || "detached HEAD"}`);
   }
-  if (existsSync(path.join(worktreeRoot, ".grill-adapter-wiki.publish.lock"))) {
+  if (existsSync2(path2.join(worktreeRoot, ".grill-adapter-wiki.publish.lock"))) {
     throw new Error("repository has an active Obsidian Wiki publish lock");
   }
   const operationMarkers = ["MERGE_HEAD", "REBASE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG"];
   for (const marker of operationMarkers) {
     const markerPath = commandOutput("git", ["-C", worktreeRoot, "rev-parse", "--git-path", marker]);
-    if (existsSync(path.resolve(worktreeRoot, markerPath))) throw new Error(`repository has an active Git operation: ${marker}`);
+    if (existsSync2(path2.resolve(worktreeRoot, markerPath))) throw new Error(`repository has an active Git operation: ${marker}`);
   }
   const worktreeStatus = commandOutput("git", ["-C", worktreeRoot, "status", "--porcelain=v1", "--untracked-files=all"]);
   const hasAllowedStagedChanges = worktreeStatus !== "" && stagedWikiChangesAreAllowed(worktreeRoot, allowedStagedRoots);
@@ -22186,11 +22427,10 @@ function validateVault(vault, env) {
   return { selector: vault.selector, writeBridgeConfigured: vault.bridgeUrl !== void 0 };
 }
 function resolveBindings(env = process.env, workingDirectory = process.cwd(), options = {}) {
-  const projectDir = path.resolve(env.CLAUDE_PROJECT_DIR ?? workingDirectory);
-  const settingsPath = path.join(projectDir, ".shared-adapter", "settings.json");
+  const projectDir = path2.resolve(env.CLAUDE_PROJECT_DIR ?? workingDirectory);
+  const settingsPath = path2.join(projectDir, ".shared-adapter", "settings.json");
   const settings = ProjectSettingsSchema.parse(readJsonFile(settingsPath, "Project settings"));
-  const registryPath = path.resolve(env.OBSIDIAN_WIKI_REGISTRY ?? path.join(process.env.HOME ?? "", ".config", "grill-adapter", "obsidian-wiki.json"));
-  const registry2 = RegistrySchema.parse(readJsonFile(registryPath, "Obsidian Wiki registry"));
+  const { registry: registry2, registryPath } = loadRegistry(env);
   const errors = [];
   const warnings = [];
   const bindings = [];
@@ -22224,21 +22464,21 @@ ${root}`;
         options.allowedRepositoryBranches?.[candidate.repositoryRef]
       );
       const worktreeRoot = realpathSync(repository.worktreeRoot);
-      const configuredRoot = path.join(worktreeRoot, root);
-      if (!existsSync(configuredRoot)) {
+      const configuredRoot = path2.join(worktreeRoot, root);
+      if (!existsSync2(configuredRoot)) {
         throw new Error(`Source manifest missing for ${candidate.sourceId}`);
       }
       const resolvedRoot = realpathSync(configuredRoot);
-      if (resolvedRoot !== worktreeRoot && !resolvedRoot.startsWith(`${worktreeRoot}${path.sep}`)) {
+      if (resolvedRoot !== worktreeRoot && !resolvedRoot.startsWith(`${worktreeRoot}${path2.sep}`)) {
         throw new Error(`binding root escapes repository worktree: ${root}`);
       }
-      const manifestPath = path.join(resolvedRoot, "_meta", "wiki-source.md");
-      requireRegularFile(manifestPath, `Source manifest missing for ${candidate.sourceId}`);
+      const manifestPath = path2.join(resolvedRoot, "_meta", "wiki-source.md");
+      requireRegularFile2(manifestPath, `Source manifest missing for ${candidate.sourceId}`);
       const resolvedManifestPath = realpathSync(manifestPath);
-      if (!resolvedManifestPath.startsWith(`${resolvedRoot}${path.sep}`)) {
+      if (!resolvedManifestPath.startsWith(`${resolvedRoot}${path2.sep}`)) {
         throw new Error(`Source manifest escapes binding root: ${candidate.sourceId}`);
       }
-      const manifest = parseSourceManifest(readFileSync(resolvedManifestPath, "utf8"), resolvedManifestPath);
+      const manifest = parseSourceManifest(readFileSync2(resolvedManifestPath, "utf8"), resolvedManifestPath);
       if (manifest.sourceId !== candidate.sourceId) {
         throw new Error(`Source manifest ID mismatch: binding ${candidate.sourceId}, manifest ${manifest.sourceId}`);
       }
@@ -22276,7 +22516,7 @@ ${root}`;
 
 // src/tools/status.ts
 function statusTool(env = process.env) {
-  const projectDir = path2.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
+  const projectDir = path3.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
   try {
     const resolution = resolveBindings(env);
     return {
@@ -22340,7 +22580,7 @@ function sourcesTool(env = process.env) {
 }
 
 // src/retrieval.ts
-import path3 from "node:path";
+import path4 from "node:path";
 
 // src/note.ts
 import { createHash as createHash2 } from "node:crypto";
@@ -22526,8 +22766,8 @@ function readNote(vaultSelector, notePath, env) {
 
 // src/retrieval.ts
 function normalizeVaultPath(value) {
-  if (path3.posix.isAbsolute(value)) throw new Error("Obsidian Note path must be Vault-relative");
-  const normalized = path3.posix.normalize(value.replaceAll("\\", "/"));
+  if (path4.posix.isAbsolute(value)) throw new Error("Obsidian Note path must be Vault-relative");
+  const normalized = path4.posix.normalize(value.replaceAll("\\", "/"));
   if (normalized === "." || normalized === ".." || normalized.startsWith("../")) {
     throw new Error("Obsidian Note path escapes its Vault");
   }
@@ -22667,8 +22907,8 @@ function assertUniqueBoundSkillCard(note, bindings, env) {
 
 // src/skill-card.ts
 import { createHash as createHash3 } from "node:crypto";
-import { lstatSync as lstatSync2, readFileSync as readFileSync2, readdirSync } from "node:fs";
-import path4 from "node:path";
+import { lstatSync as lstatSync2, readFileSync as readFileSync3, readdirSync } from "node:fs";
+import path5 from "node:path";
 function pendingSkillRegistration(note) {
   if (!note.skillProvider) return void 0;
   return {
@@ -22685,8 +22925,8 @@ function pendingSkillRegistration(note) {
 function packFiles(packRoot, current = packRoot) {
   const files = [];
   for (const entry of readdirSync(current, { withFileTypes: true })) {
-    const absolute = path4.join(current, entry.name);
-    const relative = path4.relative(packRoot, absolute).split(path4.sep).join("/");
+    const absolute = path5.join(current, entry.name);
+    const relative = path5.relative(packRoot, absolute).split(path5.sep).join("/");
     if (entry.isSymbolicLink() || lstatSync2(absolute).isSymbolicLink()) {
       throw new Error(`skill pack contract does not allow symlinks: ${relative}`);
     }
@@ -22701,13 +22941,13 @@ function skillContractHash(packRoot) {
   for (const relative of packFiles(packRoot)) {
     digest.update(relative, "utf8");
     digest.update("\0", "utf8");
-    digest.update(createHash3("sha256").update(readFileSync2(path4.join(packRoot, relative))).digest());
+    digest.update(createHash3("sha256").update(readFileSync3(path5.join(packRoot, relative))).digest());
     digest.update("\0", "utf8");
   }
   return `sha256:${digest.digest("hex")}`;
 }
 function skillFrontmatter(skillPath) {
-  const text = readFileSync2(skillPath, "utf8").replaceAll("\r\n", "\n");
+  const text = readFileSync3(skillPath, "utf8").replaceAll("\r\n", "\n");
   const match = /^---\n([\s\S]*?)\n---\n/.exec(text);
   if (!match) throw new Error("SKILL.md has no frontmatter");
   const fields = {};
@@ -22725,8 +22965,8 @@ function skillCardAvailability(note, projectDir, context) {
   if (note.skillProvider !== "claude-code-project") {
     return { available: false, reason: `unsupported provider ${note.skillProvider}` };
   }
-  const packRoot = path4.join(projectDir, ".claude", "skills", note.skillName);
-  const skillPath = path4.join(packRoot, "SKILL.md");
+  const packRoot = path5.join(projectDir, ".claude", "skills", note.skillName);
+  const skillPath = path5.join(packRoot, "SKILL.md");
   try {
     const frontmatter = skillFrontmatter(skillPath);
     if (frontmatter.name !== note.skillName) {
@@ -22759,14 +22999,14 @@ function assertSkillCardAvailable(note, projectDir, context) {
 import { randomUUID } from "node:crypto";
 import { execFileSync as execFileSync3 } from "node:child_process";
 import {
-  existsSync as existsSync2,
-  mkdirSync,
-  readFileSync as readFileSync3,
+  existsSync as existsSync3,
+  mkdirSync as mkdirSync2,
+  readFileSync as readFileSync4,
   renameSync,
   rmSync,
-  writeFileSync
+  writeFileSync as writeFileSync2
 } from "node:fs";
-import path5 from "node:path";
+import path6 from "node:path";
 var HashSchema = string2().regex(/^sha256:[a-f0-9]{64}$/);
 var AdrProjectionSchema = object({
   authorityType: literal("project-adr"),
@@ -22881,21 +23121,21 @@ function samePaths(actual, expected) {
   return actual.length === expected.length && actual.every((value, index) => value === expected[index]);
 }
 function writeManifest(manifestPath, manifest) {
-  mkdirSync(path5.dirname(manifestPath), { recursive: true });
+  mkdirSync2(path6.dirname(manifestPath), { recursive: true });
   const temporaryPath = `${manifestPath}.tmp-${process.pid}`;
-  writeFileSync(temporaryPath, `${JSON.stringify(manifest, null, 2)}
+  writeFileSync2(temporaryPath, `${JSON.stringify(manifest, null, 2)}
 `, { encoding: "utf8", flag: "wx" });
   renameSync(temporaryPath, manifestPath);
 }
 function manifestPathFor(projectDir, featureSlug) {
-  return path5.join(projectDir, ".adapter", "context", `${featureSlug}.wiki-publish.json`);
+  return path6.join(projectDir, ".adapter", "context", `${featureSlug}.wiki-publish.json`);
 }
 function readPublishManifest(manifestPath) {
-  return existsSync2(manifestPath) ? PublishManifestSchema.parse(JSON.parse(readFileSync3(manifestPath, "utf8"))) : void 0;
+  return existsSync3(manifestPath) ? PublishManifestSchema.parse(JSON.parse(readFileSync4(manifestPath, "utf8"))) : void 0;
 }
 function publishBranchOptions(featureSlug, env = process.env) {
   const parsedFeature = string2().regex(/^[a-z0-9][a-z0-9._-]*$/).parse(featureSlug);
-  const projectDir = path5.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
+  const projectDir = path6.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
   const manifest = readPublishManifest(manifestPathFor(projectDir, parsedFeature));
   if (!manifest || manifest.featureSlug !== parsedFeature) {
     throw new Error(`publish transaction is unavailable for ${parsedFeature}`);
@@ -22904,7 +23144,7 @@ function publishBranchOptions(featureSlug, env = process.env) {
 }
 function preparePublishBranches(input, env = process.env) {
   const request = PublishPreparationSchema.parse(input);
-  const projectDir = path5.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
+  const projectDir = path6.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
   const manifestPath = manifestPathFor(projectDir, request.featureSlug);
   const existing = readPublishManifest(manifestPath);
   const allowedRepositoryBranches = existing ? Object.fromEntries(existing.repositories.map((run) => [run.repositoryRef, run.branch])) : void 0;
@@ -23005,7 +23245,7 @@ function receiptBinding(receipt, bindings) {
 function validateReceipt(receipt, binding, env, publishedCommit) {
   const notePath = normalizeVaultPath(receipt.path);
   const worktreeRoot = binding.repository.worktreeRoot;
-  const contents = publishedCommit ? gitFile(publishedCommit, notePath, env, worktreeRoot) : readFileSync3(path5.join(worktreeRoot, ...notePath.split("/")), "utf8");
+  const contents = publishedCommit ? gitFile(publishedCommit, notePath, env, worktreeRoot) : readFileSync4(path6.join(worktreeRoot, ...notePath.split("/")), "utf8");
   const note = parseAtomicNote(contents, notePath);
   if (note.wikiId !== receipt.wikiId) throw new Error(`write receipt wiki_id drift for ${notePath}`);
   if (note.contentHash !== receipt.afterHash) throw new Error(`write receipt afterHash drift for ${notePath}`);
@@ -23069,7 +23309,7 @@ function safeSegment(value) {
 }
 function withTemporaryPrBody(manifestPath, run, body, callback) {
   const bodyPath = `${manifestPath}.${safeSegment(run.repositoryRef)}.md`;
-  writeFileSync(bodyPath, `${body}
+  writeFileSync2(bodyPath, `${body}
 `, "utf8");
   try {
     return callback(bodyPath);
@@ -23093,9 +23333,9 @@ function coordinatePeerPrs(manifest, bindingsByRepository, manifestPath, env) {
 function publishRepository(manifest, run, binding, receipts, manifestPath, env) {
   const repository = binding.repository;
   const worktreeRoot = repository.worktreeRoot;
-  const lockPath = path5.join(worktreeRoot, PublishLockFile);
+  const lockPath = path6.join(worktreeRoot, PublishLockFile);
   let enteredPublishBranch = false;
-  writeFileSync(lockPath, `${manifest.runId}
+  writeFileSync2(lockPath, `${manifest.runId}
 `, { encoding: "utf8", flag: "wx" });
   try {
     if (run.commit === null) {
@@ -23210,7 +23450,7 @@ ${normalizeVaultPath(receipt.path)}`;
     if (receiptPaths.has(key)) throw new Error(`duplicate applied receipt path: ${receipt.path}`);
     receiptPaths.add(key);
   }
-  const projectDir = path5.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
+  const projectDir = path6.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
   const manifestPath = manifestPathFor(projectDir, journal.featureSlug);
   const existingManifest = readPublishManifest(manifestPath);
   const allowedRepositoryBranches = existingManifest ? Object.fromEntries(existingManifest.repositories.map((run) => [run.repositoryRef, run.branch])) : void 0;
@@ -23809,17 +24049,17 @@ function createServer(env = process.env) {
 import { timingSafeEqual, randomUUID as randomUUID2 } from "node:crypto";
 import { createServer as createServer2 } from "node:http";
 import {
-  existsSync as existsSync3,
+  existsSync as existsSync4,
   linkSync,
   lstatSync as lstatSync3,
-  mkdirSync as mkdirSync2,
-  readFileSync as readFileSync4,
+  mkdirSync as mkdirSync3,
+  readFileSync as readFileSync5,
   readdirSync as readdirSync2,
   realpathSync as realpathSync2,
   rmSync as rmSync2,
-  writeFileSync as writeFileSync2
+  writeFileSync as writeFileSync3
 } from "node:fs";
-import path6 from "node:path";
+import path7 from "node:path";
 
 // src/atomic-exchange.ts
 import { execFileSync as execFileSync4 } from "node:child_process";
@@ -23862,22 +24102,22 @@ var BridgeError = class extends Error {
   status;
 };
 function normalizeRelativePath(value, description) {
-  if (path6.posix.isAbsolute(value) || path6.win32.isAbsolute(value)) {
+  if (path7.posix.isAbsolute(value) || path7.win32.isAbsolute(value)) {
     throw new BridgeError(403, `${description} must be Vault-relative`);
   }
-  const normalized = path6.posix.normalize(value.replaceAll("\\", "/")).replace(/^\.\//, "");
+  const normalized = path7.posix.normalize(value.replaceAll("\\", "/")).replace(/^\.\//, "");
   if (!normalized || normalized === "." || normalized === ".." || normalized.startsWith("../")) {
     throw new BridgeError(403, `${description} escapes the Vault`);
   }
   return normalized;
 }
 function inside(candidate, root) {
-  return candidate === root || candidate.startsWith(`${root}${path6.sep}`);
+  return candidate === root || candidate.startsWith(`${root}${path7.sep}`);
 }
 function nearestExistingDirectory(directory) {
   let candidate = directory;
-  while (!existsSync3(candidate)) {
-    const parent = path6.dirname(candidate);
+  while (!existsSync4(candidate)) {
+    const parent = path7.dirname(candidate);
     if (parent === candidate) throw new BridgeError(403, "Note parent has no existing Vault ancestor");
     candidate = parent;
   }
@@ -23903,7 +24143,7 @@ function atomicNoteFiles(root) {
   const visit = (directory) => {
     for (const entry of readdirSync2(directory, { withFileTypes: true })) {
       if (entry.name === "_meta") continue;
-      const target = path6.join(directory, entry.name);
+      const target = path7.join(directory, entry.name);
       if (entry.isSymbolicLink()) throw new BridgeError(403, `Symbolic links are not allowed in writable Source content: ${target}`);
       if (entry.isDirectory()) visit(target);
       else if (entry.isFile() && entry.name.endsWith(".md")) files.push(target);
@@ -23916,7 +24156,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
   const noteFiles = [...roots.values()].flatMap(atomicNoteFiles);
   const existingNotes = noteFiles.map((file) => ({
     file,
-    note: parseAtomicNote(readFileSync4(file, "utf8"), file)
+    note: parseAtomicNote(readFileSync5(file, "utf8"), file)
   }));
   const identityMatches = existingNotes.filter(({ note }) => note.wikiId === proposed.wikiId);
   if (proposed.adrSourceId && targetScope !== "project") {
@@ -23955,7 +24195,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
     throw new BridgeError(409, "Skill Card provider/name identity must be preserved on update");
   }
   if (proposed.skillProvider) {
-    const projectNotes = [...projectRoots.values()].flatMap(atomicNoteFiles).map((file) => ({ file, note: parseAtomicNote(readFileSync4(file, "utf8"), file) }));
+    const projectNotes = [...projectRoots.values()].flatMap(atomicNoteFiles).map((file) => ({ file, note: parseAtomicNote(readFileSync5(file, "utf8"), file) }));
     const cardMatches = projectNotes.filter(({ note }) => note.skillProvider === proposed.skillProvider && note.skillName === proposed.skillName);
     const conflictingCards = operation === "create" ? cardMatches : cardMatches.filter(({ file }) => realpathSync2(file) !== realpathSync2(targetPath));
     if (conflictingCards.length > 0) {
@@ -23970,12 +24210,12 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
       const target = /^\[\[([^#|\]]+)/.exec(link)?.[1]?.trim();
       if (!target) throw new BridgeError(400, `Typed edge must use an Obsidian link: ${link}`);
       const vaultPath = normalizeRelativePath(target.endsWith(".md") ? target : `${target}.md`, "Typed edge");
-      const resolvedTarget = path6.resolve(vaultRoot, ...vaultPath.split("/"));
+      const resolvedTarget = path7.resolve(vaultRoot, ...vaultPath.split("/"));
       const owningRoot = [...roots.values()].find((root) => inside(resolvedTarget, root.resolvedRoot));
-      if (!owningRoot || !existsSync3(resolvedTarget) || !lstatSync3(resolvedTarget).isFile()) {
+      if (!owningRoot || !existsSync4(resolvedTarget) || !lstatSync3(resolvedTarget).isFile()) {
         throw new BridgeError(400, `Typed edge does not resolve to an allowed atomic Note: ${link}`);
       }
-      parseAtomicNote(readFileSync4(resolvedTarget, "utf8"), vaultPath);
+      parseAtomicNote(readFileSync5(resolvedTarget, "utf8"), vaultPath);
     }
   }
 }
@@ -23988,24 +24228,24 @@ function enforceGovernance(change, root, apply, vaultRoot, roots, allowedProject
     throw new BridgeError(403, "Project is not allowed by this bridge");
   }
   if (!allowedProjects.has(projectDir)) throw new BridgeError(403, "Project is not allowed by this bridge");
-  const settingsPath = path6.join(projectDir, ".shared-adapter", "settings.json");
+  const settingsPath = path7.join(projectDir, ".shared-adapter", "settings.json");
   let settings;
   try {
-    settings = BridgeSettingsSchema.parse(JSON.parse(readFileSync4(settingsPath, "utf8")));
+    settings = BridgeSettingsSchema.parse(JSON.parse(readFileSync5(settingsPath, "utf8")));
   } catch (error2) {
     throw new BridgeError(403, `Project binding cannot be validated: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
-  const binding = settings.wiki.obsidian.bindings.find((candidate) => candidate.sourceId === request.sourceId && candidate.vaultRef === request.vaultRef && path6.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, "") === request.sourceRoot);
+  const binding = settings.wiki.obsidian.bindings.find((candidate) => candidate.sourceId === request.sourceId && candidate.vaultRef === request.vaultRef && path7.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, "") === request.sourceRoot);
   if (!binding || !binding.access.read) throw new BridgeError(403, "Source is not a readable binding of the allowed project");
   const projectRootNames = new Set(
-    settings.wiki.obsidian.bindings.filter((candidate) => candidate.access.read).map((candidate) => path6.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, ""))
+    settings.wiki.obsidian.bindings.filter((candidate) => candidate.access.read).map((candidate) => path7.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, ""))
   );
   const projectRoots = new Map(
     [...roots].filter(([rootName]) => projectRootNames.has(rootName))
   );
   let manifest;
   try {
-    manifest = parseSourceManifest(readFileSync4(root.manifestPath, "utf8"), root.manifestPath);
+    manifest = parseSourceManifest(readFileSync5(root.manifestPath, "utf8"), root.manifestPath);
   } catch (error2) {
     throw new BridgeError(403, `Source manifest cannot be validated: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
@@ -24075,14 +24315,14 @@ function validateChange(raw, options, vaultRoot, allowedRoots) {
     throw new BridgeError(403, `Note path is metadata and cannot be written: ${notePath}`);
   }
   if (!notePath.endsWith(".md")) throw new BridgeError(400, "Atomic Note path must end in .md");
-  const targetPath = path6.resolve(vaultRoot, ...notePath.split("/"));
+  const targetPath = path7.resolve(vaultRoot, ...notePath.split("/"));
   if (!inside(targetPath, resolvedSourceRoot)) throw new BridgeError(403, `Note path escapes its Source root: ${notePath}`);
-  const parent = path6.dirname(targetPath);
+  const parent = path7.dirname(targetPath);
   const resolvedParent = nearestExistingDirectory(parent);
   if (!inside(resolvedParent, resolvedSourceRoot)) throw new BridgeError(403, `Note parent escapes its Source root: ${notePath}`);
   const proposed = parseAtomicNote(request.content, notePath);
   if (proposed.wikiId !== request.expectedWikiId) throw new BridgeError(409, "Proposed Note wiki_id does not match expectedWikiId");
-  const exists = existsSync3(targetPath);
+  const exists = existsSync4(targetPath);
   let beforeContent = null;
   if (request.operation === "create") {
     if (request.expectedHash !== null) throw new BridgeError(400, "Create requires expectedHash: null");
@@ -24092,7 +24332,7 @@ function validateChange(raw, options, vaultRoot, allowedRoots) {
     if (!exists || !lstatSync3(targetPath).isFile()) throw new BridgeError(409, `Cannot update a missing Note: ${notePath}`);
     const resolvedTarget = realpathSync2(targetPath);
     if (!inside(resolvedTarget, resolvedSourceRoot)) throw new BridgeError(403, `Note path escapes its Source root: ${notePath}`);
-    beforeContent = readFileSync4(resolvedTarget, "utf8");
+    beforeContent = readFileSync5(resolvedTarget, "utf8");
     const existing = parseAtomicNote(beforeContent, notePath);
     if (existing.wikiId !== request.expectedWikiId || existing.wikiId !== proposed.wikiId) {
       throw new BridgeError(409, "Existing and proposed Note wiki_id must preserve identity");
@@ -24143,23 +24383,23 @@ function respond(response, status, body) {
 }
 function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
   if (change.request.operation === "create") {
-    mkdirSync2(path6.dirname(change.targetPath), { recursive: true, mode: 448 });
-    if (!inside(realpathSync2(path6.dirname(change.targetPath)), change.resolvedSourceRoot)) {
+    mkdirSync3(path7.dirname(change.targetPath), { recursive: true, mode: 448 });
+    if (!inside(realpathSync2(path7.dirname(change.targetPath)), change.resolvedSourceRoot)) {
       throw new BridgeError(403, "Created Note parent escaped its Source root");
     }
   }
-  const temporaryPath = path6.join(path6.dirname(change.targetPath), `.${path6.basename(change.targetPath)}.${randomUUID2()}.tmp`);
+  const temporaryPath = path7.join(path7.dirname(change.targetPath), `.${path7.basename(change.targetPath)}.${randomUUID2()}.tmp`);
   const lockPath = `${change.targetPath}.grill-adapter-write.lock`;
   let ownsLock = false;
   try {
     try {
-      writeFileSync2(lockPath, `${process.pid}
+      writeFileSync3(lockPath, `${process.pid}
 `, { encoding: "utf8", flag: "wx", mode: 384 });
       ownsLock = true;
     } catch (error2) {
       throw new BridgeError(409, `Note has another active bridge write: ${error2 instanceof Error ? error2.message : String(error2)}`);
     }
-    writeFileSync2(temporaryPath, change.diff.afterContent, { encoding: "utf8", flag: "wx", mode: 384 });
+    writeFileSync3(temporaryPath, change.diff.afterContent, { encoding: "utf8", flag: "wx", mode: 384 });
     if (change.request.operation === "create") {
       try {
         linkSync(temporaryPath, change.targetPath);
@@ -24167,21 +24407,21 @@ function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
         throw new BridgeError(409, `Expected hash conflict: Note was created concurrently: ${error2 instanceof Error ? error2.message : String(error2)}`);
       }
     } else {
-      if (!existsSync3(change.targetPath) || contentHash(readFileSync4(change.targetPath, "utf8")) !== change.request.expectedHash) {
+      if (!existsSync4(change.targetPath) || contentHash(readFileSync5(change.targetPath, "utf8")) !== change.request.expectedHash) {
         throw new BridgeError(409, "Expected hash conflict: Note changed concurrently");
       }
       beforeAtomicExchange?.(change.targetPath);
       atomicExchange(change.targetPath, temporaryPath);
       afterAtomicExchange?.(change.targetPath);
-      const swappedOutHash = contentHash(readFileSync4(temporaryPath, "utf8"));
-      const writtenHash = contentHash(readFileSync4(change.targetPath, "utf8"));
+      const swappedOutHash = contentHash(readFileSync5(temporaryPath, "utf8"));
+      const writtenHash = contentHash(readFileSync5(change.targetPath, "utf8"));
       if (swappedOutHash !== change.request.expectedHash || writtenHash !== change.diff.afterHash) {
         let expectedTargetHash = change.diff.afterHash;
-        while (contentHash(readFileSync4(change.targetPath, "utf8")) === expectedTargetHash) {
+        while (contentHash(readFileSync5(change.targetPath, "utf8")) === expectedTargetHash) {
           atomicExchange(change.targetPath, temporaryPath);
-          const displacedHash = contentHash(readFileSync4(temporaryPath, "utf8"));
+          const displacedHash = contentHash(readFileSync5(temporaryPath, "utf8"));
           if (displacedHash === expectedTargetHash) break;
-          expectedTargetHash = contentHash(readFileSync4(change.targetPath, "utf8"));
+          expectedTargetHash = contentHash(readFileSync5(change.targetPath, "utf8"));
         }
         throw new BridgeError(409, "Expected hash conflict: Note changed during atomic exchange");
       }
@@ -24190,7 +24430,7 @@ function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
     rmSync2(temporaryPath, { force: true });
     if (ownsLock) rmSync2(lockPath, { force: true });
   }
-  const written = readFileSync4(change.targetPath, "utf8");
+  const written = readFileSync5(change.targetPath, "utf8");
   const note = parseAtomicNote(written, change.request.path);
   if (note.wikiId !== change.proposedWikiId || note.contentHash !== change.diff.afterHash) {
     throw new BridgeError(500, "Post-write Note identity verification failed");
@@ -24201,26 +24441,30 @@ async function startWriteBridge(options) {
   const host = options.host ?? "127.0.0.1";
   if (!isLoopbackHost(host)) throw new Error("Obsidian Wiki write bridge must bind to a loopback host");
   if (!options.token) throw new Error("Obsidian Wiki write bridge token must not be empty");
-  if (!path6.isAbsolute(options.vaultRoot)) throw new Error("Obsidian Wiki write bridge Vault root must be absolute");
+  if (!path7.isAbsolute(options.vaultRoot)) throw new Error("Obsidian Wiki write bridge Vault root must be absolute");
   const vaultRoot = realpathSync2(options.vaultRoot);
   const allowedProjects = new Set(options.projectDirs.map((projectDir) => {
-    if (!path6.isAbsolute(projectDir)) throw new Error("Obsidian Wiki write bridge project directories must be absolute");
+    if (!path7.isAbsolute(projectDir)) throw new Error("Obsidian Wiki write bridge project directories must be absolute");
     return realpathSync2(projectDir);
   }));
   if (allowedProjects.size === 0) throw new Error("Obsidian Wiki write bridge requires at least one allowed project directory");
   const allowedRoots = /* @__PURE__ */ new Map();
   for (const rawRoot of options.allowedRoots) {
     const root = normalizeRelativePath(rawRoot, "Allowed Source root");
-    const resolved = realpathSync2(path6.resolve(vaultRoot, ...root.split("/")));
+    const resolved = realpathSync2(path7.resolve(vaultRoot, ...root.split("/")));
     if (!inside(resolved, vaultRoot)) throw new Error(`Allowed Source root escapes the Vault: ${root}`);
-    const manifestPath = path6.join(resolved, "_meta", "wiki-source.md");
-    if (!existsSync3(manifestPath) || !lstatSync3(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
-    parseSourceManifest(readFileSync4(manifestPath, "utf8"), manifestPath);
+    const manifestPath = path7.join(resolved, "_meta", "wiki-source.md");
+    if (!existsSync4(manifestPath) || !lstatSync3(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
+    parseSourceManifest(readFileSync5(manifestPath, "utf8"), manifestPath);
     allowedRoots.set(root, { resolvedRoot: resolved, manifestPath });
   }
   if (allowedRoots.size === 0) throw new Error("Obsidian Wiki write bridge requires at least one allowed Source root");
   const server = createServer2(async (request, response) => {
     try {
+      if (request.method === "GET" && request.url === "/health") {
+        respond(response, 200, { ok: true, service: "obsidian-wiki-write-bridge" });
+        return;
+      }
       if (request.method !== "POST") throw new BridgeError(405, "Write bridge accepts POST requests only");
       const route = request.url;
       if (route !== "/v1/notes/validate" && route !== "/v1/notes/apply") throw new BridgeError(404, "Unknown write bridge route");
@@ -24247,31 +24491,40 @@ async function startWriteBridge(options) {
   };
 }
 async function runWriteBridgeFromEnvironment(env = process.env) {
-  const tokenEnv = env.OBSIDIAN_WIKI_BRIDGE_TOKEN_ENV ?? "OBSIDIAN_WIKI_BRIDGE_TOKEN";
+  let configured;
+  const hasLegacyBridgeEnvironment = Boolean(
+    env.OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT && env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR && env.OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS && env.OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS
+  );
+  if (!hasLegacyBridgeEnvironment) {
+    configured = resolveBridgeConfig(env, void 0, env.OBSIDIAN_WIKI_BRIDGE_VAULT_REF);
+  }
+  const tokenEnv = env.OBSIDIAN_WIKI_BRIDGE_TOKEN_ENV ?? configured?.config.tokenEnv ?? "OBSIDIAN_WIKI_BRIDGE_TOKEN";
   const token = env[tokenEnv];
+  const vaultRoot = env.OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT ?? configured?.config.vaultRoot;
+  const vaultSelector = env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR ?? configured?.config.selector;
   const rootsRaw = env.OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS;
   const projectsRaw = env.OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS;
-  if (!env.OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT || !env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR || !rootsRaw || !projectsRaw || !token) {
-    throw new Error("Write bridge requires OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT, OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR, OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS, OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS, and its token environment variable");
+  const roots = rootsRaw ? JSON.parse(rootsRaw) : configured?.config.allowedRoots;
+  const projects = projectsRaw ? JSON.parse(projectsRaw) : configured?.config.projectDirs;
+  if (!vaultRoot || !vaultSelector || !roots || !projects || !token) {
+    throw new Error("Write bridge requires a unified Obsidian Wiki config or OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT, OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR, OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS, OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS, and its token environment variable");
   }
-  const roots = JSON.parse(rootsRaw);
   if (!Array.isArray(roots) || roots.some((value) => typeof value !== "string")) {
-    throw new Error("OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS must be a JSON array of strings");
+    throw new Error("Obsidian Wiki bridge allowedRoots must be an array of strings");
   }
-  const projects = JSON.parse(projectsRaw);
   if (!Array.isArray(projects) || projects.some((value) => typeof value !== "string")) {
-    throw new Error("OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS must be a JSON array of strings");
+    throw new Error("Obsidian Wiki bridge projectDirs must be an array of strings");
   }
   const bridge = await startWriteBridge({
-    vaultRoot: env.OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT,
-    vaultSelector: env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR,
+    vaultRoot,
+    vaultSelector,
     allowedRoots: roots,
     projectDirs: projects,
     token,
-    host: env.OBSIDIAN_WIKI_BRIDGE_HOST ?? "127.0.0.1",
-    port: Number(env.OBSIDIAN_WIKI_BRIDGE_PORT ?? "27124")
+    host: env.OBSIDIAN_WIKI_BRIDGE_HOST ?? configured?.config.host ?? "127.0.0.1",
+    port: Number(env.OBSIDIAN_WIKI_BRIDGE_PORT ?? configured?.config.port ?? "27124")
   });
-  process.stdout.write(`${JSON.stringify({ url: bridge.url, vaultSelector: env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR, allowedRoots: roots })}
+  process.stdout.write(`${JSON.stringify({ url: bridge.url, vaultSelector, allowedRoots: roots, registryPath: configured?.registryPath })}
 `);
   await new Promise((resolve) => {
     process.once("SIGINT", resolve);
@@ -24292,10 +24545,101 @@ async function readJsonRequest() {
     throw new Error(`Invalid JSON request: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
 }
+function parseCliArguments(argv) {
+  const args = [];
+  let configPath;
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--config") {
+      configPath = argv[++index];
+      if (!configPath) throw new Error("--config requires a path");
+    } else if (argument.startsWith("--config=")) {
+      configPath = argument.slice("--config=".length);
+      if (!configPath) throw new Error("--config requires a path");
+    } else {
+      args.push(argument);
+    }
+  }
+  return { args, configPath };
+}
+function printJson(value) {
+  process.stdout.write(`${JSON.stringify(value, null, 2)}
+`);
+}
+function printHelp() {
+  process.stdout.write(`obsidian-wiki - Obsidian Wiki local runtime manager
+
+Usage:
+  obsidian-wiki [--config <path>]                 Start the MCP stdio server
+  obsidian-wiki init [--config <path>]            Create a commented JSONC config
+  obsidian-wiki config path [--json]              Print the resolved config path
+  obsidian-wiki config set-location <path>        Persist a custom config location
+  obsidian-wiki config validate [--config <path>]
+  obsidian-wiki doctor [--config <path>]           Validate project bindings and runtime health
+  obsidian-wiki bridge start [--config <path>]    Start the foreground write bridge
+  obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
+  obsidian-wiki serve-write-bridge                Compatibility alias for bridge start
+`);
+}
 async function main() {
-  const subcommand = process.argv[2];
+  const parsed = parseCliArguments(process.argv.slice(2));
+  if (parsed.configPath) process.env.OBSIDIAN_WIKI_CONFIG = parsed.configPath;
+  const [subcommand, action, ...rest] = parsed.args;
+  if (subcommand === "--help" || subcommand === "-h") {
+    printHelp();
+    return;
+  }
+  if (subcommand === "init") {
+    printJson(initConfig(parsed.configPath));
+    return;
+  }
+  if (subcommand === "config" && action === "path") {
+    const resolved = resolveConfigPath(process.env, parsed.configPath);
+    if (rest.includes("--json")) printJson({ configPath: resolved });
+    else process.stdout.write(`${resolved}
+`);
+    return;
+  }
+  if (subcommand === "config" && action === "set-location") {
+    if (!rest[0]) throw new Error("config set-location requires a path");
+    printJson({ configPath: setConfigLocation(rest[0]) });
+    return;
+  }
+  if (subcommand === "config" && action === "validate") {
+    const loaded = loadRegistry(process.env, parsed.configPath);
+    printJson({ valid: true, configPath: loaded.registryPath, vaults: Object.keys(loaded.registry.vaults), repositories: Object.keys(loaded.registry.repositories) });
+    return;
+  }
+  if (subcommand === "doctor") {
+    const result = statusTool(process.env);
+    printJson(result);
+    if (!result.healthy) process.exitCode = 1;
+    return;
+  }
+  if (subcommand === "bridge" && action === "start") {
+    await runWriteBridgeFromEnvironment(process.env);
+    return;
+  }
+  if (subcommand === "bridge" && action === "status") {
+    const resolved = resolveBridgeConfig(process.env, parsed.configPath, process.env.OBSIDIAN_WIKI_BRIDGE_VAULT_REF);
+    const endpoint = resolved.config.url ?? `http://${resolved.config.host}:${resolved.config.port}`;
+    try {
+      const response = await fetch(new URL("/health", endpoint));
+      const body = await response.json();
+      printJson({ ...body, url: endpoint, registryPath: resolved.registryPath });
+      if (!response.ok) process.exitCode = 1;
+    } catch (error2) {
+      printJson({ ok: false, url: endpoint, registryPath: resolved.registryPath, error: error2 instanceof Error ? error2.message : String(error2) });
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (subcommand === "serve-write-bridge") {
+    await runWriteBridgeFromEnvironment(process.env);
+    return;
+  }
   if (subcommand === "status") {
-    process.stdout.write(`${JSON.stringify(statusTool())}
+    process.stdout.write(`${JSON.stringify(statusTool(process.env))}
 `);
     return;
   }
@@ -24309,10 +24653,6 @@ async function main() {
       publishFeatureSlug: typeof request.publishFeatureSlug === "string" ? request.publishFeatureSlug : void 0
     }))}
 `);
-    return;
-  }
-  if (subcommand === "serve-write-bridge") {
-    await runWriteBridgeFromEnvironment();
     return;
   }
   if (subcommand === "read-notes" || subcommand === "read-notes-by-wiki-ids" || subcommand === "graph-neighbors") {
@@ -24348,7 +24688,7 @@ async function main() {
     return;
   }
   if (subcommand !== void 0) {
-    throw new Error("Unknown subcommand. Run with no arguments for MCP stdio, or status, search, read-notes, read-notes-by-wiki-ids, graph-neighbors, propose-note-change, apply-note-change, prepare-publish, publish, or serve-write-bridge.");
+    throw new Error("Unknown command. Run obsidian-wiki --help for available commands.");
   }
   const server = createServer();
   await server.connect(new StdioServerTransport());

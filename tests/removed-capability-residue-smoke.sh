@@ -6,7 +6,10 @@ ROOT="${1:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 TEXT_TERM='lan''hu'
 CN_TERM=$'\u84dd\u6e56'
 
-mapfile -t TRACKED_FILES < <(git -C "$ROOT" ls-files)
+TRACKED_FILES=()
+while IFS= read -r relative; do
+  TRACKED_FILES+=("$relative")
+done < <(git -C "$ROOT" ls-files)
 fail=0
 for relative in "${TRACKED_FILES[@]}"; do
   file="$ROOT/$relative"

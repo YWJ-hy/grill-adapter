@@ -16,6 +16,14 @@ grill-adapter 是一个**宿主无关（host-agnostic）的 Claude Code adapter*
 
 在没有 grill 的**纯 Claude Code** 上也能运行——只是失去了宿主阶段锚点，改由 hook 兜底。
 
+### 本机运行时配置
+
+Obsidian Source 的 Vault、Git worktree、bridge allowlist 和 token 环境变量由
+`@grill-adapter/obsidian-wiki` npm CLI 统一维护。首次配置时运行
+`obsidian-wiki init`，需要改位置时运行 `obsidian-wiki config set-location <path>`；
+MCP 与独立 loopback write bridge 使用同一份 JSONC 配置。bridge 仍是独立进程，
+但由 `obsidian-wiki bridge start` 启动，不需要手动拼接多组环境变量。
+
 ---
 
 ## 四个 wiki 触点

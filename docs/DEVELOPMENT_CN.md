@@ -142,6 +142,7 @@ bash tests/host-conventions-smoke.sh "$PWD"
 - **改引擎脚本**（`scripts/wiki_*.py`、`scripts/source_truth_*.py`）→ 跑相关 `tests/wiki-*.sh` / `tests/source-truth-*.sh` smoke，再 `./manage.sh release-check <project>` 兜底。
 - **改 host 约定块**（`host-adapters/*/{CLAUDE,AGENTS}.md`）→ 跑 `tests/host-conventions-smoke.sh`，并在对应真实运行时验证。块里不许出现安装路径；Claude 用 `/grill-adapter:<skill>`，Codex 用 `$grill-adapter:<skill>`。
 - **改 shared-wiki MCP**（`mcp/shared-wiki/src/`）→ `npm run typecheck` + `npm run build` + `npm test`，并**把重新构建的 `dist/index.js` 一起提交**。`build` 是 esbuild 单文件打包（SDK/zod 内联），plugin 缓存**没有安装期构建步骤**，`.mcp.json` 直接启动仓库里提交的这份 bundle——bundle 不提交或与 src 漂移，用户拿到的就是旧代码，`release-check` 步骤 5 会 FAIL。
+- **改 Obsidian MCP/CLI**（`mcp/obsidian-wiki/src/`）→ 同样运行 `npm run typecheck` + `npm run build` + `npm test`，提交 `dist/index.js`；`package.json` 同时定义可发布的 `obsidian-wiki` CLI，发布前用 `npm pack --dry-run` 确认 tarball 只包含 `dist/`、README 和 package metadata。
 
 ---
 

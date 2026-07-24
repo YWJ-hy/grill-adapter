@@ -8,6 +8,13 @@ import { graphNeighborsTool } from './tools/graph.js';
 import { applyNoteChangeTool, proposeNoteChangeTool, type NoteChangeInput } from './tools/write.js';
 import { runWriteBridgeFromEnvironment } from './write-bridge.js';
 import { preparePublishBranches, publishFromFoldedJournal } from './publish.js';
+import {
+  initConfig,
+  loadRegistry,
+  resolveBridgeConfig,
+  resolveConfigPath,
+  setConfigLocation,
+} from './config.js';
 
 async function readJsonRequest(): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -21,10 +28,102 @@ async function readJsonRequest(): Promise<Record<string, unknown>> {
   }
 }
 
+function parseCliArguments(argv: string[]): { args: string[]; configPath?: string } {
+  const args: string[] = [];
+  let configPath: string | undefined;
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === '--config') {
+      configPath = argv[++index];
+      if (!configPath) throw new Error('--config requires a path');
+    } else if (argument.startsWith('--config=')) {
+      configPath = argument.slice('--config='.length);
+      if (!configPath) throw new Error('--config requires a path');
+    } else {
+      args.push(argument);
+    }
+  }
+  return { args, configPath };
+}
+
+function printJson(value: unknown): void {
+  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function printHelp(): void {
+  process.stdout.write(`obsidian-wiki - Obsidian Wiki local runtime manager
+
+Usage:
+  obsidian-wiki [--config <path>]                 Start the MCP stdio server
+  obsidian-wiki init [--config <path>]            Create a commented JSONC config
+  obsidian-wiki config path [--json]              Print the resolved config path
+  obsidian-wiki config set-location <path>        Persist a custom config location
+  obsidian-wiki config validate [--config <path>]
+  obsidian-wiki doctor [--config <path>]           Validate project bindings and runtime health
+  obsidian-wiki bridge start [--config <path>]    Start the foreground write bridge
+  obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
+  obsidian-wiki serve-write-bridge                Compatibility alias for bridge start
+`);
+}
+
 async function main(): Promise<void> {
-  const subcommand = process.argv[2];
+  const parsed = parseCliArguments(process.argv.slice(2));
+  if (parsed.configPath) process.env.OBSIDIAN_WIKI_CONFIG = parsed.configPath;
+  const [subcommand, action, ...rest] = parsed.args;
+  if (subcommand === '--help' || subcommand === '-h') {
+    printHelp();
+    return;
+  }
+  if (subcommand === 'init') {
+    printJson(initConfig(parsed.configPath));
+    return;
+  }
+  if (subcommand === 'config' && action === 'path') {
+    const resolved = resolveConfigPath(process.env, parsed.configPath);
+    if (rest.includes('--json')) printJson({ configPath: resolved });
+    else process.stdout.write(`${resolved}\n`);
+    return;
+  }
+  if (subcommand === 'config' && action === 'set-location') {
+    if (!rest[0]) throw new Error('config set-location requires a path');
+    printJson({ configPath: setConfigLocation(rest[0]) });
+    return;
+  }
+  if (subcommand === 'config' && action === 'validate') {
+    const loaded = loadRegistry(process.env, parsed.configPath);
+    printJson({ valid: true, configPath: loaded.registryPath, vaults: Object.keys(loaded.registry.vaults), repositories: Object.keys(loaded.registry.repositories) });
+    return;
+  }
+  if (subcommand === 'doctor') {
+    const result = statusTool(process.env);
+    printJson(result);
+    if (!result.healthy) process.exitCode = 1;
+    return;
+  }
+  if (subcommand === 'bridge' && action === 'start') {
+    await runWriteBridgeFromEnvironment(process.env);
+    return;
+  }
+  if (subcommand === 'bridge' && action === 'status') {
+    const resolved = resolveBridgeConfig(process.env, parsed.configPath, process.env.OBSIDIAN_WIKI_BRIDGE_VAULT_REF);
+    const endpoint = resolved.config.url ?? `http://${resolved.config.host}:${resolved.config.port}`;
+    try {
+      const response = await fetch(new URL('/health', endpoint));
+      const body = await response.json();
+      printJson({ ...body, url: endpoint, registryPath: resolved.registryPath });
+      if (!response.ok) process.exitCode = 1;
+    } catch (error) {
+      printJson({ ok: false, url: endpoint, registryPath: resolved.registryPath, error: error instanceof Error ? error.message : String(error) });
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (subcommand === 'serve-write-bridge') {
+    await runWriteBridgeFromEnvironment(process.env);
+    return;
+  }
   if (subcommand === 'status') {
-    process.stdout.write(`${JSON.stringify(statusTool())}\n`);
+    process.stdout.write(`${JSON.stringify(statusTool(process.env))}\n`);
     return;
   }
   if (subcommand === 'search') {
@@ -36,10 +135,6 @@ async function main(): Promise<void> {
       query: request.query,
       publishFeatureSlug: typeof request.publishFeatureSlug === 'string' ? request.publishFeatureSlug : undefined,
     }))}\n`);
-    return;
-  }
-  if (subcommand === 'serve-write-bridge') {
-    await runWriteBridgeFromEnvironment();
     return;
   }
   if (subcommand === 'read-notes' || subcommand === 'read-notes-by-wiki-ids' || subcommand === 'graph-neighbors') {
@@ -77,7 +172,7 @@ async function main(): Promise<void> {
     return;
   }
   if (subcommand !== undefined) {
-    throw new Error('Unknown subcommand. Run with no arguments for MCP stdio, or status, search, read-notes, read-notes-by-wiki-ids, graph-neighbors, propose-note-change, apply-note-change, prepare-publish, publish, or serve-write-bridge.');
+    throw new Error('Unknown command. Run obsidian-wiki --help for available commands.');
   }
   const server = createServer();
   await server.connect(new StdioServerTransport());
