@@ -34,6 +34,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from adr_identity import AdrIdentityError, content_hash, normalize_source_path, source_id_for_path
+
 from wiki_candidate_journal import append_events, new_event
 
 
@@ -115,9 +117,13 @@ def parse_adr(text: str, source_ref: str) -> dict | None:
     if not title.strip():
         return None
     normalized_path = Path(source_ref).as_posix()
-    source_digest = hashlib.sha256(normalized_path.encode("utf-8")).hexdigest()
-    canonical_text = text.replace("\r\n", "\n").replace("\r", "\n")
-    content_digest = hashlib.sha256(canonical_text.encode("utf-8")).hexdigest()
+    try:
+        normalized_path = normalize_source_path(normalized_path)
+        source_id = source_id_for_path(normalized_path)
+    except AdrIdentityError:
+        # Preserve the bridge's historical custom --adr-dir input. Carry/Bind will
+        # reject projections outside the canonical docs/adr authority boundary.
+        source_id = f"project-adr:{hashlib.sha256(normalized_path.encode('utf-8')).hexdigest()}"
     return {
         "taskId": None,
         "kind": "adr_execution_projection",
@@ -135,9 +141,9 @@ def parse_adr(text: str, source_ref: str) -> dict | None:
         "adrProjection": {
             "authorityType": "project-adr",
             "projectionType": "execution-constraints",
-            "sourceId": f"project-adr:{source_digest}",
+            "sourceId": source_id,
             "sourcePath": normalized_path,
-            "sourceContentHash": f"sha256:{content_digest}",
+            "sourceContentHash": content_hash(text),
             "targetScope": "project",
         },
     }

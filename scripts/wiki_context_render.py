@@ -11,6 +11,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from adr_identity import AdrIdentityError, source_id_for_path, validate_identity
+
 KIND = "grill-adapter.wiki-context"
 SCHEMA_VERSION = 6
 LEGACY_SCHEMA_VERSION = 5
@@ -56,6 +60,7 @@ SKILL_VERSION_RE = re.compile(
 V6_NOTE_TYPES = {"constraint", "domain", "decision", "guide"}
 V6_ROLES = {"project", "shared"}
 V6_REQUIRED_SKILL_ROLES = {"implementer", "reviewer"}
+ADR_SOURCE_ID_RE = re.compile(r"^project-adr:[a-f0-9]{64}$")
 # A digest of 64 identical hex chars (0000…, 1111…, ffff…) is an authoring placeholder, never a
 # real sha256. Rejecting it stops copy-pasted skeleton fingerprints from passing validation and
 # only blowing up later at the execution-side --fingerprint-preflight.
@@ -150,10 +155,12 @@ def _validate_v6_note(
     field: str,
     require_skill: bool = False,
     allow_destination: bool = False,
+    project_root: Path | None = None,
 ) -> dict[str, Any]:
     value = _as_dict(note, field)
     allowed_fields = {
         "sourceId", "role", "path", "wikiId", "type", "summary", "bindingDigest", "contentHash",
+        "adrSourceId", "adrSourcePath", "adrSourceContentHash",
         *(
             (
                 "requiredFor",
@@ -183,6 +190,36 @@ def _validate_v6_note(
         raise ValidationError(f"{field}.bindingDigest must be a 64-character sha256 digest")
     if not SHA256_RE.match(value["contentHash"]):
         raise ValidationError(f"{field}.contentHash must be a sha256 digest")
+    adr_values = [value.get("adrSourceId"), value.get("adrSourcePath"), value.get("adrSourceContentHash")]
+    if any(item is not None for item in adr_values):
+        if require_skill:
+            raise ValidationError(f"{field} Skill Cards must not carry ADR execution projection identity")
+        if any(not isinstance(item, str) or not item.strip() for item in adr_values):
+            raise ValidationError(f"{field} ADR identity must include adrSourceId, adrSourcePath, and adrSourceContentHash together")
+        if value.get("role") != "project":
+            raise ValidationError(f"{field} ADR execution projections must use the project Source")
+        if value.get("type") != "constraint" or value.get("constraintStrength") != "hard":
+            raise ValidationError(f"{field} ADR execution projections must be hard constraint Notes")
+        if not ADR_SOURCE_ID_RE.fullmatch(value["adrSourceId"]):
+            raise ValidationError(f"{field}.adrSourceId must be project-adr:<sha256>")
+        if not SHA256_RE.fullmatch(value["adrSourceContentHash"]):
+            raise ValidationError(f"{field}.adrSourceContentHash must be a sha256 digest")
+        try:
+            expected_id = source_id_for_path(value["adrSourcePath"])
+        except AdrIdentityError as exc:
+            raise ValidationError(f"{field}.adrSourcePath is invalid: {exc}") from exc
+        if value["adrSourceId"] != expected_id:
+            raise ValidationError(f"{field}.adrSourceId does not match adrSourcePath")
+        if project_root is not None:
+            try:
+                validate_identity(
+                    project_root,
+                    value["adrSourceId"],
+                    value["adrSourcePath"],
+                    value["adrSourceContentHash"],
+                )
+            except AdrIdentityError as exc:
+                raise ValidationError(f"{field} ADR authority validation failed: {exc}") from exc
     if "content" in value:
         raise ValidationError(f"{field}.content is not allowed; schemaVersion 6 carries Note metadata only")
     if require_skill:
@@ -328,7 +365,11 @@ def _validate_execution_ready(data: dict[str, Any]) -> None:
             raise ValidationError(f"{kind} section {key} must not set destination.tasks")
 
 
-def _validate_v6_context(data: dict[str, Any], execution_ready: bool) -> list[str]:
+def _validate_v6_context(
+    data: dict[str, Any],
+    execution_ready: bool,
+    project_root: Path | None = None,
+) -> list[str]:
     if data.get("kind") != KIND:
         raise ValidationError(f"kind must be {KIND}")
     if not isinstance(data.get("featureSlug"), str) or not data["featureSlug"].strip():
@@ -354,6 +395,7 @@ def _validate_v6_context(data: dict[str, Any], execution_ready: bool) -> list[st
     if not binding_digests:
         raise ValidationError("wikiBindings must contain one or more bound Sources")
     seen_ids: set[str] = set()
+    seen_adr_sources: set[str] = set()
     for collection, is_skill in (("wikiNotes", False), ("requiredSkills", True)):
         for index, raw_note in enumerate(_as_list(data.get(collection), collection)):
             note = _validate_v6_note(
@@ -361,6 +403,7 @@ def _validate_v6_context(data: dict[str, Any], execution_ready: bool) -> list[st
                 f"{collection}[{index}]",
                 require_skill=is_skill,
                 allow_destination=True,
+                project_root=project_root,
             )
             if note["wikiId"] in seen_ids:
                 raise ValidationError(f"{collection}[{index}] duplicates wikiId {note['wikiId']}")
@@ -369,6 +412,11 @@ def _validate_v6_context(data: dict[str, Any], execution_ready: bool) -> list[st
                 raise ValidationError(f"{collection}[{index}] does not match a declared Source binding digest")
             if binding_roles.get(note["sourceId"]) != note["role"]:
                 raise ValidationError(f"{collection}[{index}] does not match the declared Source binding role")
+            adr_source_id = note.get("adrSourceId")
+            if adr_source_id:
+                if adr_source_id in seen_adr_sources:
+                    raise ValidationError(f"{collection}[{index}] duplicates ADR authority identity {adr_source_id}")
+                seen_adr_sources.add(adr_source_id)
     if "wikiPages" in data or "sharedWiki" in data:
         raise ValidationError("schemaVersion 6 uses wikiNotes/wikiBindings, not wikiPages/sharedWiki")
     _as_list(data.get("taskWikiRefs"), "taskWikiRefs")
@@ -382,13 +430,18 @@ def _validate_v6_context(data: dict[str, Any], execution_ready: bool) -> list[st
     return []
 
 
-def _validate_context(data: dict[str, Any], strict: bool, execution_ready: bool = False) -> list[str]:
+def _validate_context(
+    data: dict[str, Any],
+    strict: bool,
+    execution_ready: bool = False,
+    project_root: Path | None = None,
+) -> list[str]:
     caveats: list[str] = []
     schema_version = data.get("schemaVersion")
     if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
         raise ValidationError(f"schemaVersion must be one of {', '.join(str(version) for version in sorted(SUPPORTED_SCHEMA_VERSIONS))}")
     if schema_version == SCHEMA_VERSION:
-        return _validate_v6_context(data, execution_ready)
+        return _validate_v6_context(data, execution_ready, project_root)
     if data.get("kind") != KIND:
         raise ValidationError(f"kind must be {KIND}")
 
@@ -1244,6 +1297,7 @@ def main() -> int:
     parser.add_argument("--task", action="append", default=[], help="Deprecated compatibility option; selected wiki context is not filtered by task string")
     parser.add_argument("--task-id", help="Render only wiki refs bound to the finalized ticket id, plus global refs")
     parser.add_argument("--ticket-roster", help="Path to the host-produced ticket roster JSON (.adapter/context/<feature-slug>.ticket-roster.json) used as the task identity + fingerprint source")
+    parser.add_argument("--project-root", help="Project root used to revalidate ADR projection authority (defaults to the current directory)")
     parser.add_argument("--feature-slug", help="With --scaffold, the feature identity stamped into the sidecar")
     parser.add_argument("--ticket-source", choices=sorted(TICKET_SOURCES), help="With --scaffold, records where the roster's tickets came from (audit metadata; the engine never branches on it)")
     parser.add_argument("--execution-ready", action="store_true", help="Require confirmed taskRouting and per-section destination routing suitable for execution")
@@ -1259,6 +1313,7 @@ def main() -> int:
     parser.add_argument("--scaffold-tasks", action="store_true", help="Scaffold the taskWikiRefs roster (taskId/taskTitle) from the ticket roster into the existing sidecar, preserving any prior taskFingerprint (requires --ticket-roster)")
     parser.add_argument("--finalize", action="store_true", help="One-shot planning finalize after the single destination edit pass: scaffold the taskWikiRefs roster from the ticket roster, stamp every taskFingerprint, validate execution readiness, and write the sidecar once (requires --ticket-roster). Combines --scaffold-tasks + --bind-fingerprints into a single write.")
     args = parser.parse_args()
+    project_root = Path(args.project_root).resolve() if args.project_root else Path.cwd().resolve()
 
     try:
         if args.scaffold and args.scaffold_tasks:
@@ -1269,7 +1324,7 @@ def main() -> int:
             selection_path = Path(args.scaffold)
             selection = _load_json(selection_path, "wiki selection")
             data = scaffold_from_selection(selection, args.feature_slug, args.ticket_source)
-            _validate_context(data, args.strict, execution_ready=False)
+            _validate_context(data, args.strict, execution_ready=False, project_root=project_root)
             context_path = Path(args.context_path)
             _write_context(context_path, data)
             selected_count = len(data["wikiNotes"]) if data.get("schemaVersion") == SCHEMA_VERSION else len(data["wikiPages"])
@@ -1303,9 +1358,9 @@ def main() -> int:
             # write. Combining scaffold-tasks + bind into a single write means the planning agent's
             # Read-tracked sidecar is re-surfaced once here instead of after two separate rewrites.
             task_ids, dropped = scaffold_tasks(data, Path(args.ticket_roster))
-            _validate_context(data, args.strict, execution_ready=False)
+            _validate_context(data, args.strict, execution_ready=False, project_root=project_root)
             total, changed, _ = bind_fingerprints(data, Path(args.ticket_roster))
-            _validate_context(data, args.strict, execution_ready=True)
+            _validate_context(data, args.strict, execution_ready=True, project_root=project_root)
             _write_context(Path(args.context_path), data)
             for task_id in dropped:
                 print(f"Warning: dropped taskWikiRefs entry no longer in the ticket roster: {task_id}", file=sys.stderr)
@@ -1316,7 +1371,7 @@ def main() -> int:
             if not args.ticket_roster:
                 raise ValidationError("--scaffold-tasks requires --ticket-roster")
             task_ids, dropped = scaffold_tasks(data, Path(args.ticket_roster))
-            _validate_context(data, args.strict, execution_ready=False)
+            _validate_context(data, args.strict, execution_ready=False, project_root=project_root)
             _write_context(Path(args.context_path), data)
             for task_id in dropped:
                 print(f"Warning: dropped taskWikiRefs entry no longer in the ticket roster: {task_id}", file=sys.stderr)
@@ -1326,17 +1381,17 @@ def main() -> int:
             if not args.ticket_roster:
                 raise ValidationError("--bind-fingerprints requires --ticket-roster")
             # Validate structure but tolerate missing/placeholder fingerprints; stamping fixes them.
-            _validate_context(data, args.strict, execution_ready=False)
+            _validate_context(data, args.strict, execution_ready=False, project_root=project_root)
             total, changed, task_ids = bind_fingerprints(data, Path(args.ticket_roster))
             # With real fingerprints stamped, confirm the result is fully execution-ready before
             # writing, so a successful bind is transactional (correct fingerprints + valid routing).
             if args.execution_ready:
-                _validate_context(data, args.strict, execution_ready=True)
+                _validate_context(data, args.strict, execution_ready=True, project_root=project_root)
             _write_context(Path(args.context_path), data)
             status = f"{changed} updated" if changed else "already current"
             print(f"bound taskFingerprint for {total} task(s) ({status}): {', '.join(task_ids)}")
             return 0
-        caveats = _validate_context(data, args.strict, args.execution_ready)
+        caveats = _validate_context(data, args.strict, args.execution_ready, project_root)
         if args.fingerprint_preflight:
             if not args.ticket_roster:
                 raise ValidationError("--fingerprint-preflight requires --ticket-roster")

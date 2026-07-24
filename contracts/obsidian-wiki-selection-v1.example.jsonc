@@ -24,7 +24,12 @@
       "constraintStrength": "hard",
       "summary": "Preserve the transaction boundary for runtime writes.",
       "contentHash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      "bindingDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      "bindingDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      // Optional, only for a project-owned ADR execution projection. Carry validates the
+      // normalized project-relative authority path and its current content identity.
+      "adrSourceId": "project-adr:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+      "adrSourcePath": "docs/adr/0001-runtime.md",
+      "adrSourceContentHash": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
     }
   ],
   // Select Skill Cards independently from normal Notes. requiredFor comes from the Card's

@@ -25,7 +25,7 @@ The ticket id is the `taskId` from the feature's ticket roster — the same id t
 Before the first ticket, run exactly one preflight so execution can only proceed against the reviewed ticket text:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --fingerprint-preflight --strict --execution-ready --ticket-roster .adapter/context/<feature-slug>.ticket-roster.json
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --fingerprint-preflight --strict --execution-ready --project-root <project-root> --ticket-roster .adapter/context/<feature-slug>.ticket-roster.json
 ```
 
 If the preflight fails because a ticket's text changed after the wiki was bound to it, stop and refresh the binding on the planning side: rebuild the roster from the current tickets, confirm the selected wiki routing still applies to the changed ticket, re-run `wiki_context_render.py <sidecar> --bind-fingerprints --strict --execution-ready --ticket-roster <roster>` to re-stamp fingerprints, and resume only after it passes. Do not re-stamp to silence a mismatch without re-checking routing, and do not reselect wiki pages or rewrite tickets during execution.
@@ -35,7 +35,7 @@ If the preflight fails because a ticket's text changed after the wiki was bound 
 1. Render this ticket's task-scoped wiki constraints and inject stdout under `## Rendered Wiki Constraints for This Task`, alongside the ticket's full text under `## Assigned Task`:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --task-id <ticket-id> --role implementer --strict --execution-ready
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --task-id <ticket-id> --role implementer --strict --execution-ready --project-root <project-root>
 ```
 
 2. Materialize this ticket's authoritative hard-constraint rereads and inject stdout after the rendered constraints under `## Hard Wiki Constraint Rereads`: schema-v5 reads local project + `github_mcp` shared sections; schema-v6 reads routed hard Obsidian Notes and role-required Skill Cards through the bound Obsidian MCP. For every Card, the rendered output names the verified `skillName` and requires invoking that project skill for the current role; the Card body never substitutes for the executable pack:
@@ -46,7 +46,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_materialize_task.py .adapter/context/
 
 For a reviewer pass, use `--role reviewer`. To append directly into a handoff file the subagent Reads, add `--append-to <file>`.
 
-`wiki_materialize_task.py` is the **single fixed fetcher**. For schema-v5 it extracts local sections and uses the shared-wiki MCP `read-sections` CLI for `source: github_mcp`. For schema-v6 it calls only the bound Obsidian MCP `read-notes` and `graph-neighbors` CLI endpoints: it checks every direct Note/Card's source, role, path, stable ID, type, binding digest, content hash, summary, and Skill Card provider/name/version/contract-hash/trigger/role identity against the carried sidecar before emitting content. Both versions close only the selected hard constraints' **bounded, de-duplicated 1-hop `depends-on` set**; schema-v6 does not follow a dependency's dependencies.
+`wiki_materialize_task.py` is the **single fixed fetcher**. For schema-v5 it extracts local sections and uses the shared-wiki MCP `read-sections` CLI for `source: github_mcp`. For schema-v6 it calls only the bound Obsidian MCP `read-notes` and `graph-neighbors` CLI endpoints: it checks every direct Note/Card's source, role, path, stable ID, type, binding digest, content hash, summary, and Skill Card provider/name/version/contract-hash/trigger/role identity against the carried sidecar before emitting content. ADR projections also re-resolve the carried project-relative authority path under the current project root and compare both the path-derived source ID and current content hash; missing, escaping, malformed, or changed ADRs fail Wiki validation before any projection text is emitted. Both versions close only the selected hard constraints' **bounded, de-duplicated 1-hop `depends-on` set**; schema-v6 does not follow a dependency's dependencies.
 
 It fails closed on binding changes, missing or duplicate IDs, content or metadata drift, Skill Card policy violations, unreadable Notes, partial results, unavailable required MCP tools, and shared-wiki rebinding/revision drift. Do not hand-fetch Notes or sections, call MCP read tools yourself, or paste body text instead.
 

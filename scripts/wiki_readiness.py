@@ -166,10 +166,13 @@ def prepare_manual(task_text_path: Path, roster_path: Path, feature_slug: str, t
     return f"prepared manual task -> {roster_path}"
 
 
-def _validate_context(context_path: Path, roster_path: Path) -> dict[str, Any]:
+def _validate_context(
+    context_path: Path,
+    roster_path: Path,
+    project_root: Path | None = None,
+) -> dict[str, Any]:
     renderer = Path(__file__).with_name("wiki_context_render.py")
-    result = subprocess.run(
-        [
+    command = [
             sys.executable,
             str(renderer),
             str(context_path),
@@ -178,7 +181,11 @@ def _validate_context(context_path: Path, roster_path: Path) -> dict[str, Any]:
             "--execution-ready",
             "--ticket-roster",
             str(roster_path),
-        ],
+        ]
+    if project_root is not None:
+        command.extend(["--project-root", str(project_root)])
+    result = subprocess.run(
+        command,
         check=False,
         capture_output=True,
         text=True,
@@ -239,9 +246,10 @@ def _render_and_materialize_context(
         materialize_command.extend(["--obsidian-wiki-cmd", obsidian_wiki_cmd])
     if shared_wiki_cmd:
         materialize_command.extend(["--shared-wiki-cmd", shared_wiki_cmd])
+    renderer_args = [*common_args, "--project-root", str(project_root)]
 
     rendered = _run_context_command(
-        [sys.executable, str(renderer), *common_args],
+        [sys.executable, str(renderer), *renderer_args],
         f"{role.capitalize()} Wiki task rendering",
     )
     materialized = _run_context_command(
@@ -353,7 +361,7 @@ def record_readiness(
         if context_path is None:
             raise ReadinessError("ready readiness requires --context")
         _same_context_directory(receipt_path, context_path, "Wiki context")
-        context = _validate_context(context_path, roster_path)
+        context = _validate_context(context_path, roster_path, roster_path.parent.parent)
         _validate_context_identity(context, feature_slug, ticket_source, task_id)
         context_file = context_path.name
     elif context_path is not None:
@@ -423,7 +431,7 @@ def bind_readiness(
     task_id = _required_text(task_id, "taskId").strip()
     if task_id not in tasks:
         raise ReadinessError(f"ticket roster has no task {task_id}")
-    context = _validate_context(context_path, roster_path)
+    context = _validate_context(context_path, roster_path, project_root)
     _validate_context_identity(context, feature_slug, ticket_source, task_id)
 
     rendered, materialized_output = _render_and_materialize_context(
@@ -488,7 +496,7 @@ def _validated_readiness_task(
 
     if entry["status"] == "ready":
         context_path = receipt_path.parent / _safe_context_filename(entry["contextFile"], "contextFile")
-        context = _validate_context(context_path, roster_path)
+        context = _validate_context(context_path, roster_path, roster_path.parent.parent)
         _validate_context_identity(context, feature_slug, ticket_source, task_id)
     else:
         context_path = None
@@ -606,13 +614,13 @@ def review_handoff(
             obsidian_wiki_cmd=obsidian_wiki_cmd,
             shared_wiki_cmd=shared_wiki_cmd,
         )
-    except ReadinessError:
+    except ReadinessError as exc:
         _write_text(
             handoff_path,
             _review_handoff_text(
                 status="materialize-failed",
                 task_id=normalized_task_id,
-                detail="reviewer render/materialize validation failed; partial and stale output was discarded.",
+                detail=f"reviewer render/materialize validation failed: {exc}; partial and stale output was discarded.",
             ),
         )
         return f"wrote fail-open materialize-failed reviewer handoff -> {handoff_path}"

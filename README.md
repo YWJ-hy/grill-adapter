@@ -8,7 +8,7 @@ It defaults to [**grill** (mattpocock/skills)](https://github.com/mattpocock/ski
 
 ## What it solves
 
-A code assistant forgets your project's durable rules between sessions and across repos. grill-adapter gives your project a **wiki as tier-2 knowledge**: bound Obsidian atomic Notes with stable IDs, typed links, governed Skill Cards, and — crucially — **execution-time binding**, so the rules that constrain a task are reread from the synchronized Source while that task is implemented. grill's own `CONTEXT.md` glossary + `docs/adr/` are tier-1; ADRs remain the sole decision authority, while the Wiki receives only project-scoped, identity-bound execution-constraint projections after review.
+A code assistant forgets your project's durable rules between sessions and across repos. grill-adapter gives your project a **wiki as tier-2 knowledge**: bound Obsidian atomic Notes with stable IDs, typed links, governed Skill Cards, and — crucially — **execution-time binding**, so the rules that constrain a task are reread from the synchronized Source while that task is implemented. grill's own `CONTEXT.md` glossary + `docs/adr/` are tier-1; ADRs remain the sole decision authority, while the Wiki receives only project-scoped, identity-bound execution-constraint projections after review. Carry and Bind revalidate each projection's project-relative ADR path and content identity; drift makes Wiki context unavailable rather than silently using stale constraints.
 
 ## The four wiki touchpoints (stable contract)
 
