@@ -11,7 +11,7 @@ grill stage → grill-adapter touchpoint:
 | `$mattpocock-skills:to-spec` | source-of-truth Verify (spec) |
 | `$mattpocock-skills:to-tickets` | Disclose+Carry wiki, source-of-truth Verify (plan) |
 | `$mattpocock-skills:implement` | Wiki readiness + Bind per ticket |
-| `$mattpocock-skills:code-review` | Capture (update-wiki) |
+| `$mattpocock-skills:code-review` | Reviewer Bind, then Capture (update-wiki) |
 | `$mattpocock-skills:diagnosing-bugs` | conditional Disclose, then break-loop→Capture |
 
 ### Candidate journal — throughout the workflow
@@ -54,6 +54,14 @@ For `ready`, the skill runs `$grill-adapter:wiki-materialize <ticket-id>` with r
 The `source-truth-lint` hook (PostToolUse/Stop) lints the real changed files during implementation. If it reports `block`, revert the `truth/edit: never` edit or route it upstream before completing the ticket; if `ask`, get explicit authorization or revert. Authorization never bypasses `truth/edit: never`.
 
 While implementing, if you make a hard-to-reverse or surprising decision, resolve a non-obvious trade-off, or hit a durable gotcha not already captured, invoke `$grill-adapter:candidate-journal` with stage `implementation` and keep coding.
+
+### Reviewer Bind — during `$mattpocock-skills:code-review`
+
+At code-review entry, identify the exact current task and reuse its implementation readiness receipt by invoking `$grill-adapter:wiki-readiness` in reviewer-reuse mode. Run its `review-handoff` command **before spawning** the isolated Standards and Spec review subagents. Do not perform late research, repair Carry, or require Wiki health before review.
+
+A valid `ready` receipt materializes the current task again with role `reviewer`, including only its routed hard constraints, direct `depends_on` closure, and reviewer-required Skill Cards. Pass the **same read-only handoff** path to both subagents and require each to read it. A materialized Card's verified project skill must be invoked by the actual reviewer. Standards and Spec keep their existing independent responsibilities and output structure.
+
+`no-relevant`, `disabled`, `broken`, `unknown`, and any receipt/render/materialize failure produce only a non-blocking caveat. Continue both review axes without Wiki constraints; never inject stale, partial, or unverified output. An independent code-review with no exact task/receipt follows the same unknown path. After the normal review completes, continue to Capture below.
 
 ### Capture — after `$mattpocock-skills:code-review`
 
