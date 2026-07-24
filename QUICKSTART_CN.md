@@ -25,9 +25,8 @@ codex plugin add grill-adapter@grill-adapter
 **② 给项目写约定块**（plugin 唯一管不到的东西）：
 
 ```bash
-git clone https://github.com/YWJ-hy/grill-adapter.git
-cd grill-adapter
-./manage.sh install /path/to/your/project --host grill --runtime claude
+npm install --global grill-adapter
+grill-adapter install /path/to/your/project --host grill --runtime claude
 # Codex 改用 --runtime codex；双端项目用 --runtime both
 ```
 
@@ -47,7 +46,7 @@ Windows 如果 `bash` 指向没有 `/bin/bash` 的 WSL shim，请改用仓库提
 按 `docs/OBSIDIAN_WIKI_CN.md` 配置项目 `.shared-adapter/settings.json` 的 `wiki.provider: obsidian` / bindings、机器本地 registry，以及 Source 的 `_meta/wiki-source.md`。然后运行：
 
 ```bash
-./manage.sh doctor /path/to/your/project
+grill-adapter doctor /path/to/your/project
 ```
 
 新项目应显示 `adoptionState: obsidian-native` 和 `Obsidian runtime healthy: yes`。已有 `.adapter/wiki/` / `.shared-adapter/wiki/` 的项目显示 `shadow-validation`：正式路径只读 Obsidian，legacy roots 原样保留用于 `/grill-adapter:migrate-wiki` 的 plan/verify，不能充当 runtime fallback。`bootstrap-wiki` 只保留给尚未设置 Obsidian provider 的 legacy 项目。
@@ -65,7 +64,7 @@ Windows 如果 `bash` 指向没有 `/bin/bash` 的 WSL shim，请改用仓库提
 ## 4. 验证
 
 ```bash
-./manage.sh verify /path/to/your/project --host grill --runtime codex
+grill-adapter verify /path/to/your/project --host grill --runtime codex
 ./manage.sh self-test                          # 跑全套 smoke（可选）
 ```
 

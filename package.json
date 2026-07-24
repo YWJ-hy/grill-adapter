@@ -1,0 +1,72 @@
+{
+  "name": "grill-adapter",
+  "version": "0.2.0",
+  "description": "Host-agnostic Claude Code/Codex adapter with governed Wiki, source-truth verification, and debugging retrospectives.",
+  "type": "module",
+  "author": {
+    "name": "yewenjie",
+    "url": "https://github.com/YWJ-hy"
+  },
+  "homepage": "https://github.com/YWJ-hy/grill-adapter",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YWJ-hy/grill-adapter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/YWJ-hy/grill-adapter/issues"
+  },
+  "bin": {
+    "grill-adapter": "bin/grill-adapter.mjs"
+  },
+  "files": [
+    ".claude-plugin",
+    ".codex-plugin",
+    ".mcp.json",
+    "agents",
+    "bin",
+    "contracts",
+    "docs",
+    "hooks",
+    "host-adapters",
+    "lib/*.py",
+    "manifest.json",
+    "mcp/obsidian-wiki/dist",
+    "mcp/shared-wiki/dist",
+    "README.md",
+    "QUICKSTART_CN.md",
+    "LICENSE",
+    "scripts/*.py",
+    "scripts/*.mjs",
+    "scripts/*.ps1",
+    "shared-adapter-template",
+    "skills",
+    "wiki-repo-ci",
+    "wiki-repo-skills",
+    "wiki-template",
+    "bootstrap-wiki.sh",
+    "doctor.sh",
+    "manage.ps1",
+    "manage.sh"
+  ],
+  "scripts": {
+    "version": "node scripts/sync-package-version.mjs && git add .claude-plugin/plugin.json .codex-plugin/plugin.json manifest.json",
+    "prepack": "node scripts/sync-package-version.mjs --check && node bin/grill-adapter.mjs validate-package >/dev/null",
+    "pack:dry": "npm pack --dry-run --json",
+    "test:package": "bash tests/npm-package-smoke.sh"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "keywords": [
+    "wiki",
+    "knowledge-graph",
+    "requirements",
+    "source-of-truth",
+    "grill",
+    "codex"
+  ]
+}

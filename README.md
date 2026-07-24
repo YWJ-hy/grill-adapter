@@ -80,6 +80,18 @@ New to grill? Follow [`docs/SETUP_AND_USAGE_CN.md`](docs/SETUP_AND_USAGE_CN.md),
 
 `manage.sh` only covers project wiring and the wiki utilities; the plugin itself is managed by `claude plugin` / `/plugin` or `codex plugin`.
 
+The repository also publishes a root `grill-adapter` npm package. It carries the plugin payload and exposes a versioned CLI, so you do not need to clone or enter this repository after installing it:
+
+```bash
+npm install --global grill-adapter
+cd /path/to/your/project
+grill-adapter install --runtime codex --host grill
+grill-adapter doctor
+npm update --global grill-adapter
+```
+
+To make the installed npm package the local plugin source, run `grill-adapter package-root`, then add that path as a Claude/Codex marketplace. See [`docs/NPM_RELEASE_CN.md`](docs/NPM_RELEASE_CN.md) for `npm version`, `npm publish`, local plugin refresh, `npm pack --dry-run`, and `npx` workflows.
+
 On macOS/Linux, run the Bash entrypoints directly. On Windows, `C:\Windows\System32\bash.exe` is often only the WSL launcher; if WSL has no `/bin/bash`, use the PowerShell entrypoints below. They select a working Git Bash/MSYS2/Cygwin installation automatically.
 
 ```
@@ -127,7 +139,7 @@ grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe 
 - Claude Code or Codex (CLI/app)
 - Python 3.9+
 - Node.js ≥ 20 (to run the bundled Wiki MCP servers; the plugin ships prebuilt bundles — nothing to build)
-- npm (only if using the Obsidian runtime CLI)
+- npm (for the published `grill-adapter` CLI or the Obsidian runtime CLI)
 
 ## License
 

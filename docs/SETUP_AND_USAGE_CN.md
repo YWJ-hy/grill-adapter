@@ -57,13 +57,24 @@ shared-wiki MCP 装好即自动启动（工具名带 `mcp__plugin_grill-adapter_
 
 ### 2.2 给项目写约定块
 
-plugin 唯一管不到的是项目持久指令文件——Claude Code 用 `CLAUDE.md`，Codex 用 `AGENTS.md`。用仓库里的 `manage.sh` 写：
+plugin 唯一管不到的是项目持久指令文件——Claude Code 用 `CLAUDE.md`，Codex 用 `AGENTS.md`。推荐用 npm CLI 写，不需要进入 grill-adapter 源码仓库：
 
 ```bash
-git clone https://github.com/YWJ-hy/grill-adapter.git
-cd grill-adapter
-./manage.sh install /path/to/your/project --host grill --runtime claude
+npm install --global grill-adapter
+grill-adapter install /path/to/your/project --host grill --runtime claude
 # Codex: --runtime codex；双端: --runtime both
+```
+
+源码开发或离线场景仍可使用仓库里的 `./manage.sh`。
+
+如果希望宿主 plugin 也从 npm 包加载，而不是从 GitHub marketplace 加载：
+
+```bash
+claude plugin marketplace add "$(grill-adapter package-root)"
+claude plugin install grill-adapter@grill-adapter --scope user
+# Codex:
+codex plugin marketplace add "$(grill-adapter package-root)"
+codex plugin add grill-adapter@grill-adapter
 ```
 
 它只做这一件事：把 grill 约定块（marker 包裹）写进 `<project>/CLAUDE.md`。块里**只点名 skill、不含任何安装路径**——路径由 skill 自己持有，plugin 升级换目录也不会失效。
@@ -71,8 +82,8 @@ cd grill-adapter
 校验：
 
 ```bash
-./manage.sh verify /path/to/your/project --host grill --runtime codex
-./manage.sh status /path/to/your/project --runtime codex
+grill-adapter verify /path/to/your/project --host grill --runtime codex
+grill-adapter status /path/to/your/project --runtime codex
 ```
 
 ## 3. 配置 Obsidian Wiki runtime
@@ -89,7 +100,7 @@ obsidian-wiki bridge start
 也可以用 `obsidian-wiki config set-location <path>` 修改配置文件位置。配置完成后运行：
 
 ```bash
-./manage.sh doctor /path/to/your/project
+grill-adapter doctor /path/to/your/project
 ```
 
 新项目必须显示 `obsidian-native` + healthy 后才进入正式 research。已有 legacy Wiki 的项目会显示 `shadow-validation`；正式 Disclose/Carry/Bind/Capture 已只走 Obsidian，旧目录只用于 migration evidence，不作 fallback。迁移按 plan → 确认 → 专用 PR branch → CAS apply/draft PR → 人工 merge/base sync → immutable-plan/source/binding verify → 单独确认 cutover；只有 plan 覆盖的旧目录成为 mechanically enforced read-only archive，不自动删除。`bootstrap-wiki` 是 legacy-only，active Obsidian provider 会拒绝重新播种；其他 legacy 维护 skill 在 cutover 前仅用于迁移准备，cutover 后由 archive gate 机械拒绝写入。
@@ -118,8 +129,8 @@ obsidian-wiki bridge start
 - **`/grill-adapter:wiki-materialize` 报 drift / 换绑？** 这是 fail-closed 设计：schema-v6 sidecar 的 binding digest、stable Note/Card identity、content hash、base sync 或 pack contract 与当前正式 Source 不一致。回规划期重新 research/scaffold/finalize，不能转读 legacy Wiki 绕过。
 - **怎么卸载？** 两步对应两步安装。
   1. **停用 plugin**：把 `grill-adapter@grill-adapter` 从项目 `.claude/settings.json` 的 `enabledPlugins` 删掉即可。注意 `claude plugin uninstall` 对 **project scope 会直接拒绝**（原话：「enabled at project scope (.claude/settings.json, shared with your team)」）——它不肯替你改一份团队共享的提交物。只想自己关掉、不动团队设置：`claude plugin disable grill-adapter@grill-adapter --scope local`。装在 `--scope user` 时 `claude plugin uninstall grill-adapter@grill-adapter` 才直接生效。
-  2. **剥约定块**：`./manage.sh uninstall /path/to/your/project`（marker 包裹，干净移除，不动 `CLAUDE.md` 其余内容）。
-- **升级 grill-adapter？** `/plugin update grill-adapter@grill-adapter` 升 plugin。约定块若有变，`git pull` 后重跑 `./manage.sh install`（幂等：整块替换）。
+  2. **剥约定块**：`grill-adapter uninstall /path/to/your/project`（marker 包裹，干净移除，不动 `CLAUDE.md` 其余内容）。
+- **升级 grill-adapter？** `/plugin update grill-adapter@grill-adapter` 升宿主 plugin；CLI 用 `npm update --global grill-adapter`。约定块若有变，重跑 `grill-adapter install`（幂等：整块替换）。
 
 ## 6. 验证你的安装
 

@@ -1,0 +1,9 @@
+**/__pycache__/
+*.py[cod]
+tests/
+mcp/*/src/
+mcp/*/tests/
+mcp/*/examples/
+mcp/*/package.json
+mcp/*/package-lock.json
+mcp/*/tsconfig.json

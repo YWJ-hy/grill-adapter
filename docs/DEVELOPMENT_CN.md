@@ -76,6 +76,17 @@ codex plugin add grill-adapter@grill-adapter
 ./manage.sh release-check <project-root>                   # 发布前总门（plugin 加载 → 接线 → verify → tests）
 ```
 
+根级 npm 发行包的版本和 tarball 验收：
+
+```bash
+npm run pack:dry
+npm run test:package
+npm version patch|minor|major
+npm publish --access public
+```
+
+`npm version` 是唯一版本入口，会同步 `.claude-plugin/plugin.json`、`.codex-plugin/plugin.json` 和 `manifest.json`。`prepack` 会拒绝版本漂移、缺少插件运行时文件或错误的发布内容；`test:package` 会从实际 tarball 安装后调用 `grill-adapter` CLI。npm 包只承载运行时 payload，`self-test` / `release-check` 仍在源码仓库中执行。
+
 ### Windows / macOS shell 入口
 
 macOS/Linux 直接使用上面的 `.sh` 命令。Windows 的 `bash` 可能只是
