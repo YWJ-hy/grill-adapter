@@ -131,11 +131,13 @@ valid, leave it unchanged.
 
 ## Phase 4: explain and complete Source/repository topology
 
-If settings already contain a valid Obsidian binding, preserve it and continue.
-If settings are missing, the provider is not `obsidian`, or no readable project
-binding exists, do not ask the user to invent internal IDs. First explain the
-plain-language choices below, derive stable identifier candidates from the
-answers, and ask the user to confirm or edit those candidates.
+If settings already contain valid Obsidian bindings, preserve them, summarize
+the existing Wiki inventory, and ask whether the user wants to keep it as-is or
+add another Wiki library. If settings are missing, the provider is not
+`obsidian`, or no readable project binding exists, do not ask the user to invent internal IDs.
+First explain the plain-language choices below, derive
+stable identifier candidates from the answers, and ask the user to confirm or
+edit those candidates.
 
 Explain the topology before asking for values:
 
@@ -156,28 +158,71 @@ Explain the topology before asking for values:
   entry for every referenced `vaultRef`/`repositoryRef`; `obsidian-wiki doctor`
   is the authority for validating this topology.
 
+### Required multi-Wiki inventory
+
+Before collecting Vault or repository fields for a new or incomplete setup,
+ask this explicit question in plain language:
+
+```text
+这个项目需要连接几个 Wiki 库？
+请列出每个 Wiki 库的用途，例如“项目开发知识”“团队共享规范”“产品文档”。
+系统允许每个项目最多一个 project Wiki，但可以有多个 shared Wiki；
+不同 Wiki 可以位于不同 Vault、目录或 Git 仓库。
+```
+
+Treat each answer as a separate Source candidate. Do not silently merge
+different purposes into one root, and do not silently turn several project
+Wiki candidates into several `role: project` bindings. If the user wants more
+than one project-specific library, explain the one-project-Source limit and
+ask which one is the project Source; model the remaining portable libraries as
+`role: shared` only after the user confirms that meaning.
+
+When existing bindings are present, show the discovered Source names, roles,
+Vault-relative roots, and repository references first, then ask:
+
+```text
+已发现这些 Wiki 库。要保留全部、保留并新增，还是只继续配置其中指定的库？
+现有 binding 不会被删除；如需移除或换绑，请单独说明。
+```
+
+Preserve every existing binding unless the user explicitly authorizes a
+replacement. For a new setup, a single-library answer is valid and creates
+one confirmed Source; propose `role: project` only when its stated purpose is
+project-specific. A multi-library answer creates one mapping row per confirmed
+Source. Never infer a second Wiki from a repository name, a directory listing,
+or an old legacy root.
+
 ### User-facing intake
 
-Ask in plain language before showing internal field names:
+For each confirmed Wiki library, ask in plain language before showing internal
+field names:
 
-- **Which Obsidian Vault should hold the Wiki?** Ask for the Vault's name as
+- **What is this Wiki used for?** Repeat the user's purpose in the mapping and
+  use it to distinguish project knowledge from portable shared knowledge.
+- **Which Obsidian Vault should hold this Wiki?** Ask for the Vault's name as
   shown in Obsidian and, only when the local registry does not already know it,
   the local Vault folder. Explain that the Vault is the knowledge workspace,
   not the project repository.
-- **Where inside that Vault should this project's Notes live?** Ask for a
-  Vault-relative folder such as `Projects/my-app`. Explain that this is the
-  Wiki directory, not a path inside the code project. Propose a folder from
-  the project name and ask for confirmation.
-- **Which Git repository stores that folder?** Ask for the local worktree
+- **Where inside that Vault should this Wiki's Notes live?** Ask for a
+  Vault-relative folder such as `Projects/my-app` or `Shared/engineering`.
+  Explain that this is the Wiki directory, not a path inside the code project.
+  Propose a folder from the library purpose and project name and ask for
+  confirmation.
+- **Which Git repository stores that Wiki folder?** Ask for the local worktree
   folder, Git remote, and base branch. Explain that this repository receives
   governed draft PRs for Wiki changes. If all roots share one repository,
   propose one shared repository entry; otherwise propose one per repository.
-- **Should this Source be project-only or shared with other projects?** Explain
+- **Should this Wiki be project-only or shared with other projects?** Explain
   that `project` rules are local to this project and `shared` rules are
   portable across projects.
-- **Should the Source be readable?** Explain that read access is needed for
+- **Should this Wiki be readable?** Explain that read access is needed for
   research and implementation context; write access remains separately
   governed. Default `read: true` only after the user confirms.
+- **Should any legacy Wiki content migrate into this Wiki?** Explain that this
+  selects a migration target only; migration still needs separate plan/apply/
+  cutover authorization. Record the exact local legacy root or remote shared
+  Wiki URL supplied by the user, and never infer a target when several Source
+  candidates exist.
 - **Should the local bridge be enabled?** Explain that it is the loopback
   writer used for governed Note changes. Propose the environment variable name
   `OBSIDIAN_WIKI_BRIDGE_TOKEN`; never ask the user to paste the token into
@@ -187,6 +232,7 @@ Then show the derived mapping and ask for one confirmation:
 
 ```text
 Human choice                         Derived configuration
+Wiki "项目开发知识"                 purpose: project development
 Vault "Engineering Knowledge"       vaultRef: engineering-knowledge
 Folder "Projects/my-app"             root: Projects/my-app
 Wiki worktree/remote                 repositoryRef: engineering-wiki
@@ -194,18 +240,22 @@ Project-only                         role: project
 Readable for research                access.read: true
 ```
 
-The user provides facts and confirms the mapping in chat; they must not edit the
-JSONC registry by hand. Only ask for an explicit internal ID when the proposed
-candidate collides with an existing entry. Optional shared Sources get one
-additional row with the same explanation:
+For multiple libraries, show one complete row per Wiki before asking for one
+confirmation. Keep the purpose visible so the user can distinguish otherwise
+similar paths:
 
 ```text
-sourceId | role | vaultRef | repositoryRef | Vault-relative root | read?
+Wiki purpose | sourceId | role | vaultRef | repositoryRef | Vault-relative root | read?
+项目开发知识 | app-project | project | engineering-knowledge | engineering-wiki | Projects/my-app | yes
+团队共享规范 | team-shared | shared | engineering-knowledge | engineering-wiki | Shared/engineering | yes
 ```
 
-For multiple repositories, show one mapping row per repository. Do not silently
-reuse a repository when its root would overlap or when the user chose separate
-repositories. After the user confirms the mapping:
+The user provides facts and confirms the mapping in chat; they must not edit the
+JSONC registry by hand. Only ask for an explicit internal ID when the proposed
+candidate collides with an existing entry. For multiple repositories, show one
+row per Wiki and call out the repository change; do not silently reuse a
+repository when the user chose separate repositories. After the user confirms
+the mapping:
 
 1. Run `obsidian-wiki config path --json` to resolve the active machine config.
 2. Upsert every Vault entry through the npm package, using JSON on stdin:

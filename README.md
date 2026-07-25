@@ -68,7 +68,7 @@ cd grill-adapter
 ./manage.sh doctor /path/to/your/project                   # validate active provider + adoption state
 ```
 
-For a new project, configure Obsidian Source bindings and the machine-local registry from [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md); `doctor` must report `obsidian-native` and healthy before formal research. Existing legacy projects use `migrate-wiki`; for a GitHub-backed legacy shared Wiki, pass its repository URL explicitly to the migration planner. There is no legacy runtime fallback.
+For a new project, use `setup-init-obsidian` to state how many Wiki libraries the project needs and what each is for; it then guides each Source binding and the machine-local registry. Each project may have at most one project Source plus multiple shared Sources. `doctor` must report `obsidian-native` and healthy before formal research. Existing legacy projects use `migrate-wiki`; for a GitHub-backed legacy shared Wiki, pass its repository URL explicitly to the migration planner. There is no legacy runtime fallback.
 
 - The convention block is marker-delimited and **names skills only — it carries no install path**, so plugin upgrades can't rot it. Claude Code uses `CLAUDE.md`; Codex uses `AGENTS.md`.
 - **Zero host-skill patching.** To remove: drop `grill-adapter@grill-adapter` from the project's `.claude/settings.json` `enabledPlugins` (a project-scope plugin is a committed, team-shared setting, so `claude plugin uninstall` deliberately refuses to remove it for you — use `claude plugin disable grill-adapter@grill-adapter --scope local` to switch it off for yourself only), then `./manage.sh uninstall /path/to/your/project` to strip the convention block.

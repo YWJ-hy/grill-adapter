@@ -88,7 +88,7 @@ grill-adapter status /path/to/your/project --runtime codex
 
 ## 3. 配置 Obsidian Wiki runtime
 
-新项目按 `OBSIDIAN_WIKI_CN.md` 创建/选择一个 Obsidian Source，提交 `_meta/wiki-source.md`，在项目 `.grill-adapter/settings.json` 声明 `wiki.provider: obsidian` 与 bindings。推荐安装本机管理工具，统一维护 registry 和 bridge 配置：
+新项目使用 `setup-init-obsidian` 时，会先询问需要连接几个 Wiki 库及每个库的用途、位置和旧版内容迁移目标，再逐个创建/选择 Obsidian Source，提交 `_meta/wiki-source.md`，并在项目 `.grill-adapter/settings.json` 声明 `wiki.provider: obsidian` 与 bindings。每个项目最多一个 `role: project` Source，可有多个 `role: shared` Source；不同 Source 可以位于不同 Vault、目录或 Git 仓库。推荐安装本机管理工具，统一维护 registry 和 bridge 配置：
 
 ```bash
 npm install --global grill-adapter @grill-adapter/obsidian-wiki
