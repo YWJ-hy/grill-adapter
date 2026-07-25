@@ -79,7 +79,7 @@ codex plugin add grill-adapter@grill-adapter
 
 Codex 当前没有 `--scope project|user`；插件安装是用户级的，但 Wiki 读取仍由目标项目绑定 fail-closed，不会因全局安装而自动暴露其他项目的 Source。
 
-一次装齐 11 skills + 1 agent + 3 hooks + 1 MCP server（Source-binding `obsidian-wiki`）。开发期不必安装：
+一次装齐 12 skills + 1 agent + 3 hooks + 1 MCP server（Source-binding `obsidian-wiki`）。开发期不必安装：
 
 ```bash
 claude --plugin-dir "$PWD" plugin details grill-adapter   # 直接从磁盘加载 + 打印组件清单

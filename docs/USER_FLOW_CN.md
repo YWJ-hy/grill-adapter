@@ -209,6 +209,8 @@ review 通过后，把本轮新沉淀的知识回写 wiki。约定块只让你�
 
 - 当前运行时只使用项目 `.grill-adapter/settings.json` 中声明的 `wiki.obsidian.bindings`。
 - legacy GitHub shared-wiki 仓库不参与运行期读取；需要迁移时由用户把仓库 URL 显式传给 `migrate-wiki`，planner 临时只读 clone 后生成迁移计划。
+- `setup-init-obsidian` 先用人话询问 Vault 名称、Vault 内 Wiki 文件夹、Git worktree/remote/base branch 和 project/shared 用途，再由 AI 生成 `sourceId`、`vaultRef`、`repositoryRef` 候选并展示映射供用户确认。项目 settings 不保存 Vault 本地路径或凭据。
+- 一个 repository 可以承载多个不重叠 Source roots；多个 repository 也可以同时使用，迁移/发布按 `repositoryRef` 分仓处理。不存在“一个 Source root 横跨多个仓库”的隐式模式。
 
 ### 诚实降级（honest degradation）
 
@@ -220,7 +222,7 @@ grill-adapter 明确承认自己不是无缝的，并把降级点讲清楚：
 
 ### Legacy Wiki → Obsidian 迁移生命周期
 
-调用 `migrate-wiki` 的 **Obsidian migration plan** 模式。它先 fail-closed 校验 binding topology 与 symlink 边界，只读 legacy project/shared Wiki、`access.read: true` 的选定 Source snapshot 与本地 skill packs，输出 source/target digest 和逐项 `create/update/skip/conflict` 映射；不会修改 legacy Markdown、indexes、`.graph.json`、Source Notes、settings 或 registry。semantic split、duplicate ID/Card identity、occupied target path、dangling edge、unavailable pack、Shared neutrality violation、non-migratable navigation 与 heuristic constraint strength 全部进入显式 confirmation gate。
+调用 `migrate-wiki` 的 **Obsidian migration plan** 模式。若 legacy shared-wiki 只存在于 GitHub，用户必须把不含凭据的 HTTPS/SSH Git URL 明确交给 AI，作为 `--legacy-shared-wiki-url`；不能从项目 `origin` 或目标 `repositoryRef` 猜。它先 fail-closed 校验 binding topology 与 symlink 边界，只读 legacy project/shared Wiki、`access.read: true` 的选定 Source snapshot 与本地 skill packs，输出 source/target digest 和逐项 `create/update/skip/conflict` 映射；不会修改 legacy Markdown、indexes、`.graph.json`、Source Notes、settings 或 registry。semantic split、duplicate ID/Card identity、occupied target path、dangling edge、unavailable pack、Shared neutrality violation、non-migratable navigation 与 heuristic constraint strength 全部进入显式 confirmation gate。
 
 用户确认精确 plan 后，apply 重算 plan/snapshots，零 conflict 才先持久化完整 plan、binding/policy snapshot 与全部 CAS intents，并 checkout 每仓专用 PR branch；所有 bridge 写只发生在这些 branch 上。两阶段 CAS 生成 Notes/Cards 后，最终 receipts 按 repository 发布成 draft PR；中断恢复只接受原始 before、seed 或 final hash，不收养人工改动。这一步不等于 merge。PR 全部由用户合并、base worktree 同步后，verify 从 immutable plan 推导 coverage，并只读重验 legacy source、binding/policy、mapping/ID/Source/schema/hash/search/pack/edge/hard-reread。最后另行确认 cutover；cutover 会重新 verify，且 active schema-v5 sidecar 存在时拒绝。成功后仅 plan 选择的旧 roots 原字节保留并标记为 read-only archive，legacy 写 helper 机械拒绝再写。
 
@@ -234,9 +236,9 @@ grill-adapter 同时以 **Claude Code plugin** 与 **Codex plugin** 形式发布
 
 唯一不由 plugin 承载的是目标项目的 host 约定块：Claude 写 `CLAUDE.md`，Codex 写 `AGENTS.md`。由 `./manage.sh install <project> --host grill|plain --runtime claude|codex|both` 写入；块里只点名 skill，不含任何安装路径。
 
-**Skills（11）**：`wiki-readiness`、`wiki-research`、`wiki-materialize`、`candidate-journal`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`scaffold-practice-skill`、`break-loop`、`source-truth-check`。
+**Skills（12）**：`wiki-readiness`、`wiki-research`、`wiki-materialize`、`candidate-journal`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`setup-init-obsidian`、`scaffold-practice-skill`、`break-loop`、`source-truth-check`。
 
-> 其中 `wiki-readiness` / `wiki-research` / `wiki-materialize` / `candidate-journal` / `update-wiki` / `source-truth-check` / `break-loop` 直接出现在上面的端到端流程；`init-wiki` / `import-wiki` / `migrate-wiki` 是建库与 wiki 生命周期 skill，`migrate-wiki` 也承载 legacy → Obsidian 的 plan/apply/verify/cutover，并可从用户显式提供的 GitHub legacy 仓库读取迁移源；`scaffold-practice-skill` 负责把可复用实践固化成技能包。
+> 其中 `wiki-readiness` / `wiki-research` / `wiki-materialize` / `candidate-journal` / `update-wiki` / `source-truth-check` / `break-loop` 直接出现在上面的端到端流程；`setup-init-obsidian` 负责检查并复用两个 npm 包初始化 Obsidian、在必要时等待用户处理外部环境，并在获准后把旧 Wiki 路由给 `migrate-wiki`；`init-wiki` / `import-wiki` / `migrate-wiki` 是建库与 wiki 生命周期 skill，`migrate-wiki` 也承载 legacy → Obsidian 的 plan/apply/verify/cutover，并可从用户显式提供的 GitHub legacy 仓库读取迁移源；`scaffold-practice-skill` 负责把可复用实践固化成技能包。
 >
 > 约定块里对 grill-adapter 自己的 skill 一律带命名空间调用（`/grill-adapter:wiki-research` 等）；grill 自带的 `/grill-with-docs`、`/to-spec`、`/implement` 等不加。
 

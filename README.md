@@ -43,7 +43,7 @@ For Obsidian runtime configuration and the loopback write bridge, install the
 companion local CLI once:
 
 ```bash
-npm install --global @grill-adapter/obsidian-wiki
+npm install --global grill-adapter @grill-adapter/obsidian-wiki
 obsidian-wiki init
 obsidian-wiki doctor
 obsidian-wiki bridge start
@@ -54,7 +54,7 @@ It creates a commented JSONC example and a non-overwriting active config under
 move the active file. The plugin MCP and the independently running bridge use
 the same config; the bridge remains loopback-only and token-authenticated.
 
-Both runtimes discover **11 skills, 3 hook events, and 1 MCP server**. Claude Code also registers `agents/wiki-researcher.md` directly; Codex keeps that prompt as plugin payload and `wiki-research` dispatches a general sub-agent with the same role instructions. The `obsidian-wiki` server starts with the plugin and exposes bound Source reads, governed Note proposal/apply tools, and a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server (setup: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
+Both runtimes discover **12 skills, 3 hook events, and 1 MCP server**. Claude Code also registers `agents/wiki-researcher.md` directly; Codex keeps that prompt as plugin payload and `wiki-research` dispatches a general sub-agent with the same role instructions. The `obsidian-wiki` server starts with the plugin and exposes bound Source reads, governed Note proposal/apply tools, and a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server. Use `$grill-adapter:setup-init-obsidian` (or `/grill-adapter:setup-init-obsidian`) to check both npm packages and initialize a project (setup details: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
 
 > **Claude Code scope is shared.** Skills, agents, hooks, and bundled MCP servers all take the plugin's scope. Codex's current `plugin add` command has no project/user scope flag; project isolation comes from explicit Wiki bindings and fail-closed policy.
 

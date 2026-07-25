@@ -24,7 +24,7 @@ fi
 
 npm install --prefix "$TMP/install" "$PACKAGE" >/dev/null
 CLI="$TMP/install/node_modules/.bin/grill-adapter"
-test "$("$CLI" version)" = "0.2.0"
+test "$("$CLI" version)" = "0.2.1"
 "$CLI" validate-package >/dev/null
 test -d "$("$CLI" package-root)"
 printf 'npm package smoke OK\n'

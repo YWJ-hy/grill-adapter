@@ -4,7 +4,7 @@
 
 ## Legacy Wiki 迁移规划
 
-`migrate-wiki` 的 **Obsidian migration plan** 模式调用 `scripts/wiki_migration_plan.py`，只读 `.grill-adapter/wiki/`、可选的本地 `.shared-adapter/wiki/`，或用户通过 `--legacy-shared-wiki-url` 显式提供的 GitHub legacy 仓库，以及当前项目绑定、machine registry 指向的 Source worktree和 legacy discovery card 对应的本地 pack。远程仓库只会被 clone 到临时目录，URL 与 commit 固化进 plan/source digest；planner 不调用 Obsidian 写工具、write bridge 或 publisher，也不修改任何源/目标文件。JSON 只写 stdout，契约见 `contracts/obsidian-migration-plan-v1.example.jsonc`。
+`migrate-wiki` 的 **Obsidian migration plan** 模式调用 `scripts/wiki_migration_plan.py`，只读 `.grill-adapter/wiki/`、可选的本地 `.shared-adapter/wiki/`，或用户通过 `--legacy-shared-wiki-url <git-url>` 显式提供的 GitHub legacy shared-wiki 仓库，以及当前项目绑定、machine registry 指向的 Source worktree 和 legacy discovery card 对应的本地 pack。AI 不从项目 `origin`、目标 Obsidian `repositoryRef` 或组织名推断 legacy URL；用户必须提供不含凭据的 HTTPS/SSH Git URL。远程仓库只会被 clone 到临时目录，URL 与 commit 固化进 plan/source digest；planner 不调用 Obsidian 写工具、write bridge 或 publisher，也不修改任何源/目标文件。JSON 只写 stdout，契约见 `contracts/obsidian-migration-plan-v1.example.jsonc`。
 
 planner 先按正式治理规则校验 binding topology（重复 ID/root、root 重叠/越界、多个 project binding 均 fail-closed），在任何 inventory/graph 读取前拒绝 legacy/Source/manifest/pack 符号链接，且只读取 `access.read: true` 的选定 Source。inventory 同时覆盖 indexed/unindexed pages、section markers、navigation indexes、`.graph.json` edge/dangling、hard/soft constraint 与 `guides/skills.md` discovery content。每个 source item 恰有一个 plan decision，并携带目标 Source、稳定 Note ID、Vault 相对 proposed path、edge transformation 与 `create|update|skip|conflict`。目标 path 在同一 Source 内被其他/缺失 ID 的 Note 占用、或任意状态 Skill Card 的 provider/name 已由不同 ID 占用时均输出 conflict。输出保存 source/target snapshot digest；相同字节输入得到相同 plan。
 
@@ -79,12 +79,21 @@ review 后 `update-wiki` 先 validate/fold，以最终 review + 已验证 code/t
 
 每个项目最多一个 `role: project` binding，可有多个 `role: shared` binding。`sourceId` 与 `(vaultRef, root)` 均不可重复，同一 Vault 内的 root 也不得互为父子，避免较宽 root 覆盖较窄 Source 的访问策略。`root` 必须是 Vault 内相对目录，不能包含绝对路径或 `..`。
 
+`vaultRef` 与 `repositoryRef` 都是本机 registry 的逻辑键，不是路径，也不是 Git URL：
+
+- `vaultRef` 指向本机配置中的 Vault selector、Vault worktree 和 bridge 信息；binding 的 `root` 是该 Vault 内的相对 Wiki 目录。
+- `repositoryRef` 指向本机配置中的 Git worktree、remote 与 base branch；一个 Source root 只能属于一个 repository。
+- 单仓库部署：多个不重叠的 project/shared Source roots 可以使用同一个 `repositoryRef`。
+- 多仓库部署：每个 Source binding 使用各自的 `repositoryRef`；迁移或发布会按受影响 repository 分别创建 draft PR。
+
+因此初始化时用户不需要预先知道 `sourceId`、`vaultRef` 或 `repositoryRef` 这些内部字段。用户只需说明 Obsidian Vault 名称、Vault 内希望使用的 Wiki 文件夹、对应 Git worktree/remote/base branch，以及该 Source 是 project 还是 shared；`setup-init-obsidian` 会用项目名/Vault 名/仓库名生成候选 ID，用人话展示映射并让用户确认后再写入项目 binding 和本机 registry。AI 仍不会猜本地 Vault 目录、GitHub URL 或仓库归属。
+
 ## 本机统一配置与 npm CLI
 
 可以安装随插件源码一起构建的本机管理工具：
 
 ```bash
-npm install --global @grill-adapter/obsidian-wiki
+npm install --global grill-adapter @grill-adapter/obsidian-wiki
 obsidian-wiki init
 ```
 
@@ -95,13 +104,15 @@ obsidian-wiki init
 ~/.config/grill-adapter/obsidian-wiki.jsonc
 ```
 
-`example.jsonc` 是带字段说明的模板，active 配置只在不存在时生成，不会覆盖用户已有配置。统一配置把 Vault selector、Vault worktree、bridge URL/token 环境变量、允许写入的 Source roots、项目白名单和 Git repository 信息放在同一个本机文件中；不提交项目仓库，也不放入 `.grill-adapter/settings.json`。
+`example.jsonc` 是带字段说明的模板，active 配置首次生成时为空 registry，不会把示例路径当成真实配置，也不会覆盖用户已有配置。`setup-init-obsidian` 会通过 `obsidian-wiki config upsert-vault` / `upsert-repository` 把用户在会话中提供的 Vault、bridge 和 Git repository 信息写入本机文件；冲突条目必须单独授权 `--replace`。统一配置把 Vault selector、Vault worktree、bridge URL/token 环境变量、允许写入的 Source roots、项目白名单和 Git repository 信息放在同一个本机文件中；不提交项目仓库，也不放入 `.grill-adapter/settings.json`。
 
 维护命令：
 
 ```bash
 obsidian-wiki config path
 obsidian-wiki config set-location /path/to/obsidian-wiki.jsonc
+printf '%s' '<vault-json>' | obsidian-wiki config upsert-vault
+printf '%s' '<repository-json>' | obsidian-wiki config upsert-repository
 obsidian-wiki config validate
 obsidian-wiki doctor
 obsidian-wiki bridge start
@@ -187,7 +198,7 @@ printf '%s' '{"wikiIds":["project/grill-adapter/architecture/runtime"]}' \
 写桥是 `obsidian-wiki` bundle 的独立本机服务入口，不随 MCP 自动监听端口。推荐安装 npm CLI 后从统一 JSONC 配置启动：
 
 ```bash
-npm install --global @grill-adapter/obsidian-wiki
+npm install --global grill-adapter @grill-adapter/obsidian-wiki
 obsidian-wiki bridge start
 ```
 

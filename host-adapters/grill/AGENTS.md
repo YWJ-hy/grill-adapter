@@ -81,7 +81,7 @@ The `wiki-capture` hook (Stop) is a non-blocking backstop that reminds on pendin
 
 ### Runtime health and adoption
 
-Before the first formal Obsidian selection, and after any binding, registry, repository-base, bridge, or migration change, require the operator to run `obsidian-wiki doctor` (when the local CLI is installed) and `manage.sh doctor <project-root>` from their grill-adapter checkout. `obsidian-wiki init` creates the machine-local JSONC configuration, `config set-location` changes its path, and `bridge start` launches the configured loopback writer. `adoptionState: shadow-validation` means the Obsidian path is active while legacy roots remain unchanged for migration evidence; it is not a legacy runtime fallback. Do not cut over until migration verify succeeds and the user separately confirms cutover. `adoptionState: cutover-complete` means only the migration-covered legacy roots are read-only archives.
+Before the first formal Obsidian selection, and after any binding, registry, repository-base, bridge, or migration change, require the operator to run `obsidian-wiki doctor` and `grill-adapter doctor <project-root>` from the two installed npm packages. `setup-init-obsidian` checks both packages before using them. `obsidian-wiki init` creates the machine-local JSONC configuration, `config set-location` changes its path, and `bridge start` launches the configured loopback writer. `adoptionState: shadow-validation` means the Obsidian path is active while legacy roots remain unchanged for migration evidence; it is not a legacy runtime fallback. Do not cut over until migration verify succeeds and the user separately confirms cutover. `adoptionState: cutover-complete` means only the migration-covered legacy roots are read-only archives.
 
 If Note apply or Git publishing is interrupted, preserve the candidate journal, write receipts, migration manifest, and publish run manifest. Rerun the same publish step or migration operation so it can reconcile recorded identities; never repair recovery by editing the Vault worktree, deleting manifests, or reading legacy content as a fallback.
 
@@ -91,5 +91,5 @@ Do not call `$grill-adapter:wiki-research` at the start of debugging. After Phas
 
 ### Boundary
 
-grill-adapter's standalone utility skills (`init-wiki`, `import-wiki`, `migrate-wiki`, `candidate-journal`, `update-wiki`, `scaffold-practice-skill`) are utilities, not grill workflow steps. Do not auto-invoke grill's planning/implementation/review/completion skills solely because one of them ran.
+grill-adapter's standalone utility skills (`setup-init-obsidian`, `init-wiki`, `import-wiki`, `migrate-wiki`, `candidate-journal`, `update-wiki`, `scaffold-practice-skill`) are utilities, not grill workflow steps. Do not auto-invoke grill's planning/implementation/review/completion skills solely because one of them ran.
 <!-- grill-adapter:host:grill:end -->

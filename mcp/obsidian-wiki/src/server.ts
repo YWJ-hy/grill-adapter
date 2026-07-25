@@ -16,7 +16,7 @@ function toResult(value: unknown) {
 }
 
 export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
-  const server = new McpServer({ name: 'obsidian-wiki-mcp', version: '0.1.0' });
+  const server = new McpServer({ name: 'obsidian-wiki-mcp', version: '0.1.1' });
   const requestEnv = (requestMeta: Record<string, unknown> | undefined) =>
     environmentForMcpRequest(env, requestMeta);
   server.registerTool('obsidian_wiki_status', {

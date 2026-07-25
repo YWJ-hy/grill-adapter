@@ -12,13 +12,17 @@ obsidian-wiki init
 
 `init` creates a commented JSONC template at
 `~/.config/grill-adapter/obsidian-wiki.example.jsonc` and a non-overwriting active
-configuration at `~/.config/grill-adapter/obsidian-wiki.jsonc`.
+configuration at `~/.config/grill-adapter/obsidian-wiki.jsonc`. The active
+configuration starts empty so an orchestration skill can populate it without
+leaving example paths active.
 
 ## Commands
 
 ```bash
 obsidian-wiki config path
 obsidian-wiki config set-location /path/to/obsidian-wiki.jsonc
+printf '%s' '<vault-json>' | obsidian-wiki config upsert-vault
+printf '%s' '<repository-json>' | obsidian-wiki config upsert-repository
 obsidian-wiki config validate
 obsidian-wiki doctor
 obsidian-wiki bridge start
@@ -37,6 +41,11 @@ The bridge remains a separate loopback HTTP process. `bridge start` reads its
 Vault root, allowed Source roots, project allowlist, host, and port from the
 same configuration file. The bearer token remains in the environment variable
 named by `bridge.tokenEnv`.
+
+`upsert-vault` and `upsert-repository` are idempotent and preserve unrelated
+registry entries. If an existing entry differs, they fail unless `--replace` is
+passed explicitly after the caller obtains authorization. JSON is supplied on
+stdin so callers do not need to edit the machine config file.
 
 ## Publishing
 

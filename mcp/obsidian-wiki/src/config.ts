@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as z from 'zod/v4';
@@ -37,6 +37,20 @@ export const RawRegistrySchema = z.object({
 });
 
 export type Repository = z.infer<typeof RepositorySchema>;
+
+const UpsertVaultSchema = z.object({
+  ref: z.string().min(1),
+  selector: z.string().min(1),
+  vaultRoot: z.string().min(1).optional(),
+  bridge: BridgeSchema,
+});
+
+const UpsertRepositorySchema = z.object({
+  ref: z.string().min(1),
+}).extend(RepositorySchema.shape);
+
+export type UpsertVaultInput = z.infer<typeof UpsertVaultSchema>;
+export type UpsertRepositoryInput = z.infer<typeof UpsertRepositorySchema>;
 
 export type Vault = {
   selector: string;
@@ -117,6 +131,13 @@ export const CONFIG_EXAMPLE = `{
       "allowStaleRead": false
     }
   }
+}
+`;
+
+const EMPTY_CONFIG = `{
+  "version": 1,
+  "vaults": {},
+  "repositories": {}
 }
 `;
 
@@ -302,8 +323,11 @@ export function resolveBridgeConfig(
   };
 }
 
-export function initConfig(configPath?: string): { configPath: string; examplePath: string; created: boolean } {
-  const target = path.resolve(configPath ?? DEFAULT_CONFIG_PATH);
+export function initConfig(
+  configPath?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): { configPath: string; examplePath: string; created: boolean } {
+  const target = path.resolve(configPath ?? resolveConfigPath(env));
   const examplePath = target.endsWith('.jsonc')
     ? target.replace(/\.jsonc$/, '.example.jsonc')
     : target.endsWith('.json')
@@ -312,7 +336,7 @@ export function initConfig(configPath?: string): { configPath: string; examplePa
   mkdirSync(path.dirname(target), { recursive: true });
   if (!existsSync(examplePath)) writeFileSync(examplePath, CONFIG_EXAMPLE, { encoding: 'utf8', mode: 0o600 });
   const created = !existsSync(target);
-  if (created) writeFileSync(target, CONFIG_EXAMPLE, { encoding: 'utf8', mode: 0o600 });
+  if (created) writeFileSync(target, EMPTY_CONFIG, { encoding: 'utf8', mode: 0o600 });
   return { configPath: target, examplePath, created };
 }
 
@@ -325,4 +349,85 @@ export function setConfigLocation(configPath: string): string {
     { encoding: 'utf8', mode: 0o600 },
   );
   return target;
+}
+
+function loadRawRegistryForUpdate(
+  env: NodeJS.ProcessEnv = process.env,
+  explicitPath?: string,
+): { registryPath: string; raw: Record<string, unknown> } {
+  const registryPath = resolveConfigPath(env, explicitPath);
+  requireRegularFile(registryPath, 'Obsidian Wiki registry');
+  const parsed = parseJsonc(readFileSync(registryPath, 'utf8'), registryPath);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`Obsidian Wiki registry must be a JSON object: ${registryPath}`);
+  }
+  const raw = parsed as Record<string, unknown>;
+  if (!raw.vaults || typeof raw.vaults !== 'object' || Array.isArray(raw.vaults)) raw.vaults = {};
+  if (!raw.repositories || typeof raw.repositories !== 'object' || Array.isArray(raw.repositories)) raw.repositories = {};
+  return { registryPath, raw };
+}
+
+function writeRawRegistry(registryPath: string, raw: Record<string, unknown>): void {
+  const temporaryPath = `${registryPath}.tmp-${process.pid}`;
+  writeFileSync(temporaryPath, `${JSON.stringify(raw, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+  renameSync(temporaryPath, registryPath);
+}
+
+export function upsertVault(
+  input: UpsertVaultInput,
+  env: NodeJS.ProcessEnv = process.env,
+  explicitPath?: string,
+  replace = false,
+): { configPath: string; ref: string; created: boolean; changed: boolean } {
+  const validated = UpsertVaultSchema.parse(input);
+  const { registryPath, raw } = loadRawRegistryForUpdate(env, explicitPath);
+  const vaults = raw.vaults as Record<string, unknown>;
+  const next = {
+    selector: validated.selector,
+    ...(validated.vaultRoot ? { vaultRoot: validated.vaultRoot } : {}),
+    ...(validated.bridge ? { bridge: validated.bridge } : {}),
+  };
+  const existing = vaults[validated.ref];
+  if (existing !== undefined) {
+    if (JSON.stringify(existing) === JSON.stringify(next)) {
+      return { configPath: registryPath, ref: validated.ref, created: false, changed: false };
+    }
+    if (!replace) {
+      throw new Error(`vault ${validated.ref} already exists with different configuration; rerun with --replace after explicit authorization`);
+    }
+  }
+  vaults[validated.ref] = next;
+  writeRawRegistry(registryPath, raw);
+  return { configPath: registryPath, ref: validated.ref, created: existing === undefined, changed: true };
+}
+
+export function upsertRepository(
+  input: UpsertRepositoryInput,
+  env: NodeJS.ProcessEnv = process.env,
+  explicitPath?: string,
+  replace = false,
+): { configPath: string; ref: string; created: boolean; changed: boolean } {
+  const validated = UpsertRepositorySchema.parse(input);
+  const { registryPath, raw } = loadRawRegistryForUpdate(env, explicitPath);
+  const repositories = raw.repositories as Record<string, unknown>;
+  const next = {
+    worktreeRoot: validated.worktreeRoot,
+    remote: validated.remote,
+    expectedRemote: validated.expectedRemote,
+    baseBranch: validated.baseBranch,
+    ...(validated.syncBeforeResearch === undefined ? {} : { syncBeforeResearch: validated.syncBeforeResearch }),
+    ...(validated.allowStaleRead === undefined ? {} : { allowStaleRead: validated.allowStaleRead }),
+  };
+  const existing = repositories[validated.ref];
+  if (existing !== undefined) {
+    if (JSON.stringify(existing) === JSON.stringify(next)) {
+      return { configPath: registryPath, ref: validated.ref, created: false, changed: false };
+    }
+    if (!replace) {
+      throw new Error(`repository ${validated.ref} already exists with different configuration; rerun with --replace after explicit authorization`);
+    }
+  }
+  repositories[validated.ref] = next;
+  writeRawRegistry(registryPath, raw);
+  return { configPath: registryPath, ref: validated.ref, created: existing === undefined, changed: true };
 }

@@ -21868,7 +21868,7 @@ import { existsSync as existsSync2, lstatSync, readFileSync as readFileSync2, re
 import path2 from "node:path";
 
 // src/config.ts
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 var BridgeSchema = object({
@@ -21900,6 +21900,15 @@ var RawRegistrySchema = object({
   vaults: record(string2().min(1), RawVaultSchema),
   repositories: record(string2().min(1), RepositorySchema)
 });
+var UpsertVaultSchema = object({
+  ref: string2().min(1),
+  selector: string2().min(1),
+  vaultRoot: string2().min(1).optional(),
+  bridge: BridgeSchema
+});
+var UpsertRepositorySchema = object({
+  ref: string2().min(1)
+}).extend(RepositorySchema.shape);
 var DEFAULT_CONFIG_DIR = path.join(os.homedir(), ".config", "grill-adapter");
 var DEFAULT_CONFIG_PATH = path.join(DEFAULT_CONFIG_DIR, "obsidian-wiki.jsonc");
 var LEGACY_CONFIG_PATH = path.join(DEFAULT_CONFIG_DIR, "obsidian-wiki.json");
@@ -21949,6 +21958,12 @@ var CONFIG_EXAMPLE = `{
       "allowStaleRead": false
     }
   }
+}
+`;
+var EMPTY_CONFIG = `{
+  "version": 1,
+  "vaults": {},
+  "repositories": {}
 }
 `;
 function stripJsoncComments(contents) {
@@ -22108,13 +22123,13 @@ function resolveBridgeConfig(env = process.env, explicitPath, requestedVaultRef)
     }
   };
 }
-function initConfig(configPath) {
-  const target = path.resolve(configPath ?? DEFAULT_CONFIG_PATH);
+function initConfig(configPath, env = process.env) {
+  const target = path.resolve(configPath ?? resolveConfigPath(env));
   const examplePath = target.endsWith(".jsonc") ? target.replace(/\.jsonc$/, ".example.jsonc") : target.endsWith(".json") ? target.replace(/\.json$/, ".example.json") : `${target}.example.jsonc`;
   mkdirSync(path.dirname(target), { recursive: true });
   if (!existsSync(examplePath)) writeFileSync(examplePath, CONFIG_EXAMPLE, { encoding: "utf8", mode: 384 });
   const created = !existsSync(target);
-  if (created) writeFileSync(target, CONFIG_EXAMPLE, { encoding: "utf8", mode: 384 });
+  if (created) writeFileSync(target, EMPTY_CONFIG, { encoding: "utf8", mode: 384 });
   return { configPath: target, examplePath, created };
 }
 function setConfigLocation(configPath) {
@@ -22127,6 +22142,71 @@ function setConfigLocation(configPath) {
     { encoding: "utf8", mode: 384 }
   );
   return target;
+}
+function loadRawRegistryForUpdate(env = process.env, explicitPath) {
+  const registryPath = resolveConfigPath(env, explicitPath);
+  requireRegularFile(registryPath, "Obsidian Wiki registry");
+  const parsed = parseJsonc(readFileSync(registryPath, "utf8"), registryPath);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Obsidian Wiki registry must be a JSON object: ${registryPath}`);
+  }
+  const raw = parsed;
+  if (!raw.vaults || typeof raw.vaults !== "object" || Array.isArray(raw.vaults)) raw.vaults = {};
+  if (!raw.repositories || typeof raw.repositories !== "object" || Array.isArray(raw.repositories)) raw.repositories = {};
+  return { registryPath, raw };
+}
+function writeRawRegistry(registryPath, raw) {
+  const temporaryPath = `${registryPath}.tmp-${process.pid}`;
+  writeFileSync(temporaryPath, `${JSON.stringify(raw, null, 2)}
+`, { encoding: "utf8", mode: 384 });
+  renameSync(temporaryPath, registryPath);
+}
+function upsertVault(input, env = process.env, explicitPath, replace = false) {
+  const validated = UpsertVaultSchema.parse(input);
+  const { registryPath, raw } = loadRawRegistryForUpdate(env, explicitPath);
+  const vaults = raw.vaults;
+  const next = {
+    selector: validated.selector,
+    ...validated.vaultRoot ? { vaultRoot: validated.vaultRoot } : {},
+    ...validated.bridge ? { bridge: validated.bridge } : {}
+  };
+  const existing = vaults[validated.ref];
+  if (existing !== void 0) {
+    if (JSON.stringify(existing) === JSON.stringify(next)) {
+      return { configPath: registryPath, ref: validated.ref, created: false, changed: false };
+    }
+    if (!replace) {
+      throw new Error(`vault ${validated.ref} already exists with different configuration; rerun with --replace after explicit authorization`);
+    }
+  }
+  vaults[validated.ref] = next;
+  writeRawRegistry(registryPath, raw);
+  return { configPath: registryPath, ref: validated.ref, created: existing === void 0, changed: true };
+}
+function upsertRepository(input, env = process.env, explicitPath, replace = false) {
+  const validated = UpsertRepositorySchema.parse(input);
+  const { registryPath, raw } = loadRawRegistryForUpdate(env, explicitPath);
+  const repositories = raw.repositories;
+  const next = {
+    worktreeRoot: validated.worktreeRoot,
+    remote: validated.remote,
+    expectedRemote: validated.expectedRemote,
+    baseBranch: validated.baseBranch,
+    ...validated.syncBeforeResearch === void 0 ? {} : { syncBeforeResearch: validated.syncBeforeResearch },
+    ...validated.allowStaleRead === void 0 ? {} : { allowStaleRead: validated.allowStaleRead }
+  };
+  const existing = repositories[validated.ref];
+  if (existing !== void 0) {
+    if (JSON.stringify(existing) === JSON.stringify(next)) {
+      return { configPath: registryPath, ref: validated.ref, created: false, changed: false };
+    }
+    if (!replace) {
+      throw new Error(`repository ${validated.ref} already exists with different configuration; rerun with --replace after explicit authorization`);
+    }
+  }
+  repositories[validated.ref] = next;
+  writeRawRegistry(registryPath, raw);
+  return { configPath: registryPath, ref: validated.ref, created: existing === void 0, changed: true };
 }
 
 // src/policy.ts
@@ -23018,7 +23098,7 @@ import {
   existsSync as existsSync3,
   mkdirSync as mkdirSync2,
   readFileSync as readFileSync4,
-  renameSync,
+  renameSync as renameSync2,
   rmSync,
   writeFileSync as writeFileSync2
 } from "node:fs";
@@ -23141,7 +23221,7 @@ function writeManifest(manifestPath, manifest) {
   const temporaryPath = `${manifestPath}.tmp-${process.pid}`;
   writeFileSync2(temporaryPath, `${JSON.stringify(manifest, null, 2)}
 `, { encoding: "utf8", flag: "wx" });
-  renameSync(temporaryPath, manifestPath);
+  renameSync2(temporaryPath, manifestPath);
 }
 function manifestPathFor(projectDir, featureSlug) {
   return path6.join(projectDir, ".grill-adapter", "context", `${featureSlug}.wiki-publish.json`);
@@ -24004,7 +24084,7 @@ function toResult(value) {
   };
 }
 function createServer(env = process.env) {
-  const server = new McpServer({ name: "obsidian-wiki-mcp", version: "0.1.0" });
+  const server = new McpServer({ name: "obsidian-wiki-mcp", version: "0.1.1" });
   const requestEnv = (requestMeta) => environmentForMcpRequest(env, requestMeta);
   server.registerTool("obsidian_wiki_status", {
     description: "Report the current project\u2019s resolved Obsidian Wiki Source binding health without reading unbound Vault content.",
@@ -24590,6 +24670,10 @@ Usage:
   obsidian-wiki init [--config <path>]            Create a commented JSONC config
   obsidian-wiki config path [--json]              Print the resolved config path
   obsidian-wiki config set-location <path>        Persist a custom config location
+  printf '<json>' | obsidian-wiki config upsert-vault [--replace]
+                                                    Upsert one machine Vault entry
+  printf '<json>' | obsidian-wiki config upsert-repository [--replace]
+                                                    Upsert one Git repository entry
   obsidian-wiki config validate [--config <path>]
   obsidian-wiki doctor [--config <path>]           Validate project bindings and runtime health
   obsidian-wiki bridge start [--config <path>]    Start the foreground write bridge
@@ -24606,7 +24690,7 @@ async function main() {
     return;
   }
   if (subcommand === "init") {
-    printJson(initConfig(parsed.configPath));
+    printJson(initConfig(parsed.configPath, process.env));
     return;
   }
   if (subcommand === "config" && action === "path") {
@@ -24619,6 +24703,13 @@ async function main() {
   if (subcommand === "config" && action === "set-location") {
     if (!rest[0]) throw new Error("config set-location requires a path");
     printJson({ configPath: setConfigLocation(rest[0]) });
+    return;
+  }
+  if (subcommand === "config" && (action === "upsert-vault" || action === "upsert-repository")) {
+    const request = await readJsonRequest();
+    const replace = rest.includes("--replace");
+    const result = action === "upsert-vault" ? upsertVault(request, process.env, parsed.configPath, replace) : upsertRepository(request, process.env, parsed.configPath, replace);
+    printJson(result);
     return;
   }
   if (subcommand === "config" && action === "validate") {

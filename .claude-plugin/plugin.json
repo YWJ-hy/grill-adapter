@@ -1,6 +1,6 @@
 {
   "name": "grill-adapter",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Host-agnostic Claude Code/Codex adapter: governed Obsidian atomic Notes and Skill Cards (Disclose/Carry/Bind/Capture), source-of-truth verify/lint, and debugging retrospectives. Never patches a host skill.",
   "author": {
     "name": "yewenjie"

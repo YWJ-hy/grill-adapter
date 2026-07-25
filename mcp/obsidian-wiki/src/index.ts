@@ -14,6 +14,8 @@ import {
   resolveBridgeConfig,
   resolveConfigPath,
   setConfigLocation,
+  upsertRepository,
+  upsertVault,
 } from './config.js';
 
 async function readJsonRequest(): Promise<Record<string, unknown>> {
@@ -58,6 +60,10 @@ Usage:
   obsidian-wiki init [--config <path>]            Create a commented JSONC config
   obsidian-wiki config path [--json]              Print the resolved config path
   obsidian-wiki config set-location <path>        Persist a custom config location
+  printf '<json>' | obsidian-wiki config upsert-vault [--replace]
+                                                    Upsert one machine Vault entry
+  printf '<json>' | obsidian-wiki config upsert-repository [--replace]
+                                                    Upsert one Git repository entry
   obsidian-wiki config validate [--config <path>]
   obsidian-wiki doctor [--config <path>]           Validate project bindings and runtime health
   obsidian-wiki bridge start [--config <path>]    Start the foreground write bridge
@@ -75,7 +81,7 @@ async function main(): Promise<void> {
     return;
   }
   if (subcommand === 'init') {
-    printJson(initConfig(parsed.configPath));
+    printJson(initConfig(parsed.configPath, process.env));
     return;
   }
   if (subcommand === 'config' && action === 'path') {
@@ -87,6 +93,15 @@ async function main(): Promise<void> {
   if (subcommand === 'config' && action === 'set-location') {
     if (!rest[0]) throw new Error('config set-location requires a path');
     printJson({ configPath: setConfigLocation(rest[0]) });
+    return;
+  }
+  if (subcommand === 'config' && (action === 'upsert-vault' || action === 'upsert-repository')) {
+    const request = await readJsonRequest();
+    const replace = rest.includes('--replace');
+    const result = action === 'upsert-vault'
+      ? upsertVault(request as never, process.env, parsed.configPath, replace)
+      : upsertRepository(request as never, process.env, parsed.configPath, replace);
+    printJson(result);
     return;
   }
   if (subcommand === 'config' && action === 'validate') {

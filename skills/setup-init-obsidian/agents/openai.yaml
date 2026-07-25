@@ -1,0 +1,7 @@
+interface:
+  display_name: "Setup Obsidian"
+  short_description: "Initialize governed Obsidian Wiki runtime"
+  default_prompt: "Use $setup-init-obsidian to initialize this project's Obsidian Wiki runtime and route any legacy Wiki through an authorized migration plan."
+
+policy:
+  allow_implicit_invocation: true
