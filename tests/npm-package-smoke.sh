@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+EXPECTED_VERSION="$(node -p "require('$ROOT/package.json').version")"
 
 PACK_JSON="$(
   cd "$ROOT"
@@ -24,7 +25,7 @@ fi
 
 npm install --prefix "$TMP/install" "$PACKAGE" >/dev/null
 CLI="$TMP/install/node_modules/.bin/grill-adapter"
-test "$("$CLI" version)" = "0.2.1"
+test "$("$CLI" version)" = "$EXPECTED_VERSION"
 "$CLI" validate-package >/dev/null
 test -d "$("$CLI" package-root)"
 printf 'npm package smoke OK\n'
