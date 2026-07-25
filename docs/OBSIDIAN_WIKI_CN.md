@@ -4,7 +4,7 @@
 
 ## Legacy Wiki 迁移规划
 
-`migrate-wiki` 的 **Obsidian migration plan** 模式调用 `scripts/wiki_migration_plan.py`，只读 `.adapter/wiki/`、可选的本地 `.shared-adapter/wiki/`，或用户通过 `--legacy-shared-wiki-url` 显式提供的 GitHub legacy 仓库，以及当前项目绑定、machine registry 指向的 Source worktree和 legacy discovery card 对应的本地 pack。远程仓库只会被 clone 到临时目录，URL 与 commit 固化进 plan/source digest；planner 不调用 Obsidian 写工具、write bridge 或 publisher，也不修改任何源/目标文件。JSON 只写 stdout，契约见 `contracts/obsidian-migration-plan-v1.example.jsonc`。
+`migrate-wiki` 的 **Obsidian migration plan** 模式调用 `scripts/wiki_migration_plan.py`，只读 `.grill-adapter/wiki/`、可选的本地 `.shared-adapter/wiki/`，或用户通过 `--legacy-shared-wiki-url` 显式提供的 GitHub legacy 仓库，以及当前项目绑定、machine registry 指向的 Source worktree和 legacy discovery card 对应的本地 pack。远程仓库只会被 clone 到临时目录，URL 与 commit 固化进 plan/source digest；planner 不调用 Obsidian 写工具、write bridge 或 publisher，也不修改任何源/目标文件。JSON 只写 stdout，契约见 `contracts/obsidian-migration-plan-v1.example.jsonc`。
 
 planner 先按正式治理规则校验 binding topology（重复 ID/root、root 重叠/越界、多个 project binding 均 fail-closed），在任何 inventory/graph 读取前拒绝 legacy/Source/manifest/pack 符号链接，且只读取 `access.read: true` 的选定 Source。inventory 同时覆盖 indexed/unindexed pages、section markers、navigation indexes、`.graph.json` edge/dangling、hard/soft constraint 与 `guides/skills.md` discovery content。每个 source item 恰有一个 plan decision，并携带目标 Source、稳定 Note ID、Vault 相对 proposed path、edge transformation 与 `create|update|skip|conflict`。目标 path 在同一 Source 内被其他/缺失 ID 的 Note 占用、或任意状态 Skill Card 的 provider/name 已由不同 ID 占用时均输出 conflict。输出保存 source/target snapshot digest；相同字节输入得到相同 plan。
 
@@ -14,17 +14,17 @@ planner 先按正式治理规则校验 binding topology（重复 ID/root、root 
 
 `scripts/wiki_migration_apply.py apply` 只接受原始 schema-v1 plan、零 `conflict`、显式 `--confirmed`。首次写前会用相同 Source selector 重跑 planner，并要求整个结构化 plan 完全一致；source/target snapshot 或 plan 内容漂移均拒绝。它先把完整 plan、binding/policy snapshot 和所有 operation 的路径、Note identity、原始 before hash、seed/final hash 原子写进 migration manifest，再由 publisher 建立并 checkout 每仓专用 PR branch；首个 bridge 写发生时已不在 base。为了让任意顺序乃至循环 typed edge 通过既有 bridge 校验，coordinator 先为所有 create 建立无边的合法 atomic Note seed，再以原始 expected-hash CAS 写入最终 frontmatter/body。中断恢复只接受精确 before/seed/final 状态，其他内容均视作人工 drift，绝不把当前 hash 收养成新 CAS 基线。每一步仍经过 binding、Source manifest、effective policy、neutrality、stable ID、Skill Card pack identity 与 typed-link 校验，不绕 bridge 直写 Vault。
 
-最终 Note receipts 作为 allowlist 交给既有 publisher：按 `repositoryRef` 生成 draft PR、恢复 clean base，并与迁移状态一起持久化到 `.adapter/context/migration-<plan-hash>.{wiki-publish,obsidian-migration}.json`。manifest 契约见 `contracts/obsidian-migration-manifest-v1.example.jsonc`。中断重跑复用 seed/final receipt 和 publish run，不重复 Note、commit、push 或 PR；开放 PR 内容仍不进入正式读取。
+最终 Note receipts 作为 allowlist 交给既有 publisher：按 `repositoryRef` 生成 draft PR、恢复 clean base，并与迁移状态一起持久化到 `.grill-adapter/context/migration-<plan-hash>.{wiki-publish,obsidian-migration}.json`。manifest 契约见 `contracts/obsidian-migration-manifest-v1.example.jsonc`。中断重跑复用 seed/final receipt 和 publish run，不重复 Note、commit、push 或 PR；开放 PR 内容仍不进入正式读取。
 
 PR 由用户审查/合并且 configured base worktree 同步后，`verify` 才运行。它先重算 manifest 内完整 plan 的 `planHash`、legacy source snapshot、binding/policy snapshot，并从 immutable plan + operation roster 推导完整 coverage，删除 receipt 行或改写 receipt 身份都会失败。随后核实所有 PR `MERGED` 与 base freshness，再通过 bundled `status/search/read-notes-by-wiki-ids/graph-neighbors` seam 检查唯一 ID、Source/path containment、schema/policy、精确 content hash、search identity、Skill Card availability、typed edges 与 hard Note 全文 reread。verify 不写 Note；任何人工修改都表现为 drift，绝不覆盖。
 
-`cutover` 需要另一次显式 `--confirmed`，并在写 settings 前重新跑完整 verify。若当前最新 `.adapter/context/*.wiki-context.json` 仍是 schema v5，则 fail-closed。成功后 `.shared-adapter/settings.json` 保持 `wiki.provider: obsidian`，并记录 `wiki.legacyRuntime.mode: read-only-archive`、confirmed plan 实际覆盖的旧 roots 和 migration manifest；未被 plan 选择的另一 root 不会被误归档。旧 Markdown/index/graph 不删除、不移动、不重写；legacy bootstrap/init/update/import/migration 路径都会拒绝对 archive roots 的后续写入。
+`cutover` 需要另一次显式 `--confirmed`，并在写 settings 前重新跑完整 verify。若当前最新 `.grill-adapter/context/*.wiki-context.json` 仍是 schema v5，则 fail-closed。成功后 `.grill-adapter/settings.json` 保持 `wiki.provider: obsidian`，并记录 `wiki.legacyRuntime.mode: read-only-archive`、confirmed plan 实际覆盖的旧 roots 和 migration manifest；未被 plan 选择的另一 root 不会被误归档。旧 Markdown/index/graph 不删除、不移动、不重写；legacy bootstrap/init/update/import/migration 路径都会拒绝对 archive roots 的后续写入。
 
 ## 运行边界
 
 插件只发货一个 `obsidian-wiki` MCP：解析当前项目的 Obsidian Source bindings，并提供 Source/status、受绑定限制的 Note/Card 搜索读取、一跳 typed neighbor，以及统一 proposal/apply 工具。legacy Wiki 不再注册独立 MCP，也不参与正式 runtime。
 
-`obsidian-wiki` 只从宿主确定的项目根下 `.shared-adapter/settings.json` 读取 bindings：Claude Code 使用 `CLAUDE_PROJECT_DIR`，Codex 使用受控 MCP request 的 Git workspace metadata，直接 CLI 可使用进程 cwd。工具不接受 Vault、Source 或 root 路径参数，因此调用方不能扩大到未绑定内容；多个 Codex workspace 同时声明 settings 时按歧义 fail-closed。
+`obsidian-wiki` 只从宿主确定的项目根下 `.grill-adapter/settings.json` 读取 bindings：Claude Code 使用 `CLAUDE_PROJECT_DIR`，Codex 使用受控 MCP request 的 Git workspace metadata，直接 CLI 可使用进程 cwd。工具不接受 Vault、Source 或 root 路径参数，因此调用方不能扩大到未绑定内容；多个 Codex workspace 同时声明 settings 时按歧义 fail-closed。
 
 ## Candidate Journal 边界
 
@@ -34,7 +34,9 @@ review 后 `update-wiki` 先 validate/fold，以最终 review + 已验证 code/t
 
 ## 项目配置
 
-项目提交 `.shared-adapter/settings.json` 中的逻辑绑定，不提交本机 Vault 路径、bridge token 或凭据：
+项目提交 `.grill-adapter/settings.json` 中的逻辑绑定，不提交本机 Vault 路径、bridge token 或凭据：
+
+已有项目升级时，将旧 `.adapter/` 改名为 `.grill-adapter/`，把旧 `.shared-adapter/settings.json` 的 `wiki` 配置合并进这个 canonical settings 文件；不要让两份 settings 并存。旧 `.shared-adapter/wiki/` 可以保留为 legacy 数据根，直到迁移 verify/cutover 完成。
 
 ```json
 {
@@ -52,6 +54,24 @@ review 后 `update-wiki` 先 validate/fold，以最终 review + 已验证 code/t
           "access": { "read": true, "update": "confirm" }
         }
       ]
+    },
+    "roots": {
+      "project": {
+        "updateAuthorization": {
+          "updateExistingPage": "skip",
+          "createNewDocument": "ask"
+        }
+      },
+      "shared": {
+        "updateAuthorization": {
+          "updateExistingPage": "skip",
+          "createNewDocument": "ask"
+        },
+        "sharedNeutrality": {
+          "blockedTerms": [],
+          "blockedPatterns": []
+        }
+      }
     }
   }
 }
@@ -75,7 +95,7 @@ obsidian-wiki init
 ~/.config/grill-adapter/obsidian-wiki.jsonc
 ```
 
-`example.jsonc` 是带字段说明的模板，active 配置只在不存在时生成，不会覆盖用户已有配置。统一配置把 Vault selector、Vault worktree、bridge URL/token 环境变量、允许写入的 Source roots、项目白名单和 Git repository 信息放在同一个本机文件中；不提交项目仓库，也不放入 `.shared-adapter/settings.json`。
+`example.jsonc` 是带字段说明的模板，active 配置只在不存在时生成，不会覆盖用户已有配置。统一配置把 Vault selector、Vault worktree、bridge URL/token 环境变量、允许写入的 Source roots、项目白名单和 Git repository 信息放在同一个本机文件中；不提交项目仓库，也不放入 `.grill-adapter/settings.json`。
 
 维护命令：
 
@@ -182,7 +202,7 @@ export OBSIDIAN_WIKI_BRIDGE_PROJECT_DIRS='["/Users/me/dev/grill-adapter"]'
 node mcp/obsidian-wiki/dist/index.js serve-write-bridge
 ```
 
-`PROJECT_DIRS` 是 bridge 启动时的项目白名单。每个 proposal/apply 都携带 MCP 已解析的当前项目根；bridge 只接受白名单成员，并在**每次请求**重新读取该项目 `.shared-adapter/settings.json` 与 Source manifest，重新计算 binding + manifest 的 effective policy 和 neutrality，运行中收紧治理无需重启。一个 bridge 可列出多个明确项目，但请求不能提供白名单之外的任意项目路径。
+`PROJECT_DIRS` 是 bridge 启动时的项目白名单。每个 proposal/apply 都携带 MCP 已解析的当前项目根；bridge 只接受白名单成员，并在**每次请求**重新读取该项目 `.grill-adapter/settings.json` 与 Source manifest，重新计算 binding + manifest 的 effective policy 和 neutrality，运行中收紧治理无需重启。一个 bridge 可列出多个明确项目，但请求不能提供白名单之外的任意项目路径。
 
 `update-wiki` 的固定写路径是：
 
@@ -199,14 +219,14 @@ JSON CLI 同样暴露 `propose-note-change` / `apply-note-change`，请求从 st
 
 ```bash
 python3 <plugin-root>/scripts/wiki_candidate_journal.py fold \
-  --journal .adapter/context/<feature-slug>.wiki-candidates.jsonl \
+  --journal .grill-adapter/context/<feature-slug>.wiki-candidates.jsonl \
   --feature-slug <feature-slug> \
 | node <plugin-root>/mcp/obsidian-wiki/dist/index.js publish
 ```
 
 publisher 每仓依次验证当前 binding digest、`publishing.mode: git-pr`、remote identity、base branch 与 remote/base 同步、Source containment、wiki ID、before/after hash，以及 worktree changed paths 与 receipts 完全相等；拿到 repository lock 后会再次核对 Note hash 与精确 path scope。它创建 `.grill-adapter-wiki.publish.lock` 阻止 formal read，在 run 专属 branch 上只 add allowlist paths、commit/push、创建 draft PR，并在所有仓库拿到 URL 后回填 peer PR 列表。成功或普通外部失败都会切回 clean base 后移除 lock；若 base 恢复本身失败则保留 lock 并 fail-closed。publisher 不 merge、approve、force-push、reset、stash、clean 或删 branch。
 
-本地 `.adapter/context/<feature-slug>.wiki-publish.json` 是恢复 receipt，不提交。commit 前失败时，manifest 的 `stagedTree` 只保存已验证 Git tree 的 object ID（不保存 Note body），publisher 清理 base index/worktree；重跑时从该 tree 恢复同一 allowlist。已有 local commit、remote branch 或 GitHub PR 会按 content hash/commit/path/URL 重新核验并复用；base 上若出现新的 Capture 改动则 fail-closed，必须另行处理。PR 分支内容不是 runtime truth；只有人工 merge 后，配置的 base worktree 完成同步并重新通过 binding/Note 校验，formal research 才能读取。
+本地 `.grill-adapter/context/<feature-slug>.wiki-publish.json` 是恢复 receipt，不提交。commit 前失败时，manifest 的 `stagedTree` 只保存已验证 Git tree 的 object ID（不保存 Note body），publisher 清理 base index/worktree；重跑时从该 tree 恢复同一 allowlist。已有 local commit、remote branch 或 GitHub PR 会按 content hash/commit/path/URL 重新核验并复用；base 上若出现新的 Capture 改动则 fail-closed，必须另行处理。PR 分支内容不是 runtime truth；只有人工 merge 后，配置的 base worktree 完成同步并重新通过 binding/Note 校验，formal research 才能读取。
 
 ## 诊断与失败模式
 

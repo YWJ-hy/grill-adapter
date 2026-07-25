@@ -138,7 +138,7 @@ else if (args.includes('read')) {
   } else {
     chmodSync(obsidianCli, 0o755);
   }
-  writeJson(path.join(projectDir, '.shared-adapter', 'settings.json'), {
+  writeJson(path.join(projectDir, '.grill-adapter', 'settings.json'), {
     wiki: {
       provider: 'obsidian',
       publishing: { mode: 'git-pr' },

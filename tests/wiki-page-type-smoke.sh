@@ -15,7 +15,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 git -C "${TMP}" init -q
 
-W="${TMP}/.adapter/wiki"
+W="${TMP}/.grill-adapter/wiki"
 mkdir -p "${W}"
 printf '# W\n- `constraints.md`\n- `glossary.md`\n- `adr.md`\n- `legacy.md`\n' > "${W}/index.md"
 # constraint: no frontmatter (default)

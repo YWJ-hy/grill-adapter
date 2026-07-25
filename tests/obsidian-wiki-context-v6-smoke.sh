@@ -19,7 +19,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 ROSTER="$TMP/feature.ticket-roster.json"
 SELECTION="$TMP/feature.obsidian-wiki-selection.json"
-CONTEXT="$TMP/new-project/.adapter/context/feature.wiki-context.json"
+CONTEXT="$TMP/new-project/.grill-adapter/context/feature.wiki-context.json"
 
 cat > "$ROSTER" <<'JSON'
 {

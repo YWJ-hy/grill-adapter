@@ -13,7 +13,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 PROJECT="$TMP/project"
-CONTEXT="$PROJECT/.adapter/context/feature.wiki-context.json"
+CONTEXT="$PROJECT/.grill-adapter/context/feature.wiki-context.json"
 mkdir -p "$(dirname "$CONTEXT")"
 
 SHA_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

@@ -13,10 +13,10 @@ from wiki_section import KNOWN_EDGE_TYPES, extract_section_links, list_section_i
 DEFAULT_IGNORED_DIR_NAMES = {"draft", "archive", "examples"}
 AUTO_START = "<!-- grill-adapter:auto:start -->"
 AUTO_END = "<!-- grill-adapter:auto:end -->"
-PROJECT_WIKI_REL = Path(".adapter") / "wiki"
+PROJECT_WIKI_REL = Path(".grill-adapter") / "wiki"
 SHARED_WIKI_REL = Path(".shared-adapter") / "wiki"
-PROJECT_SETTINGS_REL = Path(".adapter") / "settings.json"
-SHARED_SETTINGS_REL = Path(".shared-adapter") / "settings.json"
+PROJECT_SETTINGS_REL = Path(".grill-adapter") / "settings.json"
+SHARED_SETTINGS_REL = PROJECT_SETTINGS_REL
 WIKI_POLICY_SKIP = "skip"
 WIKI_POLICY_ASK = "ask"
 WIKI_POLICY_REFUSE = "refuse"
@@ -112,7 +112,7 @@ def write_text_lf(path: Path, content: str) -> None:
 def repo_root(start: Path) -> Path:
     current = start.resolve()
     for candidate in (current, *current.parents):
-        if (candidate / ".adapter").exists() or (candidate / ".shared-adapter").exists():
+        if (candidate / ".grill-adapter").exists() or (candidate / ".shared-adapter").exists():
             return candidate
         if (candidate / ".git").exists():
             # Stop at the enclosing git repository root. A project's wiki lives
@@ -134,13 +134,13 @@ def known_wiki_roots(project_root: Path) -> list[WikiRoot]:
 def wiki_root_from_dir(wiki_dir: Path, kind: str = "shared") -> WikiRoot:
     """A WikiRoot whose content is rooted directly at ``wiki_dir``.
 
-    The standard layout nests the wiki under ``.adapter/wiki`` or
+    The standard layout nests the wiki under ``.grill-adapter/wiki`` or
     ``.shared-adapter/wiki`` inside a project root. A standalone wiki
     repository instead keeps ``index.md`` and the page tree at the repository
     root, so the repo-local author/migrate skills point the CLI at the repo with
     ``--wiki-dir``. The display prefix is empty (display == the page's rel path),
     and ``kind`` defaults to ``shared`` so neutrality guards apply and settings
-    resolve to ``<wiki_dir>/.shared-adapter/settings.json`` when the caller
+    resolve to ``<wiki_dir>/.grill-adapter/settings.json`` when the caller
     passes ``wiki_dir`` as the project root.
     """
     return WikiRoot(kind, Path(wiki_dir).resolve(), "")
@@ -191,11 +191,9 @@ def display_wiki_path(root: WikiRoot, file_path: Path) -> str:
 
 
 def wiki_settings_path(project_root: Path, root: WikiRoot) -> Path:
-    if root.name == "project":
-        return project_root / PROJECT_SETTINGS_REL
-    if root.name == "shared":
-        return project_root / SHARED_SETTINGS_REL
-    raise ValueError(f"Unknown wiki root: {root.name}")
+    if root.name not in {"project", "shared"}:
+        raise ValueError(f"Unknown wiki root: {root.name}")
+    return project_root / PROJECT_SETTINGS_REL
 
 
 def _load_settings_payload(settings_path: Path) -> dict:
@@ -225,6 +223,21 @@ def load_wiki_settings(project_root: Path, root: WikiRoot) -> dict:
     return _wiki_settings_from_payload(_load_settings_payload(settings_path), settings_path)
 
 
+def _root_setting(wiki_settings: dict, root: WikiRoot, key: str, settings_path: Path) -> object:
+    """Read a root-specific setting, falling back to the legacy top-level shape."""
+    roots = wiki_settings.get("roots")
+    if roots is None:
+        return wiki_settings.get(key)
+    if not isinstance(roots, dict):
+        raise ValueError(f"wiki.roots must be an object in {settings_path}")
+    selected = roots.get(root.name, {})
+    if selected is None:
+        return wiki_settings.get(key)
+    if not isinstance(selected, dict):
+        raise ValueError(f"wiki.roots.{root.name} must be an object in {settings_path}")
+    return selected[key] if key in selected else wiki_settings.get(key)
+
+
 def enforce_legacy_wiki_writable(project_root: Path, root: WikiRoot) -> None:
     """Reject writes to roots recorded by an Obsidian migration cutover."""
     settings_path = project_root.resolve() / SHARED_SETTINGS_REL
@@ -247,7 +260,7 @@ def enforce_legacy_wiki_directory_writable(wiki_dir: Path | str) -> None:
     """Apply the archive guard when --wiki-dir is a standard Wiki root or descendant."""
     resolved = Path(wiki_dir).expanduser().resolve()
     for candidate in (resolved, *resolved.parents):
-        if candidate.name != "wiki" or candidate.parent.name not in {".adapter", ".shared-adapter"}:
+        if candidate.name != "wiki" or candidate.parent.name not in {".grill-adapter", ".shared-adapter"}:
             continue
         project_root = candidate.parents[1]
         for root in known_wiki_roots(project_root):
@@ -269,17 +282,20 @@ def load_wiki_update_authorization_policy(project_root: Path, root: WikiRoot) ->
     policy = dict(DEFAULT_WIKI_UPDATE_AUTHORIZATION)
     wiki_settings = load_wiki_settings(project_root, root)
 
-    update_auth = wiki_settings.get("updateAuthorization", {})
+    update_auth = _root_setting(wiki_settings, root, "updateAuthorization", settings_path) or {}
     if update_auth is None:
         update_auth = {}
     if not isinstance(update_auth, dict):
-        raise ValueError(f"wiki.updateAuthorization must be an object in {settings_path}")
+        raise ValueError(f"wiki.updateAuthorization or wiki.roots.{root.name}.updateAuthorization must be an object in {settings_path}")
 
     for operation in DEFAULT_WIKI_UPDATE_AUTHORIZATION:
         value = update_auth.get(operation, policy[operation])
         if value not in WIKI_POLICY_VALUES:
             allowed = ", ".join(sorted(WIKI_POLICY_VALUES))
-            raise ValueError(f"Invalid wiki.updateAuthorization.{operation} in {settings_path}: {value!r}; expected one of {allowed}")
+            raise ValueError(
+                f"Invalid wiki updateAuthorization for {root.name}.{operation} in {settings_path}: "
+                f"{value!r}; expected one of {allowed}"
+            )
         policy[operation] = value
     return policy
 
@@ -290,7 +306,7 @@ def load_shared_wiki_neutrality_policy(project_root: Path, root: WikiRoot) -> di
 
     settings_path = wiki_settings_path(project_root, root)
     wiki_settings = load_wiki_settings(project_root, root)
-    neutrality = wiki_settings.get("sharedNeutrality", {})
+    neutrality = _root_setting(wiki_settings, root, "sharedNeutrality", settings_path) or {}
     if neutrality is None:
         neutrality = {}
     if not isinstance(neutrality, dict):
@@ -754,7 +770,7 @@ def build_section_graph(wiki_root: Path) -> SectionGraph:
     return graph
 
 
-_WIKI_DISPLAY_PREFIXES = (".shared-adapter/wiki/", ".adapter/wiki/")
+_WIKI_DISPLAY_PREFIXES = (".shared-adapter/wiki/", ".grill-adapter/wiki/")
 _WIKI_MD_SUFFIXES = (".md", ".markdown", ".mdx")
 
 
@@ -764,7 +780,7 @@ def normalize_graph_node(node: str) -> str:
     The graph keys a page wiki-root-relative and with a ``.md`` suffix
     (``frontend/type-safety.md#enum-const-enum``). Callers, however, routinely hold a page
     in the shape the *read* path accepts instead: display-root-prefixed
-    (``.shared-adapter/wiki/…`` / ``.adapter/wiki/…``), ``./``-prefixed, or the
+    (``.shared-adapter/wiki/…`` / ``.grill-adapter/wiki/…``), ``./``-prefixed, or the
     ``.md``-less form that ``[[page#section]]`` link text and companion index tables show.
     Those forms all resolve for read-sections (via ``normalizeWikiRelativePath``) but, before
     this, silently missed every graph lookup and returned empty edges. Mirror that read-path

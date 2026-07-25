@@ -73,8 +73,8 @@ async function fixture(
   writeFileSync(path.join(vaultRoot, sourceRoot, '_meta', 'wiki-source.md'), manifest(sourceId, shared ? 'shared' : 'project'), 'utf8');
   const initial = note(wikiId, 'Initial body.');
   writeFileSync(path.join(vaultRoot, sourceRoot, 'Bridge.md'), initial, 'utf8');
-  mkdirSync(path.join(projectDir, '.shared-adapter'), { recursive: true });
-  writeFileSync(path.join(projectDir, '.shared-adapter', 'settings.json'), JSON.stringify({
+  mkdirSync(path.join(projectDir, '.grill-adapter'), { recursive: true });
+  writeFileSync(path.join(projectDir, '.grill-adapter', 'settings.json'), JSON.stringify({
     wiki: { provider: 'obsidian', obsidian: { bindings: [{ sourceId, role: shared ? 'shared' : 'project', vaultRef: 'knowledge', root: sourceRoot, access: { read: true, update: 'confirm' } }] } },
   }), 'utf8');
   const allowedRoots = [sourceRoot];
@@ -93,8 +93,8 @@ async function fixture(
       skillCard('peer/bridge-review', `sha256:${'0'.repeat(64)}`),
       'utf8',
     );
-    mkdirSync(path.join(peerProjectDir, '.shared-adapter'), { recursive: true });
-    writeFileSync(path.join(peerProjectDir, '.shared-adapter', 'settings.json'), JSON.stringify({
+    mkdirSync(path.join(peerProjectDir, '.grill-adapter'), { recursive: true });
+    writeFileSync(path.join(peerProjectDir, '.grill-adapter', 'settings.json'), JSON.stringify({
       wiki: { provider: 'obsidian', obsidian: { bindings: [{ sourceId: 'peer', role: 'project', vaultRef: 'knowledge', root: peerSourceRoot, access: { read: true, update: 'confirm' } }] } },
     }), 'utf8');
     allowedRoots.push(peerSourceRoot);
@@ -360,7 +360,7 @@ describe('Obsidian Wiki loopback write bridge', () => {
     expect((await bridgeRequest(bridge, 'validate', request)).status).toBe(403);
 
     writeFileSync(path.join(vaultRoot, sourceRoot, '_meta', 'wiki-source.md'), manifest('project', 'project'), 'utf8');
-    const settingsPath = path.join(projectDir, '.shared-adapter', 'settings.json');
+    const settingsPath = path.join(projectDir, '.grill-adapter', 'settings.json');
     const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
     settings.wiki.obsidian.bindings[0].access.update = 'deny';
     writeFileSync(settingsPath, JSON.stringify(settings), 'utf8');

@@ -190,12 +190,13 @@ def main(argv: list[str]) -> int:
     else:
         print("  graph CI: disabled (--no-graph-ci); root .graph.json must be rebuilt by a maintainer")
 
-    settings = repo_root / ".shared-adapter" / "settings.json"
+    settings = repo_root / ".grill-adapter" / "settings.json"
     if not settings.is_file():
         print(
-            "\nHint: no .shared-adapter/settings.json found. Add one with "
-            "wiki.sharedNeutrality.blockedTerms / blockedPatterns to enable mechanical "
-            "neutrality guards, and wiki.updateAuthorization to govern writes.",
+            "\nHint: no .grill-adapter/settings.json found. Add one with "
+            "wiki.roots.shared.sharedNeutrality.blockedTerms / blockedPatterns to enable "
+            "mechanical neutrality guards, and wiki.roots.<project|shared>.updateAuthorization "
+            "to govern writes.",
         )
     print("\nThese skills are edit-only: they regenerate indexes/graph and validate, but never commit.")
     return 0

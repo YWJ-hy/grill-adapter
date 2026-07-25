@@ -160,9 +160,9 @@ bash tests/host-conventions-smoke.sh "$PWD"
 - **markdown 唯一真相源**：`.graph.json` 是派生物，**不引外部图数据库**。
 - **执行期有界 1 跳 `depends-on` 闭包**：执行期只消费 `.wiki-context.json` sidecar + 有界 1 跳闭包（不传递、去重、缺图静默 no-op），绝不追链。
 - **section 级 `[[page#section]]` typed 边** + 渐进披露。
-- **Obsidian Source 每项目绑定，fail-closed**：消费项目在自己的 `.shared-adapter/settings.json` 的 `wiki.obsidian.bindings` 声明 Source；未声明、换绑或 revision 漂移都 fail-closed。legacy GitHub 仓库只允许作为 `migrate-wiki` 的显式只读输入。
-- **root-specific 写授权门**：`.adapter/settings.json` 管 project wiki，`.shared-adapter/settings.json` 管 shared wiki。二者的 `wiki.updateAuthorization`：`updateExistingPage` 默认 **skip**，`createNewDocument` 默认 **ask**（可选 `skip` / `ask` / `refuse`）。执行层的 `--authorized-update` / `--authorized-create` 只表示 skill 已取得授权，**不能绕过 `refuse`**。source-truth 的 lint / edit 门同构，授权标志同样不绕硬门。
-- **shared wiki 中性化**：`.shared-adapter/settings.json` 的 `wiki.sharedNeutrality.blockedTerms` / `blockedPatterns` 机械拒绝系统特有标识；shared wiki 不得含内部 URL、环境名、本地路径、部署实例或专属业务规则。
+- **Obsidian Source 每项目绑定，fail-closed**：消费项目在自己的 `.grill-adapter/settings.json` 的 `wiki.obsidian.bindings` 声明 Source；未声明、换绑或 revision 漂移都 fail-closed。legacy GitHub 仓库只允许作为 `migrate-wiki` 的显式只读输入。
+- **root-specific 写授权门**：统一由 `.grill-adapter/settings.json` 的 `wiki.roots.project` / `wiki.roots.shared` 分别管理两个 legacy root。`updateExistingPage` 默认 **skip**，`createNewDocument` 默认 **ask**（可选 `skip` / `ask` / `refuse`）。执行层的 `--authorized-update` / `--authorized-create` 只表示 skill 已取得授权，**不能绕过 `refuse`**。
+- **shared wiki 中性化**：`.grill-adapter/settings.json` 的 `wiki.roots.shared.sharedNeutrality.blockedTerms` / `blockedPatterns` 机械拒绝系统特有标识；shared wiki 不得含内部 URL、环境名、本地路径、部署实例或专属业务规则。
 
 ---
 

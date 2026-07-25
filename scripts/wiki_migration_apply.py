@@ -252,7 +252,7 @@ def legacy_record_maps(plan: dict[str, Any]) -> tuple[dict[str, dict[str, Any]],
 
 def note_body(item: dict[str, Any], record: dict[str, Any], project_root: Path, plan: dict[str, Any]) -> str:
     root_name = record["legacyRoot"]
-    root = project_root / ".adapter" / "wiki" if root_name == "project" else legacy_shared_root(project_root, plan)
+    root = project_root / ".grill-adapter" / "wiki" if root_name == "project" else legacy_shared_root(project_root, plan)
     path = root / record["path"]
     if path.is_symlink():
         raise MigrationError(f"legacy migration input became a symbolic link: {path}")
@@ -344,7 +344,7 @@ def search_wiki_id(
 
 
 def manifest_path(project_root: Path, plan_hash: str) -> Path:
-    return project_root / ".adapter" / "context" / f"migration-{plan_hash.removeprefix('sha256:')[:12]}.obsidian-migration.json"
+    return project_root / ".grill-adapter" / "context" / f"migration-{plan_hash.removeprefix('sha256:')[:12]}.obsidian-migration.json"
 
 
 def public_manifest(manifest: dict[str, Any], path: Path) -> dict[str, Any]:
@@ -940,7 +940,7 @@ def verify_command(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def active_sidecar(project_root: Path) -> tuple[Path, int] | None:
-    candidates = [path for path in (project_root / ".adapter" / "context").glob("*.wiki-context.json") if path.is_file()]
+    candidates = [path for path in (project_root / ".grill-adapter" / "context").glob("*.wiki-context.json") if path.is_file()]
     if not candidates:
         return None
     path = max(candidates, key=lambda candidate: candidate.stat().st_mtime_ns)
@@ -960,7 +960,7 @@ def cutover_command(args: argparse.Namespace) -> dict[str, Any]:
     if sidecar and sidecar[1] == 5:
         raise MigrationError(f"active execution sidecar still uses schemaVersion 5: {sidecar[0]}")
 
-    settings_path = project_root / ".shared-adapter" / "settings.json"
+    settings_path = project_root / ".grill-adapter" / "settings.json"
     settings = read_json(settings_path, "project Wiki settings")
     wiki = settings.get("wiki")
     if not isinstance(wiki, dict):
@@ -968,7 +968,7 @@ def cutover_command(args: argparse.Namespace) -> dict[str, Any]:
     plan = validate_manifest_plan(verified)
     selected_roles = {source["role"] for source in plan["targetSources"]}
     roots = []
-    for role, relative in (("project", ".adapter/wiki"), ("shared", ".shared-adapter/wiki")):
+    for role, relative in (("project", ".grill-adapter/wiki"), ("shared", ".shared-adapter/wiki")):
         if role not in selected_roles:
             continue
         if (project_root / relative).is_dir():
@@ -988,7 +988,7 @@ def cutover_command(args: argparse.Namespace) -> dict[str, Any]:
 
     stored = {key: value for key, value in verified.items() if key != "manifestPath"}
     stored["state"] = "cutover"
-    stored["cutover"] = {"settingsPath": ".shared-adapter/settings.json", "legacyRuntime": expected_archive}
+    stored["cutover"] = {"settingsPath": ".grill-adapter/settings.json", "legacyRuntime": expected_archive}
     atomic_write_json(path, stored)
     return public_manifest(stored, path)
 

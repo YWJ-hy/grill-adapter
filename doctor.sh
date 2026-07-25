@@ -26,21 +26,21 @@ import json
 import sys
 from pathlib import Path
 
-settings_path = Path(sys.argv[1]) / ".shared-adapter" / "settings.json"
+settings_path = Path(sys.argv[1]) / ".grill-adapter" / "settings.json"
 if not settings_path.is_file():
     print("legacy")
     raise SystemExit(0)
 try:
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
 except Exception as exc:
-    print(f"invalid .shared-adapter/settings.json: {exc}", file=sys.stderr)
+    print(f"invalid .grill-adapter/settings.json: {exc}", file=sys.stderr)
     raise SystemExit(1)
 if not isinstance(settings, dict):
-    print("invalid .shared-adapter/settings.json: root must be an object", file=sys.stderr)
+    print("invalid .grill-adapter/settings.json: root must be an object", file=sys.stderr)
     raise SystemExit(1)
 wiki = settings.get("wiki") or {}
 if not isinstance(wiki, dict):
-    print("invalid .shared-adapter/settings.json: wiki must be an object", file=sys.stderr)
+    print("invalid .grill-adapter/settings.json: wiki must be an object", file=sys.stderr)
     raise SystemExit(1)
 provider = wiki.get("provider") or "legacy"
 if provider not in {"legacy", "obsidian"}:
@@ -64,7 +64,7 @@ from pathlib import Path
 try:
     root = Path(sys.argv[1]).resolve()
     migrator = Path(sys.argv[2]).resolve()
-    settings = json.loads((root / ".shared-adapter" / "settings.json").read_text(encoding="utf-8"))
+    settings = json.loads((root / ".grill-adapter" / "settings.json").read_text(encoding="utf-8"))
     legacy = ((settings.get("wiki") or {}).get("legacyRuntime") or {})
     if not isinstance(legacy, dict):
         raise ValueError("wiki.legacyRuntime must be an object")
@@ -73,7 +73,7 @@ try:
         if legacy.get("mode") != "read-only-archive":
             raise ValueError("wiki.legacyRuntime.mode must be read-only-archive")
         archive_roots = legacy.get("roots")
-        allowed_roots = {".adapter/wiki", ".shared-adapter/wiki"}
+        allowed_roots = {".grill-adapter/wiki", ".shared-adapter/wiki"}
         if not isinstance(archive_roots, list) or any(item not in allowed_roots for item in archive_roots):
             raise ValueError("wiki.legacyRuntime.roots contains an unsupported legacy archive root")
         manifest_ref = legacy.get("migrationManifest")
@@ -90,7 +90,7 @@ try:
         cutover = manifest.get("cutover")
         if manifest.get("state") != "cutover" or not isinstance(cutover, dict):
             raise ValueError("migrationManifest is not a completed Obsidian migration cutover receipt")
-        if cutover.get("settingsPath") != ".shared-adapter/settings.json" or cutover.get("legacyRuntime") != legacy:
+        if cutover.get("settingsPath") != ".grill-adapter/settings.json" or cutover.get("legacyRuntime") != legacy:
             raise ValueError("migrationManifest cutover receipt does not match wiki.legacyRuntime")
         verification = subprocess.run(
             [sys.executable, str(migrator), "verify", "--project-root", str(root), "--manifest", str(manifest_path)],
@@ -103,7 +103,7 @@ try:
         print("  adoptionState: cutover-complete")
         if archive_roots:
             print(f"  read-only legacy archives: {', '.join(archive_roots)}")
-    elif (root / ".adapter" / "wiki").exists() or (root / ".shared-adapter" / "wiki").exists():
+    elif (root / ".grill-adapter" / "wiki").exists() or (root / ".shared-adapter" / "wiki").exists():
         print("  adoptionState: shadow-validation")
         print("  legacy roots remain unchanged until migration verify and explicit cutover")
     else:

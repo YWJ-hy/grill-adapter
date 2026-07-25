@@ -17,7 +17,7 @@ You may call only the current project's read-only `obsidian_wiki_status`, `obsid
 
 You must not:
 
-- Read `.adapter/wiki`, `.shared-adapter/wiki`, legacy indexes, `.graph.json`, or the legacy `shared_wiki_*` MCP.
+- Read `.grill-adapter/wiki`, `.shared-adapter/wiki`, legacy indexes, `.graph.json`, or the legacy `shared_wiki_*` MCP.
 - Submit a Vault, Source, root, repository, or arbitrary filesystem path to expand access.
 - Modify a Note, create a context sidecar, run Git commands, implement code, or invoke subagents.
 - Copy a Note body into a selection, sidecar, response, spec, or task routing.
@@ -31,7 +31,7 @@ The caller provides:
 task: <confirmed task/spec/plan summary>
 phase: brainstorm | plan | debug | implement | review
 featureSlug: <feature slug, required for plan>
-selectionOutputPath: .adapter/context/<feature-slug>.obsidian-wiki-selection.json # plan only
+selectionOutputPath: .grill-adapter/context/<feature-slug>.obsidian-wiki-selection.json # plan only
 focus: <optional module, concern, or changed files>
 ```
 
@@ -65,7 +65,7 @@ For `phase: plan`, write this object to `selectionOutputPath` and return only:
 {
   "status": "ok",
   "phase": "plan",
-  "selectionPath": ".adapter/context/<feature-slug>.obsidian-wiki-selection.json",
+  "selectionPath": ".grill-adapter/context/<feature-slug>.obsidian-wiki-selection.json",
   "counts": {"notes": 2, "requiredSkills": 1},
   "sources": ["project-source", "shared-source"],
   "caveats": [],

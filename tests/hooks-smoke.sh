@@ -12,8 +12,8 @@ HOOKS="$ROOT/hooks"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 # --- wiki-capture-suggest: fires only when journal candidates are unresolved ---
-T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.adapter/context"
-JOURNAL="$T/.adapter/context/feature-a.wiki-candidates.jsonl"
+T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.grill-adapter/context"
+JOURNAL="$T/.grill-adapter/context/feature-a.wiki-candidates.jsonl"
 python3 "$ROOT/scripts/wiki_candidate_journal.py" append \
   --journal "$JOURNAL" --feature-slug feature-a --event-id evt-1 --candidate-id cand-1 \
   --stage implementation --candidate-type wiki_note --kind decision \
@@ -33,8 +33,8 @@ printf '%s' "$OUT" | grep -q 'invalid candidate journal' || fail "capture-sugges
 rm -rf "$T"
 
 # --- source-truth-lint: block on a changed truth/edit:never path ---
-T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.adapter" "$T/src/generated"
-cat > "$T/.adapter/settings.json" <<'JSON'
+T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.grill-adapter" "$T/src/generated"
+cat > "$T/.grill-adapter/settings.json" <<'JSON'
 { "sourceOfTruth": { "sources": [ {"paths": ["src/generated/**"], "role": "truth", "edit": "never"} ] } }
 JSON
 ( cd "$T" && git add -A && git -c user.email=t@t -c user.name=t commit -qm base )
@@ -61,8 +61,8 @@ OUT="$(printf '{"cwd":"%s","hook_event_name":"UserPromptSubmit"}' "$T" | CLAUDE_
 rm -rf "$T"
 
 # --- wiki-reread: UserPromptSubmit must not reread schema-v6 notes; explicit Bind owns it. ---
-T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.adapter/context"
-printf '{"schemaVersion":6,"kind":"grill-adapter.wiki-context"}\n' > "$T/.adapter/context/feature.wiki-context.json"
+T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.grill-adapter/context"
+printf '{"schemaVersion":6,"kind":"grill-adapter.wiki-context"}\n' > "$T/.grill-adapter/context/feature.wiki-context.json"
 OUT="$(printf '{"cwd":"%s","hook_event_name":"UserPromptSubmit"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-reread.sh")"
 [[ -z "$OUT" ]] || fail "wiki-reread must not materialize schema-v6 notes on UserPromptSubmit"
 OUT="$(printf '{"cwd":"%s","hook_event_name":"SessionStart"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-reread.sh")"

@@ -143,7 +143,7 @@ fs.writeFileSync(statePath, JSON.stringify(state));
     chmodSync(ghCli, 0o755);
   }
 
-  writeJson(path.join(projectDir, '.shared-adapter', 'settings.json'), {
+  writeJson(path.join(projectDir, '.grill-adapter', 'settings.json'), {
     wiki: {
       provider: 'obsidian',
       publishing: { mode: 'git-pr' },
@@ -215,7 +215,7 @@ function addSecondRepository(input: ReturnType<typeof fixture>): { worktreeRoot:
   command('git', ['commit', '-m', 'base'], worktreeRoot);
   command('git', ['push', '-u', 'origin', 'main'], worktreeRoot);
 
-  const settingsPath = path.join(input.projectDir, '.shared-adapter', 'settings.json');
+  const settingsPath = path.join(input.projectDir, '.grill-adapter', 'settings.json');
   const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
   settings.wiki.obsidian.bindings.push({
     sourceId: 'shared', role: 'shared', vaultRef: 'knowledge', repositoryRef: 'wiki-shared',
@@ -283,7 +283,7 @@ describe('Obsidian Wiki GitHub publishing', () => {
     expect(command('git', ['branch', '--show-current'], input.worktreeRoot)).toBe('main');
     expect(readFileSync(path.join(input.worktreeRoot, input.notePath), 'utf8')).toBe(input.original);
     expect(existsSync(path.join(input.worktreeRoot, '.grill-adapter-wiki.publish.lock'))).toBe(false);
-    expect(existsSync(path.join(input.projectDir, '.adapter', 'context', 'publish-contracts.wiki-publish.json'))).toBe(true);
+    expect(existsSync(path.join(input.projectDir, '.grill-adapter', 'context', 'publish-contracts.wiki-publish.json'))).toBe(true);
     const gh = JSON.parse(readFileSync(input.ghState, 'utf8'));
     expect(gh.calls.filter((args: string[]) => args[0] === 'pr' && args[1] === 'create')).toHaveLength(1);
     expect(gh.calls.find((args: string[]) => args[1] === 'create')).toContain('--draft');
@@ -310,7 +310,7 @@ describe('Obsidian Wiki GitHub publishing', () => {
 
     expect(() => publishFromFoldedJournal(input.folded, input.env))
       .toThrow(/changes differ from the applied receipt allowlist/);
-    expect(existsSync(path.join(input.projectDir, '.adapter', 'context', 'publish-contracts.wiki-publish.json'))).toBe(false);
+    expect(existsSync(path.join(input.projectDir, '.grill-adapter', 'context', 'publish-contracts.wiki-publish.json'))).toBe(false);
     expect(command('git', ['branch', '--show-current'], input.worktreeRoot)).toBe('main');
   });
 
@@ -389,7 +389,7 @@ describe('Obsidian Wiki GitHub publishing', () => {
 
   it('rejects a bound Source whose publishing mode is not git-pr', () => {
     const input = fixture();
-    const settingsPath = path.join(input.projectDir, '.shared-adapter', 'settings.json');
+    const settingsPath = path.join(input.projectDir, '.grill-adapter', 'settings.json');
     const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
     settings.wiki.publishing.mode = 'manual';
     writeJson(settingsPath, settings);
@@ -448,7 +448,7 @@ describe('Obsidian Wiki GitHub publishing', () => {
     expect(command('git', ['branch', '--show-current'], input.worktreeRoot)).toBe('main');
     expect(command('git', ['status', '--porcelain'], input.worktreeRoot)).toBe('');
     expect(readFileSync(path.join(input.worktreeRoot, input.notePath), 'utf8')).toBe(input.original);
-    const manifestPath = path.join(input.projectDir, '.adapter', 'context', 'publish-contracts.wiki-publish.json');
+    const manifestPath = path.join(input.projectDir, '.grill-adapter', 'context', 'publish-contracts.wiki-publish.json');
     expect(JSON.parse(readFileSync(manifestPath, 'utf8')).repositories[0].stagedTree)
       .toMatch(/^[a-f0-9]{40,64}$/);
 
@@ -465,7 +465,7 @@ describe('Obsidian Wiki GitHub publishing', () => {
     const branch = `grill-adapter/wiki/${input.folded.featureSlug}-wiki-${runId.slice(0, 8)}`;
     const manifestPath = path.join(
       input.projectDir,
-      '.adapter',
+      '.grill-adapter',
       'context',
       `${input.folded.featureSlug}.wiki-publish.json`,
     );
@@ -497,7 +497,7 @@ describe('Obsidian Wiki GitHub publishing', () => {
 
     command('git', ['restore', '--staged', '--worktree', '--', input.notePath], input.worktreeRoot);
     command('git', ['config', 'user.name', 'Test User'], input.worktreeRoot);
-    const manifestPath = path.join(input.projectDir, '.adapter', 'context', 'publish-contracts.wiki-publish.json');
+    const manifestPath = path.join(input.projectDir, '.grill-adapter', 'context', 'publish-contracts.wiki-publish.json');
     const publishBranch = JSON.parse(readFileSync(manifestPath, 'utf8')).repositories[0].branch;
     command('git', ['switch', publishBranch], input.worktreeRoot);
     writeFileSync(

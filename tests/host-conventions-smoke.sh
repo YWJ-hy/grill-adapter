@@ -143,7 +143,7 @@ need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/scripts/grill_co
 need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/mcp/obsidian-wiki/dist/index.js publish'
 
 # no residual Superpowers host references in the host blocks
-if grep -nE 'Superpowers' "$GRILL" "$PLAIN" | grep -vE '\.adapter/'; then
+if grep -nE 'Superpowers' "$GRILL" "$PLAIN" | grep -vE '\.grill-adapter/'; then
   fail "host blocks still reference Superpowers"
 fi
 

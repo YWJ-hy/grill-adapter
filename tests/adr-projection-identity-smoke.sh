@@ -9,7 +9,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 PROJECT="${TMP}/project"
-CONTEXT_DIR="${PROJECT}/.adapter/context"
+CONTEXT_DIR="${PROJECT}/.grill-adapter/context"
 mkdir -p "${PROJECT}/docs/adr" "${CONTEXT_DIR}"
 
 cat > "${PROJECT}/docs/adr/0001-runtime.md" <<'MD'

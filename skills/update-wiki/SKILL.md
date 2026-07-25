@@ -37,7 +37,7 @@ If the break-loop handoff says no durable knowledge should persist, skip wiki ed
 
 ### Input from execution candidates
 
-When a `.adapter/context/<feature-slug>.wiki-candidates.jsonl` journal exists, invoke `candidate-journal` to validate and fold it before reading candidate input. It is an append-only, liberally-captured workflow journal so durable knowledge surfaced in discovery, specification, tickets, implementation, review, or debugging is not lost to interruption — it is NOT a list of decisions to write. Stop Capture on corrupt, truncated, duplicate, or illegal lifecycle events.
+When a `.grill-adapter/context/<feature-slug>.wiki-candidates.jsonl` journal exists, invoke `candidate-journal` to validate and fold it before reading candidate input. It is an append-only, liberally-captured workflow journal so durable knowledge surfaced in discovery, specification, tickets, implementation, review, or debugging is not lost to interruption — it is NOT a list of decisions to write. Stop Capture on corrupt, truncated, duplicate, or illegal lifecycle events.
 
 Apply this skill's normal responsibilities to every folded `pending` or `deferred` candidate: decide whether it is durable, split into atomic candidates, read indexed wiki progressively, check semantic duplicates, choose target ownership, neutralize for shared wiki, and respect update authorization. Ignore `superseded`, `kept`, and `skipped` candidates. Expect to skip many candidates because the journal over-captures by design. Reconcile each candidate against final evidence in this order: accepted review findings and verified code/tests, then the final spec/ticket text, then the original candidate wording. A stale or contradicted claim is skipped, not softened into a write.
 
@@ -83,7 +83,7 @@ decision durable gate and template.
 
 ### Obsidian Note write path
 
-When `.shared-adapter/settings.json` selects `wiki.provider: obsidian`, never edit the Vault or its repository worktree directly. After semantic targeting and content review:
+When `.grill-adapter/settings.json` selects `wiki.provider: obsidian`, never edit the Vault or its repository worktree directly. After semantic targeting and content review:
 
 1. Call `obsidian_wiki_propose_note_change` with the bound `sourceId`, Vault-relative Note path, complete proposed atomic Note content, operation, and expected content hash (`null` for create).
 2. Show the returned structured diff to the user. A proposal does not write. If Capture pauses after a valid proposal, record `deferred` with a `proposed` write receipt using the exact proposal identity and hashes. On resume, Note drift may require a fresh proposal and another deferred receipt; only the latest validated proposal can transition to applied.
@@ -113,12 +113,12 @@ After every candidate outcome is recorded, fold the journal again. If it contain
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py fold \
-  --journal .adapter/context/<feature-slug>.wiki-candidates.jsonl \
+  --journal .grill-adapter/context/<feature-slug>.wiki-candidates.jsonl \
   --feature-slug <feature-slug> \
 | node ${CLAUDE_PLUGIN_ROOT}/mcp/obsidian-wiki/dist/index.js publish
 ```
 
-3. Report each `repositoryRef`, branch, commit, and draft PR URL. The publisher accepts only current-binding receipts, requires the base revision to match its configured remote, commits exactly the allowlisted Note paths, and restores every worktree to its base branch. It records `.adapter/context/<feature-slug>.wiki-publish.json`; keep this local and never commit it.
+3. Report each `repositoryRef`, branch, commit, and draft PR URL. The publisher accepts only current-binding receipts, requires the base revision to match its configured remote, commits exactly the allowlisted Note paths, and restores every worktree to its base branch. It records `.grill-adapter/context/<feature-slug>.wiki-publish.json`; keep this local and never commit it.
 4. On interruption or partial multi-repository failure, fix the reported external problem and run the exact same fold-to-publish command. Before a commit exists, the run manifest retains only the verified Git staged-tree object ID while the publisher restores a clean base; later it resumes from the staged tree, commit, remote branch, or GitHub PR without repeating Note apply, commits, pushes, or PRs. Do not delete the manifest or manually recreate its branches.
 5. Never merge, approve, force-push, reset, stash, clean, or delete branches here. An open PR is not published runtime knowledge. Formal research can see the change only after human merge, configured base-worktree synchronization, and normal binding/Note revalidation.
 
@@ -253,4 +253,4 @@ Do not:
 - The rest of each root's directory structure is project-defined.
 - Detailed wiki pages should stay separate from entry indexes so the system can load them progressively.
 - By default, `draft/`, `archive/`, and `examples/` directories are ignored by index generation.
-- Add more ignored directory names in `.adapter/wiki/.adapter-ignore` or `.shared-adapter/wiki/.adapter-ignore` using one directory name per line.
+- Add more ignored directory names in `.grill-adapter/wiki/.adapter-ignore` or `.shared-adapter/wiki/.adapter-ignore` using one directory name per line.

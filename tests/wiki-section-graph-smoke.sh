@@ -14,7 +14,7 @@ SCRIPTS="${TARGET_INPUT}/scripts"
 TMP_PROJECT="$(mktemp -d)"
 trap 'rm -rf "${TMP_PROJECT}"' EXIT
 
-W="${TMP_PROJECT}/.adapter/wiki"
+W="${TMP_PROJECT}/.grill-adapter/wiki"
 mkdir -p "${W}/backend"
 
 cat > "${W}/index.md" <<'MD'

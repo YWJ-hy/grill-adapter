@@ -16,7 +16,7 @@ source "${SCRIPT_DIR}/_windows-compat.bash"
 TMP="$(portable_tmpdir)"
 trap 'rm -rf "$TMP"' EXIT
 PROJECT="$TMP/project"
-CTX_DIR="$PROJECT/.adapter/context"
+CTX_DIR="$PROJECT/.grill-adapter/context"
 mkdir -p "$CTX_DIR"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }

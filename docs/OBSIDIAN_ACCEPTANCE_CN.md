@@ -75,7 +75,7 @@ grill-with-docs -> to-spec -> to-tickets
   `readiness disabled is valid for task manual`；receipt 为
   `ticketSource: manual`、`contextDisposition: none`，task fingerprint 为
   `f15ec79c0c3f8d6d56156f312e9a193f2945abcb6c1c1ea14fcc3f5409e9fd30`。
-- 边界：只生成 `.adapter/context/` 下的 brief/roster/receipt，没有 context sidecar、
+- 边界：只生成 `.grill-adapter/context/` 下的 brief/roster/receipt，没有 context sidecar、
   Wiki research/materialize、产品文件修改或实现动作；验收后隔离临时目录已删除。
 
 结论：**PASS**。安装后的 Codex 能在 direct manual 入口建立稳定单任务身份，并在

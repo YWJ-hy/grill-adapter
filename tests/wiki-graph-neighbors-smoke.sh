@@ -15,7 +15,7 @@ SCRIPTS="${TARGET_INPUT}/scripts"
 TMP_PROJECT="$(mktemp -d)"
 trap 'rm -rf "${TMP_PROJECT}"' EXIT
 
-W="${TMP_PROJECT}/.adapter/wiki"
+W="${TMP_PROJECT}/.grill-adapter/wiki"
 mkdir -p "${W}"
 
 cat > "${W}/index.md" <<'MD'
@@ -73,18 +73,18 @@ PY
 
 # --- Display-prefixed / .md-less node ids resolve to the same slice (read-path parity) ---
 # The wiki-researcher and materializer often hold a page as a display-root-prefixed path
-# (.adapter/wiki/...) or the .md-less form shown in [[page#section]] link text. These
+# (.grill-adapter/wiki/...) or the .md-less form shown in [[page#section]] link text. These
 # must resolve like the canonical id instead of silently returning empty edges.
 variant_json="$(python3 "${SCRIPTS}/wiki_graph_neighbors.py" \
-  --node ".adapter/wiki/a.md#s1" \
+  --node ".grill-adapter/wiki/a.md#s1" \
   --node "a#s1" \
   --wiki-root project --project-root "${TMP_PROJECT}")"
 python3 - <<'PY' "${variant_json}"
 import json, sys
 n = json.loads(sys.argv[1])["neighbors"]
 # Keyed by the caller's original node strings, not the normalized form.
-assert set(n) == {".adapter/wiki/a.md#s1", "a#s1"}, f"variant keys not preserved: {set(n)}"
-for node in (".adapter/wiki/a.md#s1", "a#s1"):
+assert set(n) == {".grill-adapter/wiki/a.md#s1", "a#s1"}, f"variant keys not preserved: {set(n)}"
+for node in (".grill-adapter/wiki/a.md#s1", "a#s1"):
     out = {(e["to"], e["type"], e["indexed"]) for e in n[node]["out"]}
     assert ("b.md#s2", "depends-on", True) in out, f"{node}: depends-on edge not resolved: {out}"
     assert ("c.md#s3", "see-also", False) in out, f"{node}: see-also edge not resolved: {out}"

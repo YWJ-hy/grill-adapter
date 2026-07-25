@@ -6,7 +6,7 @@ TEMPLATE_ROOT="$SCRIPT_DIR/wiki-template"
 SHARED_TEMPLATE_ROOT="$SCRIPT_DIR/shared-adapter-template"
 TEMPLATE_NAME=""
 WIKI_ROOT_NAME="project"
-WIKI_ROOT_REL=".adapter/wiki"
+WIKI_ROOT_REL=".grill-adapter/wiki"
 
 usage() {
   printf 'Usage: %s <project-root> [--template name] [--wiki-root project|shared]\n' "$0" >&2
@@ -40,7 +40,7 @@ done
 
 case "$WIKI_ROOT_NAME" in
   project)
-    WIKI_ROOT_REL=".adapter/wiki"
+    WIKI_ROOT_REL=".grill-adapter/wiki"
     ;;
   shared)
     WIKI_ROOT_REL=".shared-adapter/wiki"
@@ -64,7 +64,7 @@ from wiki_common import enforce_legacy_wiki_writable, wiki_root_by_name
 
 try:
     project = Path(project_root).resolve()
-    settings_path = project / ".shared-adapter" / "settings.json"
+    settings_path = project / ".grill-adapter" / "settings.json"
     if settings_path.is_file():
         settings = json.loads(settings_path.read_text(encoding="utf-8"))
         if ((settings.get("wiki") or {}).get("provider")) == "obsidian":
@@ -187,7 +187,46 @@ copy_shared_support_template() {
     return 0
   fi
   local support_dir="$SHARED_TEMPLATE_ROOT/$SELECTED_TEMPLATE/.shared-adapter"
-  copy_files_to_root "$support_dir" "$REPO_ROOT/.shared-adapter" ".shared-adapter"
+  local support_settings="$SHARED_TEMPLATE_ROOT/$SELECTED_TEMPLATE/.grill-adapter/settings.json"
+  if [[ -f "$support_settings" ]]; then
+    python3 - "$REPO_ROOT/.grill-adapter/settings.json" "$support_settings" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+target_path, source_path = (Path(value) for value in sys.argv[1:])
+
+def load(path: Path) -> dict:
+    if not path.is_file():
+        return {}
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise SystemExit(f"settings must be a JSON object: {path}")
+    return value
+
+def merge(left: object, right: object, path: str = "") -> object:
+    if isinstance(left, dict) and isinstance(right, dict):
+        result = dict(left)
+        for key, value in right.items():
+            child_path = f"{path}.{key}".lstrip(".")
+            result[key] = merge(result[key], value, child_path) if key in result else value
+        return result
+    if left == right:
+        return left
+    if left is None:
+        return right
+    raise SystemExit(f"refusing to overwrite existing settings at {path}")
+
+target = load(target_path)
+source = load(source_path)
+merged = merge(target, source)
+target_path.parent.mkdir(parents=True, exist_ok=True)
+target_path.write_text(json.dumps(merged, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+PY
+  fi
+  if [[ -d "$support_dir/scripts" ]]; then
+    copy_files_to_root "$support_dir/scripts" "$REPO_ROOT/.shared-adapter/scripts" ".shared-adapter/scripts"
+  fi
   if [[ -d "$REPO_ROOT/.shared-adapter/scripts" ]]; then
     chmod +x "$REPO_ROOT/.shared-adapter/scripts"/*.sh "$REPO_ROOT/.shared-adapter/scripts"/*.py
   fi

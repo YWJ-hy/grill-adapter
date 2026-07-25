@@ -183,7 +183,7 @@ per-ticket（按工单）精度需要知道「当前 ticket 是哪个」。这�
 
 **决策**
 shared wiki 采用**每项目绑定**：
-- 连接配置写进**项目自己的** `.shared-adapter/settings.json` 的 `wiki.sharedMcp`。
+- 连接配置写进**项目自己的** `.grill-adapter/settings.json` 的 `wiki.sharedMcp`。
 - MCP 以**一份通用、不含 repo 的注册**存在，启动时读 Claude Code 注入的 `CLAUDE_PROJECT_DIR`，从该项目 settings **自我配置**。
 - 未声明连接的项目 **fail-closed**（即没有 MCP shared wiki）。
 - **换绑 / revision 漂移一律 fail-closed**。
@@ -213,12 +213,12 @@ shared wiki 采用**每项目绑定**：
 即 grill-adapter 的 Carry/Bind 触点在 grill 下**跑不起来**：host 约定块让 agent 跑 `--scaffold → --finalize`，而 `--finalize` 在 grill 项目里必然报 `FingerprintError: No stable task headings found`。`docs/superpowers/plans/` 这串路径只是露出来的尖角。
 
 **决策**
-- **命名硬切换、不做回退**：`.superpowers/` → `.adapter/`，`.shared-superpowers/` → `.shared-adapter/`。不读旧名、不提供迁移脚本；已有项目手工改。指代 Superpowers 产品本身的散文、`superpower-adapter`（旧仓库）、`__SUPERPOWER_ADAPTER_*__`（release-check 的违禁占位符护栏）一律保留。
-- **裸 `superpowers/` 目录 marker 直接删除**，不映射成裸 `adapter/`——后者在真实项目里是极常见的源码目录名（适配器模式），会让 `repo_root()` 误判项目根。只保留 `.adapter` / `.shared-adapter` 两个点目录 marker。
-- **锚点从 plan 文件换成 feature**：sidecar 全部收进 `.adapter/context/<feature-slug>.{wiki-selection,wiki-context,ticket-roster,wiki-candidates}`。取消「往 plan 加 `## Referenced Project Wiki` 小节」的要求——没有 plan 文档可加，**sidecar 自身即记录**。
+- **项目配置单入口**：旧 `.adapter/` 运行态目录统一改名为 `.grill-adapter/`，并将原本分散在 `.shared-adapter/settings.json` 的项目 Wiki binding、provider、shared neutrality 与 migration 状态合并进 `.grill-adapter/settings.json`。`.shared-adapter/wiki/` 仅作为 legacy shared Wiki 数据根保留；不再在项目中生成第二份 settings。
+- **裸 `superpowers/` 目录 marker 直接删除**，不映射成裸 `adapter/`——后者在真实项目里是极常见的源码目录名（适配器模式），会让 `repo_root()` 误判项目根。只保留 `.grill-adapter` / `.shared-adapter` 两个点目录 marker。
+- **锚点从 plan 文件换成 feature**：sidecar 全部收进 `.grill-adapter/context/<feature-slug>.{wiki-selection,wiki-context,ticket-roster,wiki-candidates}`。取消「往 plan 加 `## Referenced Project Wiki` 小节」的要求——没有 plan 文档可加，**sidecar 自身即记录**。
 - **task 身份 + 指纹来自 host 无关的 ticket roster**（契约 `contracts/ticket-roster-v1.example.jsonc`）：引擎收 N 个 `(taskId, taskTitle, text)`，不解析文档、不读 tracker、不碰网络。roster 怎么填由各 host 约定块规定（grill local 读 `.scratch/`、grill GitHub 跑 `gh issue view`、plain 由用户指定）。`ticketSource` 仅作审计记录，引擎不据此分支。
 - **契约升 v5**（`wiki-context-v4` → `v5`）：`planPath` → `featureSlug` + `ticketSource`；`taskRouting.planTaskFormat` → `ticketRosterFormat`。硬切换，不认 v4。
-- **`.adapter/context/` 一律不提交**：sidecar、roster、candidates 都是本地工作态，执行期在同一工作树就地读。
+- **`.grill-adapter/context/` 一律不提交**：sidecar、roster、candidates 都是本地工作态，执行期在同一工作树就地读。
 
 **理由**
 - **命名按工具命名空间而非内容**：这两个点目录装的是 wiki/ + settings + scripts + marker，是工具的命名空间，不是纯 wiki 目录；叫 `.wiki/` 会得到 `.wiki/wiki/`。
@@ -228,7 +228,7 @@ shared wiki 采用**每项目绑定**：
 - **不提交**与既有设计自洽：host 块本来就有「sidecar 被 gitignore 时留在盘上、execution 就地读」的兜底，现在这条从兜底变成常态。
 
 **代价（已知并接受）**
-- 与 `superpowers-adapter` **彻底分叉**：它仍是 `### Task N:` plan 模型。`.shared-adapter/settings.json` 这层（wiki 绑定）仍可共用，Carry/Bind 数据流不兼容。
+- 与 `superpowers-adapter` **彻底分叉**：它仍是 `### Task N:` plan 模型。`.grill-adapter/settings.json` 这层（wiki 绑定）仍可共用，Carry/Bind 数据流不兼容。
 
 ---
 
@@ -294,7 +294,7 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 旧 `.wiki-candidates.jsonl` 是 implementation 阶段随手写的裸 candidate rows，`update-wiki` 消费后删除。它不能覆盖 discovery/spec/tickets/review/debugging 的候选，不能表达 supersede/outcome，也无法区分「已处理」与「文件还在」；坏 JSON、重复 candidate 或中断写入只能拖到 Capture 时由 agent 偶然发现。
 
 **决策**
-- 保留 `.adapter/context/<feature-slug>.wiki-candidates.jsonl` 路径，但内容升级为 schema-v1 `candidate` / `supersede` / `outcome` events。
+- 保留 `.grill-adapter/context/<feature-slug>.wiki-candidates.jsonl` 路径，但内容升级为 schema-v1 `candidate` / `supersede` / `outcome` events。
 - 新增 `/grill-adapter:candidate-journal` 稳定入口；host convention 只点名 skill，不携带插件路径。所有知识生产阶段都追加到同一 feature journal，中间阶段不写 Obsidian。
 - `wiki_candidate_journal.py` 在文件锁内先完整 replay，再单次 append + fsync。损坏、尾部缺换行、重复 event/candidate ID、跨 feature、未知引用与非法终态转换一律拒绝且不修改 journal。唯一幂等入口是 grill bridge：稳定 candidate ID 与完整 payload 都相同才跳过，使 Capture 中断后可重跑；同 ID 不同内容仍拒绝。
 - fold 状态为 `pending` / `superseded` / `kept` / `skipped` / `deferred`。kept/skipped/superseded 为终态；deferred 可在恢复后再次 defer 以刷新 recoverable proposal，也可转 kept/skipped。
@@ -312,7 +312,7 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 
 - `update-wiki` 在 Capture outcomes 完成后，必须重新 fold journal，只把 `kept + writeReceipt.state: applied` 的 Obsidian identities 交给 bundle 的 `publish` JSON CLI。
 - publisher 按 `repositoryRef` 分组，验证 current binding/base/remote/Source/path/wiki ID/before-after hash，要求 worktree changed paths 与 receipt allowlist 完全相等，并在 repository lock 内重验内容与 scope；一仓一 commit + draft PR，所有 PR 用 run ID 与 peer URLs 协调。
-- `.adapter/context/<feature-slug>.wiki-publish.json` 是本地恢复状态。commit 前先记录已验证 Git `stagedTree` object ID，普通 commit 失败也恢复 clean base，重跑时无需重复 Note apply；local commit、remote branch、GitHub PR 中断则通过现有 refs/PR 查询恢复。固定 staged tree/commit 后 base worktree 必须干净，防止新 Capture 改动混入旧 run。
+- `.grill-adapter/context/<feature-slug>.wiki-publish.json` 是本地恢复状态。commit 前先记录已验证 Git `stagedTree` object ID，普通 commit 失败也恢复 clean base，重跑时无需重复 Note apply；local commit、remote branch、GitHub PR 中断则通过现有 refs/PR 查询恢复。固定 staged tree/commit 后 base worktree 必须干净，防止新 Capture 改动混入旧 run。
 - 发布期间 repository lock 让 formal read fail-closed；成功或普通外部失败都恢复 base 后移除 lock，base 恢复本身失败则保留 lock。publisher 禁止自动 merge/approve/force-push/reset/stash/clean/delete branch。开放 PR 永不成为 runtime truth，必须 merge + base sync + revalidation 后才可见。
 
 ### 理由

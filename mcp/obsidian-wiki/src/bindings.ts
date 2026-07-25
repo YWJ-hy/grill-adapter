@@ -90,6 +90,30 @@ export type BindingResolution = {
 
 export type McpRequestMeta = Record<string, unknown> | undefined;
 
+const PROJECT_SETTINGS_PATH = ['.grill-adapter', 'settings.json'] as const;
+
+function projectSettingsPath(projectDir: string): string {
+  return path.join(projectDir, ...PROJECT_SETTINGS_PATH);
+}
+
+function hasActiveObsidianProvider(projectDir: string): boolean {
+  const settingsPath = projectSettingsPath(projectDir);
+  if (!existsSync(settingsPath)) return false;
+  try {
+    const settings = parseJsonc(readFileSync(settingsPath, 'utf8'), settingsPath);
+    return Boolean(
+      settings
+      && typeof settings === 'object'
+      && !Array.isArray(settings)
+      && (settings as Record<string, unknown>).wiki
+      && typeof (settings as Record<string, unknown>).wiki === 'object'
+      && ((settings as Record<string, unknown>).wiki as Record<string, unknown>).provider === 'obsidian',
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function environmentForMcpRequest(
   env: NodeJS.ProcessEnv,
   requestMeta: McpRequestMeta,
@@ -105,19 +129,19 @@ export function environmentForMcpRequest(
     ? Object.keys(workspaces).filter((workspace) => path.isAbsolute(workspace))
     : [];
   const configuredProjectDirs = [...new Set(workspaceDirs.map((dir) => path.resolve(dir)))]
-    .filter((dir) => existsSync(path.join(dir, '.shared-adapter', 'settings.json')));
+    .filter(hasActiveObsidianProvider);
   if (!isCodexRequest) {
     const projectDir = path.resolve(workingDirectory);
-    if (existsSync(path.join(projectDir, '.shared-adapter', 'settings.json'))) {
+    if (hasActiveObsidianProvider(projectDir)) {
       return { ...env, CLAUDE_PROJECT_DIR: projectDir };
     }
   }
   if (configuredProjectDirs.length === 0) {
-    throw new Error('No Codex workspace metadata contains .shared-adapter/settings.json for Obsidian Wiki binding resolution');
+    throw new Error('No Codex workspace metadata contains an active wiki.provider: obsidian in .grill-adapter/settings.json');
   }
   if (configuredProjectDirs.length > 1) {
     throw new Error(
-      `Multiple Codex workspaces contain .shared-adapter/settings.json; Obsidian Wiki binding is ambiguous: ${configuredProjectDirs.join(', ')}`,
+      `Multiple Codex workspaces contain wiki.provider: obsidian in .grill-adapter/settings.json; Obsidian Wiki binding is ambiguous: ${configuredProjectDirs.join(', ')}`,
     );
   }
   return { ...env, CLAUDE_PROJECT_DIR: configuredProjectDirs[0] };
@@ -384,7 +408,7 @@ export function resolveBindings(
   } = {},
 ): BindingResolution {
   const projectDir = path.resolve(env.CLAUDE_PROJECT_DIR ?? workingDirectory);
-  const settingsPath = path.join(projectDir, '.shared-adapter', 'settings.json');
+  const settingsPath = projectSettingsPath(projectDir);
   const settings = ProjectSettingsSchema.parse(readJsonFile(settingsPath, 'Project settings'));
   const { registry, registryPath } = loadRegistry(env);
   const errors: string[] = [];

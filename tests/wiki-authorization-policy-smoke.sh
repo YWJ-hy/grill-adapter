@@ -8,15 +8,15 @@ TARGET_DIR="$(cd "${TARGET_INPUT}" && pwd)"
 TMP_PROJECT="$(mktemp -d)"
 trap 'rm -rf "${TMP_PROJECT}"' EXIT
 
-mkdir -p "${TMP_PROJECT}/.adapter/wiki" "${TMP_PROJECT}/.shared-adapter/wiki"
-cat > "${TMP_PROJECT}/.adapter/wiki/index.md" <<'MD'
+mkdir -p "${TMP_PROJECT}/.grill-adapter/wiki" "${TMP_PROJECT}/.shared-adapter/wiki"
+cat > "${TMP_PROJECT}/.grill-adapter/wiki/index.md" <<'MD'
 # Project Wiki
 
 <!-- grill-adapter:auto:start -->
 - `existing.md`
 <!-- grill-adapter:auto:end -->
 MD
-cat > "${TMP_PROJECT}/.adapter/wiki/existing.md" <<'MD'
+cat > "${TMP_PROJECT}/.grill-adapter/wiki/existing.md" <<'MD'
 # Existing
 
 Existing detail.
@@ -36,7 +36,7 @@ if (cd "${TMP_PROJECT}" && python3 "${TARGET_DIR}/scripts/wiki_apply_update.py" 
 fi
 (cd "${TMP_PROJECT}" && python3 "${TARGET_DIR}/scripts/wiki_apply_update.py" --authorized-create new-default.md NewDefault "Create with approval." "Authorized creates succeed")
 
-cat > "${TMP_PROJECT}/.adapter/settings.json" <<'JSON'
+cat > "${TMP_PROJECT}/.grill-adapter/settings.json" <<'JSON'
 {
   "wiki": {
     "updateAuthorization": {
@@ -52,7 +52,7 @@ if (cd "${TMP_PROJECT}" && python3 "${TARGET_DIR}/scripts/wiki_apply_update.py" 
 fi
 (cd "${TMP_PROJECT}" && python3 "${TARGET_DIR}/scripts/wiki_apply_update.py" --authorized-update existing.md ExistingAsk "Update with approval." "Authorized updates succeed")
 
-cat > "${TMP_PROJECT}/.adapter/settings.json" <<'JSON'
+cat > "${TMP_PROJECT}/.grill-adapter/settings.json" <<'JSON'
 {
   "wiki": {
     "updateAuthorization": {
@@ -66,11 +66,20 @@ if (cd "${TMP_PROJECT}" && python3 "${TARGET_DIR}/scripts/wiki_apply_update.py" 
   exit 1
 fi
 
-cat > "${TMP_PROJECT}/.shared-adapter/settings.json" <<'JSON'
+cat > "${TMP_PROJECT}/.grill-adapter/settings.json" <<'JSON'
 {
   "wiki": {
-    "updateAuthorization": {
-      "createNewDocument": "skip"
+    "roots": {
+      "project": {
+        "updateAuthorization": {
+          "createNewDocument": "refuse"
+        }
+      },
+      "shared": {
+        "updateAuthorization": {
+          "createNewDocument": "skip"
+        }
+      }
     }
   }
 }
@@ -80,14 +89,14 @@ if (cd "${TMP_PROJECT}" && python3 "${TARGET_DIR}/scripts/wiki_apply_update.py" 
   exit 1
 fi
 (cd "${TMP_PROJECT}" && python3 "${TARGET_DIR}/scripts/wiki_apply_update.py" --wiki-root shared shared-allowed.md SharedAllowed "Shared allowed." "Shared create skip policy succeeds")
-if [[ -e "${TMP_PROJECT}/.adapter/wiki/shared-allowed.md" ]]; then
+if [[ -e "${TMP_PROJECT}/.grill-adapter/wiki/shared-allowed.md" ]]; then
   printf 'Expected shared policy write not to touch project wiki\n' >&2
   exit 1
 fi
 
 mkdir -p "${TMP_PROJECT}/source"
 printf '# Imported\n\nImported detail.\n' > "${TMP_PROJECT}/source/imported.md"
-cat > "${TMP_PROJECT}/.adapter/settings.json" <<'JSON'
+cat > "${TMP_PROJECT}/.grill-adapter/settings.json" <<'JSON'
 {
   "wiki": {
     "updateAuthorization": {
@@ -107,7 +116,7 @@ if (cd "${TMP_PROJECT}" && python3 "${TARGET_DIR}/scripts/wiki_import.py" source
   exit 1
 fi
 
-cat > "${TMP_PROJECT}/.adapter/settings.json" <<'JSON'
+cat > "${TMP_PROJECT}/.grill-adapter/settings.json" <<'JSON'
 {
   "wiki": {
     "updateAuthorization": {
@@ -117,12 +126,12 @@ cat > "${TMP_PROJECT}/.adapter/settings.json" <<'JSON'
   }
 }
 JSON
-cat > "${TMP_PROJECT}/.adapter/wiki/summary-target.md" <<'MD'
+cat > "${TMP_PROJECT}/.grill-adapter/wiki/summary-target.md" <<'MD'
 # Summary Target
 
 New summary text.
 MD
-cat > "${TMP_PROJECT}/.adapter/wiki/index.md" <<'MD'
+cat > "${TMP_PROJECT}/.grill-adapter/wiki/index.md" <<'MD'
 # Project Wiki
 
 <!-- grill-adapter:auto:start -->
@@ -134,7 +143,7 @@ if (cd "${TMP_PROJECT}" && python3 "${TARGET_DIR}/scripts/update-wiki.py" --wiki
   exit 1
 fi
 (cd "${TMP_PROJECT}" && python3 "${TARGET_DIR}/scripts/update-wiki.py" --wiki-root project --authorized-update)
-if ! grep -Fq 'New summary text.' "${TMP_PROJECT}/.adapter/wiki/index.md"; then
+if ! grep -Fq 'New summary text.' "${TMP_PROJECT}/.grill-adapter/wiki/index.md"; then
   printf 'Expected authorized index refresh to update summary\n' >&2
   exit 1
 fi
@@ -142,7 +151,7 @@ fi
 # Regression: a section-ized page whose title is immediately followed by a wiki-section
 # marker (no prose paragraph) must NOT degrade its auto-block summary to the first
 # '## subheading'. The extractor should skip the heading and reach the real prose.
-cat > "${TMP_PROJECT}/.adapter/wiki/section-page.md" <<'MD'
+cat > "${TMP_PROJECT}/.grill-adapter/wiki/section-page.md" <<'MD'
 # Section Page
 
 <!-- wiki-section:demo -->
@@ -150,7 +159,7 @@ cat > "${TMP_PROJECT}/.adapter/wiki/section-page.md" <<'MD'
 真实说明段落。
 <!-- /wiki-section:demo -->
 MD
-cat > "${TMP_PROJECT}/.adapter/wiki/index.md" <<'MD'
+cat > "${TMP_PROJECT}/.grill-adapter/wiki/index.md" <<'MD'
 # Project Wiki
 
 <!-- grill-adapter:auto:start -->
@@ -158,24 +167,24 @@ cat > "${TMP_PROJECT}/.adapter/wiki/index.md" <<'MD'
 <!-- grill-adapter:auto:end -->
 MD
 (cd "${TMP_PROJECT}" && python3 "${TARGET_DIR}/scripts/update-wiki.py" --wiki-root project --authorized-update)
-if grep -Fq '## 子标题' "${TMP_PROJECT}/.adapter/wiki/index.md"; then
+if grep -Fq '## 子标题' "${TMP_PROJECT}/.grill-adapter/wiki/index.md"; then
   printf 'Regression: section-ized page summary degraded to a raw ## subheading\n' >&2
-  cat "${TMP_PROJECT}/.adapter/wiki/index.md" >&2
+  cat "${TMP_PROJECT}/.grill-adapter/wiki/index.md" >&2
   exit 1
 fi
-if ! grep -Fq '真实说明段落。' "${TMP_PROJECT}/.adapter/wiki/index.md"; then
+if ! grep -Fq '真实说明段落。' "${TMP_PROJECT}/.grill-adapter/wiki/index.md"; then
   printf 'Expected section-ized page summary to reach the real prose paragraph\n' >&2
-  cat "${TMP_PROJECT}/.adapter/wiki/index.md" >&2
+  cat "${TMP_PROJECT}/.grill-adapter/wiki/index.md" >&2
   exit 1
 fi
 
-cat > "${TMP_PROJECT}/.shared-adapter/settings.json" <<'JSON'
+cat > "${TMP_PROJECT}/.grill-adapter/settings.json" <<'JSON'
 {
   "wiki": {
     "legacyRuntime": {
       "mode": "read-only-archive",
-      "roots": [".adapter/wiki", ".shared-adapter/wiki"],
-      "migrationManifest": ".adapter/context/example.obsidian-migration.json"
+      "roots": [".grill-adapter/wiki", ".shared-adapter/wiki"],
+      "migrationManifest": ".grill-adapter/context/example.obsidian-migration.json"
     }
   }
 }
@@ -192,7 +201,7 @@ if python3 "${TARGET_DIR}/scripts/wiki_migrate_helper.py" --generate-indexes "${
   printf 'Expected migrate-wiki write modes to reject an archived legacy root\n' >&2
   exit 1
 fi
-if python3 "${TARGET_DIR}/scripts/wiki_migrate_helper.py" --generate-indexes "${TMP_PROJECT}" --wiki-dir "${TMP_PROJECT}/.adapter/wiki"; then
+if python3 "${TARGET_DIR}/scripts/wiki_migrate_helper.py" --generate-indexes "${TMP_PROJECT}" --wiki-dir "${TMP_PROJECT}/.grill-adapter/wiki"; then
   printf 'Expected migrate-wiki --wiki-dir to reject an archived legacy root\n' >&2
   exit 1
 fi
@@ -200,20 +209,20 @@ if python3 "${TARGET_DIR}/scripts/wiki_generate_section_index.py" --all --wiki-r
   printf 'Expected section index generation to reject an archived legacy root\n' >&2
   exit 1
 fi
-if python3 "${TARGET_DIR}/scripts/wiki_generate_section_index.py" --all --wiki-dir "${TMP_PROJECT}/.adapter/wiki"; then
+if python3 "${TARGET_DIR}/scripts/wiki_generate_section_index.py" --all --wiki-dir "${TMP_PROJECT}/.grill-adapter/wiki"; then
   printf 'Expected section index --wiki-dir to reject an archived legacy root\n' >&2
   exit 1
 fi
-mkdir -p "${TMP_PROJECT}/.adapter/wiki/archived-subdir"
-if python3 "${TARGET_DIR}/scripts/wiki_migrate_helper.py" --generate-indexes "${TMP_PROJECT}" --wiki-dir "${TMP_PROJECT}/.adapter/wiki/archived-subdir"; then
+mkdir -p "${TMP_PROJECT}/.grill-adapter/wiki/archived-subdir"
+if python3 "${TARGET_DIR}/scripts/wiki_migrate_helper.py" --generate-indexes "${TMP_PROJECT}" --wiki-dir "${TMP_PROJECT}/.grill-adapter/wiki/archived-subdir"; then
   printf 'Expected migrate-wiki descendant --wiki-dir to reject an archived legacy root\n' >&2
   exit 1
 fi
-if python3 "${TARGET_DIR}/scripts/wiki_generate_section_index.py" --all --wiki-dir "${TMP_PROJECT}/.adapter/wiki/archived-subdir"; then
+if python3 "${TARGET_DIR}/scripts/wiki_generate_section_index.py" --all --wiki-dir "${TMP_PROJECT}/.grill-adapter/wiki/archived-subdir"; then
   printf 'Expected section index descendant --wiki-dir to reject an archived legacy root\n' >&2
   exit 1
 fi
-NESTED_WIKI="${TMP_PROJECT}/.adapter/wiki/archived-subdir/.adapter/wiki"
+NESTED_WIKI="${TMP_PROJECT}/.grill-adapter/wiki/archived-subdir/.grill-adapter/wiki"
 mkdir -p "$NESTED_WIKI"
 if python3 "${TARGET_DIR}/scripts/wiki_migrate_helper.py" --generate-indexes "${TMP_PROJECT}" --wiki-dir "$NESTED_WIKI"; then
   printf 'Expected migrate-wiki nested-root --wiki-dir to reject an outer archived root\n' >&2

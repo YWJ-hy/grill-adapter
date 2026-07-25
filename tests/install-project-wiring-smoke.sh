@@ -27,11 +27,11 @@ printf '# Demo Codex project\n\nPre-existing Codex content.\n' > "$PROJ/AGENTS.m
 # Unknown legacy settings and user-owned historical artifacts survive every lifecycle command.
 REMOVED_KEY='lan''hu'
 REMOVED_DIR="$PROJ/.$REMOVED_KEY"
-mkdir -p "$REMOVED_DIR" "$PROJ/.adapter"
+mkdir -p "$REMOVED_DIR" "$PROJ/.grill-adapter"
 printf 'historical user artifact\n' > "$REMOVED_DIR/index.md"
-printf '{"%s":{"role":"frontend"}}\n' "$REMOVED_KEY" > "$PROJ/.adapter/settings.json"
+printf '{"%s":{"role":"frontend"}}\n' "$REMOVED_KEY" > "$PROJ/.grill-adapter/settings.json"
 ARTIFACT_HASH="$(sha256_file "$REMOVED_DIR/index.md")"
-SETTINGS_HASH="$(sha256_file "$PROJ/.adapter/settings.json")"
+SETTINGS_HASH="$(sha256_file "$PROJ/.grill-adapter/settings.json")"
 
 python3 "$INSTALL" install "$PROJ" --host grill >/dev/null 2>&1 || fail "install failed"
 
@@ -99,10 +99,10 @@ grep -q 'Pre-existing Codex content.' "$PROJ/AGENTS.md" || fail "Codex uninstall
 python3 "$INSTALL" install "$PROJ" --host grill --runtime both >/dev/null 2>&1 || fail "dual-runtime install failed"
 python3 "$INSTALL" verify "$PROJ" --host grill --runtime both >/dev/null 2>&1 || fail "dual-runtime verify failed"
 [[ "$(sha256_file "$REMOVED_DIR/index.md")" == "$ARTIFACT_HASH" ]] || fail "install/verify changed a historical artifact"
-[[ "$(sha256_file "$PROJ/.adapter/settings.json")" == "$SETTINGS_HASH" ]] || fail "install/verify changed legacy settings"
+[[ "$(sha256_file "$PROJ/.grill-adapter/settings.json")" == "$SETTINGS_HASH" ]] || fail "install/verify changed legacy settings"
 bash "$ROOT/doctor.sh" "$PROJ" >/dev/null 2>&1 || fail "doctor rejected unrelated legacy settings"
 [[ "$(sha256_file "$REMOVED_DIR/index.md")" == "$ARTIFACT_HASH" ]] || fail "doctor changed a historical artifact"
-[[ "$(sha256_file "$PROJ/.adapter/settings.json")" == "$SETTINGS_HASH" ]] || fail "doctor changed legacy settings"
+[[ "$(sha256_file "$PROJ/.grill-adapter/settings.json")" == "$SETTINGS_HASH" ]] || fail "doctor changed legacy settings"
 python3 "$INSTALL" uninstall "$PROJ" --runtime both >/dev/null 2>&1 || fail "dual-runtime uninstall failed"
 
 printf 'install project-wiring smoke OK\n'

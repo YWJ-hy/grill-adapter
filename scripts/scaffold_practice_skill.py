@@ -572,7 +572,7 @@ def cmd_stage_card(args: argparse.Namespace) -> None:
         )
     )
     candidate_id = f"skill-card-{uuid.uuid5(uuid.NAMESPACE_URL, identity).hex}"
-    journal = project / ".adapter" / "context" / f"{args.feature_slug}.wiki-candidates.jsonl"
+    journal = project / ".grill-adapter" / "context" / f"{args.feature_slug}.wiki-candidates.jsonl"
     event = new_event(
         "candidate",
         args.feature_slug,

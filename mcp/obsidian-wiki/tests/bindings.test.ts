@@ -45,7 +45,7 @@ function fixture(bindings: unknown[], manifests: Array<{ root: string; sourceId:
     writeFileSync(obsidianCli, '#!/usr/bin/env sh\n[ "$1" = "vaults" ] && printf "Knowledge\\n"\n', 'utf8');
     chmodSync(obsidianCli, 0o755);
   }
-  writeJson(path.join(projectDir, '.shared-adapter', 'settings.json'), {
+  writeJson(path.join(projectDir, '.grill-adapter', 'settings.json'), {
     wiki: { provider: 'obsidian', publishing: { mode: 'git-pr' }, obsidian: { bindings } },
   });
   writeJson(registryPath, {
@@ -107,7 +107,7 @@ describe('Obsidian Wiki Source bindings', () => {
     const input = fixture([
       { sourceId: 'project', role: 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: 'Projects/example', access: { read: true } },
     ], [{ root: 'Projects/example', sourceId: 'project', scope: 'project' }]);
-    const settingsPath = path.join(input.projectDir, '.shared-adapter', 'settings.json');
+    const settingsPath = path.join(input.projectDir, '.grill-adapter', 'settings.json');
     const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
     settings.wiki.publishing.mode = 'github-pr';
     writeJson(settingsPath, settings);
@@ -147,8 +147,18 @@ describe('Obsidian Wiki Source bindings', () => {
     const env = testEnvironment(input);
     delete env.CLAUDE_PROJECT_DIR;
     const pluginLikeProject = fixture([], []);
+    const sourceTruthOnly = mkdtempSync(path.join(tmpdir(), 'source-truth-only-'));
+    createdDirectories.push(sourceTruthOnly);
+    writeJson(path.join(sourceTruthOnly, '.grill-adapter', 'settings.json'), {
+      sourceOfTruth: { sources: [] },
+    });
     const requestEnv = environmentForMcpRequest(env, {
-      'x-codex-turn-metadata': { workspaces: { [input.projectDir]: { has_changes: false } } },
+      'x-codex-turn-metadata': {
+        workspaces: {
+          [input.projectDir]: { has_changes: false },
+          [sourceTruthOnly]: { has_changes: false },
+        },
+      },
     }, pluginLikeProject.projectDir);
     expect(requestEnv.CLAUDE_PROJECT_DIR).toBe(input.projectDir);
     expect(resolveBindings(requestEnv).bindings).toHaveLength(1);

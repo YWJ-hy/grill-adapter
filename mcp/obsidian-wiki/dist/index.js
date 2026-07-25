@@ -22183,25 +22183,41 @@ var ProjectSettingsSchema = object({
     })
   })
 });
+var PROJECT_SETTINGS_PATH = [".grill-adapter", "settings.json"];
+function projectSettingsPath(projectDir) {
+  return path2.join(projectDir, ...PROJECT_SETTINGS_PATH);
+}
+function hasActiveObsidianProvider(projectDir) {
+  const settingsPath = projectSettingsPath(projectDir);
+  if (!existsSync2(settingsPath)) return false;
+  try {
+    const settings = parseJsonc(readFileSync2(settingsPath, "utf8"), settingsPath);
+    return Boolean(
+      settings && typeof settings === "object" && !Array.isArray(settings) && settings.wiki && typeof settings.wiki === "object" && settings.wiki.provider === "obsidian"
+    );
+  } catch {
+    return false;
+  }
+}
 function environmentForMcpRequest(env, requestMeta, workingDirectory = process.cwd()) {
   if (env.CLAUDE_PROJECT_DIR) return env;
   const turnMeta = requestMeta?.["x-codex-turn-metadata"];
   const isCodexRequest = turnMeta !== null && typeof turnMeta === "object" && !Array.isArray(turnMeta);
   const workspaces = isCodexRequest ? turnMeta.workspaces : void 0;
   const workspaceDirs = workspaces !== null && typeof workspaces === "object" && !Array.isArray(workspaces) ? Object.keys(workspaces).filter((workspace) => path2.isAbsolute(workspace)) : [];
-  const configuredProjectDirs = [...new Set(workspaceDirs.map((dir) => path2.resolve(dir)))].filter((dir) => existsSync2(path2.join(dir, ".shared-adapter", "settings.json")));
+  const configuredProjectDirs = [...new Set(workspaceDirs.map((dir) => path2.resolve(dir)))].filter(hasActiveObsidianProvider);
   if (!isCodexRequest) {
     const projectDir = path2.resolve(workingDirectory);
-    if (existsSync2(path2.join(projectDir, ".shared-adapter", "settings.json"))) {
+    if (hasActiveObsidianProvider(projectDir)) {
       return { ...env, CLAUDE_PROJECT_DIR: projectDir };
     }
   }
   if (configuredProjectDirs.length === 0) {
-    throw new Error("No Codex workspace metadata contains .shared-adapter/settings.json for Obsidian Wiki binding resolution");
+    throw new Error("No Codex workspace metadata contains an active wiki.provider: obsidian in .grill-adapter/settings.json");
   }
   if (configuredProjectDirs.length > 1) {
     throw new Error(
-      `Multiple Codex workspaces contain .shared-adapter/settings.json; Obsidian Wiki binding is ambiguous: ${configuredProjectDirs.join(", ")}`
+      `Multiple Codex workspaces contain wiki.provider: obsidian in .grill-adapter/settings.json; Obsidian Wiki binding is ambiguous: ${configuredProjectDirs.join(", ")}`
     );
   }
   return { ...env, CLAUDE_PROJECT_DIR: configuredProjectDirs[0] };
@@ -22428,7 +22444,7 @@ function validateVault(vault, env) {
 }
 function resolveBindings(env = process.env, workingDirectory = process.cwd(), options = {}) {
   const projectDir = path2.resolve(env.CLAUDE_PROJECT_DIR ?? workingDirectory);
-  const settingsPath = path2.join(projectDir, ".shared-adapter", "settings.json");
+  const settingsPath = projectSettingsPath(projectDir);
   const settings = ProjectSettingsSchema.parse(readJsonFile(settingsPath, "Project settings"));
   const { registry: registry2, registryPath } = loadRegistry(env);
   const errors = [];
@@ -23128,7 +23144,7 @@ function writeManifest(manifestPath, manifest) {
   renameSync(temporaryPath, manifestPath);
 }
 function manifestPathFor(projectDir, featureSlug) {
-  return path6.join(projectDir, ".adapter", "context", `${featureSlug}.wiki-publish.json`);
+  return path6.join(projectDir, ".grill-adapter", "context", `${featureSlug}.wiki-publish.json`);
 }
 function readPublishManifest(manifestPath) {
   return existsSync3(manifestPath) ? PublishManifestSchema.parse(JSON.parse(readFileSync4(manifestPath, "utf8"))) : void 0;
@@ -24228,7 +24244,7 @@ function enforceGovernance(change, root, apply, vaultRoot, roots, allowedProject
     throw new BridgeError(403, "Project is not allowed by this bridge");
   }
   if (!allowedProjects.has(projectDir)) throw new BridgeError(403, "Project is not allowed by this bridge");
-  const settingsPath = path7.join(projectDir, ".shared-adapter", "settings.json");
+  const settingsPath = path7.join(projectDir, ".grill-adapter", "settings.json");
   let settings;
   try {
     settings = BridgeSettingsSchema.parse(JSON.parse(readFileSync5(settingsPath, "utf8")));

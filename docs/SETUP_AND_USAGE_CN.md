@@ -53,7 +53,7 @@ plugin 一启用，11 个 skill、1 个 agent、3 个 hook 和一个 Source-bind
 
 **关于 `--scope`**：skills / agents / hooks / MCP **共用 plugin 的 scope**，plugin 自带的 MCP 无法单独设 scope。
 
-`obsidian-wiki` MCP 装好即自动启动，读取项目 `.shared-adapter/settings.json` 中显式声明的 Obsidian Source bindings；未绑定或健康检查失败时 fail-closed。
+`obsidian-wiki` MCP 装好即自动启动，读取项目 `.grill-adapter/settings.json` 中显式声明的 Obsidian Source bindings；未绑定或健康检查失败时 fail-closed。
 
 ### 2.2 给项目写约定块
 
@@ -88,7 +88,7 @@ grill-adapter status /path/to/your/project --runtime codex
 
 ## 3. 配置 Obsidian Wiki runtime
 
-新项目按 `OBSIDIAN_WIKI_CN.md` 创建/选择一个 Obsidian Source，提交 `_meta/wiki-source.md`，在项目 `.shared-adapter/settings.json` 声明 `wiki.provider: obsidian` 与 bindings。推荐安装本机管理工具，统一维护 registry 和 bridge 配置：
+新项目按 `OBSIDIAN_WIKI_CN.md` 创建/选择一个 Obsidian Source，提交 `_meta/wiki-source.md`，在项目 `.grill-adapter/settings.json` 声明 `wiki.provider: obsidian` 与 bindings。推荐安装本机管理工具，统一维护 registry 和 bridge 配置：
 
 ```bash
 npm install --global @grill-adapter/obsidian-wiki
@@ -113,7 +113,7 @@ grill-adapter doctor /path/to/your/project
 |---|---|---|---|
 | 1 质询/发现 | `/grill-with-docs` | Disclose：约定提示 `/grill-adapter:wiki-research`（brainstorm） | spec 草稿 |
 | 2 定 spec | `/to-spec` | source-truth Verify：`/grill-adapter:source-truth-check`（spec-pre） | spec |
-| 3 拆 ticket | `/to-tickets` | Disclose+Carry：`/grill-adapter:wiki-research`（plan）→ scaffold sidecar → 由真实 ticket 建 roster → `--finalize` | `.adapter/context/<feature-slug>.{wiki-context,ticket-roster}.json` |
+| 3 拆 ticket | `/to-tickets` | Disclose+Carry：`/grill-adapter:wiki-research`（plan）→ scaffold sidecar → 由真实 ticket 建 roster → `--finalize` | `.grill-adapter/context/<feature-slug>.{wiki-context,ticket-roster}.json` |
 | 4 实现 | `/implement` | Readiness+Bind：首次修改前 `/grill-adapter:wiki-readiness`；`ready` 才按 task materialize；`source-truth-lint` hook | 稳定 task/receipt + 可用时的硬约束全文 |
 | 5 评审/回写 | `/code-review` → `/grill-adapter:update-wiki` | 两个 reviewer 前复用 readiness 生成同一 fail-open handoff；评审后 Capture：最终证据 reconcile → proposal/apply → 确认 scope 后发布 resumable draft PR | reviewer context/caveat + applied receipt + `.wiki-publish.json` + draft PR |
 | 6 调试（如需） | `/diagnosing-bugs` → `/grill-adapter:break-loop` | debug Disclose + 复盘→Capture | 修复 + 复盘候选 |

@@ -14,7 +14,7 @@ It does not patch any host skill. A host wires it in by convention:
 - **grill**: run `/grill-adapter:source-truth-check` during `/to-spec` (render `spec-pre`) and `/to-tickets` (render `plan-pre`, and `plan-review` when reviewing the plan). `/to-spec` and `/to-tickets` are never patched.
 - **plain Claude Code**: run `/grill-adapter:source-truth-check` yourself before finalizing a spec or plan.
 
-Policy is root-specific: project `sourceOfTruth` lives in `.adapter/settings.json`; a shared root uses `.shared-adapter/settings.json`. The policy is a **prompt guard only** — do not add a mandatory source-of-truth section to the spec/plan, run a semantic verifier agent, or create source-of-truth sidecar artifacts.
+Policy is project-scoped: `sourceOfTruth` lives in `.grill-adapter/settings.json` and is independent of whether a Wiki candidate targets the project or shared root. The policy is a **prompt guard only** — do not add a mandatory source-of-truth section to the spec/plan, run a semantic verifier agent, or create source-of-truth sidecar artifacts.
 
 ---
 

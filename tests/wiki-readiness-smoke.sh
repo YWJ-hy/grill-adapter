@@ -21,7 +21,7 @@ done
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-CTX_DIR="$TMP/project/.adapter/context"
+CTX_DIR="$TMP/project/.grill-adapter/context"
 mkdir -p "$CTX_DIR"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }

@@ -41,7 +41,7 @@ assert_contains "roster contract" '.scratch/<feature-slug>/issues/<NN>-<slug>.md
 assert_contains "roster contract" 'gh issue view' "$EXAMPLE_TEXT"
 assert_contains "roster contract" 'docs/agents/issue-tracker.md' "$EXAMPLE_TEXT"
 # The roster is transient working state, never a committed deliverable.
-assert_contains "roster contract" 'Nothing under .adapter/context/ is committed' "$EXAMPLE_TEXT"
+assert_contains "roster contract" 'Nothing under .grill-adapter/context/ is committed' "$EXAMPLE_TEXT"
 
 # --- The engine fingerprints the handed text, verified against an independent oracle. ---
 ROSTER="$TMP/feature.ticket-roster.json"

@@ -34,11 +34,11 @@ PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-}"
 [ -z "$PROJECT_ROOT" ] && exit 0
 [ -d "$PROJECT_ROOT" ] || exit 0
 
-# Fast bail-out if sourceOfTruth is not configured in either root (avoids a python spawn per tool call).
+# Fast bail-out if sourceOfTruth is not configured in the canonical project settings
+# (avoids a python spawn per tool call).
 CONFIGURED=""
-for s in "$PROJECT_ROOT/.adapter/settings.json" "$PROJECT_ROOT/.shared-adapter/settings.json"; do
-  [ -f "$s" ] && grep -q '"sourceOfTruth"' "$s" 2>/dev/null && CONFIGURED=1
-done
+s="$PROJECT_ROOT/.grill-adapter/settings.json"
+[ -f "$s" ] && grep -q '"sourceOfTruth"' "$s" 2>/dev/null && CONFIGURED=1
 [ -n "$CONFIGURED" ] || exit 0
 
 # Real changed paths: modified + untracked vs HEAD, bounded.

@@ -106,7 +106,7 @@ else if (args.includes('search')) {
   } else {
     chmodSync(obsidianCli, 0o755);
   }
-  writeJson(path.join(projectDir, '.shared-adapter', 'settings.json'), {
+  writeJson(path.join(projectDir, '.grill-adapter', 'settings.json'), {
     wiki: { provider: 'obsidian', publishing: { mode: 'git-pr' }, obsidian: { bindings: [{ sourceId, role: options.shared ? 'shared' : 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: sourceRoot, access: { read: true, update: options.update ?? 'confirm' } }] } },
   });
   const bridge = await startWriteBridge({ vaultRoot, vaultSelector: 'Knowledge', allowedRoots: [sourceRoot], projectDirs: [projectDir], token: 'bridge-token', port: 0 });

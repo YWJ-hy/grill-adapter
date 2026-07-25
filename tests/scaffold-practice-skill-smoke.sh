@@ -32,7 +32,7 @@ assert_contains()  { [[ "$3" == *"$2"* ]] && ok "$1" || bad "$1 (missing: $2)"; 
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-WIKI="$TMP/.adapter/wiki"
+WIKI="$TMP/.grill-adapter/wiki"
 mkdir -p "$WIKI/guides"
 printf '# Project Wiki\n\n- [Guides](guides/)\n' > "$WIKI/index.md"
 printf '# Guides\n\n<!-- grill-adapter:auto:start -->\n<!-- grill-adapter:auto:end -->\n' > "$WIKI/guides/index.md"
@@ -71,7 +71,7 @@ assert_contains "registration carries version" '"version": "1.0.0"' "$STAGED"
 assert_contains "registration carries implementer role" '"implementer"' "$STAGED"
 assert_contains "registration carries reviewer role" '"reviewer"' "$STAGED"
 assert_contains "registration carries a contract hash" '"contractHash": "sha256:' "$STAGED"
-JOURNAL="$TMP/.adapter/context/skill-card-discovery.wiki-candidates.jsonl"
+JOURNAL="$TMP/.grill-adapter/context/skill-card-discovery.wiki-candidates.jsonl"
 assert_file "registration journal created" "$JOURNAL"
 assert_contains "journal stores structured registration" '"skillRegistration"' "$(cat "$JOURNAL")"
 assert_no_file "stage-card does not write the legacy discovery index" "$WIKI/guides/skills.md"

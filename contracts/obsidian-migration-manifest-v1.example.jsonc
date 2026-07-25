@@ -1,5 +1,5 @@
 {
-  // Local recovery receipt written under .adapter/context/. Do not commit it.
+  // Local recovery receipt written under .grill-adapter/context/. Do not commit it.
   "schemaVersion": 1,
   "kind": "grill-adapter.obsidian-migration",
   "migrationId": "migration-0123456789ab",

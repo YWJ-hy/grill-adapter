@@ -36,7 +36,7 @@ grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 
 | 触点 | 机制 | 落到 grill |
 |---|---|---|
 | **Disclose** 选 wiki | 独立 `/grill-adapter:wiki-research` skill（驱动 `grill-adapter:wiki-researcher` agent），任何 host 都能调 | grill-with-docs 质询期 |
-| **Carry** 带约束 | schema-v6 `.adapter/context/<feature-slug>.wiki-context.json` 保存 binding digest、atomic Note ID/path/hash/summary、已验证 Skill Card 的 provider/name/version/contract hash/triggers/roles 与 ticket roster 指纹，绝不保存 Note body；锚点是 feature，不是 plan 文件；direct task 可由 readiness 在首次代码修改前 late Carry | to-tickets，或无 formal context 的 implement 入口 |
+| **Carry** 带约束 | schema-v6 `.grill-adapter/context/<feature-slug>.wiki-context.json` 保存 binding digest、atomic Note ID/path/hash/summary、已验证 Skill Card 的 provider/name/version/contract hash/triggers/roles 与 ticket roster 指纹，绝不保存 Note body；锚点是 feature，不是 plan 文件；direct task 可由 readiness 在首次代码修改前 late Carry | to-tickets，或无 formal context 的 implement 入口 |
 | **Bind** 执行期 reread | `/grill-adapter:wiki-readiness` 先固定/复用 task identity 并记录原子结果；`ready` 时由 `/grill-adapter:wiki-materialize <ticket>` 经 bound Obsidian MCP 按 stable-ID 读取路由硬 Note、当前角色 Card 和 1 跳 `depends_on`；implement 用 implementer 角色，review 在两个隔离 reviewer 前复用同一 receipt、以 reviewer 角色生成单一原子 handoff | implement 逐 task + code-review 两轴前 |
 | **Capture** 回写 | `/grill-adapter:update-wiki`（最终证据 reconciliation + related-claim 显式归并 + 语义门），其可选前置步经 `grill_context_to_candidates.py` 吃 grill CONTEXT.md/ADR 增量；ADR 只生成 project-only metadata projection candidate，Obsidian provider 经 proposal → loopback bridge CAS apply → receipt allowlist Git/draft-PR publish | code-review 后 |
 
@@ -53,7 +53,7 @@ Readiness 不是第五个 Wiki 触点，而是 implement/review 对 Carry + Bind
 ## 引擎组件
 
 - **执行层脚本 `scripts/*.py`**：`wiki_common`（1 跳邻居、depends-on 闭包等共享逻辑）、`wiki_context_render`（schema-v6 Obsidian metadata Carry 的校验/渲染/scaffold/finalize；task 身份与指纹来自 host 产出的 ticket roster）、`wiki_readiness`（direct issue/manual 单任务 roster + per-task readiness receipt 原子记录/校验 + fail-open reviewer handoff）、`wiki_materialize_task`（绑定 Obsidian Note/Card reread + 1 跳闭包）、`wiki_candidate_journal`（候选事件校验、锁内追加、生命周期 fold）、`wiki_adr_projection`（经 agent 提炼后的约束机械渲染/空约束 skip）、`wiki_migration_plan`（本地或用户显式 Git legacy source 的 snapshot-bound no-write plan）、`wiki_migration_apply`（CAS apply / merged-base verify / cutover）、`wiki_generate_section_index` / `wiki_update_check` / `wiki_migrate_helper`、`wiki_graph_neighbors`、`wiki_section` / `wiki_read_section` / `wiki_select_target` / `wiki_apply_update` / `wiki_import` / `init-wiki` / `update-wiki`；`source_truth_settings` / `source_truth_common`；`scaffold_practice_skill`；`grill_context_to_candidates`（grill→journal 桥）。
-- **obsidian-wiki MCP + write/publish bundle `mcp/obsidian-wiki/`**：同一提交型 bundle 暴露绑定只读工具、Note proposal/apply MCP/JSON CLI、可恢复 `publish` JSON CLI，以及独立 `serve-write-bridge` 入口。bridge 只监听 loopback，以 token 鉴权并对 bound Source 做 policy/neutrality/CAS 校验。publisher 只消费 journal 中 `kept+applied` receipts，按 `repositoryRef` 锁仓并在锁内重验 base/remote/path/hash；commit 前用 Git staged-tree object ID 保存可恢复身份，创建 allowlist commit + draft PR、协调 peer PR，并把 worktree 恢复到 clean base。run manifest 留在项目 `.adapter/context/`，开放 PR 不进入 formal read。
+- **obsidian-wiki MCP + write/publish bundle `mcp/obsidian-wiki/`**：同一提交型 bundle 暴露绑定只读工具、Note proposal/apply MCP/JSON CLI、可恢复 `publish` JSON CLI，以及独立 `serve-write-bridge` 入口。bridge 只监听 loopback，以 token 鉴权并对 bound Source 做 policy/neutrality/CAS 校验。publisher 只消费 journal 中 `kept+applied` receipts，按 `repositoryRef` 锁仓并在锁内重验 base/remote/path/hash；commit 前用 Git staged-tree object ID 保存可恢复身份，创建 allowlist commit + draft PR、协调 peer PR，并把 worktree 恢复到 clean base。run manifest 留在项目 `.grill-adapter/context/`，开放 PR 不进入 formal read。
 - **模板、迁移与导出**：`wiki-template/`、`wiki-repo-skills/` + `wiki-repo-ci/`、`contracts/`。`wiki_migration_plan.py` fail-closed 产出 deterministic plan，并为 update 固化审核时 Note hash；`wiki_migration_apply.py` 在首个 bridge 写前固化完整 plan、binding/policy snapshot 与 CAS intent roster，并先切到专用 PR branch，再经两阶段 CAS 与 receipt publisher 写 draft PR。恢复只接受精确 before/seed/final state，`publishing` 中断从 publisher manifest 对账。verify 从不可变 plan 推导 coverage，重验 legacy source 与 binding/policy，只认 merged + synchronized base；cutover 另需确认、拒绝 active schema-v5 sidecar，并只把 plan 覆盖的 legacy root 标成机械只读 archive，bootstrap/init/update/import/migration 写路径都必须拒绝归档 root。契约示例还包括 migration plan/manifest、wiki context/selection、ticket roster、candidate journal 与 publish run manifest。
 - **rollout 运维门**：`doctor.sh` 只读识别 `obsidian-native`、`shadow-validation`、`cutover-complete`；active Obsidian provider 的 bundle/status/health 任一失败均非零退出并卡 release-check。shadow 只保留 legacy roots 作为 migration evidence，正式四触点不双读、不 fallback；`bootstrap-wiki` 在 active Obsidian provider 下拒绝重新播种 legacy root。
 
@@ -63,7 +63,7 @@ wiki 页被 `<!-- wiki-section:xxx summary="..." -->` 标记切成 section；sec
 
 ## Obsidian Source（跨 repo 共享）
 
-跨项目共享通过项目 `.shared-adapter/settings.json` 的 `wiki.obsidian.bindings` 声明 `role: shared` 的 Source。legacy GitHub shared-wiki 仓库不属于运行时绑定；迁移时由用户显式提供 URL，planner 临时 clone 并固定 commit。
+跨项目共享通过项目 `.grill-adapter/settings.json` 的 `wiki.obsidian.bindings` 声明 `role: shared` 的 Source。legacy GitHub shared-wiki 仓库不属于运行时绑定；迁移时由用户显式提供 URL，planner 临时 clone 并固定 commit。
 
 ## 执行期闭包
 

@@ -1,12 +1,16 @@
 {
   "wiki": {
-    "updateAuthorization": {
-      "updateExistingPage": "skip",
-      "createNewDocument": "ask"
-    },
-    "sharedNeutrality": {
-      "blockedTerms": [],
-      "blockedPatterns": []
+    "roots": {
+      "shared": {
+        "updateAuthorization": {
+          "updateExistingPage": "skip",
+          "createNewDocument": "ask"
+        },
+        "sharedNeutrality": {
+          "blockedTerms": [],
+          "blockedPatterns": []
+        }
+      }
     }
   },
   "hooks": {

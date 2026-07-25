@@ -26,7 +26,7 @@ PROJECT="$TMP/project"
 VAULT="$TMP/vault"
 REMOTE="$TMP/vault.git"
 SOURCE_ROOT="Projects/example"
-mkdir -p "$PROJECT/.adapter/wiki/guides" "$PROJECT/.adapter/context" \
+mkdir -p "$PROJECT/.grill-adapter/wiki/guides" "$PROJECT/.grill-adapter/context" \
   "$PROJECT/.shared-adapter/wiki" "$PROJECT/.claude/skills/release-check" \
   "$VAULT/$SOURCE_ROOT/_meta" "$VAULT/$SOURCE_ROOT/rules"
 
@@ -36,18 +36,18 @@ cat > "$PROJECT/.shared-adapter/wiki/index.md" <<'MD'
 This root is outside the project-only migration plan.
 MD
 
-cat > "$PROJECT/.adapter/wiki/index.md" <<'MD'
+cat > "$PROJECT/.grill-adapter/wiki/index.md" <<'MD'
 # Project Wiki
 
 - `rules.md`
 - `guides/skills.md`
 MD
-cat > "$PROJECT/.adapter/wiki/guides/index.md" <<'MD'
+cat > "$PROJECT/.grill-adapter/wiki/guides/index.md" <<'MD'
 # Guides
 
 - `skills.md`
 MD
-cat > "$PROJECT/.adapter/wiki/rules.md" <<'MD'
+cat > "$PROJECT/.grill-adapter/wiki/rules.md" <<'MD'
 # Rules
 
 <!-- wiki-section:base-contract summary="The base contract remains stable." -->
@@ -62,7 +62,7 @@ The base contract MUST remain stable.
 API changes MUST preserve compatibility. [[depends-on: rules#base-contract]]
 <!-- /wiki-section:api-contract -->
 MD
-cat > "$PROJECT/.adapter/wiki/guides/skills.md" <<'MD'
+cat > "$PROJECT/.grill-adapter/wiki/guides/skills.md" <<'MD'
 # Skills
 
 <!-- wiki-section:release-check summary="Run the release verification pack." roles="review" -->
@@ -73,7 +73,7 @@ cat > "$PROJECT/.adapter/wiki/guides/skills.md" <<'MD'
 审查相关产物时，必须使用 skill：`release-check`。
 <!-- /wiki-section:release-check -->
 MD
-cat > "$PROJECT/.adapter/wiki/.graph.json" <<'JSON'
+cat > "$PROJECT/.grill-adapter/wiki/.graph.json" <<'JSON'
 {
   "schema": "section-graph/3",
   "nodes": ["rules.md#base-contract", "rules.md#api-contract"],
@@ -256,7 +256,7 @@ if command -v cygpath >/dev/null 2>&1; then
 CMD
 fi
 
-cat > "$PROJECT/.shared-adapter/settings.json" <<JSON
+cat > "$PROJECT/.grill-adapter/settings.json" <<JSON
 {
   "wiki": {
     "provider": "obsidian",
@@ -467,17 +467,17 @@ fi
 grep -Fq 'coverage' "$TMP/coverage.err"
 cp "$TMP/manifest.good.json" "$MANIFEST"
 
-cp "$PROJECT/.adapter/wiki/rules.md" "$TMP/legacy-rules.good.md"
-printf '\nLegacy source drift.\n' >> "$PROJECT/.adapter/wiki/rules.md"
+cp "$PROJECT/.grill-adapter/wiki/rules.md" "$TMP/legacy-rules.good.md"
+printf '\nLegacy source drift.\n' >> "$PROJECT/.grill-adapter/wiki/rules.md"
 if python3 "$MIGRATOR" verify --project-root "$PROJECT" --manifest "$MANIFEST" > /dev/null 2> "$TMP/source-drift.err"; then
   printf 'Migration verify accepted legacy source drift\n' >&2
   exit 1
 fi
 grep -Fq 'legacy source snapshot drift' "$TMP/source-drift.err"
-cp "$TMP/legacy-rules.good.md" "$PROJECT/.adapter/wiki/rules.md"
+cp "$TMP/legacy-rules.good.md" "$PROJECT/.grill-adapter/wiki/rules.md"
 
-cp "$PROJECT/.shared-adapter/settings.json" "$TMP/settings.good.json"
-python3 - "$PROJECT/.shared-adapter/settings.json" <<'PY'
+cp "$PROJECT/.grill-adapter/settings.json" "$TMP/settings.good.json"
+python3 - "$PROJECT/.grill-adapter/settings.json" <<'PY'
 import json, sys
 path = sys.argv[1]
 value = json.load(open(path, encoding="utf-8"))
@@ -489,7 +489,7 @@ if python3 "$MIGRATOR" verify --project-root "$PROJECT" --manifest "$MANIFEST" >
   exit 1
 fi
 grep -Fq 'binding snapshot drift' "$TMP/binding-drift.err"
-cp "$TMP/settings.good.json" "$PROJECT/.shared-adapter/settings.json"
+cp "$TMP/settings.good.json" "$PROJECT/.grill-adapter/settings.json"
 
 # Verification is read-only and refuses a post-merge human edit instead of overwriting it.
 NOTE="$VAULT/$SOURCE_ROOT/rules/api-contract.md"
@@ -508,13 +508,13 @@ git -C "$VAULT" add "$SOURCE_ROOT/rules/api-contract.md"
 git -C "$VAULT" commit -m "restore reviewed migration Note" >/dev/null
 git -C "$VAULT" push origin main >/dev/null
 
-printf '{"schemaVersion":5,"kind":"grill-adapter.wiki-context"}\n' > "$PROJECT/.adapter/context/active.wiki-context.json"
+printf '{"schemaVersion":5,"kind":"grill-adapter.wiki-context"}\n' > "$PROJECT/.grill-adapter/context/active.wiki-context.json"
 if python3 "$MIGRATOR" cutover --project-root "$PROJECT" --manifest "$MANIFEST" --confirmed > /dev/null 2> "$TMP/v5.err"; then
   printf 'Migration cutover accepted an active schema-v5 sidecar\n' >&2
   exit 1
 fi
 grep -Fq 'schemaVersion 5' "$TMP/v5.err"
-printf '{"schemaVersion":6,"kind":"grill-adapter.wiki-context"}\n' > "$PROJECT/.adapter/context/active.wiki-context.json"
+printf '{"schemaVersion":6,"kind":"grill-adapter.wiki-context"}\n' > "$PROJECT/.grill-adapter/context/active.wiki-context.json"
 
 if python3 "$MIGRATOR" cutover --project-root "$PROJECT" --manifest "$MANIFEST" > /dev/null 2> "$TMP/unconfirmed-cutover.err"; then
   printf 'Migration cutover accepted missing explicit confirmation\n' >&2
@@ -522,11 +522,11 @@ if python3 "$MIGRATOR" cutover --project-root "$PROJECT" --manifest "$MANIFEST" 
 fi
 grep -Fq 'explicit confirmation' "$TMP/unconfirmed-cutover.err"
 
-LEGACY_BEFORE="$(sha256_tree "$PROJECT/.adapter/wiki")"
+LEGACY_BEFORE="$(sha256_tree "$PROJECT/.grill-adapter/wiki")"
 python3 "$MIGRATOR" cutover --project-root "$PROJECT" --manifest "$MANIFEST" --confirmed > "$TMP/cutover.json"
-LEGACY_AFTER="$(sha256_tree "$PROJECT/.adapter/wiki")"
+LEGACY_AFTER="$(sha256_tree "$PROJECT/.grill-adapter/wiki")"
 [[ "$LEGACY_BEFORE" == "$LEGACY_AFTER" ]] || { printf 'Cutover modified the legacy archive\n' >&2; exit 1; }
-python3 - "$TMP/cutover.json" "$PROJECT/.shared-adapter/settings.json" <<'PY'
+python3 - "$TMP/cutover.json" "$PROJECT/.grill-adapter/settings.json" <<'PY'
 import json, sys
 result = json.load(open(sys.argv[1], encoding="utf-8"))
 settings = json.load(open(sys.argv[2], encoding="utf-8"))
@@ -534,13 +534,13 @@ assert result["state"] == "cutover"
 assert settings["wiki"]["provider"] == "obsidian"
 archive = settings["wiki"]["legacyRuntime"]
 assert archive["mode"] == "read-only-archive"
-assert archive["roots"] == [".adapter/wiki"]
+assert archive["roots"] == [".grill-adapter/wiki"]
 assert archive["migrationManifest"].endswith(".obsidian-migration.json")
 PY
 
 "$ROOT/doctor.sh" "$PROJECT" > "$TMP/doctor-cutover.out"
 grep -Fq 'adoptionState: cutover-complete' "$TMP/doctor-cutover.out"
-grep -Fq 'read-only legacy archives: .adapter/wiki' "$TMP/doctor-cutover.out"
+grep -Fq 'read-only legacy archives: .grill-adapter/wiki' "$TMP/doctor-cutover.out"
 grep -Fq 'Obsidian runtime healthy: yes' "$TMP/doctor-cutover.out"
 
 printf 'obsidian wiki migration apply/verify/cutover smoke complete\n'

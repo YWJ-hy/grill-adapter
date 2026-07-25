@@ -47,7 +47,7 @@ task: <confirmed spec or requirements summary>
 phase: plan
 featureSlug: <feature-slug>
 focus: <feature goal and likely task areas>
-selectionOutputPath: .adapter/context/<feature-slug>.obsidian-wiki-selection.json
+selectionOutputPath: .grill-adapter/context/<feature-slug>.obsidian-wiki-selection.json
 ```
 
 At `plan` phase the agent writes the JSON **selection** object (shape in `${CLAUDE_PLUGIN_ROOT}/contracts/obsidian-wiki-selection-v1.example.jsonc`) to `selectionOutputPath` itself and returns only a compact summary. It must contain bounded `wikiBindings`, metadata-only `wikiNotes`, independent `requiredSkills`, and the stable `snapshotHash` returned by `obsidian_wiki_read_notes`. An ADR execution projection may additionally carry the MCP-returned `adrSourceId`, normalized project-relative `adrSourcePath`, and `adrSourceContentHash`; these identify the authority only and never include ADR body text. The selection must not emit Note bodies, `destination`, `taskRouting`, `taskWikiRefs`, `taskFingerprint`, or future task ids.
@@ -68,7 +68,7 @@ Generate the sidecar mechanically from the selection, then edit only the semanti
 2. Generate the schemaVersion 6 sidecar skeleton. This copies only bound Source identity, Note ID/path/hash/summary metadata, the independent Skill Card selection, and the stable batch `snapshotHash`; it adds the `taskRouting` block and default `destination.kind` for every Note/Card. It never embeds a Note body:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --scaffold .adapter/context/<feature-slug>.obsidian-wiki-selection.json --strict --project-root <project-root> --feature-slug <feature-slug> --ticket-source <source>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .grill-adapter/context/<feature-slug>.wiki-context.json --scaffold .grill-adapter/context/<feature-slug>.obsidian-wiki-selection.json --strict --project-root <project-root> --feature-slug <feature-slug> --ticket-source <source>
 ```
 
 3. Read the generated `.wiki-context.json` for its Note summaries and use them like spec input while shaping the work. The sidecar is the record of which bound Notes and Skill Cards constrain this feature; tell the user what was selected and where it lives.
@@ -81,17 +81,17 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .adapter/context/<f
    - Flip `taskRouting.status` to `confirmed` with `selectedSectionsFrozen: true`.
    - Surface every global Note/Card summary to the user as a feature-wide constraint.
 
-5. Build the ticket roster `.adapter/context/<feature-slug>.ticket-roster.json` from the host's real tickets (shape: `${CLAUDE_PLUGIN_ROOT}/contracts/ticket-roster-v1.example.jsonc`). Your host's convention block in the project `CLAUDE.md` or `AGENTS.md` says where its tickets live and which `ticketSource` applies — read it rather than guessing. Copy each ticket's `text` verbatim: it is the fingerprint input.
+5. Build the ticket roster `.grill-adapter/context/<feature-slug>.ticket-roster.json` from the host's real tickets (shape: `${CLAUDE_PLUGIN_ROOT}/contracts/ticket-roster-v1.example.jsonc`). Your host's convention block in the project `CLAUDE.md` or `AGENTS.md` says where its tickets live and which `ticketSource` applies — read it rather than guessing. Copy each ticket's `text` verbatim: it is the fingerprint input.
 
 6. Finalize in one call — builds the `taskWikiRefs` roster, stamps each `taskFingerprint`, validates execution readiness, writes once:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .adapter/context/<feature-slug>.wiki-context.json --finalize --strict --project-root <project-root> --ticket-roster .adapter/context/<feature-slug>.ticket-roster.json
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .grill-adapter/context/<feature-slug>.wiki-context.json --finalize --strict --project-root <project-root> --ticket-roster .grill-adapter/context/<feature-slug>.ticket-roster.json
 ```
 
 `--finalize` is the single source of truth for `taskFingerprint` and the roster; never compute the sha256 or build `taskWikiRefs` by hand. A clean finalize guarantees the execution-time `--fingerprint-preflight` (run by `wiki-materialize`) passes. Do not re-read the sidecar afterward to "verify" — the transactional write already validated it. If selected wiki conflicts with the confirmed spec, stop and ask the user to resolve it before finalizing.
 
-Nothing under `.adapter/context/` is committed — the sidecar, roster, and candidates are local working state that execution reads in place from the same working tree.
+Nothing under `.grill-adapter/context/` is committed — the sidecar, roster, and candidates are local working state that execution reads in place from the same working tree.
 
 Only as a last resort (generator unavailable) hand-author a new sidecar from `${CLAUDE_PLUGIN_ROOT}/contracts/wiki-context-v6.example.jsonc` and validate with `--validate-only --strict`. SchemaVersion 5 sidecars remain readable only during transition; never create a new one.
 

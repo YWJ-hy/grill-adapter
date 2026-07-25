@@ -10,7 +10,7 @@ Load this only once you have decided there is durable knowledge to write.
 
 For each candidate:
 
-1. Read existing root indexes: `.adapter/wiki/index.md` and `.shared-adapter/wiki/index.md` when present.
+1. Read existing root indexes: `.grill-adapter/wiki/index.md` and `.shared-adapter/wiki/index.md` when present.
 2. Follow relevant child indexes inside each root.
 3. Read the small set of leaf wiki pages that may already cover the same rule.
 
@@ -43,7 +43,7 @@ Do not let a script decide whether an update is needed.
 Each candidate should update exactly one indexed leaf wiki page unless it genuinely spans unrelated areas.
 Choose both the target root and the target page:
 - `.shared-adapter/wiki/` owns cross-project architecture, conventions, workflows, shared API contracts, shared component rules, and gotchas likely to apply to sibling projects.
-- `.adapter/wiki/` owns project-specific business rules, local integration details, deployment/environment details, local overrides, and decisions that should not affect sibling projects.
+- `.grill-adapter/wiki/` owns project-specific business rules, local integration details, deployment/environment details, local overrides, and decisions that should not affect sibling projects.
 
 An `adr_execution_projection` candidate is always project-owned. Search the bound project Source
 for its exact `adr_source_id`; update the sole match, create only when there is no match, and stop
@@ -118,12 +118,11 @@ If the existing page may already be referenced elsewhere, prefer keeping the ori
 ## 8. Check update authorization policy
 
 Before editing or creating wiki content, read the selected root's settings file:
-- `.adapter/settings.json` controls `.adapter/wiki/`.
-- `.shared-adapter/settings.json` controls `.shared-adapter/wiki/`.
+- `.grill-adapter/settings.json` controls both roots: `wiki.roots.project` governs `.grill-adapter/wiki/`, and `wiki.roots.shared` governs `.shared-adapter/wiki/`.
 
 Use these defaults when the settings file or keys are missing:
-- `wiki.updateAuthorization.updateExistingPage`: `skip`
-- `wiki.updateAuthorization.createNewDocument`: `ask`
+- `wiki.roots.<project|shared>.updateAuthorization.updateExistingPage`: `skip`
+- `wiki.roots.<project|shared>.updateAuthorization.createNewDocument`: `ask`
 
 Allowed values are:
 - `skip`: proceed after the normal durable-knowledge, duplicate, ownership, and size checks.

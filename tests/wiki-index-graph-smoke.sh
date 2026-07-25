@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TARGET_INPUT="${1:-${ROOT}}"
 PROJECT_ROOT="${2:-${ROOT}/..}"
-WIKI_ROOT="${PROJECT_ROOT}/.adapter/wiki"
+WIKI_ROOT="${PROJECT_ROOT}/.grill-adapter/wiki"
 SHARED_WIKI_ROOT="${PROJECT_ROOT}/.shared-adapter/wiki"
 
 mkdir -p "${WIKI_ROOT}/platform/api" "${WIKI_ROOT}/guides" "${WIKI_ROOT}/shared/deep" "${WIKI_ROOT}/unindexed"
@@ -41,7 +41,7 @@ printf '# Shared Conventions\n\nShared behavior.\n' > "${SHARED_WIKI_ROOT}/platf
 printf '# Shared Secret\n\nUnindexed shared behavior.\n' > "${SHARED_WIKI_ROOT}/unindexed/secret.md"
 
 tree_output="$(cd "${PROJECT_ROOT}" && python3 "${TARGET_INPUT}/scripts/wiki-context.py" --tree --depth 5)"
-for expected in "Wiki root: \`.adapter/wiki/\`" "Wiki root: \`.shared-adapter/wiki/\`" ".adapter/wiki/platform/api/contract.md" ".adapter/wiki/guides/index.md" ".adapter/wiki/guides/debugging.md" ".adapter/wiki/shared/deep/rule.md" ".shared-adapter/wiki/platform/shared/conventions.md"; do
+for expected in "Wiki root: \`.grill-adapter/wiki/\`" "Wiki root: \`.shared-adapter/wiki/\`" ".grill-adapter/wiki/platform/api/contract.md" ".grill-adapter/wiki/guides/index.md" ".grill-adapter/wiki/guides/debugging.md" ".grill-adapter/wiki/shared/deep/rule.md" ".shared-adapter/wiki/platform/shared/conventions.md"; do
   case "${tree_output}" in
     *"${expected}"*) : ;;
     *) printf 'Expected index-driven tree to include %s\n%s\n' "${expected}" "${tree_output}" >&2; exit 1 ;;
@@ -86,7 +86,7 @@ printf '# Hook Guidelines\n\nReusable useUpload composables and hook extraction 
 printf '# Type Safety\n\nTypeScript contracts and Naive UI component declarations.\n' > "${WIKI_ROOT}/frontend/type-safety.md"
 printf '# Example\n\nIgnored example content.\n' > "${WIKI_ROOT}/frontend/examples/example.md"
 component_tree_output="$(cd "${PROJECT_ROOT}" && python3 "${TARGET_INPUT}/scripts/wiki-context.py" --tree --depth 4)"
-for expected in ".adapter/wiki/frontend/component-guidelines.md" ".adapter/wiki/frontend/hook-guidelines.md" ".adapter/wiki/frontend/type-safety.md"; do
+for expected in ".grill-adapter/wiki/frontend/component-guidelines.md" ".grill-adapter/wiki/frontend/hook-guidelines.md" ".grill-adapter/wiki/frontend/type-safety.md"; do
   case "${component_tree_output}" in
     *"${expected}"*) : ;;
     *) printf 'Expected component tree to include %s\n%s\n' "${expected}" "${component_tree_output}" >&2; exit 1 ;;

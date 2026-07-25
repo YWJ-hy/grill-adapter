@@ -43,20 +43,22 @@ Windows 如果 `bash` 指向没有 `/bin/bash` 的 WSL shim，请改用仓库提
 
 ## 2. 配置 Obsidian Wiki Source
 
-按 `docs/OBSIDIAN_WIKI_CN.md` 配置项目 `.shared-adapter/settings.json` 的 `wiki.provider: obsidian` / bindings、机器本地 registry，以及 Source 的 `_meta/wiki-source.md`。然后运行：
+按 `docs/OBSIDIAN_WIKI_CN.md` 配置项目 `.grill-adapter/settings.json` 的 `wiki.provider: obsidian` / bindings、机器本地 registry，以及 Source 的 `_meta/wiki-source.md`。然后运行：
+
+已有项目升级时，把旧 `.adapter/` 运行态目录改名为 `.grill-adapter/`，并将旧 `.shared-adapter/settings.json` 的 `wiki` 配置合并到同一个 `.grill-adapter/settings.json`；不要保留两份 settings。`.shared-adapter/wiki/` 是 legacy shared Wiki 数据根，暂时可原样保留用于迁移验证。
 
 ```bash
 grill-adapter doctor /path/to/your/project
 ```
 
-新项目应显示 `adoptionState: obsidian-native` 和 `Obsidian runtime healthy: yes`。已有 `.adapter/wiki/` / `.shared-adapter/wiki/` 的项目显示 `shadow-validation`：正式路径只读 Obsidian，legacy roots 原样保留用于 `/grill-adapter:migrate-wiki` 的 plan/verify，不能充当 runtime fallback。`bootstrap-wiki` 只保留给尚未设置 Obsidian provider 的 legacy 项目。
+新项目应显示 `adoptionState: obsidian-native` 和 `Obsidian runtime healthy: yes`。已有 `.grill-adapter/wiki/` / `.shared-adapter/wiki/` 的项目显示 `shadow-validation`：正式路径只读 Obsidian，legacy roots 原样保留用于 `/grill-adapter:migrate-wiki` 的 plan/verify，不能充当 runtime fallback。`bootstrap-wiki` 只保留给尚未设置 Obsidian provider 的 legacy 项目。
 
 ## 3. 跑一遍 grill → implement → update-wiki
 
 在对应运行时里对你的项目（Claude 用 `/skill`，Codex 用 `$plugin:skill`）：
 
 1. `/grill-with-docs`：描述需求。约定会在质询期自动提示调 `/grill-adapter:wiki-research` 披露相关 wiki。
-2. `/to-tickets`：规划期 `/grill-adapter:wiki-research`（plan）正式选 bound atomic Notes/Skill Cards → 生成 schema-v6 `.adapter/context/<feature-slug>.wiki-context.json` sidecar；ticket 发布后由真实 ticket 建 roster，再 `--finalize` 盖指纹。
+2. `/to-tickets`：规划期 `/grill-adapter:wiki-research`（plan）正式选 bound atomic Notes/Skill Cards → 生成 schema-v6 `.grill-adapter/context/<feature-slug>.wiki-context.json` sidecar；ticket 发布后由真实 ticket 建 roster，再 `--finalize` 盖指纹。
 3. `/implement`：首次代码修改前跑 `/grill-adapter:wiki-readiness`。formal ticket 复用已有 context；direct issue/manual 建单任务 roster 并按需 late Carry；`ready` 才 materialize，`no-relevant`/`disabled` 直接继续，`broken` 由用户选择停止或无 Wiki 继续。改到 source-of-truth 保护路径时 `source-truth-lint` hook 会提醒。
 4. `/code-review`：启动 Standards/Spec 两个 review agent 前，`/grill-adapter:wiki-readiness` 复用 implement receipt 生成同一个 reviewer handoff；只有 `ready` 才按 reviewer 角色 materialize，其他状态或失败只给非阻塞 caveat，不补 research、不阻止评审。
 5. 各阶段发现 durable 候选时跑 `/grill-adapter:candidate-journal` 追加到同一 feature journal；`/code-review` 后跑 `/grill-adapter:update-wiki`，先校验/折叠 journal，再记录 keep/skip/defer 并处理回写。

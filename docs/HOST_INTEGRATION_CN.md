@@ -109,7 +109,7 @@ grill-adapter verify <project> --host grill --runtime both
 
 只做一件事：按 `--runtime` 把选定 host 约定块写进目标 `CLAUDE.md`、`AGENTS.md` 或两者（marker 包裹、幂等、换宿主先剥旧块、保留既有内容）。`uninstall` 逆向剥块，`verify` 检查块在不在；`status` 对相应运行时报告提示性插件状态。
 
-wiki 数据/绑定仍是项目级的：新项目在 `.shared-adapter/settings.json` 声明 `wiki.provider: obsidian` 与 Source bindings，机器本地 registry 解析 Vault/repository；`doctor` 校验 active provider 并报告 `obsidian-native` / `shadow-validation` / `cutover-complete`。legacy 内容只通过 `migrate-wiki` 的本地根或用户显式 Git URL 进入迁移计划，不提供 runtime fallback。
+wiki 数据/绑定仍是项目级的：新项目在 `.grill-adapter/settings.json` 声明 `wiki.provider: obsidian` 与 Source bindings，机器本地 registry 解析 Vault/repository；`doctor` 校验 active provider 并报告 `obsidian-native` / `shadow-validation` / `cutover-complete`。legacy 内容只通过 `migrate-wiki` 的本地根或用户显式 Git URL 进入迁移计划，不提供 runtime fallback。
 
 `manifest.json` 现在只剩 `projectLevel.hostConventions`——组件清单由 `.claude-plugin/plugin.json` + 插件布局声明，Claude Code 自己发现，不再由 manifest 记账。
 
@@ -122,7 +122,7 @@ wiki 数据/绑定仍是项目级的：新项目在 `.shared-adapter/settings.js
 
 共享 skill/agent/hook 内容里对执行层脚本 / contracts 的引用仍统一写成 `${CLAUDE_PLUGIN_ROOT}/...`，由两端兼容加载。MCP 声明按 manifest 分开：Claude 的 `.mcp.json` 使用 `${CLAUDE_PLUGIN_ROOT}`；Codex 的 `.codex-plugin/plugin.json` 按原生本地 MCP 形式使用 `cwd: "."` + `./mcp/...`，其中 cwd 解析到插件根。两者启动同一份提交型 Obsidian bundle，不复制执行层。
 
-MCP 项目根解析同样是双运行时的：Claude Code 使用 `CLAUDE_PROJECT_DIR`，Codex 使用其受控 MCP request metadata 中的 Git workspace 根（未来客户端若提供标准 roots capability 也兼容）；直接 CLI 执行才使用进程工作目录。所有路径都只解析宿主声明的项目根中的 `.shared-adapter/settings.json`，不接受工具参数传任意根目录；没有绑定或多个 workspace root 同时声明绑定时 fail-closed。
+MCP 项目根解析同样是双运行时的：Claude Code 使用 `CLAUDE_PROJECT_DIR`，Codex 使用其受控 MCP request metadata 中的 Git workspace 根（未来客户端若提供标准 roots capability 也兼容）；直接 CLI 执行才使用进程工作目录。所有路径都只解析宿主声明的项目根中的 `.grill-adapter/settings.json`，不接受工具参数传任意根目录；没有绑定或多个 workspace root 同时声明绑定时 fail-closed。
 
 两条边界必须记住：
 

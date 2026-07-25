@@ -169,7 +169,7 @@ function writeManifest(manifestPath: string, manifest: PublishManifest): void {
 }
 
 function manifestPathFor(projectDir: string, featureSlug: string): string {
-  return path.join(projectDir, '.adapter', 'context', `${featureSlug}.wiki-publish.json`);
+  return path.join(projectDir, '.grill-adapter', 'context', `${featureSlug}.wiki-publish.json`);
 }
 
 function readPublishManifest(manifestPath: string): PublishManifest | undefined {

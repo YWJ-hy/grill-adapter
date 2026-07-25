@@ -91,7 +91,7 @@ def _feature_slug(value: Any) -> str:
 
 def _same_context_directory(reference: Path, candidate: Path, label: str) -> None:
     if reference.resolve().parent != candidate.resolve().parent:
-        raise ReadinessError(f"{label} must be in the same .adapter/context directory as the readiness receipt")
+        raise ReadinessError(f"{label} must be in the same .grill-adapter/context directory as the readiness receipt")
 
 
 def _safe_context_filename(value: Any, field: str) -> str:
@@ -552,9 +552,9 @@ def review_handoff(
 ) -> str:
     if not project_root.is_dir():
         raise ReadinessError(f"project root is not a directory: {project_root}")
-    context_dir = (project_root / ".adapter" / "context").resolve()
+    context_dir = (project_root / ".grill-adapter" / "context").resolve()
     if handoff_path.resolve().parent != context_dir:
-        raise ReadinessError("review handoff must be a plain file in <project-root>/.adapter/context")
+        raise ReadinessError("review handoff must be a plain file in <project-root>/.grill-adapter/context")
 
     # A failed refresh must never leave an older reviewer handoff available to subagents.
     handoff_path.unlink(missing_ok=True)
@@ -573,7 +573,7 @@ def review_handoff(
 
     try:
         if receipt_path.resolve().parent != context_dir:
-            raise ReadinessError("readiness receipt is outside the current project .adapter/context")
+            raise ReadinessError("readiness receipt is outside the current project .grill-adapter/context")
         _, _, entry, context_path = _validated_readiness_task(receipt_path, normalized_task_id)
     except (ReadinessError, ValidationError, FingerprintError):
         _write_text(

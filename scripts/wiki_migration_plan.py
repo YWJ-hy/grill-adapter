@@ -231,7 +231,7 @@ def load_bindings(
     project_source_id: str | None,
     shared_source_id: str | None,
 ) -> tuple[dict[str, dict[str, Any]], list[tuple[str, bytes]]]:
-    settings_path = project_root / ".shared-adapter" / "settings.json"
+    settings_path = project_root / ".grill-adapter" / "settings.json"
     settings = read_json(settings_path, "project Wiki settings")
     registry = read_json(registry_path, "Obsidian Wiki registry")
     wiki = settings.get("wiki")
@@ -538,7 +538,11 @@ def pack_metadata(project_root: Path, skill_name: str) -> tuple[dict[str, Any] |
 def neutrality_hits(text: str, binding: dict[str, Any], settings: dict[str, Any]) -> list[str]:
     manifest = binding["manifest"]
     wiki = settings.get("wiki") if isinstance(settings.get("wiki"), dict) else {}
-    legacy = wiki.get("sharedNeutrality") if isinstance(wiki.get("sharedNeutrality"), dict) else {}
+    roots = wiki.get("roots") if isinstance(wiki.get("roots"), dict) else {}
+    shared = roots.get("shared") if isinstance(roots.get("shared"), dict) else {}
+    legacy = shared.get("sharedNeutrality") if isinstance(shared.get("sharedNeutrality"), dict) else {}
+    if not legacy and isinstance(wiki.get("sharedNeutrality"), dict):
+        legacy = wiki["sharedNeutrality"]
     terms = sorted(set([*manifest.get("blocked_terms", []), *legacy.get("blockedTerms", [])]))
     patterns = sorted(set([*manifest.get("blocked_patterns", []), *legacy.get("blockedPatterns", [])]))
     hits = [f"term:{term}" for term in terms if isinstance(term, str) and term and term.casefold() in text.casefold()]
@@ -580,7 +584,7 @@ def build_plan(
             shutil.rmtree(checkout.parent, ignore_errors=True)
 
     roots = {
-        "project": project_root / ".adapter" / "wiki",
+        "project": project_root / ".grill-adapter" / "wiki",
         "shared": project_root / ".shared-adapter" / "wiki",
     }
     if _legacy_shared_root is not None:
@@ -593,7 +597,7 @@ def build_plan(
         project_source_id,
         shared_source_id,
     )
-    settings = read_json(project_root / ".shared-adapter" / "settings.json", "project Wiki settings")
+    settings = read_json(project_root / ".grill-adapter" / "settings.json", "project Wiki settings")
     inventory: dict[str, list[dict[str, Any]]] = {
         "pages": [], "sections": [], "indexes": [], "graphEdges": [],
         "danglingEdges": [], "skillDiscovery": [], "sourceItems": [],

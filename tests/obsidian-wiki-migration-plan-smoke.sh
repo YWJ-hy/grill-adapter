@@ -21,14 +21,14 @@ grep -Fq 'plan-only' "$SKILL" \
 
 PROJECT="$TMP/project"
 VAULT_REPO="$TMP/vault-repo"
-PROJECT_WIKI="$PROJECT/.adapter/wiki"
+PROJECT_WIKI="$PROJECT/.grill-adapter/wiki"
 SHARED_WIKI="$PROJECT/.shared-adapter/wiki"
 PROJECT_SOURCE="$VAULT_REPO/Projects/example"
 SHARED_SOURCE="$VAULT_REPO/Shared/engineering"
 OTHER_SHARED_SOURCE="$VAULT_REPO/Shared/other"
 mkdir -p "$PROJECT_WIKI/guides" "$SHARED_WIKI" "$PROJECT_SOURCE/_meta" "$PROJECT_SOURCE/existing" "$SHARED_SOURCE/_meta" "$OTHER_SHARED_SOURCE/_meta" "$PROJECT/.claude/skills"
 
-cat > "$PROJECT/.shared-adapter/settings.json" <<'JSON'
+cat > "$PROJECT/.grill-adapter/settings.json" <<'JSON'
 {
   "wiki": {
     "provider": "obsidian",
@@ -314,7 +314,7 @@ MD
 done
 
 snapshot() {
-  sha256_tree "$PROJECT/.adapter"
+  sha256_tree "$PROJECT/.grill-adapter"
   sha256_tree "$PROJECT/.shared-adapter"
   sha256_tree "$PROJECT/.claude"
   sha256_tree "$VAULT_REPO"
@@ -478,7 +478,7 @@ assert any(
 )
 PY
 
-SETTINGS="$PROJECT/.shared-adapter/settings.json"
+SETTINGS="$PROJECT/.grill-adapter/settings.json"
 SETTINGS_BACKUP="$TMP/settings.backup.json"
 cp "$SETTINGS" "$SETTINGS_BACKUP"
 

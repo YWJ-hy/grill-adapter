@@ -33,7 +33,7 @@ assert_file_exists() {
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# --- A standalone wiki repo: content at the repo root, no .adapter/wiki nesting ---
+# --- A standalone wiki repo: content at the repo root, no .grill-adapter/wiki nesting ---
 mkdir -p "$TMP/frontend"
 
 cat > "$TMP/index.md" << 'WIKI'
@@ -110,10 +110,20 @@ assert_file_exists "section graph created" "$TMP/.graph.json"
 CHECK_OUT="$(python3 "$TOOLS/wiki_update_check.py" --wiki-dir "$TMP" 2>&1)"
 assert_contains "validation passes" "WIKI_UPDATE_CHECK_VALID" "$CHECK_OUT"
 
-printf '\nTest: neutrality guard enforced from .shared-adapter/settings.json\n'
-mkdir -p "$TMP/.shared-adapter"
-cat > "$TMP/.shared-adapter/settings.json" << 'JSON'
-{ "wiki": { "sharedNeutrality": { "blockedTerms": ["AcmeCorpInternal"] } } }
+printf '\nTest: neutrality guard enforced from .grill-adapter/settings.json\n'
+mkdir -p "$TMP/.grill-adapter"
+cat > "$TMP/.grill-adapter/settings.json" << 'JSON'
+{
+  "wiki": {
+    "roots": {
+      "shared": {
+        "sharedNeutrality": {
+          "blockedTerms": ["AcmeCorpInternal"]
+        }
+      }
+    }
+  }
+}
 JSON
 # Re-validate clean: no blocked term present yet.
 CLEAN_OUT="$(python3 "$TOOLS/wiki_update_check.py" --wiki-dir "$TMP" 2>&1)"

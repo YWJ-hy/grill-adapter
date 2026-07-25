@@ -13,9 +13,9 @@ from pathlib import Path
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Run a hook from .shared-adapter/settings.json')
+    parser = argparse.ArgumentParser(description='Run a hook from .grill-adapter/settings.json')
     parser.add_argument('hook_name')
-    parser.add_argument('--settings', default='.shared-adapter/settings.json')
+    parser.add_argument('--settings', default='.grill-adapter/settings.json')
     return parser.parse_args()
 
 

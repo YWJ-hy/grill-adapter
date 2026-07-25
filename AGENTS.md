@@ -54,7 +54,7 @@ bash tests/codex-plugin-smoke.sh "$PWD"             # 隔离 marketplace 安装�
 
 ## 用户流程模型
 
-见 `docs/USER_FLOW_CN.md`。要点：grill 是主工作流，grill-adapter 只在 grill 各阶段旁挂触点（Disclose/Verify/Carry/Bind/Capture），全靠 AGENTS.md 约定 + hook，不动 grill 内部。执行阶段只消费 `.adapter/context/<feature-slug>.wiki-context.json` + 有界 1 跳 `depends-on` 闭包；任务完成后由 `update-wiki` 审查回写。
+见 `docs/USER_FLOW_CN.md`。要点：grill 是主工作流，grill-adapter 只在 grill 各阶段旁挂触点（Disclose/Verify/Carry/Bind/Capture），全靠 AGENTS.md 约定 + hook，不动 grill 内部。执行阶段只消费 `.grill-adapter/context/<feature-slug>.wiki-context.json` + 有界 1 跳 `depends-on` 闭包；任务完成后由 `update-wiki` 审查回写。
 
 不要把 `python3 scripts/*.py` 描述成普通用户主要入口；它们是 skill/hook 的执行层。
 
@@ -74,7 +74,7 @@ bash tests/codex-plugin-smoke.sh "$PWD"             # 隔离 marketplace 安装�
 - **markdown 唯一真相源**，`.graph.json` 派生物；不引外部图数据库。
 - **执行期不追链**：只消费 `.wiki-context.json` + 有界 1 跳 `depends-on` 闭包（不传递、去重、缺图静默 no-op）。
 - **section 级 `[[page#section]]` typed 边** + 渐进披露。
-- **Obsidian Source 每项目绑定**：目标项目 `.shared-adapter/settings.json` 的 `wiki.obsidian.bindings` 声明连接；未声明、换绑或 revision 漂移 fail-closed。legacy GitHub Wiki 只由 `migrate-wiki --legacy-shared-wiki-url` 显式只读导入。
+- **Obsidian Source 每项目绑定**：目标项目 `.grill-adapter/settings.json` 的 `wiki.obsidian.bindings` 声明连接；未声明、换绑或 revision 漂移 fail-closed。legacy GitHub Wiki 只由 `migrate-wiki --legacy-shared-wiki-url` 显式只读导入。
 - **root-specific 写授权**（wiki 与 source-truth 同款）：`updateExistingPage` 默认 `skip`、`createNewDocument` 默认 `ask`；`--authorized-update`/`--authorized-create` 不绕 `refuse`。
 - **shared wiki 中性化**：`blockedTerms`/`blockedPatterns` 机械拒绝已知系统标识。
 - **三条铁律**：不 patch 宿主 skill；验收以 Codex 集成路径为准；markdown 唯一真相源。

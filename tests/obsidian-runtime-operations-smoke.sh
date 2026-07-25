@@ -19,15 +19,15 @@ FAKE_BIN_PATH="$FAKE_BIN"
 if command -v cygpath >/dev/null 2>&1; then
   FAKE_BIN_PATH="$(cygpath -u "$FAKE_BIN")"
 fi
-mkdir -p "$PROJECT/.shared-adapter" "$PROJECT/.adapter/wiki" "$FAKE_BIN"
-printf '# legacy content\n' > "$PROJECT/.adapter/wiki/index.md"
+mkdir -p "$PROJECT/.shared-adapter" "$PROJECT/.grill-adapter/wiki" "$FAKE_BIN"
+printf '# legacy content\n' > "$PROJECT/.grill-adapter/wiki/index.md"
 
 if "$ROOT/doctor.sh" "$TMP/missing-project" >"$TMP/doctor-missing.out" 2>&1; then
   fail "doctor accepted a missing project directory"
 fi
 need "$TMP/doctor-missing.out" 'project root is not a directory'
 
-cat > "$PROJECT/.shared-adapter/settings.json" <<'JSON'
+cat > "$PROJECT/.grill-adapter/settings.json" <<'JSON'
 {
   "wiki": {
     "provider": "obsidian",
@@ -80,7 +80,7 @@ need "$TMP/doctor-shadow.out" 'adoptionState: shadow-validation'
 need "$TMP/doctor-shadow.out" 'Obsidian runtime healthy: yes'
 need "$TMP/doctor-shadow.out" 'legacy runtime fallback: disabled'
 
-python3 - "$PROJECT/.shared-adapter/settings.json" <<'PY'
+python3 - "$PROJECT/.grill-adapter/settings.json" <<'PY'
 import json, sys
 from pathlib import Path
 
@@ -88,8 +88,8 @@ path = Path(sys.argv[1])
 settings = json.loads(path.read_text(encoding="utf-8"))
 settings["wiki"]["legacyRuntime"] = {
     "mode": "read-only-archive",
-    "roots": [".adapter/wiki"],
-    "migrationManifest": ".adapter/context/migration.json",
+    "roots": [".grill-adapter/wiki"],
+    "migrationManifest": ".grill-adapter/context/migration.json",
 }
 path.write_text(json.dumps(settings), encoding="utf-8")
 PY
@@ -100,8 +100,8 @@ if PATH="$FAKE_BIN_PATH:$PATH" FAKE_OBSIDIAN_STATUS="$HEALTHY" \
 fi
 need "$TMP/doctor-forged-cutover.out" 'migrationManifest does not exist'
 
-mkdir -p "$PROJECT/.adapter/context"
-cat > "$PROJECT/.adapter/context/migration.json" <<'JSON'
+mkdir -p "$PROJECT/.grill-adapter/context"
+cat > "$PROJECT/.grill-adapter/context/migration.json" <<'JSON'
 {
   "schemaVersion": 1,
   "kind": "grill-adapter.obsidian-migration",
@@ -118,26 +118,26 @@ cat > "$PROJECT/.adapter/context/migration.json" <<'JSON'
     "typedEdges": true
   },
   "cutover": {
-    "settingsPath": ".shared-adapter/settings.json",
+    "settingsPath": ".grill-adapter/settings.json",
     "legacyRuntime": {
       "mode": "read-only-archive",
-      "roots": [".adapter/wiki"],
-      "migrationManifest": ".adapter/context/migration.json"
+      "roots": [".grill-adapter/wiki"],
+      "migrationManifest": ".grill-adapter/context/migration.json"
     }
   }
 }
 JSON
 
-cp "$PROJECT/.adapter/context/migration.json" "$TMP/migration-before-doctor.json"
+cp "$PROJECT/.grill-adapter/context/migration.json" "$TMP/migration-before-doctor.json"
 if PATH="$FAKE_BIN_PATH:$PATH" FAKE_OBSIDIAN_STATUS="$HEALTHY" \
   "$ROOT/doctor.sh" "$PROJECT" >"$TMP/doctor-incomplete-receipt.out" 2>&1; then
   fail "doctor accepted an incomplete migration receipt"
 fi
 need "$TMP/doctor-incomplete-receipt.out" 'not a completed Obsidian migration cutover receipt'
-cmp -s "$TMP/migration-before-doctor.json" "$PROJECT/.adapter/context/migration.json" \
+cmp -s "$TMP/migration-before-doctor.json" "$PROJECT/.grill-adapter/context/migration.json" \
   || fail "doctor mutated an incomplete migration receipt"
 
-python3 - "$PROJECT/.adapter/context/migration.json" <<'PY'
+python3 - "$PROJECT/.grill-adapter/context/migration.json" <<'PY'
 import json, sys
 from pathlib import Path
 
@@ -153,7 +153,7 @@ if PATH="$FAKE_BIN_PATH:$PATH" FAKE_OBSIDIAN_STATUS="$HEALTHY" \
 fi
 need "$TMP/doctor-forged-receipt.out" 'migration verify failed'
 
-python3 - "$PROJECT/.shared-adapter/settings.json" <<'PY'
+python3 - "$PROJECT/.grill-adapter/settings.json" <<'PY'
 import json, sys
 from pathlib import Path
 
@@ -171,7 +171,7 @@ fi
 need "$TMP/doctor-unhealthy.out" 'Obsidian runtime healthy: no'
 need "$TMP/doctor-unhealthy.out" 'repository base is stale'
 
-python3 - "$PROJECT/.shared-adapter/settings.json" <<'PY'
+python3 - "$PROJECT/.grill-adapter/settings.json" <<'PY'
 import json, sys
 from pathlib import Path
 

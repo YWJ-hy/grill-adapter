@@ -39,7 +39,7 @@ PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-}"
 # sidecars at once, so the newest wins -- this hook is a coarse session-level guess, and the
 # precise path is the per-ticket /wiki-materialize call.
 SIDECAR=""
-for f in "$PROJECT_ROOT"/.adapter/context/*.wiki-context.json; do
+for f in "$PROJECT_ROOT"/.grill-adapter/context/*.wiki-context.json; do
   [ -f "$f" ] || continue
   if [ -z "$SIDECAR" ] || [ "$f" -nt "$SIDECAR" ]; then SIDECAR="$f"; fi
 done

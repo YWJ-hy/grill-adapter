@@ -250,7 +250,7 @@ function enforceGovernance(
     throw new BridgeError(403, 'Project is not allowed by this bridge');
   }
   if (!allowedProjects.has(projectDir)) throw new BridgeError(403, 'Project is not allowed by this bridge');
-  const settingsPath = path.join(projectDir, '.shared-adapter', 'settings.json');
+  const settingsPath = path.join(projectDir, '.grill-adapter', 'settings.json');
   let settings: z.infer<typeof BridgeSettingsSchema>;
   try {
     settings = BridgeSettingsSchema.parse(JSON.parse(readFileSync(settingsPath, 'utf8')));
