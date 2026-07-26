@@ -85,6 +85,25 @@ decision durable gate and template.
 
 When `.grill-adapter/settings.json` selects `wiki.provider: obsidian`, never edit the Vault or its repository worktree directly. After semantic targeting and content review:
 
+#### Atomic Note targeting contract
+
+For Obsidian, an atomic Note is the runtime retrieval unit: Bind rereads the complete Note
+body. Treat one Note as one independently materializable durable contract, not as a bucket for
+every rule that happens to mention the same module or component.
+
+- A same-theme refinement (same trigger, lifecycle, and failure mode) updates the existing Note.
+- An independent contract with a different trigger, lifecycle, failure mode, validation path,
+  or task-routing need creates a sibling Note with a new stable `wiki_id`.
+- The existing Note's `wiki_id` is never repurposed to absorb an unrelated claim. Same module,
+  directory, or code owner is not sufficient reason to update the existing Note.
+- When the split decision is ambiguous, record `deferred` and ask the user before proposing a
+  write. Do not default to appending the claim to the nearest Note.
+
+Before any Obsidian proposal, produce an explicit target decision for every kept candidate:
+`candidate`, `operation` (`create` or `update`), `targetWikiId`/path, and a one-line semantic
+reason. This is an agent decision, not a keyword or filename score. The proposal/apply bridge
+then mechanically enforces the selected operation, path, expected hash, and stable identity.
+
 1. Call `obsidian_wiki_propose_note_change` with the bound `sourceId`, Vault-relative Note path, complete proposed atomic Note content, operation, and expected content hash (`null` for create).
 2. Show the returned structured diff to the user. A proposal does not write. If Capture pauses after a valid proposal, record `deferred` with a `proposed` write receipt using the exact proposal identity and hashes. On resume, Note drift may require a fresh proposal and another deferred receipt; only the latest validated proposal can transition to applied.
 3. Respect the returned effective policy: `deny` stops; `confirm` requires explicit user authorization; `direct` may proceed without a separate confirmation. Authorization never weakens `deny`.
@@ -196,7 +215,9 @@ Do the semantic work yourself. Python scripts are only mechanical helpers. Work 
 4. **Check semantic duplicates yourself** — `references/targeting.md`.
 5. **Choose target root and owning leaf page yourself** — `references/targeting.md`.
 6. **If the target is a Shared Source, neutralize the content** according to the bound Source policy.
-7. **Check target ownership shape (overload / split)** — `references/targeting.md`.
+7. **Check target ownership shape (overload / split)** — `references/targeting.md`. For an Obsidian
+   Note, make the atomic target decision explicit: update only for a same-theme refinement;
+   create a sibling Note for an independent contract; defer and ask when ambiguous.
 8. **Check update authorization policy** — `references/targeting.md`.
 9. **Maintain section markers and `[[page#section]]` knowledge edges** — `references/graph-maintenance.md`.
 10. **Use the Obsidian proposal/apply flow.** Project and Shared Sources are both bound Obsidian Sources; never edit a Vault worktree directly.

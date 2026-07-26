@@ -138,6 +138,12 @@ Before finishing the update:
 - [ ] Did you read relevant indexed wiki pages before writing?
 - [ ] Did you skip candidates that are already covered and tell the user where?
 - [ ] Did you choose target root and page ownership yourself rather than outsourcing it to a script?
+- [ ] For an Obsidian target, did you record an explicit `create`/`update` decision, stable
+      `wiki_id`/path, and semantic reason for every kept candidate?
+- [ ] Does an Obsidian Note contain one independently materializable durable contract, rather
+      than unrelated rules from the same module?
+- [ ] If the candidate changed the existing Note's theme, did you create a sibling Note or
+      defer and ask instead of appending it to the nearest Note?
 - [ ] If writing to `.shared-adapter/wiki/`, did you neutralize system-specific identifiers and confirm the content is portable across sibling projects?
 - [ ] Did you verify the target page's ownership boundary with bounded signals instead of weak keyword overlap?
 - [ ] Did you avoid nearest-match fallback when no clear owner existed?

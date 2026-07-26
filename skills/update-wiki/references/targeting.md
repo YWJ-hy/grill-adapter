@@ -115,6 +115,23 @@ Prefer sibling leaf pages in the current directory when splitting a small number
 
 If the existing page may already be referenced elsewhere, prefer keeping the original path as an overview or navigation page unless you have verified and updated the references. If sibling pages vs. a topic directory would affect long-term wiki organization, ask the user which structure should own it.
 
+### Obsidian atomic Note targeting
+
+When the selected root is an Obsidian Source, the atomic Note is the execution-time retrieval
+unit. Apply the ownership check at Note granularity:
+
+- update an existing Note only when the candidate is a same-theme refinement of that Note's
+  trigger, lifecycle, failure mode, and validation contract;
+- create a sibling Note with a new stable `wiki_id` when the candidate is an independently
+  materializable contract, even if it belongs to the same module, directory, or code owner;
+- preserve the existing Note's `wiki_id`; never change its identity to absorb a new topic;
+- if the boundary cannot be decided from the indexed summary, owner description, and bounded
+  excerpt, defer the candidate and ask the user before proposing a write.
+
+The agent must record `candidate`, `operation`, `targetWikiId`/path, and a one-line semantic
+reason before calling the Obsidian proposal tool. The bridge validates the chosen operation and
+stable identity, but it does not infer semantic ownership or split Notes.
+
 ## 8. Check update authorization policy
 
 Before editing or creating wiki content, read the selected root's settings file:

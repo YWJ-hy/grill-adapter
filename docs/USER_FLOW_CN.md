@@ -161,7 +161,7 @@ review 通过后，把本轮新沉淀的知识回写 wiki。约定块只让你�
 
 3. 以最终 review 结论与已验证 code/tests 为最高优先级，其次才是 final spec/ticket，再次才是原 candidate 文案；逐条做 keep-or-skip。ADR projection 必须重读 hash 匹配的权威 ADR，只提炼未来实现必须遵守的 durable 约束；没有约束就明确 `skipped`。投影固定写 project Source，以 `adr_source_id` 更新唯一既有 Note，声明自身为派生内容；不得中性化后转投 Shared Wiki。非 ADR 的普通 decision candidate 继续走原 durable gate。可执行流程先交 `scaffold-practice-skill` 生成/转换带 version 的 pack，再用 `stage-card` 计算全 pack contract hash 并追加结构化候选；脚手架不直接写 Wiki。若多个 unresolved candidate 表达同一最终 claim，先追加一个 `capture` stage 的原子 replacement candidate，再用 `supersede` 把相关候选显式归并，只对 replacement 写一次。
 
-   `/grill-adapter:update-wiki` 对每条候选逐一过闸：**durable 闸 → sectionize（分节）→ type（定类型）→ `[[page#section]]` 边 → dedup（去重）→ 中性化 → 授权**，最终只保留真正值得沉淀的知识。
+   `/grill-adapter:update-wiki` 对每条候选逐一过闸：**durable 闸 → 原子候选拆分 → target decision → sectionize（分节）→ type（定类型）→ `[[page#section]]` 边 → dedup（去重）→ 中性化 → 授权**，最终只保留真正值得沉淀的知识。对 Obsidian，same-theme refinement 才 update 既有 Note；不同触发条件、生命周期、失败模式或验证路径的独立 contract 必须 create sibling Note 并使用新的稳定 `wiki_id`；无法判断时 defer/询问，不默认追加到最近的 Note。
 
 4. Obsidian provider 对准备保留的 Note/Card 调 `obsidian_wiki_propose_note_change`，向用户展示 structured diff；effective policy 为 `confirm` 时取得明确授权后，才以完全相同输入调用 `obsidian_wiki_apply_note_change`。Skill Card 是 `type: guide` atomic Note，完整复制 staged provider/name/version/hash/roles/triggers；MCP 与 bridge 都验证本地 pack identity。bridge 通过 loopback token 鉴权并做 expected-hash CAS；任何 binding/path/schema/identity/typed-link/neutrality/policy/pack identity/并发冲突都保持 `deferred`，禁止直接改 Vault 文件绕过。proposal 后暂停时把精确身份记录为 `writeReceipt.state: proposed`，不把 proposal 误当已写入；恢复后若漂移则可追加新的 deferred proposal receipt，fold 以最新 proposal 为准但历史不丢。
 
