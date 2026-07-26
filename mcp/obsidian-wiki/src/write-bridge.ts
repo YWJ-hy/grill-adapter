@@ -49,6 +49,7 @@ export type WriteBridgeOptions = {
   token: string;
   host?: string;
   port?: number;
+  onShutdown?: () => void;
   beforeAtomicExchange?: (targetPath: string) => void;
   afterAtomicExchange?: (targetPath: string) => void;
 };
@@ -500,6 +501,12 @@ export async function startWriteBridge(options: WriteBridgeOptions): Promise<Wri
         respond(response, 200, { ok: true, service: 'obsidian-wiki-write-bridge' });
         return;
       }
+      if (request.method === 'POST' && request.url === '/shutdown') {
+        authenticate(request, options.token);
+        respond(response, 200, { ok: true, service: 'obsidian-wiki-write-bridge', shuttingDown: true });
+        options.onShutdown?.();
+        return;
+      }
       if (request.method !== 'POST') throw new BridgeError(405, 'Write bridge accepts POST requests only');
       const route = request.url;
       if (route !== '/v1/notes/validate' && route !== '/v1/notes/apply') throw new BridgeError(404, 'Unknown write bridge route');
@@ -566,6 +573,10 @@ export async function runWriteBridgeFromEnvironment(env: NodeJS.ProcessEnv = pro
   if (!Array.isArray(projects) || projects.some((value) => typeof value !== 'string')) {
     throw new Error('Obsidian Wiki bridge projectDirs must be an array of strings');
   }
+  let resolveShutdown!: () => void;
+  const shutdownRequested = new Promise<void>((resolve) => {
+    resolveShutdown = resolve;
+  });
   const bridge = await startWriteBridge({
     vaultRoot,
     vaultSelector,
@@ -574,11 +585,15 @@ export async function runWriteBridgeFromEnvironment(env: NodeJS.ProcessEnv = pro
     token,
     host: env.OBSIDIAN_WIKI_BRIDGE_HOST ?? configured?.config.host ?? '127.0.0.1',
     port: Number(env.OBSIDIAN_WIKI_BRIDGE_PORT ?? configured?.config.port ?? '27124'),
+    onShutdown: resolveShutdown,
   });
   process.stdout.write(`${JSON.stringify({ url: bridge.url, vaultSelector, allowedRoots: roots, registryPath: configured?.registryPath })}\n`);
-  await new Promise<void>((resolve) => {
-    process.once('SIGINT', resolve);
-    process.once('SIGTERM', resolve);
-  });
+  await Promise.race([
+    shutdownRequested,
+    new Promise<void>((resolve) => {
+      process.once('SIGINT', resolve);
+      process.once('SIGTERM', resolve);
+    }),
+  ]);
   await bridge.close();
 }

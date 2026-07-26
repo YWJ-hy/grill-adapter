@@ -117,9 +117,11 @@ obsidian-wiki config validate
 obsidian-wiki doctor
 obsidian-wiki bridge start
 obsidian-wiki bridge status
+obsidian-wiki bridge stop
+obsidian-wiki bridge restart
 ```
 
-MCP 和 bridge 使用相同的配置发现顺序：`--config`、`OBSIDIAN_WIKI_CONFIG`、CLI 写入的 location pointer、默认 JSONC 路径，最后兼容旧的 `OBSIDIAN_WIKI_REGISTRY` 与 JSON 文件。bridge 仍然是独立的 loopback HTTP 进程，但不再需要手动拼接 Vault/root/project 环境变量；`bridge start` 从统一配置读取它们。token 仍由配置中声明的环境变量提供，不写入 example 文件。
+MCP 和 bridge 使用相同的配置发现顺序：`--config`、`OBSIDIAN_WIKI_CONFIG`、CLI 写入的 location pointer、默认 JSONC 路径，最后兼容旧的 `OBSIDIAN_WIKI_REGISTRY` 与 JSON 文件。bridge 仍然是独立的 loopback HTTP 进程，但不再需要手动拼接 Vault/root/project 环境变量；`bridge start` 从统一配置读取它们。token 仍由配置中声明的环境变量提供，不写入 example 文件。`bridge start` 前台运行，可用 `Ctrl-C` 停止；`bridge stop` 通过 token 鉴权的 loopback 请求优雅关闭；`bridge restart` 停止旧实例后以 detached 后台进程重新启动，并等待健康检查恢复。
 
 ## 本机 Registry
 
@@ -200,6 +202,8 @@ printf '%s' '{"wikiIds":["project/grill-adapter/architecture/runtime"]}' \
 ```bash
 npm install --global grill-adapter @grill-adapter/obsidian-wiki
 obsidian-wiki bridge start
+obsidian-wiki bridge stop
+obsidian-wiki bridge restart
 ```
 
 `bridge start` 从配置中读取 Vault、允许写入的 Source roots、项目白名单、端口和 token 环境变量；host 固定为 loopback（默认 `127.0.0.1`），不能绑定 `0.0.0.0` 或外网地址。旧版环境变量入口仍可用：

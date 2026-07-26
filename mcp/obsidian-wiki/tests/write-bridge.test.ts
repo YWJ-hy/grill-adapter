@@ -139,6 +139,53 @@ describe('Obsidian Wiki loopback write bridge', () => {
     });
   });
 
+  it('accepts an authenticated shutdown request', async () => {
+    const vaultRoot = mkdtempSync(path.join(tmpdir(), 'obsidian-shutdown-'));
+    roots.push(vaultRoot);
+    const projectDir = path.join(vaultRoot, 'project');
+    const sourceRoot = 'Projects/example';
+    mkdirSync(path.join(vaultRoot, sourceRoot, '_meta'), { recursive: true });
+    writeFileSync(path.join(vaultRoot, sourceRoot, '_meta', 'wiki-source.md'), manifest('project', 'project'), 'utf8');
+    mkdirSync(path.join(projectDir, '.grill-adapter'), { recursive: true });
+    writeFileSync(path.join(projectDir, '.grill-adapter', 'settings.json'), JSON.stringify({
+      wiki: {
+        provider: 'obsidian',
+        publishing: { mode: 'git-pr' },
+        obsidian: { bindings: [{ sourceId: 'project', role: 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: sourceRoot, access: { read: true, update: 'confirm' } }] },
+      },
+    }), 'utf8');
+    let shutdownRequested = false;
+    const bridge = await startWriteBridge({
+      vaultRoot,
+      vaultSelector: 'Knowledge',
+      allowedRoots: [sourceRoot],
+      projectDirs: [projectDir],
+      token: 'test-token',
+      port: 0,
+      onShutdown: () => {
+        shutdownRequested = true;
+      },
+    });
+    bridges.push(bridge);
+    const unauthorized = await fetch(`${bridge.url}/shutdown`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer wrong-token' },
+    });
+    expect(unauthorized.status).toBe(401);
+    expect(shutdownRequested).toBe(false);
+    const response = await fetch(`${bridge.url}/shutdown`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer test-token' },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      service: 'obsidian-wiki-write-bridge',
+      shuttingDown: true,
+    });
+    expect(shutdownRequested).toBe(true);
+  });
+
   it('validates without writing, then atomically applies an expected-hash update', async () => {
     const { vaultRoot, projectDir, sourceRoot, initial, bridge } = await fixture();
     const proposed = note('project/example/bridge', 'Updated body.');

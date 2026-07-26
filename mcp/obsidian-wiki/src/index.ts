@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { spawn } from 'node:child_process';
 import { createServer } from './server.js';
 import { statusTool } from './tools/status.js';
 import { searchTool, searchWikiIdsTool } from './tools/search.js';
@@ -13,6 +14,7 @@ import {
   loadRegistry,
   resolveBridgeConfig,
   resolveConfigPath,
+  resolveSecretEnvironment,
   setConfigLocation,
   upsertRepository,
   upsertVault,
@@ -52,6 +54,98 @@ function printJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
+function bridgeEndpoint(resolved: ReturnType<typeof resolveBridgeConfig>): string {
+  return resolved.config.url ?? `http://${resolved.config.host}:${resolved.config.port}`;
+}
+
+async function fetchBridge(
+  endpoint: string,
+  init: RequestInit,
+  timeoutMs = 5000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(endpoint, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function bridgeHealth(endpoint: string): Promise<boolean> {
+  try {
+    const response = await fetchBridge(new URL('/health', endpoint).toString(), {});
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function stopBridge(
+  resolved: ReturnType<typeof resolveBridgeConfig>,
+): Promise<{ running: boolean; stopped: boolean; endpoint: string }> {
+  const endpoint = bridgeEndpoint(resolved);
+  if (!(await bridgeHealth(endpoint))) {
+    return { running: false, stopped: false, endpoint };
+  }
+  const token = resolveSecretEnvironment(resolved.config.tokenEnv, process.env);
+  if (!token) throw new Error(`Obsidian Wiki bridge token is unavailable: ${resolved.config.tokenEnv}`);
+  try {
+    const response = await fetchBridge(new URL('/shutdown', endpoint).toString(), {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const body = await response.json().catch(() => undefined);
+    if (!response.ok) {
+      throw new Error(
+        body && typeof body === 'object' && 'error' in body
+          ? String((body as { error: unknown }).error)
+          : `HTTP ${response.status}`,
+      );
+    }
+  } catch (error) {
+    if (await bridgeHealth(endpoint)) {
+      throw new Error(`Obsidian Wiki bridge stop request failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return { running: false, stopped: false, endpoint };
+  }
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (!(await bridgeHealth(endpoint))) return { running: true, stopped: true, endpoint };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Obsidian Wiki bridge did not stop at ${endpoint}`);
+}
+
+async function restartBridge(
+  resolved: ReturnType<typeof resolveBridgeConfig>,
+  configPath?: string,
+): Promise<{ pid: number | undefined; endpoint: string }> {
+  const stopped = await stopBridge(resolved);
+  const scriptPath = process.argv[1];
+  if (!scriptPath) throw new Error('Cannot restart Obsidian Wiki bridge without the CLI entrypoint path');
+  const childArgs = [scriptPath, 'bridge', 'start'];
+  if (configPath) childArgs.push('--config', configPath);
+  const child = spawn(process.execPath, childArgs, {
+    detached: true,
+    env: process.env,
+    stdio: 'ignore',
+  });
+  child.unref();
+  const deadline = Date.now() + 5000;
+  const endpoint = stopped.endpoint;
+  while (Date.now() < deadline) {
+    if (await bridgeHealth(endpoint)) return { pid: child.pid, endpoint };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  try {
+    if (child.pid) process.kill(child.pid, 'SIGTERM');
+  } catch {
+    // The child may have exited while the health check was polling.
+  }
+  throw new Error(`Obsidian Wiki bridge restart did not become healthy at ${endpoint}`);
+}
+
 function printHelp(): void {
   process.stdout.write(`obsidian-wiki - Obsidian Wiki local runtime manager
 
@@ -69,6 +163,8 @@ Usage:
   printf '<json>' | obsidian-wiki search-by-wiki-ids
   obsidian-wiki bridge start [--config <path>]    Start the foreground write bridge
   obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
+  obsidian-wiki bridge stop [--config <path>]    Gracefully stop the write bridge
+  obsidian-wiki bridge restart [--config <path>] Restart the write bridge in background
   obsidian-wiki serve-write-bridge                Compatibility alias for bridge start
 `);
 }
@@ -122,15 +218,26 @@ async function main(): Promise<void> {
   }
   if (subcommand === 'bridge' && action === 'status') {
     const resolved = resolveBridgeConfig(process.env, parsed.configPath, process.env.OBSIDIAN_WIKI_BRIDGE_VAULT_REF);
-    const endpoint = resolved.config.url ?? `http://${resolved.config.host}:${resolved.config.port}`;
+    const endpoint = bridgeEndpoint(resolved);
     try {
-      const response = await fetch(new URL('/health', endpoint));
+      const response = await fetchBridge(new URL('/health', endpoint).toString(), {});
       const body = await response.json();
       printJson({ ...body, url: endpoint, registryPath: resolved.registryPath });
       if (!response.ok) process.exitCode = 1;
     } catch (error) {
       printJson({ ok: false, url: endpoint, registryPath: resolved.registryPath, error: error instanceof Error ? error.message : String(error) });
       process.exitCode = 1;
+    }
+    return;
+  }
+  if (subcommand === 'bridge' && (action === 'stop' || action === 'restart')) {
+    const resolved = resolveBridgeConfig(process.env, parsed.configPath, process.env.OBSIDIAN_WIKI_BRIDGE_VAULT_REF);
+    if (action === 'stop') {
+      const result = await stopBridge(resolved);
+      printJson({ ...result, registryPath: resolved.registryPath });
+    } else {
+      const result = await restartBridge(resolved, parsed.configPath);
+      printJson({ ...result, restarted: true, registryPath: resolved.registryPath });
     }
     return;
   }

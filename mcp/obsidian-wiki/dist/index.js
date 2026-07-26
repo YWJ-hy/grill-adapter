@@ -13932,6 +13932,9 @@ var StdioServerTransport = class {
   }
 };
 
+// src/index.ts
+import { spawn } from "node:child_process";
+
 // node_modules/zod/v3/helpers/util.js
 var util;
 (function(util2) {
@@ -24647,6 +24650,12 @@ async function startWriteBridge(options) {
         respond(response, 200, { ok: true, service: "obsidian-wiki-write-bridge" });
         return;
       }
+      if (request.method === "POST" && request.url === "/shutdown") {
+        authenticate(request, options.token);
+        respond(response, 200, { ok: true, service: "obsidian-wiki-write-bridge", shuttingDown: true });
+        options.onShutdown?.();
+        return;
+      }
       if (request.method !== "POST") throw new BridgeError(405, "Write bridge accepts POST requests only");
       const route = request.url;
       if (route !== "/v1/notes/validate" && route !== "/v1/notes/apply") throw new BridgeError(404, "Unknown write bridge route");
@@ -24704,6 +24713,10 @@ async function runWriteBridgeFromEnvironment(env = process.env) {
   if (!Array.isArray(projects) || projects.some((value) => typeof value !== "string")) {
     throw new Error("Obsidian Wiki bridge projectDirs must be an array of strings");
   }
+  let resolveShutdown;
+  const shutdownRequested = new Promise((resolve) => {
+    resolveShutdown = resolve;
+  });
   const bridge = await startWriteBridge({
     vaultRoot,
     vaultSelector,
@@ -24711,14 +24724,18 @@ async function runWriteBridgeFromEnvironment(env = process.env) {
     projectDirs: projects,
     token,
     host: env.OBSIDIAN_WIKI_BRIDGE_HOST ?? configured?.config.host ?? "127.0.0.1",
-    port: Number(env.OBSIDIAN_WIKI_BRIDGE_PORT ?? configured?.config.port ?? "27124")
+    port: Number(env.OBSIDIAN_WIKI_BRIDGE_PORT ?? configured?.config.port ?? "27124"),
+    onShutdown: resolveShutdown
   });
   process.stdout.write(`${JSON.stringify({ url: bridge.url, vaultSelector, allowedRoots: roots, registryPath: configured?.registryPath })}
 `);
-  await new Promise((resolve) => {
-    process.once("SIGINT", resolve);
-    process.once("SIGTERM", resolve);
-  });
+  await Promise.race([
+    shutdownRequested,
+    new Promise((resolve) => {
+      process.once("SIGINT", resolve);
+      process.once("SIGTERM", resolve);
+    })
+  ]);
   await bridge.close();
 }
 
@@ -24755,6 +24772,81 @@ function printJson(value) {
   process.stdout.write(`${JSON.stringify(value, null, 2)}
 `);
 }
+function bridgeEndpoint(resolved) {
+  return resolved.config.url ?? `http://${resolved.config.host}:${resolved.config.port}`;
+}
+async function fetchBridge(endpoint, init, timeoutMs = 5e3) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(endpoint, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function bridgeHealth(endpoint) {
+  try {
+    const response = await fetchBridge(new URL("/health", endpoint).toString(), {});
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+async function stopBridge(resolved) {
+  const endpoint = bridgeEndpoint(resolved);
+  if (!await bridgeHealth(endpoint)) {
+    return { running: false, stopped: false, endpoint };
+  }
+  const token = resolveSecretEnvironment(resolved.config.tokenEnv, process.env);
+  if (!token) throw new Error(`Obsidian Wiki bridge token is unavailable: ${resolved.config.tokenEnv}`);
+  try {
+    const response = await fetchBridge(new URL("/shutdown", endpoint).toString(), {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` }
+    });
+    const body = await response.json().catch(() => void 0);
+    if (!response.ok) {
+      throw new Error(
+        body && typeof body === "object" && "error" in body ? String(body.error) : `HTTP ${response.status}`
+      );
+    }
+  } catch (error2) {
+    if (await bridgeHealth(endpoint)) {
+      throw new Error(`Obsidian Wiki bridge stop request failed: ${error2 instanceof Error ? error2.message : String(error2)}`);
+    }
+    return { running: false, stopped: false, endpoint };
+  }
+  const deadline = Date.now() + 5e3;
+  while (Date.now() < deadline) {
+    if (!await bridgeHealth(endpoint)) return { running: true, stopped: true, endpoint };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Obsidian Wiki bridge did not stop at ${endpoint}`);
+}
+async function restartBridge(resolved, configPath) {
+  const stopped = await stopBridge(resolved);
+  const scriptPath2 = process.argv[1];
+  if (!scriptPath2) throw new Error("Cannot restart Obsidian Wiki bridge without the CLI entrypoint path");
+  const childArgs = [scriptPath2, "bridge", "start"];
+  if (configPath) childArgs.push("--config", configPath);
+  const child = spawn(process.execPath, childArgs, {
+    detached: true,
+    env: process.env,
+    stdio: "ignore"
+  });
+  child.unref();
+  const deadline = Date.now() + 5e3;
+  const endpoint = stopped.endpoint;
+  while (Date.now() < deadline) {
+    if (await bridgeHealth(endpoint)) return { pid: child.pid, endpoint };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  try {
+    if (child.pid) process.kill(child.pid, "SIGTERM");
+  } catch {
+  }
+  throw new Error(`Obsidian Wiki bridge restart did not become healthy at ${endpoint}`);
+}
 function printHelp() {
   process.stdout.write(`obsidian-wiki - Obsidian Wiki local runtime manager
 
@@ -24772,6 +24864,8 @@ Usage:
   printf '<json>' | obsidian-wiki search-by-wiki-ids
   obsidian-wiki bridge start [--config <path>]    Start the foreground write bridge
   obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
+  obsidian-wiki bridge stop [--config <path>]    Gracefully stop the write bridge
+  obsidian-wiki bridge restart [--config <path>] Restart the write bridge in background
   obsidian-wiki serve-write-bridge                Compatibility alias for bridge start
 `);
 }
@@ -24823,15 +24917,26 @@ async function main() {
   }
   if (subcommand === "bridge" && action === "status") {
     const resolved = resolveBridgeConfig(process.env, parsed.configPath, process.env.OBSIDIAN_WIKI_BRIDGE_VAULT_REF);
-    const endpoint = resolved.config.url ?? `http://${resolved.config.host}:${resolved.config.port}`;
+    const endpoint = bridgeEndpoint(resolved);
     try {
-      const response = await fetch(new URL("/health", endpoint));
+      const response = await fetchBridge(new URL("/health", endpoint).toString(), {});
       const body = await response.json();
       printJson({ ...body, url: endpoint, registryPath: resolved.registryPath });
       if (!response.ok) process.exitCode = 1;
     } catch (error2) {
       printJson({ ok: false, url: endpoint, registryPath: resolved.registryPath, error: error2 instanceof Error ? error2.message : String(error2) });
       process.exitCode = 1;
+    }
+    return;
+  }
+  if (subcommand === "bridge" && (action === "stop" || action === "restart")) {
+    const resolved = resolveBridgeConfig(process.env, parsed.configPath, process.env.OBSIDIAN_WIKI_BRIDGE_VAULT_REF);
+    if (action === "stop") {
+      const result = await stopBridge(resolved);
+      printJson({ ...result, registryPath: resolved.registryPath });
+    } else {
+      const result = await restartBridge(resolved, parsed.configPath);
+      printJson({ ...result, restarted: true, registryPath: resolved.registryPath });
     }
     return;
   }

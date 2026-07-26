@@ -27,6 +27,8 @@ obsidian-wiki config validate
 obsidian-wiki doctor
 obsidian-wiki bridge start
 obsidian-wiki bridge status
+obsidian-wiki bridge stop
+obsidian-wiki bridge restart
 ```
 
 The MCP server uses the same configuration. Configuration discovery order is:
@@ -41,6 +43,11 @@ The bridge remains a separate loopback HTTP process. `bridge start` reads its
 Vault root, allowed Source roots, project allowlist, host, and port from the
 same configuration file. The bearer token remains in the environment variable
 named by `bridge.tokenEnv`.
+
+`bridge start` stays in the foreground and can be stopped with `Ctrl-C`.
+`bridge stop` sends an authenticated loopback shutdown request and waits for
+the health endpoint to go offline. `bridge restart` performs the same stop,
+then starts a detached background bridge and waits for it to become healthy.
 
 `upsert-vault` and `upsert-repository` are idempotent and preserve unrelated
 registry entries. If an existing entry differs, they fail unless `--replace` is
