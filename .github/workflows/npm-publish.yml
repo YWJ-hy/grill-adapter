@@ -67,6 +67,27 @@ jobs:
         working-directory: mcp/obsidian-wiki
         run: npm run typecheck && npm test
 
+      - name: Check registry versions
+        id: registry
+        if: steps.plan.outputs.release == 'true'
+        run: |
+          check_missing() {
+            local package="$1"
+            local version="$2"
+            local output="$3"
+            if npm view "${package}@${version}" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+              echo "${output}=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "${output}=true" >> "$GITHUB_OUTPUT"
+            fi
+          }
+          check_missing "@grill-adapter/obsidian-wiki" \
+            "$(node -p "require('./mcp/obsidian-wiki/package.json').version")" \
+            obsidian_missing
+          check_missing "grill-adapter" \
+            "$(node -p "require('./package.json').version")" \
+            root_missing
+
       - name: Increment Obsidian package patch version
         if: github.event_name == 'push' && steps.plan.outputs.obsidian == 'true'
         working-directory: mcp/obsidian-wiki
@@ -86,7 +107,7 @@ jobs:
           git push origin HEAD:main
 
       - name: Publish Obsidian package
-        if: steps.plan.outputs.obsidian == 'true'
+        if: steps.plan.outputs.obsidian == 'true' && steps.registry.outputs.obsidian_missing == 'true'
         working-directory: mcp/obsidian-wiki
         run: npm publish --access public --provenance
 
@@ -95,5 +116,5 @@ jobs:
         run: npm run pack:dry && npm run test:package
 
       - name: Publish root package
-        if: steps.plan.outputs.root == 'true'
+        if: steps.plan.outputs.root == 'true' && steps.registry.outputs.root_missing == 'true'
         run: npm publish --access public --provenance

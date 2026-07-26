@@ -15,11 +15,11 @@ TARBALL="$(printf '%s' "$PACK_JSON" | python3 -c 'import json,sys; print(json.lo
 PACKAGE="$TMP/$TARBALL"
 
 test -f "$PACKAGE"
-tar -tf "$PACKAGE" | grep -q '^package/bin/grill-adapter.mjs$'
-tar -tf "$PACKAGE" | grep -q '^package/.codex-plugin/plugin.json$'
-tar -tf "$PACKAGE" | grep -q '^package/mcp/obsidian-wiki/dist/index.js$'
-tar -tf "$PACKAGE" | grep -q '^package/mcp/obsidian-wiki/dist/atomic_swap.py$'
-if tar -tf "$PACKAGE" | grep -q '^package/tests/'; then
+tar -tf "$PACKAGE" | grep '^package/bin/grill-adapter.mjs$' >/dev/null
+tar -tf "$PACKAGE" | grep '^package/.codex-plugin/plugin.json$' >/dev/null
+tar -tf "$PACKAGE" | grep '^package/mcp/obsidian-wiki/dist/index.js$' >/dev/null
+tar -tf "$PACKAGE" | grep '^package/mcp/obsidian-wiki/dist/atomic_swap.py$' >/dev/null
+if tar -tf "$PACKAGE" | grep '^package/tests/' >/dev/null; then
   echo "published package unexpectedly contains tests/" >&2
   exit 1
 fi
@@ -34,8 +34,8 @@ OBSIDIAN_PACK_JSON="$(
 OBSIDIAN_TARBALL="$(printf '%s' "$OBSIDIAN_PACK_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["filename"])')"
 OBSIDIAN_PACKAGE="$OBSIDIAN_TMP/$OBSIDIAN_TARBALL"
 test -f "$OBSIDIAN_PACKAGE"
-tar -tf "$OBSIDIAN_PACKAGE" | grep -q '^package/dist/index.js$'
-tar -tf "$OBSIDIAN_PACKAGE" | grep -q '^package/dist/atomic_swap.py$'
+tar -tf "$OBSIDIAN_PACKAGE" | grep '^package/dist/index.js$' >/dev/null
+tar -tf "$OBSIDIAN_PACKAGE" | grep '^package/dist/atomic_swap.py$' >/dev/null
 
 npm install --prefix "$TMP/install" "$PACKAGE" >/dev/null
 CLI="$TMP/install/node_modules/.bin/grill-adapter"
