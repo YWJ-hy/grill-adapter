@@ -226,6 +226,10 @@ grill-adapter 明确承认自己不是无缝的，并把降级点讲清楚：
 
 用户确认精确 plan 后，apply 重算 plan/snapshots，零 conflict 才先持久化完整 plan、binding/policy snapshot 与全部 CAS intents，并 checkout 每仓专用 PR branch；所有 bridge 写只发生在这些 branch 上。两阶段 CAS 生成 Notes/Cards 后，最终 receipts 按 repository 发布成 draft PR；中断恢复只接受原始 before、seed 或 final hash，不收养人工改动。这一步不等于 merge。PR 全部由用户合并、base worktree 同步后，verify 从 immutable plan 推导 coverage，并只读重验 legacy source、binding/policy、mapping/ID/Source/schema/hash/search/pack/edge/hard-reread。最后另行确认 cutover；cutover 会重新 verify，且 active schema-v5 sidecar 存在时拒绝。成功后仅 plan 选择的旧 roots 原字节保留并标记为 read-only archive，legacy 写 helper 机械拒绝再写。
 
+迁移前若旧页面已经有 section marker，先在 `migrate-wiki` 的 section-repartition pass 中做 bounded 语义审查：已有 marker 不是 atomicity 证明。agent 先提出 section 边界、ID、body span 和 backlink 变更，用户确认后才移动/新增 marker；不改写正文，不静默重组。这样 migration plan 才能把每个独立 section 映射为最小 atomic Note。
+
+迁移完成后若需要批量整理已绑定 Obsidian Note，使用 `migrate-wiki` 的 Obsidian Note maintenance/repartition 模式。它按明确 Source 范围分批读取 Note，输出 `keep/update/split` plan；split 保留旧 `wiki_id`，通常落成旧 Note `update` + sibling Note `create`，经 proposal/apply、maintenance journal、publisher 和 merge/base-sync 后 verify。它不重开 cutover legacy roots，也不提供直接改 Vault 的快捷路径。
+
 运维上，配置 Obsidian provider 且 legacy roots 尚在时称为 `shadow-validation`：正式四触点只走 Obsidian，legacy 只供 migration plan/coverage/verify，绝不作为 runtime fallback。`manage.sh doctor` 只有在 active Obsidian bindings 全部健康时成功；verify + 单独 cutover 后状态才是 `cutover-complete`。真实 Desktop 与 installed Claude Code/Codex 验收见 `OBSIDIAN_ACCEPTANCE_CN.md`。
 
 ---

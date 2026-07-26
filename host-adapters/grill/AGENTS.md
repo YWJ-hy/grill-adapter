@@ -81,6 +81,8 @@ After all outcomes are recorded, `$grill-adapter:update-wiki` must show the exac
 
 The `wiki-capture` hook (Stop) is a non-blocking backstop that reminds on pending/deferred candidates, stays silent for a fully terminal retained journal, and reports an invalid journal.
 
+For Wiki lifecycle maintenance, invoke `$grill-adapter:migrate-wiki` explicitly: run its bounded legacy section-repartition pass before migration when existing markers may be too broad, or its Obsidian Note maintenance/repartition mode after migration for a confirmed batch audit. Both modes are proposal-driven and never edit cut-over legacy roots directly.
+
 ### Runtime health and adoption
 
 Before the first formal Obsidian selection, and after any binding, registry, repository-base, bridge, or migration change, require the operator to run `obsidian-wiki doctor` and `grill-adapter doctor <project-root>` from the two installed npm packages. `setup-init-obsidian` checks both packages before using them. `obsidian-wiki init` creates the machine-local JSONC configuration, `config set-location` changes its path, and `bridge start` launches the configured loopback writer. `adoptionState: shadow-validation` means the Obsidian path is active while legacy roots remain unchanged for migration evidence; it is not a legacy runtime fallback. Do not cut over until migration verify succeeds and the user separately confirms cutover. `adoptionState: cutover-complete` means only the migration-covered legacy roots are read-only archives.

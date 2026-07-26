@@ -19,8 +19,9 @@ When the request does not already name a mode, **first ask the user which mode t
 4. **Obsidian migration apply** — apply one exact, conflict-free plan after the user has confirmed every reported issue; publish the resulting Notes/Cards as draft PRs and preserve a resumable migration manifest.
 5. **Obsidian migration verify** — after every migration PR is merged and each base worktree is synchronized, prove mapping, identity, policy, search, typed-edge, Skill Card, and hard-Note reread behavior without writing Notes.
 6. **Obsidian migration cutover** — after a fresh successful verify and a separate user confirmation, mark the legacy roots as read-only archives and enable the Obsidian runtime. Never delete or rewrite legacy content.
+7. **Obsidian Note maintenance/repartition** — audit active bound Obsidian Notes after migration, propose splits for semantically overloaded Notes, and apply confirmed `update` + `create` sibling operations through the existing proposal/apply, journal, publisher, and verify paths.
 
-Mode 2 is a superset of mode 1. A wiki already in section-marker format skips straight to enrichment (the Workflow's marker steps become no-ops for already-migrated pages). Modes 3–6 are the separate Obsidian lifecycle: plan, pause for confirmation, apply/publish, pause for merge, verify, pause for confirmation, then cut over. Missing section boundaries are reported as semantic-split confirmations rather than silently authored.
+Mode 2 is a superset of mode 1. A wiki already in section-marker format skips marker insertion only after a bounded section-overload audit; if an existing section contains independent constraint topics, the skill proposes a section repartition before enrichment. Modes 3–6 are the separate Obsidian lifecycle: plan, pause for confirmation, apply/publish, pause for merge, verify, pause for confirmation, then cut over. Missing or ambiguous section boundaries are reported as semantic-split confirmations rather than silently authored. Mode 7 is a post-migration maintenance flow and never reopens or writes cut-over legacy roots.
 
 ---
 
@@ -39,6 +40,7 @@ Analyze existing wiki leaf pages, identify semantically independent constraint/k
 - A section must be a **independently referenceable constraint unit**, not an arbitrary paragraph.
 - Section IDs must be kebab-case (`[a-z0-9][a-z0-9_-]*`) and reflect the constraint's core semantics.
 - After migration, generate companion `.index.md` files for all migrated documents.
+- Repartitioning may move or add section markers and regenerate indexes/graph metadata, but must preserve existing body prose and require confirmation before writing.
 
 ## Section Design Principles
 
@@ -50,6 +52,8 @@ When analyzing a wiki document to decide section boundaries:
 4. **Section ID = semantic key.** Use IDs like `path-based-update`, `query-hook-pattern`, `error-boundary-rules` — not heading translations like `section-2` or `di-er-jie`.
 5. **Nesting for hierarchy.** Use nested sections when a broad topic contains independently citable sub-topics.
 6. **Keep `hard` sections tight around the rule.** A `hard` section is reread in full at execution (including any nested child sections inside its markers, with no length limit). Per rule 2, keep the normative rule together with its do/don't examples (`规则` + `示例` + `常见错误`) inside one hard section — never externalize or lossily summarize the anti-pattern, since "don't" cases are the constraint boundary. Move only compliance-irrelevant background/rationale or long example galleries into the document overview or a separate `soft` section, so a large hard section does not bloat every task's reread. Nesting is for independent citability, not for shrinking a parent's reread.
+
+7. **Repartition existing sections when needed.** Existing markers are not proof that a section is atomic. If one marked section contains independently materializable rules with different triggers, lifecycles, failure modes, validation paths, or task-routing needs, propose new section boundaries and semantic IDs. Preserve body text and existing IDs for unchanged contracts; only the confirmed marker/index/graph metadata may change.
 
 ## User Input
 
@@ -239,6 +243,69 @@ This reads each missing-summary body exactly once and loads no unrelated pages i
 
 ---
 
+### Legacy section repartition pass
+
+Run this bounded pass during mode 1 or mode 2 whenever an already-sectioned page may be
+semantically overloaded:
+
+1. Read the page's companion index and only the marked sections needed to assess ownership.
+2. Produce a proposal table with the existing section ID, proposed section IDs, preserved body
+   spans, affected backlinks, and a short reason for each split or merge.
+3. Treat a split as confirmed only when every resulting section is an independently citable
+   constraint unit. Do not split examples, rationale, or tightly coupled rule/do-not-rule pairs.
+4. Present the batch and wait for confirmation. On ambiguity, defer the page rather than moving
+   markers speculatively.
+5. After confirmation, move/add markers without rewriting body prose, regenerate companion indexes
+   and `.graph.json`, then run the normal section and dangling-link validators.
+
+This pass is proposal-driven, not a silent automatic rewrite. It exists specifically for legacy
+pages that already have markers but whose boundaries are too broad for atomic Obsidian migration.
+
 ## Mode 2: graph enrichment
 
 If the user chose **mode 2**, the Workflow above only ensured section-marker format. Now load and follow `references/graph-enrichment.md` to assign node types and author `[[ ]]` knowledge edges as a batched, confirm-before-write pass, then regenerate the graph and lint. If the user chose mode 1, stop after Step 6.
+
+## Mode 7: Obsidian Note maintenance/repartition
+
+Use this mode after migration when active bound Obsidian Notes need a systematic audit. It is
+not a legacy import and does not read an unbound Vault or use legacy runtime fallback.
+
+### Scope and inventory
+
+Require an explicit bound Source scope: one `sourceId`, a source-relative directory, a bounded
+list of `wiki_id` values, or an explicit full-Source audit. Resolve current project bindings and
+read Note metadata through the Obsidian MCP. Read summaries and indexes first, then read full Note
+bodies only for candidate Notes and their typed neighbors. Keep the audit in bounded batches.
+
+### Plan
+
+For each candidate Note, produce a reviewable maintenance plan containing:
+
+- existing `sourceId`, `wiki_id`, path, content hash, summary, and relevant typed links;
+- the decision `keep`, `update`, or `split`;
+- for `split`, the exact body responsibility retained by the old Note and each new sibling Note,
+  with new stable IDs/paths and proposed summaries;
+- edge/backlink transformations and any target-path or identity conflicts;
+- a confirmation issue whenever the boundary, ownership, or link transformation is uncertain.
+
+The plan is metadata-only until the user confirms it. Never repurpose an existing `wiki_id` for a
+new topic. A split normally becomes one `update` of the old Note plus one or more `create`
+operations; the old identity remains addressable.
+
+### Confirm, apply, and verify
+
+1. Show the batch plan and exact Note operations; stop on unresolved identity, path, policy,
+   neutrality, or backlink conflicts.
+2. For every confirmed operation, use `obsidian_wiki_propose_note_change`, show the structured
+   diff, obtain effective policy authorization, then call `obsidian_wiki_apply_note_change`.
+   Never edit the Vault repository directly.
+3. Record each applied operation in a maintenance feature journal with the returned Source,
+   repository, binding, `wiki_id`, path, and before/after hashes. Publish only the applied
+   allowlist through the existing resumable publisher; Git publishing requires separate
+   confirmation.
+4. After merge and base synchronization, verify unique IDs, exact hashes, typed neighbors,
+   hard-Note rereads, and the absence of dangling or stale references. An open PR is not runtime
+   knowledge.
+
+Load `references/obsidian-note-maintenance.md` for the complete mode-7 checklist and plan review
+format.
