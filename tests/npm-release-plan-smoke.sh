@@ -42,6 +42,14 @@ grep -q '^release=true$' <<<"$RUNTIME_PLAN"
 grep -q '^root=true$' <<<"$RUNTIME_PLAN"
 grep -q '^obsidian=true$' <<<"$RUNTIME_PLAN"
 
+mkdir -p "$TMP/repo/mcp/obsidian-wiki/tests"
+printf 'fixture\n' > "$TMP/repo/mcp/obsidian-wiki/tests/example.test.ts"
+git -C "$TMP/repo" add .
+git -C "$TMP/repo" commit -q -m mcp-tests
+MCP_TEST_HEAD="$(git -C "$TMP/repo" rev-parse HEAD)"
+MCP_TEST_PLAN="$(cd "$TMP/repo" && node "$ROOT/scripts/npm_release_plan.mjs" "$RUNTIME_HEAD" "$MCP_TEST_HEAD")"
+grep -q '^release=false$' <<<"$MCP_TEST_PLAN"
+
 FORCED="$(cd "$TMP/repo" && node "$ROOT/scripts/npm_release_plan.mjs" "$HEAD" "$TEST_HEAD" --force)"
 grep -q '^release=true$' <<<"$FORCED"
 grep -q '^root=true$' <<<"$FORCED"

@@ -25,6 +25,7 @@ const rootIgnored = (file) =>
   file.startsWith(".github/") ||
   file.startsWith("tests/") ||
   file.startsWith("docs/") ||
+  file.startsWith("mcp/obsidian-wiki/tests/") ||
   file === "AGENTS.md" ||
   file === "README.md" ||
   file === "QUICKSTART_CN.md" ||
@@ -34,7 +35,16 @@ const rootChanged =
   force ||
   changedFiles.some((file) => !rootIgnored(file) && file !== "mcp/obsidian-wiki/README.md");
 const obsidianChanged =
-  force || changedFiles.some((file) => file.startsWith("mcp/obsidian-wiki/"));
+  force ||
+  changedFiles.some(
+    (file) =>
+      file.startsWith("mcp/obsidian-wiki/src/") ||
+      file.startsWith("mcp/obsidian-wiki/dist/") ||
+      file.startsWith("mcp/obsidian-wiki/scripts/") ||
+      file === "mcp/obsidian-wiki/package.json" ||
+      file === "mcp/obsidian-wiki/package-lock.json" ||
+      file === "mcp/obsidian-wiki/README.md",
+  );
 const release = rootChanged || obsidianChanged;
 
 console.log(`release=${release}`);
