@@ -1,6 +1,6 @@
 {
   "name": "@grill-adapter/obsidian-wiki",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Bound Obsidian Wiki MCP server and local runtime CLI for grill-adapter.",
   "type": "module",
   "files": [
