@@ -1,8 +1,10 @@
 import type { ResolvedBinding } from './bindings.js';
+import { resolveSecretEnvironment } from './config.js';
 
 type BridgeRoute = 'validate' | 'apply';
 
 export type BridgeChangeRequest = {
+  requestId: string;
   vaultSelector: string;
   projectDir: string;
   sourceId: string;
@@ -24,6 +26,13 @@ function responseError(status: number, value: unknown): Error {
   return new Error(`Obsidian Wiki write bridge rejected the request: ${detail}`);
 }
 
+function bridgeTimeoutMs(env: NodeJS.ProcessEnv): number {
+  const raw = env.OBSIDIAN_WIKI_BRIDGE_TIMEOUT_MS ?? '30000';
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) throw new Error('OBSIDIAN_WIKI_BRIDGE_TIMEOUT_MS must be a positive number');
+  return value;
+}
+
 export async function callWriteBridge(
   binding: ResolvedBinding,
   route: BridgeRoute,
@@ -33,18 +42,47 @@ export async function callWriteBridge(
   if (!binding.bridgeUrl || !binding.bridgeTokenEnv) {
     throw new Error(`Obsidian Wiki Source ${binding.sourceId} has no configured write bridge`);
   }
-  const token = env[binding.bridgeTokenEnv];
-  if (!token) throw new Error(`Obsidian Wiki write bridge token environment variable is unavailable: ${binding.bridgeTokenEnv}`);
-  const response = await fetch(new URL(`/v1/notes/${route}`, binding.bridgeUrl), {
-    method: 'POST',
-    redirect: 'manual',
-    headers: {
-      authorization: `Bearer ${token}`,
-      'content-type': 'application/json',
-      accept: 'application/json',
-    },
-    body: JSON.stringify(request),
-  });
+  const token = resolveSecretEnvironment(binding.bridgeTokenEnv, env);
+  if (!token) {
+    throw new Error(
+      `Obsidian Wiki write bridge token is unavailable: ${binding.bridgeTokenEnv}. ` +
+      `Set it in this process or recover it on macOS with ` +
+      `export ${binding.bridgeTokenEnv}="$(launchctl getenv ${binding.bridgeTokenEnv})"`,
+    );
+  }
+  const attempts = route === 'validate' ? 2 : 1;
+  let response: Response | undefined;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), bridgeTimeoutMs(env));
+    try {
+      response = await fetch(new URL(`/v1/notes/${route}`, binding.bridgeUrl), {
+        method: 'POST',
+        redirect: 'manual',
+        signal: controller.signal,
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+          accept: 'application/json',
+          'x-grill-adapter-request-id': request.requestId,
+        },
+        body: JSON.stringify(request),
+      });
+      clearTimeout(timer);
+      break;
+    } catch (error) {
+      clearTimeout(timer);
+      lastError = error;
+      if (attempt + 1 === attempts) {
+        const detail = error instanceof DOMException && error.name === 'AbortError'
+          ? `timed out after ${bridgeTimeoutMs(env)}ms`
+          : error instanceof Error ? error.message : String(error);
+        throw new Error(`Obsidian Wiki write bridge request ${request.requestId} failed: ${detail}`);
+      }
+    }
+  }
+  if (!response) throw new Error(`Obsidian Wiki write bridge request ${request.requestId} failed: ${String(lastError)}`);
   let value: unknown;
   try {
     value = await response.json();

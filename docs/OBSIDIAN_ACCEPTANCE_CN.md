@@ -64,7 +64,7 @@ grill-with-docs -> to-spec -> to-tickets
 - 环境：`codex-cli 0.144.6`，`model: gpt-5.6-sol`，`provider: custom`；隔离
   `CODEX_HOME` 复制当前 effective provider 配置与认证，未复制项目数据。
 - 插件：从当前 `codex/issue-19-wiki-readiness` 工作树加入隔离 local marketplace，安装
-  `grill-adapter@grill-adapter`（plugin version `0.2.0`）；临时 Git 项目通过
+  `grill-adapter@grill-adapter`（plugin version `0.2.2`）；临时 Git 项目通过
   `manage.sh install --host grill --runtime codex` 写入 `AGENTS.md` 约定。
 - 输入：confirmed conversational request，feature slug `issue-19-integration`，未经过
   `/to-tickets`，项目故意不配置 Wiki provider。

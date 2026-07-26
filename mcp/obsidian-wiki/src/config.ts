@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import * as z from 'zod/v4';
@@ -85,6 +86,23 @@ export const DEFAULT_CONFIG_DIR = path.join(os.homedir(), '.config', 'grill-adap
 export const DEFAULT_CONFIG_PATH = path.join(DEFAULT_CONFIG_DIR, 'obsidian-wiki.jsonc');
 export const LEGACY_CONFIG_PATH = path.join(DEFAULT_CONFIG_DIR, 'obsidian-wiki.json');
 export const LOCATION_POINTER_PATH = path.join(DEFAULT_CONFIG_DIR, 'obsidian-wiki-location.json');
+
+export function resolveSecretEnvironment(
+  name: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const direct = env[name];
+  if (direct) return direct;
+  if (process.platform !== 'darwin') return undefined;
+  const result = spawnSync('launchctl', ['getenv', name], {
+    encoding: 'utf8',
+    timeout: 1000,
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  if (result.status !== 0 || result.error) return undefined;
+  const recovered = result.stdout.trim();
+  return recovered || undefined;
+}
 
 export const CONFIG_EXAMPLE = `{
   // Schema version for this local machine configuration.

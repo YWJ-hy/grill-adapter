@@ -13,12 +13,20 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from wiki_migration_plan import PLAN_KIND, PlanError, _clone_legacy_shared_wiki, build_plan  # noqa: E402
+from wiki_migration_plan import (  # noqa: E402
+    DEFAULT_REGISTRY_PATH,
+    PLAN_KIND,
+    PlanError,
+    _clone_legacy_shared_wiki,
+    build_plan,
+    canonical_edges,
+)
 from wiki_section import extract_all_sections  # noqa: E402
 
 
@@ -47,7 +55,7 @@ def _cleanup_legacy_shared_clones() -> None:
 
 def read_json(path: Path, description: str) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(_strip_jsonc(path.read_text(encoding="utf-8")))
     except FileNotFoundError as exc:
         raise MigrationError(f"{description} not found: {path}") from exc
     except json.JSONDecodeError as exc:
@@ -55,6 +63,50 @@ def read_json(path: Path, description: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise MigrationError(f"{description} must be a JSON object: {path}")
     return value
+
+
+def _strip_jsonc(text: str) -> str:
+    output: list[str] = []
+    index = 0
+    in_string = False
+    escaped = False
+    while index < len(text):
+        character = text[index]
+        next_character = text[index + 1] if index + 1 < len(text) else ""
+        if in_string:
+            output.append(character)
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            index += 1
+            continue
+        if character == '"':
+            in_string = True
+            output.append(character)
+            index += 1
+        elif character == "/" and next_character == "/":
+            output.extend((" ", " "))
+            index += 2
+            while index < len(text) and text[index] not in "\r\n":
+                output.append(" ")
+                index += 1
+        elif character == "/" and next_character == "*":
+            output.extend((" ", " "))
+            index += 2
+            while index < len(text):
+                if text[index] == "*" and index + 1 < len(text) and text[index + 1] == "/":
+                    output.extend((" ", " "))
+                    index += 2
+                    break
+                output.append(text[index] if text[index] in "\r\n" else " ")
+                index += 1
+        else:
+            output.append(character)
+            index += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(output))
 
 
 def canonical_json(value: Any) -> bytes:
@@ -91,11 +143,25 @@ def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
 
 def registry_path(value: str | None) -> Path:
     configured = value or os.environ.get("OBSIDIAN_WIKI_REGISTRY")
-    return Path(configured).expanduser().resolve() if configured else Path.home() / ".config" / "grill-adapter" / "obsidian-wiki.json"
+    return Path(configured).expanduser().resolve() if configured else DEFAULT_REGISTRY_PATH
 
 
 def bundle_path() -> Path:
     return Path(__file__).resolve().parents[1] / "mcp" / "obsidian-wiki" / "dist" / "index.js"
+
+
+READ_ONLY_BUNDLE_COMMANDS = {"status", "search", "search-by-wiki-ids", "read-notes", "read-notes-by-wiki-ids", "graph-neighbors"}
+
+
+def bundle_timeout_seconds() -> float:
+    raw = os.environ.get("OBSIDIAN_WIKI_BUNDLE_TIMEOUT_SECONDS", "30")
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise MigrationError("OBSIDIAN_WIKI_BUNDLE_TIMEOUT_SECONDS must be a positive number") from exc
+    if value <= 0:
+        raise MigrationError("OBSIDIAN_WIKI_BUNDLE_TIMEOUT_SECONDS must be a positive number")
+    return value
 
 
 def bundle_call(subcommand: str, payload: dict[str, Any] | None, project_root: Path, registry: Path) -> dict[str, Any]:
@@ -103,19 +169,35 @@ def bundle_call(subcommand: str, payload: dict[str, Any] | None, project_root: P
     env["CLAUDE_PROJECT_DIR"] = str(project_root)
     env["OBSIDIAN_WIKI_REGISTRY"] = str(registry)
     command = [env.get("OBSIDIAN_WIKI_NODE", "node"), str(bundle_path()), subcommand]
-    try:
-        completed = subprocess.run(
-            command,
-            input=json.dumps(payload, ensure_ascii=False) if payload is not None else None,
-            text=True,
-            encoding="utf-8",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-            check=False,
-        )
-    except OSError as exc:
-        raise MigrationError(f"cannot run bundled Obsidian Wiki CLI: {exc}") from exc
+    request_payload = dict(payload) if payload is not None else None
+    if request_payload is not None:
+        request_payload.setdefault("requestId", str(uuid.uuid4()))
+    attempts = 2 if subcommand in READ_ONLY_BUNDLE_COMMANDS else 1
+    completed: subprocess.CompletedProcess[str] | None = None
+    for attempt in range(attempts):
+        try:
+            completed = subprocess.run(
+                command,
+                input=json.dumps(request_payload, ensure_ascii=False) if request_payload is not None else None,
+                text=True,
+                encoding="utf-8",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                check=False,
+                timeout=bundle_timeout_seconds(),
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise MigrationError(
+                f"Obsidian Wiki {subcommand} timed out after {bundle_timeout_seconds():g}s; "
+                f"retry the command to resume safely "
+                f"(requestId={request_payload.get('requestId') if request_payload else 'none'})"
+            ) from exc
+        except OSError as exc:
+            raise MigrationError(f"cannot run bundled Obsidian Wiki CLI: {exc}") from exc
+        if completed.returncode == 0 or attempt + 1 == attempts:
+            break
+    assert completed is not None
     if completed.returncode != 0:
         detail = completed.stderr.strip() or f"exit {completed.returncode}; stdout discarded"
         raise MigrationError(f"Obsidian Wiki {subcommand} failed: {detail}")
@@ -139,6 +221,17 @@ def validate_plan(plan: dict[str, Any]) -> None:
     conflicts = [item.get("sourceItemId") for item in items if isinstance(item, dict) and item.get("decision") == "conflict"]
     if conflicts:
         raise MigrationError("migration plan still has unresolved conflicts: " + ", ".join(str(value) for value in conflicts))
+    exclusions = plan.get("exclusions", [])
+    if not isinstance(exclusions, list) or any(
+        not isinstance(item, dict)
+        or item.get("root") not in ("project", "shared")
+        or not isinstance(item.get("path"), str)
+        or not item["path"]
+        for item in exclusions
+    ):
+        raise MigrationError("migration plan exclusions must contain normalized project/shared paths")
+    if exclusions != sorted(exclusions, key=lambda item: (item["root"], item["path"])):
+        raise MigrationError("migration plan exclusions are not canonical")
     for item in items:
         if not isinstance(item, dict):
             raise MigrationError("migration plan contains a non-object planItem")
@@ -170,6 +263,14 @@ def selectors(plan: dict[str, Any]) -> tuple[str, str | None, str | None]:
     return root_selector, by_role.get("project"), by_role.get("shared")
 
 
+def exclusion_args(plan: dict[str, Any]) -> list[str]:
+    return [
+        f"{item['root']}:{item['path']}"
+        for item in plan.get("exclusions", [])
+        if isinstance(item, dict)
+    ]
+
+
 def legacy_shared_wiki_url(plan: dict[str, Any]) -> str | None:
     sources = plan.get("legacySources")
     shared = sources.get("shared") if isinstance(sources, dict) else None
@@ -197,6 +298,7 @@ def assert_plan_current(plan: dict[str, Any], project_root: Path, registry: Path
             project_source,
             shared_source,
             legacy_shared_wiki_url=legacy_shared_wiki_url(plan),
+            exclude_paths=exclusion_args(plan),
         )
     except (PlanError, OSError, ValueError) as exc:
         raise MigrationError(f"cannot revalidate migration plan inputs: {exc}") from exc
@@ -220,6 +322,7 @@ def assert_resume_source_current(plan: dict[str, Any], project_root: Path, regis
             project_source,
             shared_source,
             legacy_shared_wiki_url=legacy_shared_wiki_url(plan),
+            exclude_paths=exclusion_args(plan),
         )
     except (PlanError, OSError, ValueError) as exc:
         raise MigrationError(f"cannot revalidate migration source during resume: {exc}") from exc
@@ -324,7 +427,14 @@ def render_note(
             *(f"  - {yaml_scalar(trigger, 'skill trigger')}" for trigger in skill["triggers"]),
         ])
     fields.extend(["---", "", body, ""])
-    return "\n".join(fields), sorted(rendered_edges, key=lambda edge: (edge["type"], edge["targetWikiId"]))
+    canonical = canonical_edges([
+        {"property": edge["type"], "targetNoteId": edge["targetWikiId"]}
+        for edge in rendered_edges
+    ])
+    return "\n".join(fields), [
+        {"type": edge["property"], "targetWikiId": edge["targetNoteId"]}
+        for edge in canonical
+    ]
 
 
 def search_wiki_id(
@@ -341,6 +451,28 @@ def search_wiki_id(
     if not isinstance(notes, list):
         raise MigrationError("Obsidian Wiki search result is missing notes")
     return [note for note in notes if isinstance(note, dict) and note.get("wikiId") == wiki_id]
+
+
+def search_wiki_ids(
+    wiki_ids: list[str],
+    project_root: Path,
+    registry: Path,
+    publish_feature_slug: str | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    if not wiki_ids:
+        return {}
+    payload: dict[str, Any] = {"wikiIds": wiki_ids}
+    if publish_feature_slug:
+        payload["publishFeatureSlug"] = publish_feature_slug
+    result = bundle_call("search-by-wiki-ids", payload, project_root, registry)
+    notes = result.get("notes")
+    if not isinstance(notes, list):
+        raise MigrationError("Obsidian Wiki batch search result is missing notes")
+    found: dict[str, list[dict[str, Any]]] = {wiki_id: [] for wiki_id in wiki_ids}
+    for note in notes:
+        if isinstance(note, dict) and isinstance(note.get("wikiId"), str) and note["wikiId"] in found:
+            found[note["wikiId"]].append(note)
+    return found
 
 
 def manifest_path(project_root: Path, plan_hash: str) -> Path:
@@ -516,13 +648,18 @@ def apply_plan(args: argparse.Namespace) -> dict[str, Any]:
         records = {**pages, **sections}
         target_paths: dict[str, str] = {}
         before_hashes: dict[str, str | None] = {}
+        matches_by_id = search_wiki_ids(
+            [item["noteId"] for item in writable],
+            project_root,
+            registry,
+        )
         for item in writable:
             source_item_id = item["sourceItemId"]
             wiki_id = item.get("noteId")
             proposed = item.get("proposedPath")
             if not isinstance(wiki_id, str) or not isinstance(proposed, str):
                 raise MigrationError(f"writable migration item lacks Note identity: {source_item_id}")
-            matches = search_wiki_id(wiki_id, project_root, registry)
+            matches = matches_by_id.get(wiki_id, [])
             if item["decision"] == "create":
                 if matches:
                     raise MigrationError(f"create target wiki_id already exists: {wiki_id}")
@@ -658,8 +795,14 @@ def apply_plan(args: argparse.Namespace) -> dict[str, Any]:
     }
 
     current_by_source: dict[str, dict[str, Any] | None] = {}
+    matches_by_id = search_wiki_ids(
+        [item["wikiId"] for item in manifest["operations"]],
+        project_root,
+        registry,
+        manifest["migrationId"],
+    )
     for item in manifest["operations"]:
-        matches = search_wiki_id(item["wikiId"], project_root, registry, manifest["migrationId"])
+        matches = matches_by_id.get(item["wikiId"], [])
         if len(matches) > 1:
             raise MigrationError(f"migration write intent wiki_id is not unique: {item['wikiId']}")
         current = matches[0] if matches else None
@@ -796,14 +939,20 @@ def apply_plan(args: argparse.Namespace) -> dict[str, Any]:
 
 def gh_pr_state(url: str) -> dict[str, Any]:
     executable = os.environ.get("OBSIDIAN_WIKI_GH_CLI", "gh")
-    completed = subprocess.run(
-        [executable, "pr", "view", url, "--json", "state,mergedAt"],
-        text=True,
-        encoding="utf-8",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            [executable, "pr", "view", url, "--json", "state,mergedAt"],
+            text=True,
+            encoding="utf-8",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=bundle_timeout_seconds(),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise MigrationError(f"cannot verify migration PR {url}: gh timed out after {bundle_timeout_seconds():g}s") from exc
+    except OSError as exc:
+        raise MigrationError(f"cannot run GitHub CLI while verifying migration PR {url}: {exc}") from exc
     if completed.returncode != 0:
         raise MigrationError(f"cannot verify migration PR {url}: {completed.stderr.strip() or completed.stdout.strip()}")
     try:
@@ -878,6 +1027,7 @@ def verify_manifest(project_root: Path, path: Path, registry: Path, persist: boo
     actual_by_id = {note.get("wikiId"): note for note in actual_notes if isinstance(note, dict)}
     if len(actual_by_id) != len(expected_notes):
         raise MigrationError("migrated Notes do not have unique wiki IDs")
+    search_matches = search_wiki_ids([note["wikiId"] for note in expected_notes], project_root, registry)
     for expected in expected_notes:
         intent = operations.get(expected.get("sourceItemId"))
         if not intent:
@@ -895,7 +1045,7 @@ def verify_manifest(project_root: Path, path: Path, registry: Path, persist: boo
             raise MigrationError(f"migrated Note escaped its planned Source or path: {expected['wikiId']}")
         if actual.get("contentHash") != expected["contentHash"]:
             raise MigrationError(f"migrated Note content hash drift: {expected['wikiId']}")
-        found = search_wiki_id(expected["wikiId"], project_root, registry)
+        found = search_matches.get(expected["wikiId"], [])
         if len(found) != 1 or found[0].get("path") != expected["path"]:
             raise MigrationError(f"migrated Note search identity is not unique: {expected['wikiId']}")
         if expected.get("constraintStrength") == "hard" and not actual.get("content"):
@@ -906,7 +1056,14 @@ def verify_manifest(project_root: Path, path: Path, registry: Path, persist: boo
         graph = bundle_call("graph-neighbors", {"wikiIds": [note["wikiId"] for note in with_edges]}, project_root, registry)
         neighbors = graph.get("neighbors") if isinstance(graph.get("neighbors"), dict) else {}
         for note in with_edges:
-            expected_edges = sorted((edge["type"], edge["targetWikiId"]) for edge in note["edges"])
+            expected_edges = sorted(
+                (edge["property"], edge["targetNoteId"])
+                for edge in canonical_edges([
+                    {"property": edge.get("type"), "targetNoteId": edge.get("targetWikiId")}
+                    for edge in note["edges"]
+                    if isinstance(edge, dict)
+                ])
+            )
             actual_edges = sorted(
                 (edge.get("type"), edge.get("wikiId"))
                 for edge in neighbors.get(note["wikiId"], [])

@@ -211,7 +211,8 @@ cat > "$PROJECT_WIKI/.graph.json" <<'JSON'
   "nodes": ["rules.md#api-contract", "rules.md#soft-guidance"],
   "pageTypes": {"rules.md": "constraint", "guides/skills.md": "guide"},
   "edges": [
-    {"from": "rules.md#api-contract", "to": "rules.md#soft-guidance", "type": "depends-on", "raw": "[[depends-on: rules#soft-guidance]]"}
+    {"from": "rules.md#api-contract", "to": "rules.md#soft-guidance", "type": "depends-on", "raw": "[[depends-on: rules#soft-guidance]]"},
+    {"from": "rules.md#api-contract", "to": "rules.md#soft-guidance", "type": "depends-on", "raw": "[[depends-on: rules#soft-guidance]] "}
   ],
   "backlinks": {},
   "dangling": [
@@ -450,6 +451,8 @@ cat > "$REMOTE_SHARED/remote-only.md" <<'MD'
 
 Prefer a portable shared contract.
 MD
+mkdir -p "$REMOTE_SHARED/.claude/skills/ignored"
+printf '# Must not migrate\n' > "$REMOTE_SHARED/.claude/skills/ignored/SKILL.md"
 git -C "$REMOTE_SHARED" init -q
 git -C "$REMOTE_SHARED" add .
 git -C "$REMOTE_SHARED" -c user.name=test -c user.email=test@example.com commit -q -m 'seed legacy shared wiki'
@@ -476,6 +479,27 @@ assert any(
     page["legacyRoot"] == "shared" and page["path"] == "remote-only.md"
     for page in plan["inventory"]["pages"]
 )
+PY
+
+EXCLUDED_REMOTE_PLAN="$TMP/remote-excluded-plan.json"
+python3 "$PLANNER" \
+  --project-root "$PROJECT" \
+  --registry "$TMP/registry.json" \
+  --wiki-root shared \
+  --shared-source-id shared-source \
+  --legacy-shared-wiki-url "$REMOTE_SHARED" \
+  --exclude-path shared:.claude/skills > "$EXCLUDED_REMOTE_PLAN"
+python3 - "$EXCLUDED_REMOTE_PLAN" <<'PY'
+import json
+import sys
+
+plan = json.load(open(sys.argv[1], encoding="utf-8"))
+assert plan["exclusions"] == [{"root": "shared", "path": ".claude/skills"}]
+assert not any(
+    page["path"].startswith(".claude/skills/")
+    for page in plan["inventory"]["pages"]
+)
+assert plan["sourceSnapshot"]["digest"].startswith("sha256:")
 PY
 
 SETTINGS="$PROJECT/.grill-adapter/settings.json"

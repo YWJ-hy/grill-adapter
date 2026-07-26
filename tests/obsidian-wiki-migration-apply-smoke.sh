@@ -79,7 +79,8 @@ cat > "$PROJECT/.grill-adapter/wiki/.graph.json" <<'JSON'
   "nodes": ["rules.md#base-contract", "rules.md#api-contract"],
   "pageTypes": {"rules.md": "constraint", "guides/skills.md": "guide"},
   "edges": [
-    {"from": "rules.md#api-contract", "to": "rules.md#base-contract", "type": "depends-on", "raw": "[[depends-on: rules#base-contract]]"}
+    {"from": "rules.md#api-contract", "to": "rules.md#base-contract", "type": "depends-on", "raw": "[[depends-on: rules#base-contract]]"},
+    {"from": "rules.md#api-contract", "to": "rules.md#base-contract", "type": "depends-on", "raw": "[[depends-on: rules#base-contract]] "}
   ],
   "backlinks": {},
   "dangling": []
@@ -392,6 +393,9 @@ assert result["kind"] == "grill-adapter.obsidian-migration"
 assert result["state"] == "published"
 assert len(result["notes"]) == 3
 assert {note["sourceKind"] for note in result["notes"]} == {"section", "skill-discovery"}
+api_notes = [note for note in result["notes"] if note["wikiId"].endswith("/rules/api-contract")]
+assert len(api_notes) == 1
+assert api_notes[0]["edges"] == [{"type": "depends_on", "targetWikiId": "project-source/rules/base-contract"}]
 assert result["repositories"][0]["branch"].startswith("grill-adapter/wiki/migration-")
 assert subprocess.check_output(["git", "-C", sys.argv[2], "branch", "--show-current"], text=True).strip() == "main"
 assert not pathlib.Path(sys.argv[2], "Projects/example/rules/api-contract.md").exists()

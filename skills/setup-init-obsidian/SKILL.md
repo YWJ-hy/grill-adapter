@@ -226,7 +226,9 @@ field names:
 - **Should the local bridge be enabled?** Explain that it is the loopback
   writer used for governed Note changes. Propose the environment variable name
   `OBSIDIAN_WIKI_BRIDGE_TOKEN`; never ask the user to paste the token into
-  chat or a config file.
+  chat or a config file. On macOS the CLI also checks the registered launchd
+  environment; if the current shell still cannot see it, show the recovery
+  command `export OBSIDIAN_WIKI_BRIDGE_TOKEN="$(launchctl getenv OBSIDIAN_WIKI_BRIDGE_TOKEN)"`.
 
 Then show the derived mapping and ask for one confirmation:
 

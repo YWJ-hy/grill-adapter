@@ -2,7 +2,7 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createServer } from './server.js';
 import { statusTool } from './tools/status.js';
-import { searchTool } from './tools/search.js';
+import { searchTool, searchWikiIdsTool } from './tools/search.js';
 import { readNotesByWikiIdsTool, readNotesTool } from './tools/read.js';
 import { graphNeighborsTool } from './tools/graph.js';
 import { applyNoteChangeTool, proposeNoteChangeTool, type NoteChangeInput } from './tools/write.js';
@@ -66,6 +66,7 @@ Usage:
                                                     Upsert one Git repository entry
   obsidian-wiki config validate [--config <path>]
   obsidian-wiki doctor [--config <path>]           Validate project bindings and runtime health
+  printf '<json>' | obsidian-wiki search-by-wiki-ids
   obsidian-wiki bridge start [--config <path>]    Start the foreground write bridge
   obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
   obsidian-wiki serve-write-bridge                Compatibility alias for bridge start
@@ -141,13 +142,27 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify(statusTool(process.env))}\n`);
     return;
   }
-  if (subcommand === 'search') {
+  if (subcommand === 'search' || subcommand === 'search-by-wiki-ids') {
     const request = await readJsonRequest();
-    if (typeof request.query !== 'string' || !request.query.trim()) {
-      throw new Error('query must be a non-empty string');
+    if (subcommand === 'search') {
+      if (typeof request.query !== 'string' || !request.query.trim()) {
+        throw new Error('query must be a non-empty string');
+      }
+      process.stdout.write(`${JSON.stringify(searchTool({
+        query: request.query,
+        publishFeatureSlug: typeof request.publishFeatureSlug === 'string' ? request.publishFeatureSlug : undefined,
+      }))}\n`);
+      return;
     }
-    process.stdout.write(`${JSON.stringify(searchTool({
-      query: request.query,
+    if (
+      !Array.isArray(request.wikiIds)
+      || request.wikiIds.length === 0
+      || request.wikiIds.some((value) => typeof value !== 'string' || !value)
+    ) {
+      throw new Error('wikiIds must be a non-empty array of non-empty strings');
+    }
+    process.stdout.write(`${JSON.stringify(searchWikiIdsTool({
+      wikiIds: request.wikiIds,
       publishFeatureSlug: typeof request.publishFeatureSlug === 'string' ? request.publishFeatureSlug : undefined,
     }))}\n`);
     return;

@@ -19,12 +19,13 @@ import { parseSourceManifest, type SourceManifest } from './bindings.js';
 import { isLoopbackHost } from './loopback.js';
 import { normalizeWritePolicy, stricterPolicy, type WritePolicy } from './policy.js';
 import { atomicExchange } from './atomic-exchange.js';
-import { resolveBridgeConfig } from './config.js';
+import { resolveBridgeConfig, resolveSecretEnvironment } from './config.js';
 
 const HASH = /^sha256:[a-f0-9]{64}$/;
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 
 const ChangeSchema = z.object({
+  requestId: z.string().min(1).optional().default(() => randomUUID()),
   vaultSelector: z.string().min(1),
   projectDir: z.string().min(1),
   sourceId: z.string().min(1),
@@ -518,7 +519,14 @@ export async function startWriteBridge(options: WriteBridgeOptions): Promise<Wri
       authenticate(request, options.token);
       const change = validateChange(await readJson(request), options, vaultRoot, allowedRoots);
       enforceGovernance(change, allowedRoots.get(change.request.sourceRoot)!, route.endsWith('/apply'), vaultRoot, allowedRoots, allowedProjects);
-      const base = { ok: true, operation: change.request.operation, sourceRoot: change.request.sourceRoot, path: change.request.path, diff: change.diff };
+      const base = {
+        ok: true,
+        requestId: change.request.requestId,
+        operation: change.request.operation,
+        sourceRoot: change.request.sourceRoot,
+        path: change.request.path,
+        diff: change.diff,
+      };
       respond(response, 200, route.endsWith('/apply')
         ? { ...base, postWrite: applyValidated(change, options.beforeAtomicExchange, options.afterAtomicExchange) }
         : base);
@@ -555,7 +563,7 @@ export async function runWriteBridgeFromEnvironment(env: NodeJS.ProcessEnv = pro
   const tokenEnv = env.OBSIDIAN_WIKI_BRIDGE_TOKEN_ENV
     ?? configured?.config.tokenEnv
     ?? 'OBSIDIAN_WIKI_BRIDGE_TOKEN';
-  const token = env[tokenEnv];
+  const token = resolveSecretEnvironment(tokenEnv, env);
   const vaultRoot = env.OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT ?? configured?.config.vaultRoot;
   const vaultSelector = env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR ?? configured?.config.selector;
   const rootsRaw = env.OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS;

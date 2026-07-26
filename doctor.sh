@@ -18,7 +18,8 @@ doctor_fail=0
 
 echo "grill-adapter doctor"
 echo "===================="
-python3 "$SCRIPT_DIR/lib/install.py" status "$PROJECT_ROOT" || true
+echo "Host/plugin discovery (advisory):"
+python3 "$SCRIPT_DIR/lib/install.py" status "$PROJECT_ROOT" --runtime both || true
 echo ""
 echo "Wiki runtime adoption:"
 provider="$(python3 - "$PROJECT_ROOT" <<'PY'

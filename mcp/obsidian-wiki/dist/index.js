@@ -21869,6 +21869,7 @@ import path2 from "node:path";
 
 // src/config.ts
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 var BridgeSchema = object({
@@ -21913,6 +21914,19 @@ var DEFAULT_CONFIG_DIR = path.join(os.homedir(), ".config", "grill-adapter");
 var DEFAULT_CONFIG_PATH = path.join(DEFAULT_CONFIG_DIR, "obsidian-wiki.jsonc");
 var LEGACY_CONFIG_PATH = path.join(DEFAULT_CONFIG_DIR, "obsidian-wiki.json");
 var LOCATION_POINTER_PATH = path.join(DEFAULT_CONFIG_DIR, "obsidian-wiki-location.json");
+function resolveSecretEnvironment(name, env = process.env) {
+  const direct = env[name];
+  if (direct) return direct;
+  if (process.platform !== "darwin") return void 0;
+  const result = spawnSync("launchctl", ["getenv", name], {
+    encoding: "utf8",
+    timeout: 1e3,
+    stdio: ["ignore", "pipe", "ignore"]
+  });
+  if (result.status !== 0 || result.error) return void 0;
+  const recovered = result.stdout.trim();
+  return recovered || void 0;
+}
 var CONFIG_EXAMPLE = `{
   // Schema version for this local machine configuration.
   "version": 1,
@@ -23661,7 +23675,7 @@ ${normalizeVaultPath(receipt.path)}`;
 }
 
 // src/tools/search.ts
-function searchTool(input, env = process.env) {
+function searchResolution(input, env) {
   const resolution = resolveBindings(env, process.cwd(), {
     allowStagedWikiChanges: input.publishFeatureSlug !== void 0,
     allowedRepositoryBranches: input.publishFeatureSlug ? publishBranchOptions(input.publishFeatureSlug, env) : void 0
@@ -23669,7 +23683,9 @@ function searchTool(input, env = process.env) {
   if (resolution.errors.length > 0) {
     throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
   }
-  const found = searchBoundNotes(input.query, resolution.bindings, env);
+  return resolution;
+}
+function presentNotes(found, resolution, env, publishFeatureSlug) {
   for (const note of found) assertUniqueBoundSkillCard(note, resolution.bindings, env);
   return {
     notes: found.filter((note) => {
@@ -23680,7 +23696,7 @@ function searchTool(input, env = process.env) {
         note,
         resolution.projectDir,
         {
-          mode: input.publishFeatureSlug ? "write" : "discovery",
+          mode: publishFeatureSlug ? "write" : "discovery",
           baseSynchronized: binding?.repositoryHealth.baseSynchronized === true
         }
       ).available;
@@ -23706,6 +23722,20 @@ function searchTool(input, env = process.env) {
       bindingDigest: note.bindingDigest
     }))
   };
+}
+function searchTool(input, env = process.env) {
+  const resolution = searchResolution(input, env);
+  return presentNotes(
+    searchBoundNotes(input.query, resolution.bindings, env),
+    resolution,
+    env,
+    input.publishFeatureSlug
+  );
+}
+function searchWikiIdsTool(input, env = process.env) {
+  const resolution = searchResolution(input, env);
+  const found = input.wikiIds.flatMap((wikiId) => searchBoundNotes(`[wiki_id:${wikiId}]`, resolution.bindings, env).filter((note) => note.wikiId === wikiId));
+  return presentNotes(found, resolution, env, input.publishFeatureSlug);
 }
 
 // src/tools/read.ts
@@ -23853,6 +23883,9 @@ ${target.wikiId}`, { type, wikiId: target.wikiId, path: target.path });
   return { neighbors };
 }
 
+// src/tools/write.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+
 // src/write-client.ts
 function responseError(status, value) {
   const record2 = value && typeof value === "object" ? value : {};
@@ -23861,22 +23894,53 @@ function responseError(status, value) {
   if (status === 409) return new Error(`Obsidian Wiki write conflict: ${detail}`);
   return new Error(`Obsidian Wiki write bridge rejected the request: ${detail}`);
 }
+function bridgeTimeoutMs(env) {
+  const raw = env.OBSIDIAN_WIKI_BRIDGE_TIMEOUT_MS ?? "30000";
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) throw new Error("OBSIDIAN_WIKI_BRIDGE_TIMEOUT_MS must be a positive number");
+  return value;
+}
 async function callWriteBridge(binding, route, request, env) {
   if (!binding.bridgeUrl || !binding.bridgeTokenEnv) {
     throw new Error(`Obsidian Wiki Source ${binding.sourceId} has no configured write bridge`);
   }
-  const token = env[binding.bridgeTokenEnv];
-  if (!token) throw new Error(`Obsidian Wiki write bridge token environment variable is unavailable: ${binding.bridgeTokenEnv}`);
-  const response = await fetch(new URL(`/v1/notes/${route}`, binding.bridgeUrl), {
-    method: "POST",
-    redirect: "manual",
-    headers: {
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-      accept: "application/json"
-    },
-    body: JSON.stringify(request)
-  });
+  const token = resolveSecretEnvironment(binding.bridgeTokenEnv, env);
+  if (!token) {
+    throw new Error(
+      `Obsidian Wiki write bridge token is unavailable: ${binding.bridgeTokenEnv}. Set it in this process or recover it on macOS with export ${binding.bridgeTokenEnv}="$(launchctl getenv ${binding.bridgeTokenEnv})"`
+    );
+  }
+  const attempts = route === "validate" ? 2 : 1;
+  let response;
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), bridgeTimeoutMs(env));
+    try {
+      response = await fetch(new URL(`/v1/notes/${route}`, binding.bridgeUrl), {
+        method: "POST",
+        redirect: "manual",
+        signal: controller.signal,
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          accept: "application/json",
+          "x-grill-adapter-request-id": request.requestId
+        },
+        body: JSON.stringify(request)
+      });
+      clearTimeout(timer);
+      break;
+    } catch (error2) {
+      clearTimeout(timer);
+      lastError = error2;
+      if (attempt + 1 === attempts) {
+        const detail = error2 instanceof DOMException && error2.name === "AbortError" ? `timed out after ${bridgeTimeoutMs(env)}ms` : error2 instanceof Error ? error2.message : String(error2);
+        throw new Error(`Obsidian Wiki write bridge request ${request.requestId} failed: ${detail}`);
+      }
+    }
+  }
+  if (!response) throw new Error(`Obsidian Wiki write bridge request ${request.requestId} failed: ${String(lastError)}`);
   let value;
   try {
     value = await response.json();
@@ -24017,6 +24081,7 @@ function prepareChange(input, env) {
     binding,
     policy,
     request: {
+      requestId: randomUUID2(),
       vaultSelector: binding.vaultSelector,
       projectDir: resolution.projectDir,
       sourceId: binding.sourceId,
@@ -24142,7 +24207,7 @@ function createServer(env = process.env) {
 }
 
 // src/write-bridge.ts
-import { timingSafeEqual, randomUUID as randomUUID2 } from "node:crypto";
+import { timingSafeEqual, randomUUID as randomUUID3 } from "node:crypto";
 import { createServer as createServer2 } from "node:http";
 import {
   existsSync as existsSync5,
@@ -24181,6 +24246,7 @@ function atomicExchange(firstPath, secondPath, env = process.env) {
 var HASH = /^sha256:[a-f0-9]{64}$/;
 var MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 var ChangeSchema = object({
+  requestId: string2().min(1).optional().default(() => randomUUID3()),
   vaultSelector: string2().min(1),
   projectDir: string2().min(1),
   sourceId: string2().min(1),
@@ -24487,7 +24553,7 @@ function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
       throw new BridgeError(403, "Created Note parent escaped its Source root");
     }
   }
-  const temporaryPath = path7.join(path7.dirname(change.targetPath), `.${path7.basename(change.targetPath)}.${randomUUID2()}.tmp`);
+  const temporaryPath = path7.join(path7.dirname(change.targetPath), `.${path7.basename(change.targetPath)}.${randomUUID3()}.tmp`);
   const lockPath = `${change.targetPath}.grill-adapter-write.lock`;
   let ownsLock = false;
   try {
@@ -24570,7 +24636,14 @@ async function startWriteBridge(options) {
       authenticate(request, options.token);
       const change = validateChange(await readJson(request), options, vaultRoot, allowedRoots);
       enforceGovernance(change, allowedRoots.get(change.request.sourceRoot), route.endsWith("/apply"), vaultRoot, allowedRoots, allowedProjects);
-      const base = { ok: true, operation: change.request.operation, sourceRoot: change.request.sourceRoot, path: change.request.path, diff: change.diff };
+      const base = {
+        ok: true,
+        requestId: change.request.requestId,
+        operation: change.request.operation,
+        sourceRoot: change.request.sourceRoot,
+        path: change.request.path,
+        diff: change.diff
+      };
       respond(response, 200, route.endsWith("/apply") ? { ...base, postWrite: applyValidated(change, options.beforeAtomicExchange, options.afterAtomicExchange) } : base);
     } catch (error2) {
       const status = error2 instanceof BridgeError ? error2.status : 500;
@@ -24598,7 +24671,7 @@ async function runWriteBridgeFromEnvironment(env = process.env) {
     configured = resolveBridgeConfig(env, void 0, env.OBSIDIAN_WIKI_BRIDGE_VAULT_REF);
   }
   const tokenEnv = env.OBSIDIAN_WIKI_BRIDGE_TOKEN_ENV ?? configured?.config.tokenEnv ?? "OBSIDIAN_WIKI_BRIDGE_TOKEN";
-  const token = env[tokenEnv];
+  const token = resolveSecretEnvironment(tokenEnv, env);
   const vaultRoot = env.OBSIDIAN_WIKI_BRIDGE_VAULT_ROOT ?? configured?.config.vaultRoot;
   const vaultSelector = env.OBSIDIAN_WIKI_BRIDGE_VAULT_SELECTOR ?? configured?.config.selector;
   const rootsRaw = env.OBSIDIAN_WIKI_BRIDGE_ALLOWED_ROOTS;
@@ -24679,6 +24752,7 @@ Usage:
                                                     Upsert one Git repository entry
   obsidian-wiki config validate [--config <path>]
   obsidian-wiki doctor [--config <path>]           Validate project bindings and runtime health
+  printf '<json>' | obsidian-wiki search-by-wiki-ids
   obsidian-wiki bridge start [--config <path>]    Start the foreground write bridge
   obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
   obsidian-wiki serve-write-bridge                Compatibility alias for bridge start
@@ -24753,13 +24827,24 @@ async function main() {
 `);
     return;
   }
-  if (subcommand === "search") {
+  if (subcommand === "search" || subcommand === "search-by-wiki-ids") {
     const request = await readJsonRequest();
-    if (typeof request.query !== "string" || !request.query.trim()) {
-      throw new Error("query must be a non-empty string");
+    if (subcommand === "search") {
+      if (typeof request.query !== "string" || !request.query.trim()) {
+        throw new Error("query must be a non-empty string");
+      }
+      process.stdout.write(`${JSON.stringify(searchTool({
+        query: request.query,
+        publishFeatureSlug: typeof request.publishFeatureSlug === "string" ? request.publishFeatureSlug : void 0
+      }))}
+`);
+      return;
     }
-    process.stdout.write(`${JSON.stringify(searchTool({
-      query: request.query,
+    if (!Array.isArray(request.wikiIds) || request.wikiIds.length === 0 || request.wikiIds.some((value) => typeof value !== "string" || !value)) {
+      throw new Error("wikiIds must be a non-empty array of non-empty strings");
+    }
+    process.stdout.write(`${JSON.stringify(searchWikiIdsTool({
+      wikiIds: request.wikiIds,
       publishFeatureSlug: typeof request.publishFeatureSlug === "string" ? request.publishFeatureSlug : void 0
     }))}
 `);

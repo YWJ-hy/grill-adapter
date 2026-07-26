@@ -3,7 +3,10 @@ import { assertUniqueBoundSkillCard, searchBoundNotes } from '../retrieval.js';
 import { skillCardAvailability } from '../skill-card.js';
 import { publishBranchOptions } from '../publish.js';
 
-export function searchTool(input: { query: string; publishFeatureSlug?: string }, env: NodeJS.ProcessEnv = process.env) {
+type SearchOptions = { publishFeatureSlug?: string };
+type SearchInput = SearchOptions & { query: string };
+
+function searchResolution(input: SearchOptions, env: NodeJS.ProcessEnv) {
   const resolution = resolveBindings(env, process.cwd(), {
     allowStagedWikiChanges: input.publishFeatureSlug !== undefined,
     allowedRepositoryBranches: input.publishFeatureSlug
@@ -13,7 +16,15 @@ export function searchTool(input: { query: string; publishFeatureSlug?: string }
   if (resolution.errors.length > 0) {
     throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join('; ')}`);
   }
-  const found = searchBoundNotes(input.query, resolution.bindings, env);
+  return resolution;
+}
+
+function presentNotes(
+  found: ReturnType<typeof searchBoundNotes>,
+  resolution: ReturnType<typeof searchResolution>,
+  env: NodeJS.ProcessEnv,
+  publishFeatureSlug?: string,
+) {
   for (const note of found) assertUniqueBoundSkillCard(note, resolution.bindings, env);
   return {
     notes: found
@@ -25,7 +36,7 @@ export function searchTool(input: { query: string; publishFeatureSlug?: string }
           note,
           resolution.projectDir,
           {
-            mode: input.publishFeatureSlug ? 'write' : 'discovery',
+            mode: publishFeatureSlug ? 'write' : 'discovery',
             baseSynchronized: binding?.repositoryHealth.baseSynchronized === true,
           },
         ).available;
@@ -52,4 +63,26 @@ export function searchTool(input: { query: string; publishFeatureSlug?: string }
       bindingDigest: note.bindingDigest,
       })),
   };
+}
+
+export function searchTool(input: SearchInput, env: NodeJS.ProcessEnv = process.env) {
+  const resolution = searchResolution(input, env);
+  return presentNotes(
+    searchBoundNotes(input.query, resolution.bindings, env),
+    resolution,
+    env,
+    input.publishFeatureSlug,
+  );
+}
+
+export function searchWikiIdsTool(
+  input: { wikiIds: string[]; publishFeatureSlug?: string },
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  const resolution = searchResolution(input, env);
+  const found = input.wikiIds.flatMap((wikiId) => (
+    searchBoundNotes(`[wiki_id:${wikiId}]`, resolution.bindings, env)
+      .filter((note) => note.wikiId === wikiId)
+  ));
+  return presentNotes(found, resolution, env, input.publishFeatureSlug);
 }

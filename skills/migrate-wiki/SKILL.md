@@ -69,6 +69,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_migration_plan.py \
 
 The planner clones that URL into a disposable temporary directory, records the repository URL and resolved commit in the plan/source digest, and never writes to the remote repository or local legacy roots. Credentials come from the user's normal Git configuration. Omit the flag to read the local `.shared-adapter/wiki` root when one exists.
 
+To omit a legacy subtree, repeat `--exclude-path <root>:<relative-path>`, for example
+`--exclude-path shared:.claude/skills`. Exclusions are recorded in the immutable plan
+and source digest; apply and resume re-run the planner with the exact same exclusions.
+
 If the registry is intentionally outside the default location, pass its exact path with `--registry`. Do not redirect stdout into the legacy Wiki, a bound Source, or a discovery index. The output contract is `${CLAUDE_PLUGIN_ROOT}/contracts/obsidian-migration-plan-v1.example.jsonc`.
 
 When more than one binding has `role: shared`, choose the intended target explicitly with `--shared-source-id <sourceId>`; never guess. `--project-source-id` is the corresponding explicit selector for a project Source.

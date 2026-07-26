@@ -1,4 +1,5 @@
 import type { ResolvedBinding } from '../bindings.js';
+import { randomUUID } from 'node:crypto';
 import { resolveBindings } from '../bindings.js';
 import { parseAtomicNote } from '../note.js';
 import {
@@ -187,6 +188,7 @@ function prepareChange(input: NoteChangeInput, env: NodeJS.ProcessEnv): Prepared
     binding,
     policy,
     request: {
+      requestId: randomUUID(),
       vaultSelector: binding.vaultSelector,
       projectDir: resolution.projectDir,
       sourceId: binding.sourceId,

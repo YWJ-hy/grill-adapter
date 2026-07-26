@@ -50,6 +50,7 @@ EDGE_PROPERTIES = {
     "supersedes": "supersedes",
     "contradicts": "contradicts",
 }
+DEFAULT_REGISTRY_PATH = Path.home() / ".config" / "grill-adapter" / "obsidian-wiki.jsonc"
 
 
 class PlanError(RuntimeError):
@@ -91,7 +92,7 @@ def _clone_legacy_shared_wiki(repo_url: str) -> tuple[Path, str]:
 
 def read_json(path: Path, description: str) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(_strip_jsonc(path.read_text(encoding="utf-8")))
     except FileNotFoundError as exc:
         raise PlanError(f"{description} not found: {path}") from exc
     except json.JSONDecodeError as exc:
@@ -99,6 +100,49 @@ def read_json(path: Path, description: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise PlanError(f"{description} must be a JSON object: {path}")
     return value
+
+
+def _strip_jsonc(text: str) -> str:
+    output: list[str] = []
+    index = 0
+    in_string = False
+    escaped = False
+    while index < len(text):
+        character = text[index]
+        next_character = text[index + 1] if index + 1 < len(text) else ""
+        if in_string:
+            output.append(character)
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            index += 1
+        elif character == '"':
+            in_string = True
+            output.append(character)
+            index += 1
+        elif character == "/" and next_character == "/":
+            output.extend((" ", " "))
+            index += 2
+            while index < len(text) and text[index] not in "\r\n":
+                output.append(" ")
+                index += 1
+        elif character == "/" and next_character == "*":
+            output.extend((" ", " "))
+            index += 2
+            while index < len(text):
+                if text[index] == "*" and index + 1 < len(text) and text[index + 1] == "/":
+                    output.extend((" ", " "))
+                    index += 2
+                    break
+                output.append(text[index] if text[index] in "\r\n" else " ")
+                index += 1
+        else:
+            output.append(character)
+            index += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(output))
 
 
 def parse_frontmatter(text: str) -> dict[str, Any]:
@@ -144,25 +188,74 @@ def stable_digest(entries: list[tuple[str, bytes]]) -> str:
     return f"sha256:{digest.hexdigest()}"
 
 
+def canonical_edges(edges: list[dict[str, Any]]) -> list[dict[str, str]]:
+    unique: dict[tuple[str, str], dict[str, str]] = {}
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        property_name = edge.get("property")
+        target_id = edge.get("targetNoteId")
+        if isinstance(property_name, str) and isinstance(target_id, str):
+            unique[(property_name, target_id)] = {
+                "property": property_name,
+                "targetNoteId": target_id,
+            }
+    return [
+        unique[key]
+        for key in sorted(unique, key=lambda value: (value[0], value[1]))
+    ]
+
+
+def normalize_exclusions(raw: list[str] | None) -> list[dict[str, str]]:
+    exclusions: set[tuple[str, str]] = set()
+    for value in raw or []:
+        if not isinstance(value, str) or ":" not in value:
+            raise PlanError(f"--exclude-path must use ROOT:PATH syntax: {value!r}")
+        root_name, path_value = value.split(":", 1)
+        if root_name not in ("project", "shared") or not path_value.strip():
+            raise PlanError(f"--exclude-path must use project|shared:relative/path syntax: {value!r}")
+        normalized = posixpath.normpath(path_value.replace("\\", "/").strip()).removeprefix("./")
+        if normalized in ("", ".", "..") or normalized.startswith("../") or normalized.startswith("/"):
+            raise PlanError(f"--exclude-path must name a relative path below the {root_name} root: {value!r}")
+        exclusions.add((root_name, normalized))
+    return [{"root": root_name, "path": path_value} for root_name, path_value in sorted(exclusions)]
+
+
+def excluded_path(relative: str, exclusions: list[dict[str, str]]) -> bool:
+    normalized = posixpath.normpath(relative)
+    return any(
+        normalized == item["path"] or normalized.startswith(f"{item['path']}/")
+        for item in exclusions
+    )
+
+
 def note_content_hash(contents: str) -> str:
     canonical = contents.replace("\r\n", "\n")
     return f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
 
 
-def file_entries(root: Path, prefix: str, include_meta: bool = True) -> list[tuple[str, bytes]]:
+def file_entries(
+    root: Path,
+    prefix: str,
+    include_meta: bool = True,
+    exclude_paths: list[str] | None = None,
+) -> list[tuple[str, bytes]]:
     if root.is_symlink():
         raise PlanError(f"snapshot root is a symbolic link: {root}")
     if not root.is_dir():
         return []
     entries = []
     for path in sorted(root.rglob("*")):
-        if ".git" in path.relative_to(root).parts:
+        relative = path.relative_to(root)
+        if ".git" in relative.parts:
+            continue
+        if exclude_paths and excluded_path(relative.as_posix(), [{"path": value} for value in exclude_paths]):
             continue
         if path.is_symlink():
             raise PlanError(f"snapshot input is a symbolic link: {path}")
         if not path.is_file() or (not include_meta and "_meta" in path.relative_to(root).parts):
             continue
-        entries.append((f"{prefix}/{path.relative_to(root).as_posix()}", path.read_bytes()))
+        entries.append((f"{prefix}/{relative.as_posix()}", path.read_bytes()))
     return entries
 
 
@@ -390,11 +483,19 @@ def load_bindings(
     return by_role, snapshot_entries
 
 
-def collect_legacy_root(root_name: str, wiki_root: Path) -> dict[str, Any]:
+def collect_legacy_root(
+    root_name: str,
+    wiki_root: Path,
+    exclusions: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    exclusions = exclusions or []
     if wiki_root.is_symlink():
         raise PlanError(f"legacy {root_name} Wiki root is a symbolic link: {wiki_root}")
     for path in sorted(wiki_root.rglob("*")):
-        if ".git" in path.relative_to(wiki_root).parts:
+        relative = path.relative_to(wiki_root)
+        if ".git" in relative.parts:
+            continue
+        if excluded_path(relative.as_posix(), exclusions):
             continue
         if path.is_symlink():
             raise PlanError(f"legacy {root_name} Wiki input is a symbolic link: {path}")
@@ -412,6 +513,8 @@ def collect_legacy_root(root_name: str, wiki_root: Path) -> dict[str, Any]:
         if path.is_symlink():
             raise PlanError(f"legacy {root_name} Wiki input is a symbolic link: {path}")
         relative = path.relative_to(wiki_root).as_posix()
+        if excluded_path(relative, exclusions):
+            continue
         if path.name == "index.md" or path.stem.endswith(".index"):
             indexes.append({
                 "sourceItemId": source_item_id(root_name, "index", relative),
@@ -480,8 +583,17 @@ def collect_legacy_root(root_name: str, wiki_root: Path) -> dict[str, Any]:
         raise PlanError(f"legacy {root_name} Wiki graph is a symbolic link: {graph_path}")
     if graph_path.is_file():
         graph_data = read_json(graph_path, f"{root_name} legacy section graph")
+        seen_edges: set[tuple[str, str, str]] = set()
         for edge in graph_data.get("edges", []):
             if isinstance(edge, dict):
+                from_ref = str(edge.get("from", ""))
+                to_ref = str(edge.get("to", ""))
+                if excluded_path(from_ref.split("#", 1)[0], exclusions) or excluded_path(to_ref.split("#", 1)[0], exclusions):
+                    continue
+                edge_key = (from_ref, to_ref, str(edge.get("type", "")))
+                if edge_key in seen_edges:
+                    continue
+                seen_edges.add(edge_key)
                 record = {"legacyRoot": root_name, **edge}
                 record["sourceItemId"] = graph_item_id(root_name, "graph-edge", record)
                 graph_edges.append(record)
@@ -566,6 +678,7 @@ def build_plan(
     legacy_shared_wiki_url: str | None = None,
     _legacy_shared_root: Path | None = None,
     _legacy_shared_revision: str | None = None,
+    exclude_paths: list[str] | None = None,
 ) -> dict[str, Any]:
     if legacy_shared_wiki_url and _legacy_shared_root is None:
         checkout, revision = _clone_legacy_shared_wiki(legacy_shared_wiki_url)
@@ -579,6 +692,7 @@ def build_plan(
                 legacy_shared_wiki_url=legacy_shared_wiki_url,
                 _legacy_shared_root=checkout,
                 _legacy_shared_revision=revision,
+                exclude_paths=exclude_paths,
             )
         finally:
             shutil.rmtree(checkout.parent, ignore_errors=True)
@@ -590,6 +704,7 @@ def build_plan(
     if _legacy_shared_root is not None:
         roots["shared"] = _legacy_shared_root
     selected = [root_selector] if root_selector in roots else ["project", "shared"]
+    exclusions = normalize_exclusions(exclude_paths)
     bindings, target_entries = load_bindings(
         project_root,
         registry_path,
@@ -607,10 +722,20 @@ def build_plan(
         wiki_root = roots[root_name]
         if not wiki_root.is_dir():
             continue
-        collected = collect_legacy_root(root_name, wiki_root)
+        root_exclusions = [item for item in exclusions if item["root"] == root_name]
+        collected = collect_legacy_root(root_name, wiki_root, root_exclusions)
         for key, values in collected.items():
             inventory[key].extend(values)
-        source_entries.extend(file_entries(wiki_root, f"legacy/{root_name}"))
+        source_entries.extend(
+            file_entries(
+                wiki_root,
+                f"legacy/{root_name}",
+                exclude_paths=[item["path"] for item in root_exclusions],
+            )
+        )
+
+    if exclusions:
+        source_entries.append(("migration/exclusions", json.dumps(exclusions, sort_keys=True).encode("utf-8")))
 
     for skill_name in sorted({item["skillName"] for item in inventory["skillDiscovery"]}):
         source_entries.extend(file_entries(project_root / ".claude" / "skills" / skill_name, f"packs/{skill_name}"))
@@ -869,7 +994,7 @@ def build_plan(
         }
 
     for item in planned_notes:
-        item["edgeTransformation"].sort(key=lambda value: (value["property"], value["targetNoteId"]))
+        item["edgeTransformation"] = canonical_edges(item["edgeTransformation"])
     confirmations.sort(key=lambda issue: (issue["code"], issue["sourceItemIds"], issue["detail"]))
     ordered_plan = [plan_items[source["sourceItemId"]] for source in inventory["sourceItems"]]
     decision_counts = Counter(item["decision"] for item in ordered_plan)
@@ -896,6 +1021,8 @@ def build_plan(
             "confirmationIssueCount": len(confirmations),
         },
     }
+    if exclusions:
+        plan["exclusions"] = exclusions
     if legacy_shared_wiki_url:
         plan["legacySources"] = {
             "shared": {
@@ -927,10 +1054,17 @@ def main() -> None:
     configure_stdio()
     parser = argparse.ArgumentParser(description="Plan a deterministic, no-write legacy Wiki migration to bound Obsidian Sources.")
     parser.add_argument("--project-root", required=True, help="Project containing legacy Wiki roots and Obsidian bindings")
-    parser.add_argument("--registry", default=None, help="Obsidian Wiki registry JSON (defaults to OBSIDIAN_WIKI_REGISTRY or ~/.config/grill-adapter/obsidian-wiki.json)")
+    parser.add_argument("--registry", default=None, help="Obsidian Wiki registry JSONC (defaults to OBSIDIAN_WIKI_REGISTRY or ~/.config/grill-adapter/obsidian-wiki.jsonc)")
     parser.add_argument("--wiki-root", choices=["project", "shared", "all"], default="all")
     parser.add_argument("--project-source-id", default=None, help="Select the target project Source when configuration is ambiguous")
     parser.add_argument("--shared-source-id", default=None, help="Select the target Shared Source when multiple shared bindings exist")
+    parser.add_argument(
+        "--exclude-path",
+        action="append",
+        default=[],
+        metavar="ROOT:PATH",
+        help="Exclude a legacy subtree from inventory and source digest; repeatable (for example shared:.claude/skills)",
+    )
     parser.add_argument(
         "--legacy-shared-wiki-url",
         default=None,
@@ -941,7 +1075,7 @@ def main() -> None:
     if args.legacy_shared_wiki_url and args.wiki_root == "project":
         parser.error("--legacy-shared-wiki-url requires --wiki-root shared or all")
     registry_value = args.registry or __import__("os").environ.get("OBSIDIAN_WIKI_REGISTRY")
-    registry_path = Path(registry_value).expanduser().resolve() if registry_value else Path.home() / ".config" / "grill-adapter" / "obsidian-wiki.json"
+    registry_path = Path(registry_value).expanduser().resolve() if registry_value else DEFAULT_REGISTRY_PATH
     try:
         plan = build_plan(
             project_root,
@@ -950,6 +1084,7 @@ def main() -> None:
             project_source_id=args.project_source_id,
             shared_source_id=args.shared_source_id,
             legacy_shared_wiki_url=args.legacy_shared_wiki_url,
+            exclude_paths=args.exclude_path,
         )
     except (PlanError, OSError, ValueError) as exc:
         print(f"migration plan failed: {exc}", file=sys.stderr)

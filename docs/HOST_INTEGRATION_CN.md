@@ -21,7 +21,7 @@ grill-adapter 本身是一个双运行时插件：`.claude-plugin/plugin.json` �
 约定块落在**目标项目**的 `CLAUDE.md` 里，那不是插件内容，两条路都堵死：
 
 - `${CLAUDE_PLUGIN_ROOT}` 只在插件内容里被替换（见下），写在项目 `CLAUDE.md` 里会原样留着。
-- 安装时烤死绝对路径也不行：插件缓存路径带版本号（`~/.claude/plugins/cache/grill-adapter/grill-adapter/0.2.0/`），升级即换目录，旧目录约 7 天后被回收——约定块会**静默腐烂**。
+- 安装时烤死绝对路径也不行：插件缓存路径带版本号（`~/.claude/plugins/cache/grill-adapter/grill-adapter/<version>/`），升级即换目录，旧目录约 7 天后被回收——约定块会**静默腐烂**。
 
 所以约定块只**点名 skill**，由 skill 自己持有脚本路径（skill 是插件内容，替换正常）。原先约定块直接调的两样东西已各自归位：grill→wiki 桥 `grill_context_to_candidates.py` 搬进 `skills/update-wiki/SKILL.md`（它本就是那份产物的消费者），ticket-roster 契约形状由 `skills/wiki-research/SKILL.md` 承载。
 

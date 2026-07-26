@@ -5,6 +5,10 @@
   "generatedBy": "grill-adapter",
   "mode": "plan-only",
   "writePerformed": false,
+  // Canonical legacy subtrees omitted from inventory and sourceSnapshot.
+  "exclusions": [
+    {"root": "shared", "path": ".claude/skills"}
+  ],
   "sourceSnapshot": {
     "algorithm": "sha256:grill-adapter-obsidian-migration-snapshot-v1",
     "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

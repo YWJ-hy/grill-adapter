@@ -13,6 +13,7 @@
     "generatedBy": "grill-adapter",
     "mode": "plan-only",
     "writePerformed": false,
+    "exclusions": [],
     "sourceSnapshot": {"algorithm": "sha256:grill-adapter-obsidian-migration-snapshot-v1", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
     "targetSnapshot": {"algorithm": "sha256:grill-adapter-obsidian-migration-snapshot-v1", "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
     "targetSources": [{"sourceId": "example-project", "role": "project", "root": "Projects/example"}],
