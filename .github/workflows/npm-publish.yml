@@ -67,6 +67,15 @@ jobs:
         working-directory: mcp/obsidian-wiki
         run: npm run typecheck && npm test
 
+      - name: Increment Obsidian package patch version
+        if: github.event_name == 'push' && steps.plan.outputs.obsidian == 'true'
+        working-directory: mcp/obsidian-wiki
+        run: npm version patch --no-git-tag-version
+
+      - name: Increment root package patch version
+        if: github.event_name == 'push' && steps.plan.outputs.root == 'true'
+        run: npm version patch --no-git-tag-version
+
       - name: Check registry versions
         id: registry
         if: steps.plan.outputs.release == 'true'
@@ -75,6 +84,7 @@ jobs:
             local package="$1"
             local version="$2"
             local output="$3"
+            echo "Checking ${package}@${version}"
             if npm view "${package}@${version}" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
               echo "${output}=false" >> "$GITHUB_OUTPUT"
             else
@@ -87,15 +97,6 @@ jobs:
           check_missing "grill-adapter" \
             "$(node -p "require('./package.json').version")" \
             root_missing
-
-      - name: Increment Obsidian package patch version
-        if: github.event_name == 'push' && steps.plan.outputs.obsidian == 'true'
-        working-directory: mcp/obsidian-wiki
-        run: npm version patch --no-git-tag-version
-
-      - name: Increment root package patch version
-        if: github.event_name == 'push' && steps.plan.outputs.root == 'true'
-        run: npm version patch --no-git-tag-version
 
       - name: Commit and push generated release version
         if: github.event_name == 'push' && steps.plan.outputs.release == 'true'

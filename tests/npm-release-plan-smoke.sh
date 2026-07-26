@@ -5,6 +5,17 @@ ROOT="${1:?grill-adapter root required}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
+WORKFLOW="$ROOT/.github/workflows/npm-publish.yml"
+registry_line="$(rg -n '^      - name: Check registry versions$' "$WORKFLOW" | cut -d: -f1)"
+obsidian_increment_line="$(rg -n '^      - name: Increment Obsidian package patch version$' "$WORKFLOW" | cut -d: -f1)"
+root_increment_line="$(rg -n '^      - name: Increment root package patch version$' "$WORKFLOW" | cut -d: -f1)"
+if [[ -z "$registry_line" || -z "$obsidian_increment_line" || -z "$root_increment_line" ]] \
+  || (( registry_line <= obsidian_increment_line )) \
+  || (( registry_line <= root_increment_line )); then
+  printf 'npm publish workflow must check registry versions after package version increments\n' >&2
+  exit 1
+fi
+
 git -C "$ROOT" init -q "$TMP/repo"
 git -C "$TMP/repo" config user.email test@example.com
 git -C "$TMP/repo" config user.name "Release Plan Test"
