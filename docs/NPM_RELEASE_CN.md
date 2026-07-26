@@ -34,7 +34,7 @@ npm login
 npm publish --access public
 ```
 
-后续版本：
+本地手工发布后续版本：
 
 ```bash
 npm version patch
@@ -43,12 +43,21 @@ npm publish
 
 发布前可用 `npm view grill-adapter version` 查看 registry 上的当前版本。发布命令不会自动启用 Claude Code 或 Codex plugin，也不会修改业务项目。
 
-## Trusted Publishing
+日常合并不需要执行这些命令；启用下方的 Trusted Publishing 后，`main` 分支的包
+payload 变更会由 GitHub Actions 自动递增版本并发布。
 
-仓库提供 `.github/workflows/npm-publish.yml`，只在 GitHub Release 发布或手动触发
-时发布两个 npm 包，不会在普通 push 时自动发布。workflow 使用 GitHub Actions
-OIDC Trusted Publishing 和 provenance，不保存 npm token，也不要求在 runner 上输入
-OTP。
+## 自动发布与 Trusted Publishing
+
+仓库提供 `.github/workflows/npm-publish.yml`。合并到 `main` 后，workflow 会比较本次
+提交涉及的文件：只要 npm 包 payload 发生变化，就自动构建、验收、递增 patch 版本、
+提交版本变更并通过 GitHub Actions OIDC Trusted Publishing 发布。不会因为测试文件或
+workflow 自身变化发布 npm 包。
+
+workflow 使用 provenance，不保存 npm token，也不要求在 runner 上输入 OTP。并发发布
+会串行化，自动生成的版本提交带有 `[skip ci]`，不会形成重复触发。
+
+也保留了 Actions 手动触发入口 `publish_current`，用于发布当前已经写入
+`package.json` 的版本，不会再次递增版本。
 
 首次启用前，为两个已存在的包分别建立 npm trusted publisher，workflow 文件名和仓库
 必须完全匹配：
@@ -65,9 +74,9 @@ npm trust github @grill-adapter/obsidian-wiki \
   --allow-publish
 ```
 
-配置完成后，先提交并推送版本变更，再创建 GitHub Release（或在 Actions 页面手动
-运行 workflow）。workflow 会先运行 Obsidian runtime 和根包验收，再按当前
-`package.json` 版本发布 `@grill-adapter/obsidian-wiki` 与 `grill-adapter`。
+配置完成后，把 workflow 推送到 GitHub。之后不需要手动创建 Release：每次合并
+相关代码到 `main` 都会自动发布。workflow 会先运行 Obsidian runtime 和根包验收，
+再按自动递增后的版本发布 `@grill-adapter/obsidian-wiki` 与 `grill-adapter`。
 
 ## 让宿主使用 npm 包
 

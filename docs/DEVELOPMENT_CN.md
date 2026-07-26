@@ -43,6 +43,7 @@ grill-with-docs → to-spec / to-tickets → implement → code-review → updat
 - **wiki 初始化 / 授权 / 导入 / 导出 / 模板 / scaffold / 迁移**：`setup-init-obsidian-skill-smoke.sh`（双 npm 包检查、等待/恢复边界、legacy 授权路由）、`wiki-authorization-policy-smoke.sh`（含 cutover archive 的 update/import/migration 写保护）、`wiki-import-skill-path-smoke.sh`、`export-wiki-skills-smoke.sh`、`bootstrap-wiki-template-import.sh`（含 archive bootstrap 写保护）、`init-wiki-inventory-smoke.sh`、`scaffold-practice-skill-smoke.sh`、`obsidian-wiki-migration-plan-smoke.sh`（source/target 快照、update 审核 hash、逐项决策、确认门、确定性与零写入）、`obsidian-wiki-migration-apply-smoke.sh`（首写前专用 branch、持久 intent、崩溃恢复、CAS seed/finalize、publisher 对账恢复、typed edge/Card、幂等 PR、immutable-plan coverage、source/binding drift、merged-base verify、schema-v5 与 scoped cutover 门、legacy archive 不改写）、`migrate-wiki-repartition-smoke.sh`（legacy section 重组与 Obsidian Note maintenance/repartition 契约）。
 - **Obsidian runtime（绑定 / 中性化 / MCP）**：`mcp/obsidian-wiki/tests/` 与 `obsidian-runtime-operations-smoke.sh` 覆盖 Source bindings、policy、读取和写桥 contract。
 - **Obsidian rollout 运维面**：`obsidian-runtime-operations-smoke.sh` 覆盖 provider-aware bootstrap、doctor adoption state/health exit、release gate、host recovery 约定、plugin metadata 与最终验收文档。
+- **npm 自动发布**：`npm-release-plan-smoke.sh` 覆盖 root-only、Obsidian 双包、test-only 与手动强制发布的变更分类；GitHub Actions 只对 package payload 自动递增 patch 并发布。
 - **source-of-truth**：`source-truth-settings-smoke.sh`。
 
 新增引擎行为时，优先扩现有对应 smoke，而不是只加一条 Python 直跑。

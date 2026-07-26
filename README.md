@@ -90,7 +90,7 @@ grill-adapter doctor
 npm update --global grill-adapter
 ```
 
-To make the installed npm package the local plugin source, run `grill-adapter package-root`, then add that path as a Claude/Codex marketplace. See [`docs/NPM_RELEASE_CN.md`](docs/NPM_RELEASE_CN.md) for `npm version`, `npm publish`, local plugin refresh, `npm pack --dry-run`, and `npx` workflows.
+To make the installed npm package the local plugin source, run `grill-adapter package-root`, then add that path as a Claude/Codex marketplace. See [`docs/NPM_RELEASE_CN.md`](docs/NPM_RELEASE_CN.md) for automatic versioning and publishing, Trusted Publishing, local plugin refresh, `npm pack --dry-run`, and `npx` workflows.
 
 On macOS/Linux, run the Bash entrypoints directly. On Windows, `C:\Windows\System32\bash.exe` is often only the WSL launcher; if WSL has no `/bin/bash`, use the PowerShell entrypoints below. They select a working Git Bash/MSYS2/Cygwin installation automatically.
 

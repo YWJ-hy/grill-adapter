@@ -1,20 +1,32 @@
 name: Publish npm packages
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_current:
+        description: Publish the current package versions without bumping them
+        required: false
+        default: false
+        type: boolean
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
+
+concurrency:
+  group: npm-release-main
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out release
+      - name: Check out main
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -22,20 +34,66 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
+      - name: Use npm with Trusted Publishing support
+        run: npm install --global npm@^11.15.0
+
+      - name: Build release plan
+        id: plan
+        env:
+          FORCE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_current || false }}
+        run: |
+          if [[ "$FORCE_RELEASE" == "true" ]]; then
+            FORCE_ARG="--force"
+          else
+            FORCE_ARG=""
+          fi
+          node scripts/npm_release_plan.mjs \
+            "${{ github.event.before }}" \
+            "${{ github.sha }}" \
+            $FORCE_ARG | tee /tmp/npm-release-plan.txt
+          cat /tmp/npm-release-plan.txt >> "$GITHUB_OUTPUT"
+
+      - name: Stop when no package payload changed
+        if: steps.plan.outputs.release != 'true'
+        run: echo "No npm package payload changed; skipping release."
+
       - name: Install Obsidian package dependencies
+        if: steps.plan.outputs.obsidian == 'true'
         working-directory: mcp/obsidian-wiki
         run: npm ci
 
       - name: Verify Obsidian package
+        if: steps.plan.outputs.obsidian == 'true'
         working-directory: mcp/obsidian-wiki
         run: npm run typecheck && npm test
 
+      - name: Increment Obsidian package patch version
+        if: github.event_name == 'push' && steps.plan.outputs.obsidian == 'true'
+        working-directory: mcp/obsidian-wiki
+        run: npm version patch --no-git-tag-version
+
+      - name: Increment root package patch version
+        if: github.event_name == 'push' && steps.plan.outputs.root == 'true'
+        run: npm version patch --no-git-tag-version
+
+      - name: Commit and push generated release version
+        if: github.event_name == 'push' && steps.plan.outputs.release == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "[skip ci] chore(release): bump npm package versions"
+          git push origin HEAD:main
+
       - name: Publish Obsidian package
+        if: steps.plan.outputs.obsidian == 'true'
         working-directory: mcp/obsidian-wiki
         run: npm publish --access public --provenance
 
       - name: Verify root package
+        if: steps.plan.outputs.root == 'true'
         run: npm run pack:dry && npm run test:package
 
       - name: Publish root package
+        if: steps.plan.outputs.root == 'true'
         run: npm publish --access public --provenance
