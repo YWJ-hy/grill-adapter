@@ -1,7 +1,10 @@
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const scriptPath = fileURLToPath(new URL('../scripts/atomic_swap.py', import.meta.url));
+const packagedScriptPath = fileURLToPath(new URL('./atomic_swap.py', import.meta.url));
+const sourceScriptPath = fileURLToPath(new URL('../scripts/atomic_swap.py', import.meta.url));
+const scriptPath = existsSync(packagedScriptPath) ? packagedScriptPath : sourceScriptPath;
 
 export function atomicExchange(firstPath: string, secondPath: string, env: NodeJS.ProcessEnv = process.env): void {
   const python = env.OBSIDIAN_WIKI_PYTHON ?? 'python3';

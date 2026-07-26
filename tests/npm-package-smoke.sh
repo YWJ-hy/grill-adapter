@@ -18,10 +18,24 @@ test -f "$PACKAGE"
 tar -tf "$PACKAGE" | grep -q '^package/bin/grill-adapter.mjs$'
 tar -tf "$PACKAGE" | grep -q '^package/.codex-plugin/plugin.json$'
 tar -tf "$PACKAGE" | grep -q '^package/mcp/obsidian-wiki/dist/index.js$'
+tar -tf "$PACKAGE" | grep -q '^package/mcp/obsidian-wiki/dist/atomic_swap.py$'
 if tar -tf "$PACKAGE" | grep -q '^package/tests/'; then
   echo "published package unexpectedly contains tests/" >&2
   exit 1
 fi
+
+OBSIDIAN_TMP="$TMP/obsidian-wiki"
+mkdir -p "$OBSIDIAN_TMP"
+OBSIDIAN_PACK_JSON="$(
+  cd "$ROOT/mcp/obsidian-wiki"
+  npm pack --json --pack-destination "$OBSIDIAN_TMP" |
+    awk 'BEGIN { found = 0 } /^\[/{ found = 1 } found { print }'
+)"
+OBSIDIAN_TARBALL="$(printf '%s' "$OBSIDIAN_PACK_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["filename"])')"
+OBSIDIAN_PACKAGE="$OBSIDIAN_TMP/$OBSIDIAN_TARBALL"
+test -f "$OBSIDIAN_PACKAGE"
+tar -tf "$OBSIDIAN_PACKAGE" | grep -q '^package/dist/index.js$'
+tar -tf "$OBSIDIAN_PACKAGE" | grep -q '^package/dist/atomic_swap.py$'
 
 npm install --prefix "$TMP/install" "$PACKAGE" >/dev/null
 CLI="$TMP/install/node_modules/.bin/grill-adapter"

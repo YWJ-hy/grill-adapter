@@ -24145,7 +24145,7 @@ function createServer(env = process.env) {
 import { timingSafeEqual, randomUUID as randomUUID2 } from "node:crypto";
 import { createServer as createServer2 } from "node:http";
 import {
-  existsSync as existsSync4,
+  existsSync as existsSync5,
   linkSync,
   lstatSync as lstatSync3,
   mkdirSync as mkdirSync3,
@@ -24159,8 +24159,11 @@ import path7 from "node:path";
 
 // src/atomic-exchange.ts
 import { execFileSync as execFileSync4 } from "node:child_process";
+import { existsSync as existsSync4 } from "node:fs";
 import { fileURLToPath } from "node:url";
-var scriptPath = fileURLToPath(new URL("../scripts/atomic_swap.py", import.meta.url));
+var packagedScriptPath = fileURLToPath(new URL("./atomic_swap.py", import.meta.url));
+var sourceScriptPath = fileURLToPath(new URL("../scripts/atomic_swap.py", import.meta.url));
+var scriptPath = existsSync4(packagedScriptPath) ? packagedScriptPath : sourceScriptPath;
 function atomicExchange(firstPath, secondPath, env = process.env) {
   const python = env.OBSIDIAN_WIKI_PYTHON ?? "python3";
   try {
@@ -24212,7 +24215,7 @@ function inside(candidate, root) {
 }
 function nearestExistingDirectory(directory) {
   let candidate = directory;
-  while (!existsSync4(candidate)) {
+  while (!existsSync5(candidate)) {
     const parent = path7.dirname(candidate);
     if (parent === candidate) throw new BridgeError(403, "Note parent has no existing Vault ancestor");
     candidate = parent;
@@ -24308,7 +24311,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
       const vaultPath = normalizeRelativePath(target.endsWith(".md") ? target : `${target}.md`, "Typed edge");
       const resolvedTarget = path7.resolve(vaultRoot, ...vaultPath.split("/"));
       const owningRoot = [...roots.values()].find((root) => inside(resolvedTarget, root.resolvedRoot));
-      if (!owningRoot || !existsSync4(resolvedTarget) || !lstatSync3(resolvedTarget).isFile()) {
+      if (!owningRoot || !existsSync5(resolvedTarget) || !lstatSync3(resolvedTarget).isFile()) {
         throw new BridgeError(400, `Typed edge does not resolve to an allowed atomic Note: ${link}`);
       }
       parseAtomicNote(readFileSync5(resolvedTarget, "utf8"), vaultPath);
@@ -24418,7 +24421,7 @@ function validateChange(raw, options, vaultRoot, allowedRoots) {
   if (!inside(resolvedParent, resolvedSourceRoot)) throw new BridgeError(403, `Note parent escapes its Source root: ${notePath}`);
   const proposed = parseAtomicNote(request.content, notePath);
   if (proposed.wikiId !== request.expectedWikiId) throw new BridgeError(409, "Proposed Note wiki_id does not match expectedWikiId");
-  const exists = existsSync4(targetPath);
+  const exists = existsSync5(targetPath);
   let beforeContent = null;
   if (request.operation === "create") {
     if (request.expectedHash !== null) throw new BridgeError(400, "Create requires expectedHash: null");
@@ -24503,7 +24506,7 @@ function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
         throw new BridgeError(409, `Expected hash conflict: Note was created concurrently: ${error2 instanceof Error ? error2.message : String(error2)}`);
       }
     } else {
-      if (!existsSync4(change.targetPath) || contentHash(readFileSync5(change.targetPath, "utf8")) !== change.request.expectedHash) {
+      if (!existsSync5(change.targetPath) || contentHash(readFileSync5(change.targetPath, "utf8")) !== change.request.expectedHash) {
         throw new BridgeError(409, "Expected hash conflict: Note changed concurrently");
       }
       beforeAtomicExchange?.(change.targetPath);
@@ -24550,7 +24553,7 @@ async function startWriteBridge(options) {
     const resolved = realpathSync2(path7.resolve(vaultRoot, ...root.split("/")));
     if (!inside(resolved, vaultRoot)) throw new Error(`Allowed Source root escapes the Vault: ${root}`);
     const manifestPath = path7.join(resolved, "_meta", "wiki-source.md");
-    if (!existsSync4(manifestPath) || !lstatSync3(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
+    if (!existsSync5(manifestPath) || !lstatSync3(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
     parseSourceManifest(readFileSync5(manifestPath, "utf8"), manifestPath);
     allowedRoots.set(root, { resolvedRoot: resolved, manifestPath });
   }
