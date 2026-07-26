@@ -76,6 +76,32 @@ afterEach(() => {
 });
 
 describe('Obsidian Wiki Source bindings', () => {
+  it('fails closed when authorization fields are misplaced under publishing', () => {
+    const input = fixture([
+      { sourceId: 'project', role: 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: 'Projects/example', access: { read: true, update: 'confirm' } },
+    ], [{ root: 'Projects/example', sourceId: 'project', scope: 'project' }]);
+    const settingsPath = path.join(input.projectDir, '.grill-adapter', 'settings.json');
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+    settings.wiki.publishing.updateExistingPage = 'skip';
+    writeJson(settingsPath, settings);
+
+    const status = statusTool(testEnvironment(input));
+    expect(status.healthy).toBe(false);
+    expect(status.errors.join(' ')).toMatch(/unrecognized key|Unrecognized key|publishing/i);
+  });
+
+  it('treats a missing binding write ceiling as deny and reports a repair warning', () => {
+    const input = fixture([
+      { sourceId: 'project', role: 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: 'Projects/example', access: { read: true } },
+    ], [{ root: 'Projects/example', sourceId: 'project', scope: 'project' }]);
+
+    const result = resolveBindings(testEnvironment(input));
+    expect(result.errors).toEqual([]);
+    expect(result.bindings[0].effectiveUpdatePolicy).toBe('deny');
+    expect(result.bindings[0].effectiveCreatePolicy).toBe('deny');
+    expect(result.warnings.join(' ')).toMatch(/does not declare access\.update/);
+  });
+
   it('resolves bound Sources and derives stable effective policies and digest', () => {
     const input = fixture([
       { sourceId: 'project', role: 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: 'Projects/example', access: { read: true, update: 'direct' } },

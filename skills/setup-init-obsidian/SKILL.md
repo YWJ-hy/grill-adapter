@@ -284,8 +284,54 @@ user-only permissions. Do not ask the user to open or edit the JSONC file.
 Then create or update `.grill-adapter/settings.json` automatically, preserving
 unrelated keys and using the documented conservative defaults:
 `publishing.mode: git-pr`, `updateExistingPage: skip`, and
-`createNewDocument: ask`. Ensure the binding uses a relative Vault root and
-contains no `..`, absolute path, token, or credential.
+`createNewDocument: ask`. The generated `wiki` object must use this canonical
+shape for every Obsidian project:
+
+```json
+{
+  "provider": "obsidian",
+  "publishing": { "mode": "git-pr" },
+  "obsidian": {
+    "bindings": [
+      {
+        "sourceId": "<confirmed-source-id>",
+        "role": "project",
+        "vaultRef": "<confirmed-vault-ref>",
+        "repositoryRef": "<confirmed-repository-ref>",
+        "root": "<Vault-relative-root>",
+        "access": { "read": true, "update": "confirm" }
+      }
+    ]
+  },
+  "roots": {
+    "project": {
+      "updateAuthorization": {
+        "updateExistingPage": "skip",
+        "createNewDocument": "ask"
+      }
+    },
+    "shared": {
+      "updateAuthorization": {
+        "updateExistingPage": "skip",
+        "createNewDocument": "ask"
+      },
+      "sharedNeutrality": {
+        "blockedTerms": [],
+        "blockedPatterns": []
+      }
+    }
+  }
+}
+```
+
+For each `role: shared` binding, keep the same `access.update: "confirm"`
+ceiling and retain the explicit `roots.shared.sharedNeutrality` object even
+when both lists are empty. `publishing` accepts only `mode`; never put
+`updateExistingPage`, `createNewDocument`, `updateAuthorization`, or
+`sharedNeutrality` under it. Ensure every binding uses a relative Vault root
+and contains no `..`, absolute path, token, or credential. After writing, run
+`grill-adapter doctor <project-root>` and stop on any settings schema error;
+do not claim setup is complete until the doctor accepts the canonical shape.
 
 Then rerun both package CLIs' doctors from Phase 2. If complete setup was
 requested and the config declares bridge values, first check

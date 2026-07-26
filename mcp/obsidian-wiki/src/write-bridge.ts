@@ -15,7 +15,7 @@ import path from 'node:path';
 import * as z from 'zod/v4';
 import { contentHash, parseAtomicNote } from './note.js';
 import { assertSkillCardAvailable } from './skill-card.js';
-import { parseSourceManifest, type SourceManifest } from './bindings.js';
+import { parseSourceManifest, ProjectSettingsSchema, type SourceManifest } from './bindings.js';
 import { isLoopbackHost } from './loopback.js';
 import { normalizeWritePolicy, stricterPolicy, type WritePolicy } from './policy.js';
 import { atomicExchange } from './atomic-exchange.js';
@@ -108,21 +108,6 @@ type GovernedRoot = {
   resolvedRoot: string;
   manifestPath: string;
 };
-
-const BridgeSettingsSchema = z.object({
-  wiki: z.object({
-    provider: z.literal('obsidian'),
-    obsidian: z.object({
-      bindings: z.array(z.object({
-        sourceId: z.string().min(1),
-        role: z.enum(['project', 'shared']),
-        vaultRef: z.string().min(1),
-        root: z.string().min(1),
-        access: z.object({ read: z.boolean(), update: z.string().optional() }),
-      })),
-    }),
-  }),
-});
 
 function atomicNoteFiles(root: GovernedRoot): string[] {
   const files: string[] = [];
@@ -252,9 +237,9 @@ function enforceGovernance(
   }
   if (!allowedProjects.has(projectDir)) throw new BridgeError(403, 'Project is not allowed by this bridge');
   const settingsPath = path.join(projectDir, '.grill-adapter', 'settings.json');
-  let settings: z.infer<typeof BridgeSettingsSchema>;
+  let settings: z.infer<typeof ProjectSettingsSchema>;
   try {
-    settings = BridgeSettingsSchema.parse(JSON.parse(readFileSync(settingsPath, 'utf8')));
+    settings = ProjectSettingsSchema.parse(JSON.parse(readFileSync(settingsPath, 'utf8')));
   } catch (error) {
     throw new BridgeError(403, `Project binding cannot be validated: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -283,7 +268,9 @@ function enforceGovernance(
   }
   let bindingPolicy: WritePolicy;
   try {
-    bindingPolicy = normalizeWritePolicy(binding.access.update, `binding ${request.sourceId} access.update`);
+    bindingPolicy = binding.access.update === undefined
+      ? 'deny'
+      : normalizeWritePolicy(binding.access.update, `binding ${request.sourceId} access.update`);
   } catch (error) {
     throw new BridgeError(403, `Project binding policy cannot be validated: ${error instanceof Error ? error.message : String(error)}`);
   }

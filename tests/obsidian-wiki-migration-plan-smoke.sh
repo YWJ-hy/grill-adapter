@@ -35,9 +35,9 @@ cat > "$PROJECT/.grill-adapter/settings.json" <<'JSON'
     "publishing": {"mode": "git-pr"},
     "obsidian": {
       "bindings": [
-        {"sourceId": "project-source", "role": "project", "vaultRef": "knowledge", "repositoryRef": "wiki", "root": "Projects/example", "access": {"read": true}},
-        {"sourceId": "shared-source", "role": "shared", "vaultRef": "knowledge", "repositoryRef": "wiki", "root": "Shared/engineering", "access": {"read": true}},
-        {"sourceId": "other-shared", "role": "shared", "vaultRef": "knowledge", "repositoryRef": "wiki", "root": "Shared/other", "access": {"read": true}}
+        {"sourceId": "project-source", "role": "project", "vaultRef": "knowledge", "repositoryRef": "wiki", "root": "Projects/example", "access": {"read": true, "update": "confirm"}},
+        {"sourceId": "shared-source", "role": "shared", "vaultRef": "knowledge", "repositoryRef": "wiki", "root": "Shared/engineering", "access": {"read": true, "update": "confirm"}},
+        {"sourceId": "other-shared", "role": "shared", "vaultRef": "knowledge", "repositoryRef": "wiki", "root": "Shared/other", "access": {"read": true, "update": "confirm"}}
       ]
     },
     "sharedNeutrality": {

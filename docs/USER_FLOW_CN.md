@@ -210,6 +210,7 @@ review 通过后，把本轮新沉淀的知识回写 wiki。约定块只让你�
 - 当前运行时只使用项目 `.grill-adapter/settings.json` 中声明的 `wiki.obsidian.bindings`。
 - legacy GitHub shared-wiki 仓库不参与运行期读取；需要迁移时由用户把仓库 URL 显式传给 `migrate-wiki`，planner 临时只读 clone 后生成迁移计划。
 - `setup-init-obsidian` 先明确询问这个项目需要几个 Wiki 库及每个库的用途，再逐个用人话询问 Vault 名称、Vault 内 Wiki 文件夹、Git worktree/remote/base branch、project/shared 用途，以及该库是否承接旧版 Wiki 内容；由 AI 生成 `sourceId`、`vaultRef`、`repositoryRef` 候选并按 Wiki purpose 展示完整映射供用户一次确认。每个项目最多一个 `role: project` binding，可有多个 `role: shared` binding；项目 settings 不保存 Vault 本地路径或凭据。
+- setup 写入的 Obsidian `wiki` 配置必须是 canonical shape：`publishing` 只允许 `mode`；每个 binding 显式写 `access.update: "confirm"`；root 授权写在 `wiki.roots.project/shared.updateAuthorization`；`wiki.roots.shared.sharedNeutrality` 即使为空也必须显式存在。schema/doctor 对 publishing 下错位字段 fail-closed；旧配置缺少 binding 写上限时按 `deny` 计算并给出修复 warning，避免 manifest 变宽后意外放权。
 - 一个 repository 可以承载多个不重叠 Source roots；多个 repository 也可以同时使用，迁移/发布按 `repositoryRef` 分仓处理。不存在“一个 Source root 横跨多个仓库”的隐式模式。
 
 ### 诚实降级（honest degradation）

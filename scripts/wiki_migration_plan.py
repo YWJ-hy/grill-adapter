@@ -363,6 +363,11 @@ def load_bindings(
             raise PlanError("each binding must declare sourceId, role, vaultRef, repositoryRef, and root")
         if not isinstance(access, dict) or not isinstance(access.get("read"), bool):
             raise PlanError(f"binding {source_id} must declare boolean access.read")
+        if not isinstance(access.get("update"), str) or access["update"] not in {"direct", "allow", "confirm", "ask", "deny", "refuse"}:
+            raise PlanError(
+                f"binding {source_id} must declare access.update as direct/confirm/deny "
+                "(setup-init-obsidian writes confirm)"
+            )
         if source_id in source_ids:
             raise PlanError(f"duplicate sourceId: {source_id}")
         source_ids.add(source_id)

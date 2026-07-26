@@ -22265,18 +22265,38 @@ var BindingSchema = object({
   access: object({
     read: boolean2(),
     update: string2().optional()
-  })
-});
+  }).strict()
+}).strict();
+var AuthorizationSchema = object({
+  updateExistingPage: _enum(["skip", "ask", "refuse"]),
+  createNewDocument: _enum(["skip", "ask", "refuse"])
+}).strict();
+var SharedNeutralitySchema = object({
+  blockedTerms: array(string2()),
+  blockedPatterns: array(string2())
+}).strict();
+var RootsSchema = object({
+  project: object({
+    updateAuthorization: AuthorizationSchema
+  }).strict(),
+  shared: object({
+    updateAuthorization: AuthorizationSchema,
+    sharedNeutrality: SharedNeutralitySchema
+  }).strict()
+}).strict();
 var ProjectSettingsSchema = object({
   wiki: object({
     provider: literal("obsidian"),
-    publishing: object({ mode: literal("git-pr") }),
+    publishing: object({ mode: literal("git-pr") }).strict(),
     obsidian: object({
       bindings: array(BindingSchema).min(1),
       exclude: array(string2()).optional()
-    })
-  })
-});
+    }).strict(),
+    // Older projects may omit roots; setup always writes the canonical shape.
+    roots: RootsSchema.optional(),
+    legacyRuntime: unknown().optional()
+  }).strict()
+}).passthrough();
 var PROJECT_SETTINGS_PATH = [".grill-adapter", "settings.json"];
 function projectSettingsPath(projectDir) {
   return path2.join(projectDir, ...PROJECT_SETTINGS_PATH);
@@ -22595,7 +22615,12 @@ ${root}`;
       if (manifest.scope !== candidate.role) {
         throw new Error(`Source manifest scope mismatch: binding ${candidate.role}, manifest ${manifest.scope}`);
       }
-      const bindingUpdate = normalizeWritePolicy(candidate.access.update, `binding ${candidate.sourceId} access.update`);
+      const bindingUpdate = candidate.access.update === void 0 ? (() => {
+        warnings.push(
+          `binding ${candidate.sourceId} does not declare access.update; treating the binding write ceiling as deny. Run setup-init-obsidian to write access.update: "confirm".`
+        );
+        return "deny";
+      })() : normalizeWritePolicy(candidate.access.update, `binding ${candidate.sourceId} access.update`);
       const resolved = {
         sourceId: candidate.sourceId,
         role: candidate.role,
@@ -22619,6 +22644,12 @@ ${root}`;
     } catch (error2) {
       errors.push(`${candidate.sourceId}: ${error2 instanceof Error ? error2.message : String(error2)}`);
     }
+  }
+  const rootsConfig = settings.wiki.roots;
+  if (!rootsConfig) {
+    warnings.push(
+      "Project settings do not declare wiki.roots.project/shared canonical policy; run setup-init-obsidian to write root authorization and shared neutrality explicitly."
+    );
   }
   if (bindings.length === 0 && errors.length === 0) errors.push("No Obsidian Wiki bindings were resolved");
   return { projectDir, registryPath, bindings, errors, warnings };
@@ -24289,20 +24320,6 @@ function nearestExistingDirectory(directory) {
   if (!lstatSync3(candidate).isDirectory()) throw new BridgeError(400, "Note parent ancestor is not a directory");
   return realpathSync2(candidate);
 }
-var BridgeSettingsSchema = object({
-  wiki: object({
-    provider: literal("obsidian"),
-    obsidian: object({
-      bindings: array(object({
-        sourceId: string2().min(1),
-        role: _enum(["project", "shared"]),
-        vaultRef: string2().min(1),
-        root: string2().min(1),
-        access: object({ read: boolean2(), update: string2().optional() })
-      }))
-    })
-  })
-});
 function atomicNoteFiles(root) {
   const files = [];
   const visit = (directory) => {
@@ -24396,7 +24413,7 @@ function enforceGovernance(change, root, apply, vaultRoot, roots, allowedProject
   const settingsPath = path7.join(projectDir, ".grill-adapter", "settings.json");
   let settings;
   try {
-    settings = BridgeSettingsSchema.parse(JSON.parse(readFileSync5(settingsPath, "utf8")));
+    settings = ProjectSettingsSchema.parse(JSON.parse(readFileSync5(settingsPath, "utf8")));
   } catch (error2) {
     throw new BridgeError(403, `Project binding cannot be validated: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
@@ -24419,7 +24436,7 @@ function enforceGovernance(change, root, apply, vaultRoot, roots, allowedProject
   }
   let bindingPolicy;
   try {
-    bindingPolicy = normalizeWritePolicy(binding.access.update, `binding ${request.sourceId} access.update`);
+    bindingPolicy = binding.access.update === void 0 ? "deny" : normalizeWritePolicy(binding.access.update, `binding ${request.sourceId} access.update`);
   } catch (error2) {
     throw new BridgeError(403, `Project binding policy cannot be validated: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }

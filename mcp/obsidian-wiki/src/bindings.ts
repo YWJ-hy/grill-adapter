@@ -21,19 +21,42 @@ const BindingSchema = z.object({
   access: z.object({
     read: z.boolean(),
     update: z.string().optional(),
-  }),
-});
+  }).strict(),
+}).strict();
 
-const ProjectSettingsSchema = z.object({
+const AuthorizationSchema = z.object({
+  updateExistingPage: z.enum(['skip', 'ask', 'refuse']),
+  createNewDocument: z.enum(['skip', 'ask', 'refuse']),
+}).strict();
+
+const SharedNeutralitySchema = z.object({
+  blockedTerms: z.array(z.string()),
+  blockedPatterns: z.array(z.string()),
+}).strict();
+
+const RootsSchema = z.object({
+  project: z.object({
+    updateAuthorization: AuthorizationSchema,
+  }).strict(),
+  shared: z.object({
+    updateAuthorization: AuthorizationSchema,
+    sharedNeutrality: SharedNeutralitySchema,
+  }).strict(),
+}).strict();
+
+export const ProjectSettingsSchema = z.object({
   wiki: z.object({
     provider: z.literal('obsidian'),
-    publishing: z.object({ mode: z.literal('git-pr') }),
+    publishing: z.object({ mode: z.literal('git-pr') }).strict(),
     obsidian: z.object({
       bindings: z.array(BindingSchema).min(1),
       exclude: z.array(z.string()).optional(),
-    }),
-  }),
-});
+    }).strict(),
+    // Older projects may omit roots; setup always writes the canonical shape.
+    roots: RootsSchema.optional(),
+    legacyRuntime: z.unknown().optional(),
+  }).strict(),
+}).passthrough();
 
 type VaultHealth = {
   selector: string;
@@ -469,7 +492,15 @@ export function resolveBindings(
       if (manifest.scope !== candidate.role) {
         throw new Error(`Source manifest scope mismatch: binding ${candidate.role}, manifest ${manifest.scope}`);
       }
-      const bindingUpdate = normalizeWritePolicy(candidate.access.update, `binding ${candidate.sourceId} access.update`);
+      const bindingUpdate = candidate.access.update === undefined
+        ? (() => {
+          warnings.push(
+            `binding ${candidate.sourceId} does not declare access.update; treating the binding write ceiling as deny. `
+            + 'Run setup-init-obsidian to write access.update: "confirm".',
+          );
+          return 'deny' as const;
+        })()
+        : normalizeWritePolicy(candidate.access.update, `binding ${candidate.sourceId} access.update`);
       const resolved = {
         sourceId: candidate.sourceId,
         role: candidate.role,
@@ -495,6 +526,13 @@ export function resolveBindings(
     }
   }
 
+  const rootsConfig = settings.wiki.roots;
+  if (!rootsConfig) {
+    warnings.push(
+      'Project settings do not declare wiki.roots.project/shared canonical policy; '
+      + 'run setup-init-obsidian to write root authorization and shared neutrality explicitly.',
+    );
+  }
   if (bindings.length === 0 && errors.length === 0) errors.push('No Obsidian Wiki bindings were resolved');
   return { projectDir, registryPath, bindings, errors, warnings };
 }

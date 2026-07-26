@@ -75,7 +75,11 @@ async function fixture(
   writeFileSync(path.join(vaultRoot, sourceRoot, 'Bridge.md'), initial, 'utf8');
   mkdirSync(path.join(projectDir, '.grill-adapter'), { recursive: true });
   writeFileSync(path.join(projectDir, '.grill-adapter', 'settings.json'), JSON.stringify({
-    wiki: { provider: 'obsidian', obsidian: { bindings: [{ sourceId, role: shared ? 'shared' : 'project', vaultRef: 'knowledge', root: sourceRoot, access: { read: true, update: 'confirm' } }] } },
+    wiki: {
+      provider: 'obsidian',
+      publishing: { mode: 'git-pr' },
+      obsidian: { bindings: [{ sourceId, role: shared ? 'shared' : 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: sourceRoot, access: { read: true, update: 'confirm' } }] },
+    },
   }), 'utf8');
   const allowedRoots = [sourceRoot];
   const projectDirs = [projectDir];
@@ -95,7 +99,11 @@ async function fixture(
     );
     mkdirSync(path.join(peerProjectDir, '.grill-adapter'), { recursive: true });
     writeFileSync(path.join(peerProjectDir, '.grill-adapter', 'settings.json'), JSON.stringify({
-      wiki: { provider: 'obsidian', obsidian: { bindings: [{ sourceId: 'peer', role: 'project', vaultRef: 'knowledge', root: peerSourceRoot, access: { read: true, update: 'confirm' } }] } },
+      wiki: {
+        provider: 'obsidian',
+        publishing: { mode: 'git-pr' },
+        obsidian: { bindings: [{ sourceId: 'peer', role: 'project', vaultRef: 'knowledge', repositoryRef: 'wiki', root: peerSourceRoot, access: { read: true, update: 'confirm' } }] },
+      },
     }), 'utf8');
     allowedRoots.push(peerSourceRoot);
     projectDirs.push(peerProjectDir);
