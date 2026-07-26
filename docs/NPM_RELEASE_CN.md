@@ -43,6 +43,32 @@ npm publish
 
 发布前可用 `npm view grill-adapter version` 查看 registry 上的当前版本。发布命令不会自动启用 Claude Code 或 Codex plugin，也不会修改业务项目。
 
+## Trusted Publishing
+
+仓库提供 `.github/workflows/npm-publish.yml`，只在 GitHub Release 发布或手动触发
+时发布两个 npm 包，不会在普通 push 时自动发布。workflow 使用 GitHub Actions
+OIDC Trusted Publishing 和 provenance，不保存 npm token，也不要求在 runner 上输入
+OTP。
+
+首次启用前，为两个已存在的包分别建立 npm trusted publisher，workflow 文件名和仓库
+必须完全匹配：
+
+```bash
+npm trust github grill-adapter \
+  --repo YWJ-hy/grill-adapter \
+  --file npm-publish.yml \
+  --allow-publish
+
+npm trust github @grill-adapter/obsidian-wiki \
+  --repo YWJ-hy/grill-adapter \
+  --file npm-publish.yml \
+  --allow-publish
+```
+
+配置完成后，先提交并推送版本变更，再创建 GitHub Release（或在 Actions 页面手动
+运行 workflow）。workflow 会先运行 Obsidian runtime 和根包验收，再按当前
+`package.json` 版本发布 `@grill-adapter/obsidian-wiki` 与 `grill-adapter`。
+
 ## 让宿主使用 npm 包
 
 npm 包本身也是一个本地 plugin marketplace source。首次使用 npm 版本时，把全局安装目录加入宿主：
