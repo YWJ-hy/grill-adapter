@@ -30,7 +30,7 @@ function sourceManifest(): string {
 function skillCard(registration: Record<string, unknown>): string {
   const roles = (registration.roles as string[]).map((role) => `  - ${role}`).join('\n');
   const triggers = (registration.triggers as string[]).map((trigger) => `  - ${trigger}`).join('\n');
-  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: project/skills/${registration.name}\ntype: guide\nstatus: active\nagent_visible: true\nsummary: ${registration.summary}\nskill_provider: ${registration.provider}\nskill_name: ${registration.name}\nskill_version: ${registration.version}\nskill_contract_hash: ${registration.contractHash}\nskill_roles:\n${roles}\nskill_triggers:\n${triggers}\n---\n\n# Lifecycle Review\n\nUse the reviewed executable pack.\n`;
+  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: project/skills/${registration.name}\ntype: guide\nstatus: active\nagent_visible: true\nsummary: ${registration.summary}\nskill_provider: legacy-ignored\nskill_name: ${registration.name}\nskill_version: ${registration.version}\nskill_contract_hash: ${registration.contractHash}\nskill_roles:\n${roles}\nskill_triggers:\n${triggers}\n---\n\n# Lifecycle Review\n\nUse the reviewed executable pack.\n`;
 }
 
 afterEach(async () => {
@@ -66,13 +66,15 @@ describe('reviewed Skill Card lifecycle', () => {
     command('git', ['commit', '-m', 'base'], worktreeRoot);
     command('git', ['push', '--set-upstream', 'origin', 'main'], worktreeRoot);
 
-    const packRoot = path.join(projectDir, '.claude', 'skills', 'lifecycle-review');
-    mkdirSync(packRoot, { recursive: true });
-    writeFileSync(
-      path.join(packRoot, 'SKILL.md'),
-      '---\nname: lifecycle-review\ndescription: Review Skill Card lifecycle changes.\nversion: 1.0.0\n---\n\n# Lifecycle Review\n',
-      'utf8',
-    );
+    for (const runtimeDir of ['.agents', '.claude']) {
+      const packRoot = path.join(projectDir, runtimeDir, 'skills', 'lifecycle-review');
+      mkdirSync(packRoot, { recursive: true });
+      writeFileSync(
+        path.join(packRoot, 'SKILL.md'),
+        '---\nname: lifecycle-review\ndescription: Review Skill Card lifecycle changes.\nversion: 1.0.0\n---\n\n# Lifecycle Review\n',
+        'utf8',
+      );
+    }
     const staged = JSON.parse(command('python3', [
       scaffoldScript,
       '--project-root', projectDir,
@@ -80,7 +82,6 @@ describe('reviewed Skill Card lifecycle', () => {
       'stage-card',
       '--name', 'lifecycle-review',
       '--feature-slug', 'card-lifecycle',
-      '--provider', 'claude-code-project',
       '--version', '1.0.0',
       '--roles', 'review',
       '--triggers', 'Skill Card lifecycle review',
@@ -189,7 +190,6 @@ else process.exit(2);
       '--wiki-id', applied.postWrite!.wikiId,
       '--path', applied.postWrite!.path,
       '--after-hash', applied.postWrite!.contentHash,
-      '--skill-provider', appliedRegistration.provider,
       '--skill-name', appliedRegistration.name,
       '--skill-version', appliedRegistration.version,
       '--skill-contract-hash', appliedRegistration.contractHash,

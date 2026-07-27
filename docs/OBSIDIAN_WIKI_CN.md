@@ -6,7 +6,7 @@
 
 `migrate-wiki` 的 **Obsidian migration plan** 模式调用 `scripts/wiki_migration_plan.py`，只读 `.grill-adapter/wiki/`、可选的本地 `.shared-adapter/wiki/`，或用户通过 `--legacy-shared-wiki-url <git-url>` 显式提供的 GitHub legacy shared-wiki 仓库，以及当前项目绑定、machine registry 指向的 Source worktree 和 legacy discovery card 对应的本地 pack。AI 不从项目 `origin`、目标 Obsidian `repositoryRef` 或组织名推断 legacy URL；用户必须提供不含凭据的 HTTPS/SSH Git URL。远程仓库只会被 clone 到临时目录，URL、commit 与 `--exclude-path root:relative/path` 排除项固化进 plan/source digest；planner 不调用 Obsidian 写工具、write bridge 或 publisher，也不修改任何源/目标文件。JSON 只写 stdout，契约见 `contracts/obsidian-migration-plan-v1.example.jsonc`。
 
-planner 先按正式治理规则校验 binding topology（重复 ID/root、root 重叠/越界、多个 project binding 均 fail-closed），在任何 inventory/graph 读取前拒绝 legacy/Source/manifest/pack 符号链接，且只读取 `access.read: true` 的选定 Source。inventory 同时覆盖 indexed/unindexed pages、section markers、navigation indexes、`.graph.json` edge/dangling、hard/soft constraint 与 `guides/skills.md` discovery content。每个 source item 恰有一个 plan decision，并携带目标 Source、稳定 Note ID、Vault 相对 proposed path、edge transformation 与 `create|update|skip|conflict`。目标 path 在同一 Source 内被其他/缺失 ID 的 Note 占用、或任意状态 Skill Card 的 provider/name 已由不同 ID 占用时均输出 conflict。输出保存 source/target snapshot digest；相同字节输入得到相同 plan。
+planner 先按正式治理规则校验 binding topology（重复 ID/root、root 重叠/越界、多个 project binding 均 fail-closed），在任何 inventory/graph 读取前拒绝 legacy/Source/manifest/pack 符号链接，且只读取 `access.read: true` 的选定 Source。inventory 同时覆盖 indexed/unindexed pages、section markers、navigation indexes、`.graph.json` edge/dangling、hard/soft constraint 与 `guides/skills.md` discovery content。每个 source item 恰有一个 plan decision，并携带目标 Source、稳定 Note ID、Vault 相对 proposed path、edge transformation 与 `create|update|skip|conflict`。目标 path 在同一 Source 内被其他/缺失 ID 的 Note 占用、或任意状态 Skill Card 的 name 已由不同 ID 占用时均输出 conflict。输出保存 source/target snapshot digest；相同字节输入得到相同 plan。
 
 `semantic-split`、`duplicate-id`、`target-path-collision`、`dangling-edge`、`unavailable-pack`、`shared-neutrality-violation`、`non-migratable-navigation`、`strength-confirmation` 必须逐项展示并等待确认，不能在 planner 内静默修正。所有未分节页面均触发 semantic split；词法推断的 hard/soft 都标为 `strengthConfidence: heuristic`。plan confirmation 只确认这份映射，不替代 Source 写 policy、PR merge 或 cutover confirmation。
 
@@ -28,7 +28,7 @@ PR 由用户审查/合并且 configured base worktree 同步后，`verify` 才�
 
 ## Candidate Journal 边界
 
-`grill-with-docs`、specification、tickets、implementation、review 与 debugging 阶段发现的 Wiki Note / Skill Card 候选，只能经 journal 追加，不能写 Obsidian。Skill Card 候选必须由已验证 pack 产生，并携带 provider/name/version/contract hash/roles/triggers；初始 `discoveryState` 恒为 `pending`。journal 每次追加前完整 replay，并对损坏、截断、重复 identity、未知引用和非法状态转换 fail-closed。
+`grill-with-docs`、specification、tickets、implementation、review 与 debugging 阶段发现的 Wiki Note / Skill Card 候选，只能经 journal 追加，不能写 Obsidian。Skill Card 候选必须由已验证的双运行时 pack 产生，并携带 name/version/contract hash/roles/triggers；初始 `discoveryState` 恒为 `pending`。journal 每次追加前完整 replay，并对损坏、截断、重复 identity、未知引用和非法状态转换 fail-closed。
 
 review 后 `update-wiki` 先 validate/fold，以最终 review + 已验证 code/tests、final spec/ticket、原 candidate 的顺序对 pending/deferred 候选做语义审查；语义相同的 claims 先合并成一个 `capture` replacement 并显式 supersede，再只写一次。Obsidian outcome 可保存严格的 `writeReceipt`：proposal 暂停是 `proposed+deferred`，恢复后可用另一条 deferred 事件刷新漂移后的 proposal；bridge apply 成功是 `applied+kept`，且必须与最新 proposal 的 repository/binding/Note/path/hash 身份完全一致。Skill Card 的 receipt 还必须携带 write result 返回的完整 `skillRegistration`，并与 staged candidate 逐字段一致；没有匹配 applied receipt 的 Card 不能进入 `kept`。journal 是本地、不可提交的恢复 receipt，保留而不删除；它不包含权威 Note body、token 或授权 secret，也不是绕过 Source policy、write bridge 或后续 PR publishing 的写通道。
 
@@ -173,13 +173,13 @@ Shared Source 必须声明 `blocked_terms` 与 `blocked_patterns`。manifest 的
 
 ### Atomic Skill Card
 
-每个 executable pack 对应唯一一个 `type: guide` atomic Note；同一 provider/name 出现第二张 active Card 时 read/search/graph fail-closed，write 也拒绝创建或改写出重复身份。除普通 Note 属性外，Card 必须完整声明 `skill_provider: claude-code-project`、`skill_name`、`skill_version`、`skill_contract_hash`、非空 `skill_roles` 与 `skill_triggers`；缺任一项、类型不是 guide、pack 缺失、version/hash 漂移都会 fail-closed。pack 的 `SKILL.md` 必须带同一 `major.minor.patch` version。contract hash 使用 `grill-adapter.skill-pack-contract/v1\0` domain prefix，把 pack 内文件按 POSIX 相对路径的 UTF-8 bytes 升序排列，再依次纳入相对路径与文件内容 SHA-256；任何 symlink 都拒绝。Python staging 与 TypeScript MCP 用共享 fixture 锁定同一结果。
+每个 executable pack 对应唯一一个 `type: guide` atomic Note；同一 name 出现第二张 active Card 时 read/search/graph fail-closed，write 也拒绝创建或改写出重复身份。除普通 Note 属性外，Card 必须完整声明 `skill_name`、`skill_version`、`skill_contract_hash`、非空 `skill_roles` 与 `skill_triggers`；旧 Card 中的 `skill_provider` 只作为被忽略的兼容字段。缺任一新字段、类型不是 guide、任一运行时 pack 缺失、version/hash 漂移都会 fail-closed。`.agents/skills/<name>` 与 `.claude/skills/<name>` 必须存在并具有相同 pack hash；pack 的 `SKILL.md` 必须带同一 `major.minor.patch` version。contract hash 使用 `grill-adapter.skill-pack-contract/v1\0` domain prefix，把 pack 内文件按 POSIX 相对路径的 UTF-8 bytes 升序排列，再依次纳入相对路径与文件内容 SHA-256；任何 symlink 都拒绝。Python staging 与 TypeScript MCP 用共享 fixture 锁定同一结果。
 
 ## 只读检索
 
 `obsidian_wiki_search`、`obsidian_wiki_read_note`、`obsidian_wiki_read_notes` 与 `obsidian_wiki_graph_neighbors` 只操作当前项目可读 binding 下的 atomic Note。每次 Obsidian CLI 调用都带 resolver 得到的 Vault selector；调用者只能提供搜索语句、Vault 相对 Note 路径或 `wiki_id`，不能指定 Vault、Source 或 root。
 
-- 搜索结果会机械排除 `_meta/`、未绑定路径、非 active/visible Note；Skill Card 还要求 Source 已明确同步到 remote base，并排除本地 provider/name/version/contract hash 不可用者。`syncBeforeResearch: false` 或 stale-read 降级都不能让 Card 变为 discoverable。通过者返回 `discoveryState: discoverable` 与完整 Card 身份。
+- 搜索结果会机械排除 `_meta/`、未绑定路径、非 active/visible Note；Skill Card 还要求 Source 已明确同步到 remote base，并排除本地 name/version/contract hash 不可用者。`syncBeforeResearch: false` 或 stale-read 降级都不能让 Card 变为 discoverable。通过者返回 `discoveryState: discoverable` 与完整 Card 身份。
 - 批量读取经两轮 Obsidian CLI 重读，返回每条 Note 的 canonical `contentHash` 及整批稳定 `snapshotHash`；读取期间内容、路径或 ID 改变，以及重复 `wiki_id`，都会 fail-closed。
 - typed neighbor 查询仅解析请求 Note 的 `depends_on`、`see_also`、`supersedes`、`contradicts` 一跳目标，去重且不递归跟随 target 的边；source/target 若是 Card，同样先通过 remote-base、pack availability 与唯一性门。
 

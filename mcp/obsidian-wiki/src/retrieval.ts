@@ -140,21 +140,18 @@ export function searchBoundNotes(
 }
 
 export function matchingBoundSkillCards(
-  note: Pick<AtomicNote, 'skillProvider' | 'skillName'>,
+  note: Pick<AtomicNote, 'skillName'>,
   bindings: ResolvedBinding[],
   env: NodeJS.ProcessEnv,
   requireActiveAndVisible = true,
 ): RetrievedNote[] {
-  if (!note.skillProvider || !note.skillName) return [];
+  if (!note.skillName) return [];
   return searchBoundNotes(
     `[skill_name:${note.skillName}]`,
     bindings,
     env,
     requireActiveAndVisible,
-  ).filter((candidate) => (
-    candidate.skillProvider === note.skillProvider
-    && candidate.skillName === note.skillName
-  ));
+  ).filter((candidate) => candidate.skillName === note.skillName);
 }
 
 export function matchingBoundAdrProjections(
@@ -177,7 +174,7 @@ export function assertUniqueBoundSkillCard(
   bindings: ResolvedBinding[],
   env: NodeJS.ProcessEnv,
 ): void {
-  if (!note.skillProvider) return;
+  if (!note.skillName) return;
   const matches = matchingBoundSkillCards(note, bindings, env);
   if (
     matches.length !== 1
@@ -186,7 +183,7 @@ export function assertUniqueBoundSkillCard(
     || matches[0].sourceId !== note.sourceId
   ) {
     throw new Error(
-      `Skill Card identity ${note.skillProvider}/${note.skillName} resolved ${matches.length} active Cards`,
+      `Skill Card identity ${note.skillName} resolved ${matches.length} active Cards`,
     );
   }
 }

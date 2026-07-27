@@ -34,7 +34,7 @@ This Note is derived. Edit the authoritative ADR, not this projection.
 }
 
 function skillCard(wikiId: string, contractHash: string): string {
-  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: guide\nstatus: active\nagent_visible: true\nsummary: Bridge Skill Card\nskill_provider: claude-code-project\nskill_name: bridge-review\nskill_version: 1.0.0\nskill_contract_hash: ${contractHash}\nskill_roles:\n  - reviewer\nskill_triggers:\n  - bridge review\n---\n\n# Bridge review\n`;
+  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: guide\nstatus: active\nagent_visible: true\nsummary: Bridge Skill Card\nskill_provider: legacy-ignored\nskill_name: bridge-review\nskill_version: 1.0.0\nskill_contract_hash: ${contractHash}\nskill_roles:\n  - reviewer\nskill_triggers:\n  - bridge review\n---\n\n# Bridge review\n`;
 }
 
 function manifest(sourceId: string, scope: 'project' | 'shared'): string {
@@ -328,13 +328,15 @@ describe('Obsidian Wiki loopback write bridge', () => {
 
   it('rejects an unavailable Skill Card through the direct authenticated bridge boundary', async () => {
     const { vaultRoot, projectDir, sourceRoot, sourceId, bridge } = await fixture();
-    const packRoot = path.join(projectDir, '.claude', 'skills', 'bridge-review');
-    mkdirSync(packRoot, { recursive: true });
-    writeFileSync(
-      path.join(packRoot, 'SKILL.md'),
-      '---\nname: bridge-review\ndescription: Review bridge changes.\nversion: 1.0.0\n---\n',
-      'utf8',
-    );
+    const packRoots = ['.agents', '.claude'].map((runtimeDir) => path.join(projectDir, runtimeDir, 'skills', 'bridge-review'));
+    for (const packRoot of packRoots) {
+      mkdirSync(packRoot, { recursive: true });
+      writeFileSync(
+        path.join(packRoot, 'SKILL.md'),
+        '---\nname: bridge-review\ndescription: Review bridge changes.\nversion: 1.0.0\n---\n',
+        'utf8',
+      );
+    }
     const target = path.join(vaultRoot, sourceRoot, 'BridgeSkill.md');
     const request = {
       vaultSelector: 'Knowledge',
@@ -362,14 +364,16 @@ describe('Obsidian Wiki loopback write bridge', () => {
       undefined,
       true,
     );
-    const packRoot = path.join(projectDir, '.claude', 'skills', 'bridge-review');
-    mkdirSync(packRoot, { recursive: true });
-    writeFileSync(
-      path.join(packRoot, 'SKILL.md'),
-      '---\nname: bridge-review\ndescription: Review bridge changes.\nversion: 1.0.0\n---\n',
-      'utf8',
-    );
-    const contractHash = skillContractHash(packRoot);
+    const packRoots = ['.agents', '.claude'].map((runtimeDir) => path.join(projectDir, runtimeDir, 'skills', 'bridge-review'));
+    for (const packRoot of packRoots) {
+      mkdirSync(packRoot, { recursive: true });
+      writeFileSync(
+        path.join(packRoot, 'SKILL.md'),
+        '---\nname: bridge-review\ndescription: Review bridge changes.\nversion: 1.0.0\n---\n',
+        'utf8',
+      );
+    }
+    const contractHash = skillContractHash(packRoots[0]);
     const first = {
       vaultSelector: 'Knowledge',
       projectDir,

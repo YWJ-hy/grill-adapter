@@ -25,7 +25,10 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from scaffold_practice_skill import skill_contract_hash, validate_pack  # noqa: E402
+from scaffold_practice_skill import (  # noqa: E402
+    SKILLS_DIRS_REL,
+    validate_project_pack_set,
+)
 from wiki_common import build_wiki_index_graph  # noqa: E402
 from wiki_section import (  # noqa: E402
     extract_all_sections,
@@ -447,7 +450,6 @@ def load_bindings(
                 "path": relative.as_posix(),
                 "contentHash": note_content_hash(contents),
                 "status": frontmatter.get("status"),
-                "skillProvider": frontmatter.get("skill_provider"),
                 "skillName": frontmatter.get("skill_name"),
             })
         candidates[role].append({
@@ -632,20 +634,16 @@ def note_identity(binding: dict[str, Any], page_path: str, section_id: str | Non
 
 
 def pack_metadata(project_root: Path, skill_name: str) -> tuple[dict[str, Any] | None, str | None]:
-    pack = project_root / ".claude" / "skills" / skill_name
-    errors, warnings = validate_pack(pack)
+    packs, errors, warnings, contract_hash = validate_project_pack_set(project_root, skill_name)
     if errors or warnings:
         return None, f"project skill pack {skill_name} validation failed: " + "; ".join([*errors, *warnings])
-    skill_file = pack / "SKILL.md"
+    if contract_hash is None:
+        return None, f"project skill pack {skill_name} has no shared contract hash"
+    skill_file = packs[0] / "SKILL.md"
     frontmatter = parse_frontmatter(skill_file.read_text(encoding="utf-8"))
     if frontmatter.get("name") != skill_name:
         return None, f"project skill pack {skill_name} frontmatter name does not match its discovery name"
-    try:
-        contract_hash = skill_contract_hash(pack)
-    except Exception as exc:  # Pack validation errors are reported, never hidden or repaired.
-        return None, f"project skill pack {skill_name} cannot be hashed: {exc}"
     return {
-        "provider": "claude-code-project",
         "name": skill_name,
         "version": frontmatter["version"],
         "contractHash": contract_hash,
@@ -743,7 +741,13 @@ def build_plan(
         source_entries.append(("migration/exclusions", json.dumps(exclusions, sort_keys=True).encode("utf-8")))
 
     for skill_name in sorted({item["skillName"] for item in inventory["skillDiscovery"]}):
-        source_entries.extend(file_entries(project_root / ".claude" / "skills" / skill_name, f"packs/{skill_name}"))
+        for skill_dir in SKILLS_DIRS_REL:
+            source_entries.extend(
+                file_entries(
+                    project_root / skill_dir / skill_name,
+                    f"packs/{skill_dir.as_posix()}/{skill_name}",
+                )
+            )
 
     for key in ("pages", "sections", "indexes", "graphEdges", "danglingEdges"):
         inventory[key].sort(key=lambda item: item["sourceItemId"])
@@ -763,17 +767,14 @@ def build_plan(
 
     target_by_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
     target_by_path: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
-    target_cards: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    target_cards: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for binding in bindings.values():
         for note in binding["notes"]:
             target_by_path[(note["sourceId"], note["path"])].append(note)
             if isinstance(note["wikiId"], str):
                 target_by_id[note["wikiId"]].append(note)
-            if (
-                isinstance(note["skillProvider"], str)
-                and isinstance(note["skillName"], str)
-            ):
-                target_cards[(note["skillProvider"], note["skillName"])].append(note)
+            if isinstance(note["skillName"], str):
+                target_cards[note["skillName"]].append(note)
     for wiki_id, notes in sorted(target_by_id.items()):
         if len(notes) > 1:
             add_confirmation("duplicate-id", [], f"target Notes duplicate wiki_id {wiki_id}: {', '.join(note['path'] for note in notes)}")
@@ -914,7 +915,7 @@ def build_plan(
             add_confirmation("target-path-collision", [item["sourceItemId"]], item["decisionReason"])
         skill_card = item.get("skillCard")
         if isinstance(skill_card, dict):
-            identity = (skill_card["provider"], skill_card["name"])
+            identity = skill_card["name"]
             identity_conflicts = [
                 note for note in target_cards.get(identity, [])
                 if note.get("wikiId") != item.get("noteId")
@@ -926,7 +927,7 @@ def build_plan(
                 )
                 item.update(
                     decision="conflict",
-                    decisionReason=f"active Skill Card provider/name {identity[0]}/{identity[1]} already exists: {existing}",
+                    decisionReason=f"active Skill Card name {identity} already exists: {existing}",
                 )
                 add_confirmation("duplicate-id", [item["sourceItemId"]], item["decisionReason"])
 

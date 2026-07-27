@@ -119,14 +119,16 @@ def _validate_v6_note(
     allow_destination: bool = False,
     project_root: Path | None = None,
 ) -> dict[str, Any]:
-    value = _as_dict(note, field)
+    value = dict(_as_dict(note, field))
+    # Older selections/sidecars may carry provider metadata. Runtime chooses
+    # its own project Skill directory, so this legacy field is ignored.
+    value.pop("skillProvider", None)
     allowed_fields = {
         "sourceId", "role", "path", "wikiId", "type", "summary", "bindingDigest", "contentHash",
         "adrSourceId", "adrSourcePath", "adrSourceContentHash",
         *(
             (
                 "requiredFor",
-                "skillProvider",
                 "skillName",
                 "skillVersion",
                 "skillContractHash",
@@ -195,8 +197,6 @@ def _validate_v6_note(
                 f"{field}.requiredFor must be a non-empty unique subset of "
                 f"{sorted(V6_REQUIRED_SKILL_ROLES)}"
             )
-        if value.get("skillProvider") != "claude-code-project":
-            raise ValidationError(f"{field}.skillProvider must be claude-code-project")
         if not isinstance(value.get("skillName"), str) or not SKILL_NAME_RE.fullmatch(value["skillName"]):
             raise ValidationError(f"{field}.skillName must use kebab-case")
         if not isinstance(value.get("skillVersion"), str) or not SKILL_VERSION_RE.fullmatch(value["skillVersion"]):

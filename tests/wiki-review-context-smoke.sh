@@ -206,7 +206,6 @@ notes = {
         "contentHash": "sha256:" + sha_d,
         "bindingDigest": sha_b,
         "skillRoles": ["reviewer"],
-        "skillProvider": "claude-code-project",
         "skillName": "review-runtime",
         "skillVersion": "1.0.0",
         "skillContractHash": "sha256:" + sha_c,

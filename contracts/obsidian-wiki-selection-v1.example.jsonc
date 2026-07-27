@@ -34,7 +34,7 @@
   ],
   // Select Skill Cards independently from normal Notes. requiredFor comes from the Card's
   // `skill_roles` property and controls implementation versus review routing. The
-  // provider/name/version/hash fields are returned only after MCP availability validation.
+  // name/version/hash fields are returned only after MCP availability validation.
   "requiredSkills": [
     {
       "sourceId": "example-project",
@@ -45,7 +45,6 @@
       "summary": "Review the runtime boundary with the project Skill Card.",
       "contentHash": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
       "bindingDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      "skillProvider": "claude-code-project",
       "skillName": "review-runtime",
       "skillVersion": "1.0.0",
       "skillContractHash": "sha256:abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",

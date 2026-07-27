@@ -32,7 +32,7 @@ continue to use `kind=decision`.
 For `skill_card`, also pass every structured registration field. Prefer the scaffold helper's `stage-card` command, which computes the contract hash and appends these fields without hand calculation:
 
 ```bash
-  --skill-provider claude-code-project --skill-name <name> \
+  --skill-name <name> \
   --skill-version <SKILL.md version> --skill-contract-hash <sha256:...> \
   --skill-role implementer|reviewer [--skill-role ...] \
   --skill-trigger "<scenario>" [--skill-trigger ...] \

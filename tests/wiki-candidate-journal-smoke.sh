@@ -29,7 +29,6 @@ append_candidate() {
   )
   if [[ "$4" == "skill_card" ]]; then
     ARGS+=(
-      --skill-provider claude-code-project
       --skill-name receipt-verifier
       --skill-version 1.0.0
       --skill-contract-hash sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -64,7 +63,7 @@ for invalid_identity in \
     --feature-slug invalid-skill --event-id invalid-event --candidate-id invalid-card \
     --stage implementation --candidate-type skill_card --kind skill_registration \
     --claim 'Invalid skill registration.' --why 'The identity must fail closed.' \
-    --source-ref 'test:invalid' --skill-provider claude-code-project \
+    --source-ref 'test:invalid' \
     $invalid_identity \
     --skill-contract-hash sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     --skill-role reviewer --skill-trigger review --skill-summary 'Invalid identity.' \
@@ -107,6 +106,22 @@ assert d["eventCount"] == 12
 assert d["counts"]["pending"] == 12
 ' || fail "concurrent append lost or corrupted events"
 
+# Legacy journal registrations may still contain provider metadata; replay strips it.
+python3 - "$JOURNAL" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+lines = []
+for line in open(path, encoding="utf-8"):
+    event = json.loads(line)
+    if event.get("eventId") == "evt-2":
+        event["skillRegistration"]["provider"] = "legacy-ignored"
+    lines.append(json.dumps(event, ensure_ascii=False, separators=(",", ":")))
+with open(path, "w", encoding="utf-8") as handle:
+    handle.write("\n".join(lines) + "\n")
+PY
+
 FOLDED="$(python3 "$JOURNAL_CLI" fold --journal "$JOURNAL" --feature-slug feature-a)"
 printf '%s' "$FOLDED" | python3 -c '
 import json, sys
@@ -118,7 +133,6 @@ assert d["counts"] == {"pending": 3, "superseded": 0, "kept": 0, "skipped": 0, "
 assert [item["candidateId"] for item in d["candidates"]] == ["cand-wiki", "cand-skill", "cand-capture"]
 assert d["candidates"][1]["candidateType"] == "skill_card"
 assert d["candidates"][1]["skillRegistration"] == {
-    "provider": "claude-code-project",
     "name": "receipt-verifier",
     "version": "1.0.0",
     "contractHash": "sha256:" + "a" * 64,
@@ -246,7 +260,7 @@ if python3 "$JOURNAL_CLI" outcome \
   --source-id project-wiki --repository-ref knowledge-repo \
   --binding-digest "$BINDING_DIGEST" --wiki-id project/skills/other \
   --path Projects/demo/Skills/other.md --after-hash "$AFTER_HASH" \
-  --skill-provider claude-code-project --skill-name other --skill-version 1.0.0 \
+  --skill-name other --skill-version 1.0.0 \
   --skill-contract-hash sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
   --skill-role reviewer --skill-trigger 'publish review' \
   --skill-summary 'Verify applied Note receipts before publication.' >/dev/null 2>&1; then
@@ -262,7 +276,6 @@ python3 "$JOURNAL_CLI" outcome \
   --wiki-id project/skills/receipt-verifier \
   --path Projects/demo/Skills/receipt-verifier.md \
   --after-hash "$AFTER_HASH" \
-  --skill-provider claude-code-project \
   --skill-name receipt-verifier --skill-version 1.0.0 \
   --skill-contract-hash sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
   --skill-role reviewer --skill-trigger 'publish review' \

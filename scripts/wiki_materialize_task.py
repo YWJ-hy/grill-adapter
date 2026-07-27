@@ -145,7 +145,6 @@ def _assert_note_matches(
         raise MaterializeError(f"ADR projection identity drift for {identity}")
     if is_skill:
         for key in (
-            "skillProvider",
             "skillName",
             "skillVersion",
             "skillContractHash",

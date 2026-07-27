@@ -38,7 +38,7 @@ grill-adapter 把「wiki 如何进入并回流到工作流」抽象成四个触�
 | **Bind（绑定）** | 每个 ticket/reviewer 前 reread 当前任务路由的权威硬约束；v6 使用 Obsidian stable ID，包含角色所需 Skill Card 与 1 跳 `depends_on` 闭包 | `/grill-adapter:wiki-materialize <ticket>`（唯一 reread 路径）+ SessionStart 提醒 |
 | **Capture（捕获）** | 各阶段先经 `/grill-adapter:candidate-journal` 追加候选事件；review 后校验/折叠并回写 durable 知识 | `/grill-adapter:update-wiki`（逐条记录 keep/skip/defer；可选前置步骤把 grill 增量转成同款事件） |
 
-Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specification、tickets、implementation、review、debugging 发现的 Wiki Note / Skill Card 候选都进入同一个 `.grill-adapter/context/<feature-slug>.wiki-candidates.jsonl`。Skill Card 候选由 `scaffold-practice-skill stage-card` 在 pack 校验后追加，包含 provider/name/version/contract hash/roles/triggers，并明确为 `pending`；中间阶段不写 Obsidian、不写 legacy discovery index。journal 只追加、不手改、不删除、不提交。
+Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specification、tickets、implementation、review、debugging 发现的 Wiki Note / Skill Card 候选都进入同一个 `.grill-adapter/context/<feature-slug>.wiki-candidates.jsonl`。Skill Card 候选由 `scaffold-practice-skill stage-card` 在双运行时 pack 校验后追加，包含 name/version/contract hash/roles/triggers，并明确为 `pending`；中间阶段不写 Obsidian、不写 legacy discovery index。journal 只追加、不手改、不删除、不提交。
 
 ---
 
@@ -92,7 +92,7 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
 
 这是 wiki 正式「入册」的阶段：从披露升级为**正式选择 + 固化进 sidecar**。
 
-1. 正式选择受绑定的 Obsidian atomic Note 和独立 Skill Card。Card 只有在 merged/base-synchronized 且本地 pack provider/version/hash 可用时才由 MCP 标记 `discoverable`，选择结果把这组身份写入 metadata-only selection：
+1. 正式选择受绑定的 Obsidian atomic Note 和独立 Skill Card。Card 只有在 merged/base-synchronized 且本地双运行时 pack 的 name/version/hash 可用时才由 MCP 标记 `discoverable`，选择结果把这组身份写入 metadata-only selection：
 
    ```
    /wiki-research      # phase: plan
@@ -164,7 +164,7 @@ review 通过后，把本轮新沉淀的知识回写 wiki。约定块只让你�
 
    `/grill-adapter:update-wiki` 对每条候选逐一过闸：**durable 闸 → 原子候选拆分 → target decision → sectionize（分节）→ type（定类型）→ `[[page#section]]` 边 → dedup（去重）→ 中性化 → 授权**，最终只保留真正值得沉淀的知识。对 Obsidian，same-theme refinement 才 update 既有 Note；不同触发条件、生命周期、失败模式或验证路径的独立 contract 必须 create sibling Note 并使用新的稳定 `wiki_id`；无法判断时 defer/询问，不默认追加到最近的 Note。
 
-4. Obsidian provider 对准备保留的 Note/Card 调 `obsidian_wiki_propose_note_change`，向用户展示 structured diff；effective policy 为 `confirm` 时取得明确授权后，才以完全相同输入调用 `obsidian_wiki_apply_note_change`。Skill Card 是 `type: guide` atomic Note，完整复制 staged provider/name/version/hash/roles/triggers；MCP 与 bridge 都验证本地 pack identity。bridge 通过 loopback token 鉴权并做 expected-hash CAS；任何 binding/path/schema/identity/typed-link/neutrality/policy/pack identity/并发冲突都保持 `deferred`，禁止直接改 Vault 文件绕过。proposal 后暂停时把精确身份记录为 `writeReceipt.state: proposed`，不把 proposal 误当已写入；恢复后若漂移则可追加新的 deferred proposal receipt，fold 以最新 proposal 为准但历史不丢。
+4. Obsidian provider 对准备保留的 Note/Card 调 `obsidian_wiki_propose_note_change`，向用户展示 structured diff；effective policy 为 `confirm` 时取得明确授权后，才以完全相同输入调用 `obsidian_wiki_apply_note_change`。Skill Card 是 `type: guide` atomic Note，完整复制 staged name/version/hash/roles/triggers；MCP 与 bridge 都验证 `.agents/skills/<name>` 与 `.claude/skills/<name>` 的本地 pack identity。bridge 通过 loopback token 鉴权并做 expected-hash CAS；任何 binding/path/schema/identity/typed-link/neutrality/policy/pack identity/并发冲突都保持 `deferred`，禁止直接改 Vault 文件绕过。proposal 后暂停时把精确身份记录为 `writeReceipt.state: proposed`，不把 proposal 误当已写入；恢复后若漂移则可追加新的 deferred proposal receipt，fold 以最新 proposal 为准但历史不丢。
 
 5. 每条候选经 `/candidate-journal outcome` 追加 `kept` / `skipped` / `deferred`。只有 apply 返回与最新 proposal 完全匹配的 post-write identity 才能记 `kept`，并写入 `writeReceipt.state: applied`；receipt 绑定 candidate 与 repository/Source/binding/Note/path/hash。Skill Card 的 receipt 还复制 write result 的完整 `skillRegistration`，必须与 staged registration 逐字段相等；没有这份 applied binding 不能记 kept。receipt 不含 Note body、token 或授权 secret。kept/skipped 是终态，deferred 可继续 defer/keep/skip。journal 保留为中断恢复 receipt，不删除、不提交；后续 publishing 只消费这些 allowlisted staged identities。此时 Note 不代表已合并或已进入正式检索。
 

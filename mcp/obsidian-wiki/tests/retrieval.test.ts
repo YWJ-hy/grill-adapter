@@ -23,7 +23,6 @@ function note(wikiId: string, summary: string, options: {
   agentVisible?: boolean;
   dependsOn?: string[];
   skill?: {
-    provider: string;
     name: string;
     version: string;
     contractHash: string;
@@ -33,7 +32,7 @@ function note(wikiId: string, summary: string, options: {
 } = {}): string {
   const dependsOn = options.dependsOn?.length ? `depends_on:\n${options.dependsOn.map((value) => `  - "${value}"`).join('\n')}\n` : '';
   const skill = options.skill
-    ? `skill_provider: ${options.skill.provider}\nskill_name: ${options.skill.name}\nskill_version: ${options.skill.version}\nskill_contract_hash: ${options.skill.contractHash}\nskill_roles:\n${options.skill.roles.map((value) => `  - ${value}`).join('\n')}\nskill_triggers:\n${options.skill.triggers.map((value) => `  - ${value}`).join('\n')}\n`
+    ? `skill_provider: legacy-ignored\nskill_name: ${options.skill.name}\nskill_version: ${options.skill.version}\nskill_contract_hash: ${options.skill.contractHash}\nskill_roles:\n${options.skill.roles.map((value) => `  - ${value}`).join('\n')}\nskill_triggers:\n${options.skill.triggers.map((value) => `  - ${value}`).join('\n')}\n`
     : '';
   const type = options.skill ? 'guide' : 'constraint';
   const strength = options.skill ? '' : 'constraint_strength: hard\n';
@@ -50,20 +49,20 @@ function fixture() {
   const obsidianCli = path.join(root, process.platform === 'win32' ? 'obsidian.cmd' : 'obsidian');
   const obsidianScript = process.platform === 'win32' ? path.join(root, 'obsidian.js') : obsidianCli;
   const sourceRoot = path.join(vaultRoot, 'Projects', 'example');
-  const skillPack = path.join(projectDir, '.claude', 'skills', 'review-runtime');
-  mkdirSync(skillPack, { recursive: true });
-  writeFileSync(
-    path.join(skillPack, 'SKILL.md'),
-    '---\nname: review-runtime\ndescription: Review runtime changes.\nversion: 1.0.0\n---\n\n# Review Runtime\n',
-    'utf8',
-  );
-  const staleSkillPack = path.join(projectDir, '.claude', 'skills', 'stale-runtime');
-  mkdirSync(staleSkillPack, { recursive: true });
-  writeFileSync(
-    path.join(staleSkillPack, 'SKILL.md'),
-    '---\nname: stale-runtime\ndescription: Review stale runtime changes.\nversion: 1.0.0\n---\n\n# Stale Runtime\n',
-    'utf8',
-  );
+  for (const [name, description] of [
+    ['review-runtime', 'Review runtime changes.'],
+    ['stale-runtime', 'Review stale runtime changes.'],
+  ]) {
+    for (const runtimeDir of ['.agents', '.claude']) {
+      const skillPack = path.join(projectDir, runtimeDir, 'skills', name);
+      mkdirSync(skillPack, { recursive: true });
+      writeFileSync(
+        path.join(skillPack, 'SKILL.md'),
+        `---\nname: ${name}\ndescription: ${description}\nversion: 1.0.0\n---\n\n# ${name}\n`,
+        'utf8',
+      );
+    }
+  }
   mkdirSync(path.join(sourceRoot, '_meta'), { recursive: true });
   writeFileSync(path.join(sourceRoot, '_meta', 'wiki-source.md'), sourceManifest('project'), 'utf8');
   writeFileSync(path.join(sourceRoot, 'Visible.md'), note('project/example/visible', 'Visible note', { dependsOn: ['[[Projects/example/Dependency]]'] }), 'utf8');
@@ -72,10 +71,9 @@ function fixture() {
   writeFileSync(path.join(sourceRoot, 'Archived.md'), note('project/example/archived', 'Archived note', { status: 'archived' }), 'utf8');
   writeFileSync(path.join(sourceRoot, 'Private.md'), note('project/example/private', 'Private note', { agentVisible: false }), 'utf8');
   const matchingSkill = {
-    provider: 'claude-code-project',
     name: 'review-runtime',
     version: '1.0.0',
-    contractHash: 'sha256:5cea9f04d62aa80841dedb5c02af7f85b3bb074a0e12a18f293954e4ea3bbc3c',
+    contractHash: 'sha256:021891d0e3ddf819b18ba677a4bb740c814b363d02b0b2f1131aee9b1c155c02',
     roles: ['reviewer'],
     triggers: ['runtime review'],
   };
@@ -191,7 +189,7 @@ describe('Obsidian Wiki retrieval', () => {
     expect(result.notes.map((note) => note.wikiId)).not.toContain('project/other/private');
   });
 
-  it('discovers only base-synchronized Skill Cards whose local provider/version/hash are available', () => {
+  it('discovers only base-synchronized Skill Cards whose local name/version/hash are available', () => {
     const { env } = fixture();
     const result = searchTool({ query: 'skill' }, env);
 
@@ -199,10 +197,9 @@ describe('Obsidian Wiki retrieval', () => {
     expect(skill).toMatchObject({
       wikiId: 'project/example/review-skill',
       skillRoles: ['reviewer'],
-      skillProvider: 'claude-code-project',
       skillName: 'review-runtime',
       skillVersion: '1.0.0',
-      skillContractHash: 'sha256:5cea9f04d62aa80841dedb5c02af7f85b3bb074a0e12a18f293954e4ea3bbc3c',
+      skillContractHash: 'sha256:021891d0e3ddf819b18ba677a4bb740c814b363d02b0b2f1131aee9b1c155c02',
       skillTriggers: ['runtime review'],
       discoveryState: 'discoverable',
     });

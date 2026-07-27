@@ -43,7 +43,9 @@ printf 'Test: scaffold creates only requested files\n'
 run --json scaffold --name management-page-practices \
   --description "管理页统一布局规范" --files implement.md,review.md,scripts/check.py > /dev/null
 PACK="$TMP/.claude/skills/management-page-practices"
+PACK_CODEX="$TMP/.agents/skills/management-page-practices"
 assert_file "SKILL.md created" "$PACK/SKILL.md"
+assert_file "Codex SKILL.md created" "$PACK_CODEX/SKILL.md"
 assert_file "implement.md created" "$PACK/implement.md"
 assert_file "review.md created" "$PACK/review.md"
 assert_file "scripts/check.py created" "$PACK/scripts/check.py"
@@ -61,12 +63,12 @@ assert_no_file "invalid-version scaffold wrote no SKILL.md" \
 
 printf '\nTest: stage-card records a content-addressed pending registration without legacy wiki writes\n'
 STAGED="$(run --json stage-card --name management-page-practices \
-  --feature-slug skill-card-discovery --provider claude-code-project \
+  --feature-slug skill-card-discovery \
   --version 1.0.0 --roles implement,review \
   --triggers "后台管理页,CRUD,列表筛选" \
   --summary "管理页统一布局的实现与审查规范")"
 assert_contains "registration is pending" '"discoveryState": "pending"' "$STAGED"
-assert_contains "registration carries provider" '"provider": "claude-code-project"' "$STAGED"
+if [[ "$STAGED" != *'"provider"'* ]]; then ok "registration omits provider"; else bad "registration still carries provider"; fi
 assert_contains "registration carries version" '"version": "1.0.0"' "$STAGED"
 assert_contains "registration carries implementer role" '"implementer"' "$STAGED"
 assert_contains "registration carries reviewer role" '"reviewer"' "$STAGED"
@@ -77,8 +79,9 @@ assert_contains "journal stores structured registration" '"skillRegistration"' "
 assert_no_file "stage-card does not write the legacy discovery index" "$WIKI/guides/skills.md"
 
 mv "$PACK/review.md" "$TMP/review.md"
+mv "$PACK_CODEX/review.md" "$TMP/review.codex.md"
 if run stage-card --name management-page-practices \
-  --feature-slug invalid-pack --provider claude-code-project \
+  --feature-slug invalid-pack \
   --version 1.0.0 --roles review --triggers "review" \
   --summary "Missing router targets must fail." > /dev/null 2>&1; then
   bad "stage-card accepted a pack with a missing router target"
@@ -86,10 +89,12 @@ else
   ok "stage-card rejected an invalid pack"
 fi
 mv "$TMP/review.md" "$PACK/review.md"
+mv "$TMP/review.codex.md" "$PACK_CODEX/review.md"
 
 printf '# Unreachable pack content\n' > "$PACK/orphan.md"
+printf '# Unreachable pack content\n' > "$PACK_CODEX/orphan.md"
 if run stage-card --name management-page-practices \
-  --feature-slug unreachable-pack --provider claude-code-project \
+  --feature-slug unreachable-pack \
   --version 1.0.0 --roles review --triggers "review" \
   --summary "Unreachable pack files must fail." > /dev/null 2>&1; then
   bad "stage-card accepted a pack file that SKILL.md cannot route to"
@@ -97,9 +102,10 @@ else
   ok "stage-card rejected unreachable pack content"
 fi
 rm "$PACK/orphan.md"
+rm "$PACK_CODEX/orphan.md"
 
 if run stage-card --name management-page-practices \
-  --feature-slug wrong-version --provider claude-code-project \
+  --feature-slug wrong-version \
   --version 2.0.0 --roles review --triggers "review" \
   --summary "Version drift must fail." > /dev/null 2>&1; then
   bad "stage-card accepted a version different from SKILL.md"
@@ -108,9 +114,11 @@ else
 fi
 
 cp "$PACK/SKILL.md" "$TMP/management-page-practices.SKILL.md"
+cp "$PACK_CODEX/SKILL.md" "$TMP/management-page-practices.codex.SKILL.md"
 sed 's/version: 1.0.0/version: 1.2/' "$TMP/management-page-practices.SKILL.md" > "$PACK/SKILL.md"
+sed 's/version: 1.0.0/version: 1.2/' "$TMP/management-page-practices.codex.SKILL.md" > "$PACK_CODEX/SKILL.md"
 if run stage-card --name management-page-practices \
-  --feature-slug invalid-semver --provider claude-code-project \
+  --feature-slug invalid-semver \
   --version 1.2 --roles review --triggers "review" \
   --summary "Versions require major.minor.patch." > /dev/null 2>&1; then
   bad "stage-card accepted a version without major.minor.patch"
@@ -118,6 +126,7 @@ else
   ok "stage-card rejected an incomplete semantic version"
 fi
 mv "$TMP/management-page-practices.SKILL.md" "$PACK/SKILL.md"
+mv "$TMP/management-page-practices.codex.SKILL.md" "$PACK_CODEX/SKILL.md"
 
 printf '\nTest: direct legacy index registration is retired\n'
 if run register-card --name management-page-practices --authorized-create > /dev/null 2>&1; then
@@ -129,7 +138,7 @@ assert_no_file "retired command does not create skills.md" "$WIKI/guides/skills.
 
 printf '\nTest: identical staging is idempotent\n'
 STAGED_AGAIN="$(run --json stage-card --name management-page-practices \
-  --feature-slug skill-card-discovery --provider claude-code-project \
+  --feature-slug skill-card-discovery \
   --version 1.0.0 --roles implement,review \
   --triggers "后台管理页,CRUD,列表筛选" \
   --summary "管理页统一布局的实现与审查规范")"
@@ -138,7 +147,7 @@ assert_contains "duplicate staging was skipped" '"skipped": 1' "$STAGED_AGAIN"
   && ok "journal still has one event" || bad "idempotent staging appended a duplicate"
 
 STAGED_REWORDED="$(run --json stage-card --name management-page-practices \
-  --feature-slug skill-card-discovery --provider claude-code-project \
+  --feature-slug skill-card-discovery \
   --version 1.0.0 --roles implement,review \
   --triggers "后台管理页,CRUD,列表筛选" \
   --summary "管理页布局、筛选与操作区的一致性规范")"
@@ -157,15 +166,16 @@ import pathlib
 import sys
 
 vector = json.load(open(sys.argv[1], encoding='utf-8'))
-pack = pathlib.Path(sys.argv[2]) / '.claude' / 'skills' / vector['name']
-for relative, content in vector['files'].items():
-    destination = pack / relative
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(content, encoding='utf-8', newline='\n')
+for runtime_dir in ('.agents', '.claude'):
+    pack = pathlib.Path(sys.argv[2]) / runtime_dir / 'skills' / vector['name']
+    for relative, content in vector['files'].items():
+        destination = pack / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(content, encoding='utf-8', newline='\n')
 PY
 VECTOR_HASH="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["expectedHash"])' "$HASH_VECTOR")"
 VECTOR_STAGED="$(run --json stage-card --name path-order \
-  --feature-slug path-order --provider claude-code-project \
+  --feature-slug path-order \
   --version 1.0.0 --roles review --triggers "path order review" \
   --summary "Verify cross-runtime path ordering.")"
 assert_contains "Python hash matches shared vector" "\"contractHash\": \"$VECTOR_HASH\"" "$VECTOR_STAGED"
@@ -184,6 +194,7 @@ printf -- '---\nname: old-skill\ndescription: legacy monolith\n---\n\n# Old Skil
 printf '#!/usr/bin/env python3\nprint("lint")\n' > "$SRC/scripts/lint.py"
 CONVERT_JSON="$(run --json convert --from "$SRC" --name old-skill --files rules.md,review.md)"
 assert_file "converted pack scripts/lint.py preserved" "$TMP/.claude/skills/old-skill/scripts/lint.py"
+assert_file "converted Codex pack scripts/lint.py preserved" "$TMP/.agents/skills/old-skill/scripts/lint.py"
 assert_file "original SKILL.md intact" "$SRC/SKILL.md"
 assert_contains "carried bundled file reported" "scripts/lint.py" "$CONVERT_JSON"
 assert_contains "uncovered source content reported" "Layout Rules" "$CONVERT_JSON"

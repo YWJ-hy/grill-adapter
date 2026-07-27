@@ -114,14 +114,13 @@ The loopback write bridge is the only automated Obsidian writer. Neither this sk
 
 For a folded `skill_card` candidate, require its complete `skillRegistration` identity and re-run `scaffold_practice_skill.py validate` before proposal. Render one atomic `type: guide` Card whose frontmatter copies these fields exactly:
 
-- `skill_provider` ← `provider`
 - `skill_name` ← `name`
 - `skill_version` ← `version`
 - `skill_contract_hash` ← `contractHash`
 - `skill_roles` ← `roles`
 - `skill_triggers` ← `triggers`
 
-Keep the body to a short discovery description; executable rules stay in the pack. Create/update this Card through the same proposal, authorization, applied receipt, and publisher steps as any other atomic Note. Copy the write result's complete `skillRegistration` into the journal receipt; a Skill Card cannot reach `kept` without an applied receipt whose registration exactly matches the staged candidate. The write boundary also rejects a second Card with the same provider/name pack identity. The journal registration remains `pending` even after apply and while its draft PR is open. Report it as `discoverable` only when a later formal MCP search returns the sole Card for that pack from the merged, synchronized base and verifies the same provider/version/hash.
+Keep the body to a short discovery description; executable rules stay in the pack. Create/update this Card through the same proposal, authorization, applied receipt, and publisher steps as any other atomic Note. Copy the write result's complete `skillRegistration` into the journal receipt; a Skill Card cannot reach `kept` without an applied receipt whose registration exactly matches the staged candidate. The write boundary also rejects a second Card with the same skill name identity. The journal registration remains `pending` even after apply and while its draft PR is open. Report it as `discoverable` only when a later formal MCP search returns the sole Card for that pack from the merged, synchronized base and verifies the same name/version/hash.
 
 ### Publish applied Obsidian receipts
 

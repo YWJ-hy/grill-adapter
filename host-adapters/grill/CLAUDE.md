@@ -38,7 +38,7 @@ grill publishes tickets to the tracker configured by `/setup-matt-pocock-skills`
    - **Local markdown** (`ticketSource: grill-local-scratch`) — one roster entry per `.scratch/<feature-slug>/issues/<NN>-<slug>.md`. `taskId` is the `NN` prefix; `text` is the whole file body, verbatim.
    - **GitHub / Linear** (`ticketSource: github-issues`) — one roster entry per ticket issue (`gh issue view <n> --json body,title`). `taskId` is the issue number; `text` is the issue body, verbatim.
    Never summarize or reformat ticket text: `text` is the fingerprint input, and a rewritten body reads as ticket drift at execution.
-4. Run `--finalize` once with `--ticket-roster` to build taskWikiRefs and fingerprints. Route each Note/Card to roster task IDs; preserve every Card's provider/name/version/contract hash/triggers/roles/discovery state.
+4. Run `--finalize` once with `--ticket-roster` to build taskWikiRefs and fingerprints. Route each Note/Card to roster task IDs; preserve every Card's name/version/contract hash/triggers/roles/discovery state.
 5. Run `/grill-adapter:source-truth-check` (renders `plan-pre`, and `plan-review` during review) and apply any policy output.
 
 The sidecar **is** the record of which wiki constrains this feature — there is no plan document to add a `## Referenced Project Wiki` section to. Tell the user which pages/sections were selected and where the sidecar lives.
@@ -77,7 +77,7 @@ For each ordinary Obsidian Note candidate, require an explicit target decision b
 
 Reach the gate by actually invoking the skill; skipping is valid only as the skill's own conclusion with a stated reason. `/grill-adapter:update-wiki` owns the durable gate, sectionizing, `type:`, `[[page#section]]` edges, dedup, neutralization, and authorization.
 
-For `wiki.provider: obsidian`, Capture must use `obsidian_wiki_propose_note_change`, show its structured diff, then use `obsidian_wiki_apply_note_change` only when policy permits and confirmation was explicit. Never edit the Vault worktree directly; conflicts remain deferred and recoverable. An executable process first goes through `scaffold-practice-skill stage-card`; its provider/version/contract-hash candidate is pending and the scaffold never writes an index. A successful apply or open PR is not merged/discoverable knowledge.
+For `wiki.provider: obsidian`, Capture must use `obsidian_wiki_propose_note_change`, show its structured diff, then use `obsidian_wiki_apply_note_change` only when policy permits and confirmation was explicit. Never edit the Vault worktree directly; conflicts remain deferred and recoverable. An executable process first goes through `scaffold-practice-skill stage-card`; its name/version/contract-hash candidate is pending and the scaffold never writes an index. A successful apply or open PR is not merged/discoverable knowledge.
 
 After all outcomes are recorded, `/grill-adapter:update-wiki` must show the exact repository/Note publish scope and obtain explicit Git publishing confirmation. It then uses its bundled resumable publisher to create one allowlisted draft PR per touched repository and coordinate peer PRs. On interruption, rerun the same publish step; never delete its local run manifest or manually recreate branches. Open PR content remains unavailable to formal research until merge, base synchronization, and revalidation.
 

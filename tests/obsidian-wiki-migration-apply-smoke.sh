@@ -28,6 +28,7 @@ REMOTE="$TMP/vault.git"
 SOURCE_ROOT="Projects/example"
 mkdir -p "$PROJECT/.grill-adapter/wiki/guides" "$PROJECT/.grill-adapter/context" \
   "$PROJECT/.shared-adapter/wiki" "$PROJECT/.claude/skills/release-check" \
+  "$PROJECT/.agents/skills/release-check" \
   "$VAULT/$SOURCE_ROOT/_meta" "$VAULT/$SOURCE_ROOT/rules"
 
 cat > "$PROJECT/.shared-adapter/wiki/index.md" <<'MD'
@@ -97,6 +98,7 @@ description: Verify a release before publication.
 
 Run the project release checks.
 MD
+cp "$PROJECT/.claude/skills/release-check/SKILL.md" "$PROJECT/.agents/skills/release-check/SKILL.md"
 cat > "$VAULT/$SOURCE_ROOT/_meta/wiki-source.md" <<'MD'
 ---
 wiki_schema: grill-adapter.obsidian-source/v1

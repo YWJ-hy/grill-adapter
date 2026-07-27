@@ -58,7 +58,7 @@ function skillCard(
   name: string,
   contractHash: string,
 ): string {
-  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: guide\nstatus: active\nagent_visible: true\nsummary: Review runtime changes.\nskill_provider: claude-code-project\nskill_name: ${name}\nskill_version: 1.0.0\nskill_contract_hash: ${contractHash}\nskill_roles:\n  - reviewer\nskill_triggers:\n  - runtime review\n---\n\n# Review runtime\n\nUse the executable pack.\n`;
+  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: guide\nstatus: active\nagent_visible: true\nsummary: Review runtime changes.\nskill_provider: legacy-ignored\nskill_name: ${name}\nskill_version: 1.0.0\nskill_contract_hash: ${contractHash}\nskill_roles:\n  - reviewer\nskill_triggers:\n  - runtime review\n---\n\n# Review runtime\n\nUse the executable pack.\n`;
 }
 
 async function fixture(options: { shared?: boolean; update?: string } = {}) {
@@ -153,16 +153,18 @@ describe('bound Obsidian Note writes', () => {
 
   it('creates a reviewed Skill Card only when its project pack identity is available', async () => {
     const { env, projectDir, sourceRoot, sourceId } = await fixture({ update: 'direct' });
-    const packRoot = path.join(projectDir, '.claude', 'skills', 'review-runtime');
-    mkdirSync(packRoot, { recursive: true });
-    writeFileSync(
-      path.join(packRoot, 'SKILL.md'),
-      '---\nname: review-runtime\ndescription: Review runtime changes.\nversion: 1.0.0\n---\n\n# Review Runtime\n',
-      'utf8',
-    );
+    const packRoots = ['.agents', '.claude'].map((runtimeDir) => path.join(projectDir, runtimeDir, 'skills', 'review-runtime'));
+    for (const packRoot of packRoots) {
+      mkdirSync(packRoot, { recursive: true });
+      writeFileSync(
+        path.join(packRoot, 'SKILL.md'),
+        '---\nname: review-runtime\ndescription: Review runtime changes.\nversion: 1.0.0\n---\n\n# Review Runtime\n',
+        'utf8',
+      );
+    }
     const wikiId = `${sourceId}/skills/review-runtime`;
     const notePath = `${sourceRoot}/Skills/review-runtime.md`;
-    const content = skillCard(wikiId, 'review-runtime', skillContractHash(packRoot));
+    const content = skillCard(wikiId, 'review-runtime', skillContractHash(packRoots[0]));
     const input = {
       sourceId,
       operation: 'create' as const,
@@ -177,7 +179,6 @@ describe('bound Obsidian Note writes', () => {
     await expect(applyNoteChangeTool(input, env)).resolves.toMatchObject({
       postWrite: { wikiId, path: notePath },
       skillRegistration: {
-        provider: 'claude-code-project',
         name: 'review-runtime',
         version: '1.0.0',
         discoveryState: 'pending',
@@ -188,7 +189,7 @@ describe('bound Obsidian Note writes', () => {
     await expect(proposeNoteChangeTool({
       ...input,
       path: `${sourceRoot}/Skills/review-runtime-duplicate.md`,
-      content: skillCard(duplicateWikiId, 'review-runtime', skillContractHash(packRoot)),
+      content: skillCard(duplicateWikiId, 'review-runtime', skillContractHash(packRoots[0])),
     }, env)).rejects.toThrow(/Skill Card identity.*already exists/);
 
     const stale = skillCard(wikiId.replace('review-runtime', 'stale-runtime'), 'review-runtime', `sha256:${'0'.repeat(64)}`);

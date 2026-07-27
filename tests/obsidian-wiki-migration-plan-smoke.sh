@@ -26,7 +26,7 @@ SHARED_WIKI="$PROJECT/.shared-adapter/wiki"
 PROJECT_SOURCE="$VAULT_REPO/Projects/example"
 SHARED_SOURCE="$VAULT_REPO/Shared/engineering"
 OTHER_SHARED_SOURCE="$VAULT_REPO/Shared/other"
-mkdir -p "$PROJECT_WIKI/guides" "$SHARED_WIKI" "$PROJECT_SOURCE/_meta" "$PROJECT_SOURCE/existing" "$SHARED_SOURCE/_meta" "$OTHER_SHARED_SOURCE/_meta" "$PROJECT/.claude/skills"
+mkdir -p "$PROJECT_WIKI/guides" "$SHARED_WIKI" "$PROJECT_SOURCE/_meta" "$PROJECT_SOURCE/existing" "$SHARED_SOURCE/_meta" "$OTHER_SHARED_SOURCE/_meta" "$PROJECT/.claude/skills" "$PROJECT/.agents/skills"
 
 cat > "$PROJECT/.grill-adapter/settings.json" <<'JSON'
 {
@@ -190,6 +190,8 @@ description: Run the release checklist for release and deployment work.
 
 Run the verified checklist.
 MD
+mkdir -p "$PROJECT/.agents/skills/release-pack"
+cp "$PROJECT/.claude/skills/release-pack/SKILL.md" "$PROJECT/.agents/skills/release-pack/SKILL.md"
 mkdir -p "$PROJECT/.claude/skills/bad-pack"
 cat > "$PROJECT/.claude/skills/bad-pack/SKILL.md" <<'MD'
 ---
@@ -202,9 +204,12 @@ description: This pack is intentionally invalid for migration planning.
 
 Review the migration.
 MD
+mkdir -p "$PROJECT/.agents/skills/bad-pack"
+cp "$PROJECT/.claude/skills/bad-pack/SKILL.md" "$PROJECT/.agents/skills/bad-pack/SKILL.md"
 cat > "$PROJECT/.claude/skills/bad-pack/rules.md" <<'MD'
 # Unreferenced rules
 MD
+cp "$PROJECT/.claude/skills/bad-pack/rules.md" "$PROJECT/.agents/skills/bad-pack/rules.md"
 cat > "$PROJECT_WIKI/.graph.json" <<'JSON'
 {
   "schema": "section-graph/3",
@@ -387,7 +392,7 @@ assert api["edgeTransformation"] == [{"property": "depends_on", "targetNoteId": 
 release = next(item for item in plan["planItems"] if item.get("noteId") == "project-source/skills/release-pack")
 assert release["decision"] == "conflict"
 assert release["proposedPath"] == "Projects/example/Skills/release-pack.md"
-assert release["skillCard"]["provider"] == "claude-code-project"
+assert "provider" not in release["skillCard"]
 assert release["skillCard"]["version"] == "1.2.3"
 assert release["skillCard"]["contractHash"].startswith("sha256:")
 assert release["skillCard"]["roles"] == ["implementer", "reviewer"]
@@ -436,7 +441,7 @@ strength_source_ids = {
 assert negative["sourceItemId"] in strength_source_ids
 assert api_inventory["sourceItemId"] in strength_source_ids
 assert any(
-    issue["code"] == "duplicate-id" and "provider/name" in issue["detail"]
+    issue["code"] == "duplicate-id" and "name" in issue["detail"]
     for issue in confirmation["issues"]
 )
 assert plan["summary"]["confirmationIssueCount"] == len(confirmation["issues"])

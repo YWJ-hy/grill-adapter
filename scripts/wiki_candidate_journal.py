@@ -68,7 +68,6 @@ WRITE_RECEIPT_FIELDS = {
 WRITE_RECEIPT_OPTIONAL_FIELDS = {"skillRegistration", "adrProjection"}
 WRITE_RECEIPT_IDENTITY_FIELDS = (WRITE_RECEIPT_FIELDS - {"state"}) | WRITE_RECEIPT_OPTIONAL_FIELDS
 SKILL_REGISTRATION_FIELDS = {
-    "provider",
     "name",
     "version",
     "contractHash",
@@ -77,7 +76,6 @@ SKILL_REGISTRATION_FIELDS = {
     "summary",
     "discoveryState",
 }
-SKILL_PROVIDERS = {"claude-code-project"}
 SKILL_ROLES = {"implementer", "reviewer"}
 
 
@@ -180,11 +178,10 @@ def _validate_write_receipt(receipt: Any, outcome_status: str) -> dict[str, Any]
 def _validate_skill_registration(registration: Any) -> dict[str, Any]:
     if not isinstance(registration, dict):
         raise JournalError("skillRegistration must be a JSON object")
+    # Cards written before provider removal may still carry this field. It is
+    # compatibility metadata only and no longer participates in identity.
+    registration.pop("provider", None)
     _require_keys(registration, SKILL_REGISTRATION_FIELDS, set())
-    if registration["provider"] not in SKILL_PROVIDERS:
-        raise JournalError(
-            f"skillRegistration.provider must be one of {', '.join(sorted(SKILL_PROVIDERS))}"
-        )
     name = _require_text(registration["name"], "skillRegistration.name", limit=128)
     if not SKILL_NAME_PATTERN.fullmatch(name):
         raise JournalError("skillRegistration.name must use kebab-case")
@@ -673,7 +670,6 @@ def build_parser() -> argparse.ArgumentParser:
     append_parser.add_argument("--task-id")
     append_parser.add_argument("--carve-out", action="store_true")
     append_parser.add_argument("--origin")
-    append_parser.add_argument("--skill-provider", choices=sorted(SKILL_PROVIDERS))
     append_parser.add_argument("--skill-name")
     append_parser.add_argument("--skill-version")
     append_parser.add_argument("--skill-contract-hash")
@@ -701,7 +697,6 @@ def build_parser() -> argparse.ArgumentParser:
     outcome_parser.add_argument("--path")
     outcome_parser.add_argument("--before-hash")
     outcome_parser.add_argument("--after-hash")
-    outcome_parser.add_argument("--skill-provider", choices=sorted(SKILL_PROVIDERS))
     outcome_parser.add_argument("--skill-name")
     outcome_parser.add_argument("--skill-version")
     outcome_parser.add_argument("--skill-contract-hash")
@@ -741,7 +736,6 @@ def main() -> int:
 
     if args.command == "append":
         skill_values = (
-            args.skill_provider,
             args.skill_name,
             args.skill_version,
             args.skill_contract_hash,
@@ -752,7 +746,6 @@ def main() -> int:
         skill_registration = None
         if any(value is not None for value in skill_values):
             skill_registration = {
-                "provider": args.skill_provider,
                 "name": args.skill_name,
                 "version": args.skill_version,
                 "contractHash": args.skill_contract_hash,
@@ -792,7 +785,6 @@ def main() -> int:
         )
     else:
         skill_values = (
-            args.skill_provider,
             args.skill_name,
             args.skill_version,
             args.skill_contract_hash,
@@ -803,7 +795,6 @@ def main() -> int:
         receipt_skill_registration = None
         if any(value is not None for value in skill_values):
             receipt_skill_registration = {
-                "provider": args.skill_provider,
                 "name": args.skill_name,
                 "version": args.skill_version,
                 "contractHash": args.skill_contract_hash,

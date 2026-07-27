@@ -116,7 +116,7 @@ assert 'content' not in note
 skill = context['requiredSkills'][0]
 assert skill['wikiId'] == 'shared/skills/review-contracts'
 assert skill['requiredFor'] == ['reviewer']
-assert skill['skillProvider'] == 'claude-code-project'
+assert 'skillProvider' not in skill
 assert skill['skillName'] == 'review-contracts'
 assert skill['skillVersion'] == '1.0.0'
 assert skill['skillContractHash'].startswith('sha256:')

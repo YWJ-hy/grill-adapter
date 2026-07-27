@@ -177,24 +177,21 @@ function validateTypedLinksAndIdentity(
       `ADR source identity ${proposed.adrSourceId} already exists in another allowed Note`,
     );
   }
-  if (targetNote?.skillProvider && !proposed.skillProvider) {
+  if (targetNote?.skillName && !proposed.skillName) {
     throw new BridgeError(409, 'An existing Skill Card cannot be converted to a plain Note');
   }
   if (
-    targetNote?.skillProvider
-    && (
-      targetNote.skillProvider !== proposed.skillProvider
-      || targetNote.skillName !== proposed.skillName
-    )
+    targetNote?.skillName
+    && targetNote.skillName !== proposed.skillName
   ) {
-    throw new BridgeError(409, 'Skill Card provider/name identity must be preserved on update');
+    throw new BridgeError(409, 'Skill Card name identity must be preserved on update');
   }
-  if (proposed.skillProvider) {
+  if (proposed.skillName) {
     const projectNotes = [...projectRoots.values()]
       .flatMap(atomicNoteFiles)
       .map((file) => ({ file, note: parseAtomicNote(readFileSync(file, 'utf8'), file) }));
     const cardMatches = projectNotes.filter(({ note }) => (
-      note.skillProvider === proposed.skillProvider && note.skillName === proposed.skillName
+      note.skillName === proposed.skillName
     ));
     const conflictingCards = operation === 'create'
       ? cardMatches
@@ -202,7 +199,7 @@ function validateTypedLinksAndIdentity(
     if (conflictingCards.length > 0) {
       throw new BridgeError(
         409,
-        `Skill Card identity ${proposed.skillProvider}/${proposed.skillName} already exists in an allowed Source`,
+        `Skill Card identity ${proposed.skillName} already exists in an allowed Source`,
       );
     }
   }

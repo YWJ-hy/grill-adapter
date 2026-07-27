@@ -37,7 +37,6 @@ const NoteSchema = z.object({
     .min(1)
     .refine(uniqueList, 'Skill Card roles must be unique')
     .optional(),
-  skill_provider: z.literal('claude-code-project').optional(),
   skill_name: SkillNameSchema.optional(),
   skill_version: SkillVersionSchema.optional(),
   skill_contract_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
@@ -55,7 +54,6 @@ export type AtomicNote = {
   summary: string;
   constraintStrength: 'hard' | 'soft' | undefined;
   skillRoles: ('implementer' | 'reviewer')[];
-  skillProvider: 'claude-code-project' | undefined;
   skillName: string | undefined;
   skillVersion: string | undefined;
   skillContractHash: string | undefined;
@@ -123,7 +121,6 @@ export function parseAtomicNote(contents: string, description = 'Note'): AtomicN
   }
   const note = parsed.data;
   const skillFields = [
-    note.skill_provider,
     note.skill_name,
     note.skill_version,
     note.skill_contract_hash,
@@ -160,7 +157,6 @@ export function parseAtomicNote(contents: string, description = 'Note'): AtomicN
     summary: note.summary,
     constraintStrength: note.constraint_strength,
     skillRoles: note.skill_roles ?? [],
-    skillProvider: note.skill_provider,
     skillName: note.skill_name,
     skillVersion: note.skill_version,
     skillContractHash: note.skill_contract_hash,

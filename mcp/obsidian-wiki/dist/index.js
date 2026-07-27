@@ -22757,7 +22757,6 @@ var NoteSchema = object({
   adr_source_path: AdrSourcePathSchema.optional(),
   adr_source_content_hash: ContentHashSchema.optional(),
   skill_roles: array(_enum(["implementer", "reviewer"])).min(1).refine(uniqueList, "Skill Card roles must be unique").optional(),
-  skill_provider: literal("claude-code-project").optional(),
   skill_name: SkillNameSchema.optional(),
   skill_version: SkillVersionSchema.optional(),
   skill_contract_hash: string2().regex(/^sha256:[a-f0-9]{64}$/).optional(),
@@ -22813,7 +22812,6 @@ function parseAtomicNote(contents, description = "Note") {
   }
   const note = parsed.data;
   const skillFields = [
-    note.skill_provider,
     note.skill_name,
     note.skill_version,
     note.skill_contract_hash,
@@ -22847,7 +22845,6 @@ function parseAtomicNote(contents, description = "Note") {
     summary: note.summary,
     constraintStrength: note.constraint_strength,
     skillRoles: note.skill_roles ?? [],
-    skillProvider: note.skill_provider,
     skillName: note.skill_name,
     skillVersion: note.skill_version,
     skillContractHash: note.skill_contract_hash,
@@ -23022,13 +23019,13 @@ ${notePath}`;
   return notes;
 }
 function matchingBoundSkillCards(note, bindings, env, requireActiveAndVisible = true) {
-  if (!note.skillProvider || !note.skillName) return [];
+  if (!note.skillName) return [];
   return searchBoundNotes(
     `[skill_name:${note.skillName}]`,
     bindings,
     env,
     requireActiveAndVisible
-  ).filter((candidate) => candidate.skillProvider === note.skillProvider && candidate.skillName === note.skillName);
+  ).filter((candidate) => candidate.skillName === note.skillName);
 }
 function matchingBoundAdrProjections(note, bindings, env, requireActiveAndVisible = false) {
   if (!note.adrSourceId) return [];
@@ -23040,23 +23037,22 @@ function matchingBoundAdrProjections(note, bindings, env, requireActiveAndVisibl
   ).filter((candidate) => candidate.adrSourceId === note.adrSourceId);
 }
 function assertUniqueBoundSkillCard(note, bindings, env) {
-  if (!note.skillProvider) return;
+  if (!note.skillName) return;
   const matches = matchingBoundSkillCards(note, bindings, env);
   if (matches.length !== 1 || matches[0].wikiId !== note.wikiId || matches[0].path !== note.path || matches[0].sourceId !== note.sourceId) {
     throw new Error(
-      `Skill Card identity ${note.skillProvider}/${note.skillName} resolved ${matches.length} active Cards`
+      `Skill Card identity ${note.skillName} resolved ${matches.length} active Cards`
     );
   }
 }
 
 // src/skill-card.ts
 import { createHash as createHash3 } from "node:crypto";
-import { lstatSync as lstatSync2, readFileSync as readFileSync3, readdirSync } from "node:fs";
+import { existsSync as existsSync3, lstatSync as lstatSync2, readFileSync as readFileSync3, readdirSync } from "node:fs";
 import path5 from "node:path";
 function pendingSkillRegistration(note) {
-  if (!note.skillProvider) return void 0;
+  if (!note.skillName) return void 0;
   return {
-    provider: note.skillProvider,
     name: note.skillName,
     version: note.skillVersion,
     contractHash: note.skillContractHash,
@@ -23102,33 +23098,50 @@ function skillFrontmatter(skillPath) {
   return fields;
 }
 function skillCardAvailability(note, projectDir, context) {
-  if (!note.skillProvider) return { available: true };
+  if (!note.skillName) return { available: true };
   if (context.mode === "discovery" && !context.baseSynchronized) {
     return { available: false, reason: "Card Source base is not synchronized with its remote" };
   }
-  if (note.skillProvider !== "claude-code-project") {
-    return { available: false, reason: `unsupported provider ${note.skillProvider}` };
+  const packRoots = [
+    path5.join(projectDir, ".agents", "skills", note.skillName),
+    path5.join(projectDir, ".claude", "skills", note.skillName)
+  ];
+  for (const packRoot of packRoots) {
+    const skillPath = path5.join(packRoot, "SKILL.md");
+    if (!existsSync3(skillPath)) {
+      return {
+        available: false,
+        reason: `project skill pack is missing: ${path5.relative(projectDir, skillPath)}`
+      };
+    }
+    try {
+      const frontmatter = skillFrontmatter(skillPath);
+      if (frontmatter.name !== note.skillName) {
+        return {
+          available: false,
+          reason: `${path5.relative(projectDir, packRoot)} name does not match the Card`
+        };
+      }
+      if (frontmatter.version !== note.skillVersion) {
+        return {
+          available: false,
+          reason: `${path5.relative(projectDir, packRoot)} version does not match the Card`
+        };
+      }
+      if (skillContractHash(packRoot) !== note.skillContractHash) {
+        return {
+          available: false,
+          reason: `${path5.relative(projectDir, packRoot)} contract hash does not match the Card`
+        };
+      }
+    } catch (error2) {
+      return {
+        available: false,
+        reason: error2 instanceof Error ? error2.message : String(error2)
+      };
+    }
   }
-  const packRoot = path5.join(projectDir, ".claude", "skills", note.skillName);
-  const skillPath = path5.join(packRoot, "SKILL.md");
-  try {
-    const frontmatter = skillFrontmatter(skillPath);
-    if (frontmatter.name !== note.skillName) {
-      return { available: false, reason: "pack name does not match the Card" };
-    }
-    if (frontmatter.version !== note.skillVersion) {
-      return { available: false, reason: "pack version does not match the Card" };
-    }
-    if (skillContractHash(packRoot) !== note.skillContractHash) {
-      return { available: false, reason: "pack contract hash does not match the Card" };
-    }
-    return { available: true };
-  } catch (error2) {
-    return {
-      available: false,
-      reason: error2 instanceof Error ? error2.message : String(error2)
-    };
-  }
+  return { available: true };
 }
 function assertSkillCardAvailable(note, projectDir, context) {
   const availability = skillCardAvailability(note, projectDir, context);
@@ -23143,7 +23156,7 @@ function assertSkillCardAvailable(note, projectDir, context) {
 import { randomUUID } from "node:crypto";
 import { execFileSync as execFileSync3 } from "node:child_process";
 import {
-  existsSync as existsSync3,
+  existsSync as existsSync4,
   mkdirSync as mkdirSync2,
   readFileSync as readFileSync4,
   renameSync as renameSync2,
@@ -23275,7 +23288,7 @@ function manifestPathFor(projectDir, featureSlug) {
   return path6.join(projectDir, ".grill-adapter", "context", `${featureSlug}.wiki-publish.json`);
 }
 function readPublishManifest(manifestPath) {
-  return existsSync3(manifestPath) ? PublishManifestSchema.parse(JSON.parse(readFileSync4(manifestPath, "utf8"))) : void 0;
+  return existsSync4(manifestPath) ? PublishManifestSchema.parse(JSON.parse(readFileSync4(manifestPath, "utf8"))) : void 0;
 }
 function publishBranchOptions(featureSlug, env = process.env) {
   const parsedFeature = string2().regex(/^[a-z0-9][a-z0-9._-]*$/).parse(featureSlug);
@@ -23742,7 +23755,6 @@ function presentNotes(found, resolution, env, publishFeatureSlug) {
       type: note.type,
       constraintStrength: note.constraintStrength,
       skillRoles: note.skillRoles,
-      skillProvider: note.skillProvider,
       skillName: note.skillName,
       skillVersion: note.skillVersion,
       skillContractHash: note.skillContractHash,
@@ -23750,7 +23762,7 @@ function presentNotes(found, resolution, env, publishFeatureSlug) {
       adrSourceId: note.adrSourceId,
       adrSourcePath: note.adrSourcePath,
       adrSourceContentHash: note.adrSourceContentHash,
-      discoveryState: note.skillProvider ? "discoverable" : void 0,
+      discoveryState: note.skillName ? "discoverable" : void 0,
       summary: note.summary,
       contentHash: note.contentHash,
       bindingDigest: note.bindingDigest
@@ -23803,7 +23815,6 @@ function serializedNote(note) {
     summary: note.summary,
     constraintStrength: note.constraintStrength,
     skillRoles: note.skillRoles,
-    skillProvider: note.skillProvider,
     skillName: note.skillName,
     skillVersion: note.skillVersion,
     skillContractHash: note.skillContractHash,
@@ -23811,7 +23822,7 @@ function serializedNote(note) {
     adrSourceId: note.adrSourceId,
     adrSourcePath: note.adrSourcePath,
     adrSourceContentHash: note.adrSourceContentHash,
-    discoveryState: note.skillProvider ? "discoverable" : void 0,
+    discoveryState: note.skillName ? "discoverable" : void 0,
     content: note.content,
     contentHash: note.contentHash,
     bindingDigest: note.bindingDigest
@@ -24053,7 +24064,7 @@ function validateIdentity(input, binding, bindings, env, proposed) {
     }
     if (matchingCards.length > 0) {
       throw new Error(
-        `Skill Card identity ${proposed.skillProvider}/${proposed.skillName} already exists in a bound Source`
+        `Skill Card identity ${proposed.skillName} already exists in a bound Source`
       );
     }
     return;
@@ -24072,16 +24083,16 @@ function validateIdentity(input, binding, bindings, env, proposed) {
       `ADR source identity ${proposed.adrSourceId} already exists in another bound Note`
     );
   }
-  if (existing.skillProvider && !proposed.skillProvider) {
+  if (existing.skillName && !proposed.skillName) {
     throw new Error("An existing Skill Card cannot be converted to a plain Note");
   }
-  if (existing.skillProvider && (existing.skillProvider !== proposed.skillProvider || existing.skillName !== proposed.skillName)) {
-    throw new Error("Skill Card provider/name identity must be preserved on update");
+  if (existing.skillName && existing.skillName !== proposed.skillName) {
+    throw new Error("Skill Card name identity must be preserved on update");
   }
   const conflictingCards = matchingCards.filter((card) => card.path !== existing.path || card.sourceId !== existing.sourceId);
   if (conflictingCards.length > 0) {
     throw new Error(
-      `Skill Card identity ${proposed.skillProvider}/${proposed.skillName} already exists in another bound Note`
+      `Skill Card identity ${proposed.skillName} already exists in another bound Note`
     );
   }
   if (existing.wikiId !== proposed.wikiId) {
@@ -24244,7 +24255,7 @@ function createServer(env = process.env) {
 import { timingSafeEqual, randomUUID as randomUUID3 } from "node:crypto";
 import { createServer as createServer2 } from "node:http";
 import {
-  existsSync as existsSync5,
+  existsSync as existsSync6,
   linkSync,
   lstatSync as lstatSync3,
   mkdirSync as mkdirSync3,
@@ -24258,11 +24269,11 @@ import path7 from "node:path";
 
 // src/atomic-exchange.ts
 import { execFileSync as execFileSync4 } from "node:child_process";
-import { existsSync as existsSync4 } from "node:fs";
+import { existsSync as existsSync5 } from "node:fs";
 import { fileURLToPath } from "node:url";
 var packagedScriptPath = fileURLToPath(new URL("./atomic_swap.py", import.meta.url));
 var sourceScriptPath = fileURLToPath(new URL("../scripts/atomic_swap.py", import.meta.url));
-var scriptPath = existsSync4(packagedScriptPath) ? packagedScriptPath : sourceScriptPath;
+var scriptPath = existsSync5(packagedScriptPath) ? packagedScriptPath : sourceScriptPath;
 function atomicExchange(firstPath, secondPath, env = process.env) {
   const python = env.OBSIDIAN_WIKI_PYTHON ?? "python3";
   try {
@@ -24315,7 +24326,7 @@ function inside(candidate, root) {
 }
 function nearestExistingDirectory(directory) {
   let candidate = directory;
-  while (!existsSync5(candidate)) {
+  while (!existsSync6(candidate)) {
     const parent = path7.dirname(candidate);
     if (parent === candidate) throw new BridgeError(403, "Note parent has no existing Vault ancestor");
     candidate = parent;
@@ -24373,20 +24384,20 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
       `ADR source identity ${proposed.adrSourceId} already exists in another allowed Note`
     );
   }
-  if (targetNote?.skillProvider && !proposed.skillProvider) {
+  if (targetNote?.skillName && !proposed.skillName) {
     throw new BridgeError(409, "An existing Skill Card cannot be converted to a plain Note");
   }
-  if (targetNote?.skillProvider && (targetNote.skillProvider !== proposed.skillProvider || targetNote.skillName !== proposed.skillName)) {
-    throw new BridgeError(409, "Skill Card provider/name identity must be preserved on update");
+  if (targetNote?.skillName && targetNote.skillName !== proposed.skillName) {
+    throw new BridgeError(409, "Skill Card name identity must be preserved on update");
   }
-  if (proposed.skillProvider) {
+  if (proposed.skillName) {
     const projectNotes = [...projectRoots.values()].flatMap(atomicNoteFiles).map((file) => ({ file, note: parseAtomicNote(readFileSync5(file, "utf8"), file) }));
-    const cardMatches = projectNotes.filter(({ note }) => note.skillProvider === proposed.skillProvider && note.skillName === proposed.skillName);
+    const cardMatches = projectNotes.filter(({ note }) => note.skillName === proposed.skillName);
     const conflictingCards = operation === "create" ? cardMatches : cardMatches.filter(({ file }) => realpathSync2(file) !== realpathSync2(targetPath));
     if (conflictingCards.length > 0) {
       throw new BridgeError(
         409,
-        `Skill Card identity ${proposed.skillProvider}/${proposed.skillName} already exists in an allowed Source`
+        `Skill Card identity ${proposed.skillName} already exists in an allowed Source`
       );
     }
   }
@@ -24397,7 +24408,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
       const vaultPath = normalizeRelativePath(target.endsWith(".md") ? target : `${target}.md`, "Typed edge");
       const resolvedTarget = path7.resolve(vaultRoot, ...vaultPath.split("/"));
       const owningRoot = [...roots.values()].find((root) => inside(resolvedTarget, root.resolvedRoot));
-      if (!owningRoot || !existsSync5(resolvedTarget) || !lstatSync3(resolvedTarget).isFile()) {
+      if (!owningRoot || !existsSync6(resolvedTarget) || !lstatSync3(resolvedTarget).isFile()) {
         throw new BridgeError(400, `Typed edge does not resolve to an allowed atomic Note: ${link}`);
       }
       parseAtomicNote(readFileSync5(resolvedTarget, "utf8"), vaultPath);
@@ -24507,7 +24518,7 @@ function validateChange(raw, options, vaultRoot, allowedRoots) {
   if (!inside(resolvedParent, resolvedSourceRoot)) throw new BridgeError(403, `Note parent escapes its Source root: ${notePath}`);
   const proposed = parseAtomicNote(request.content, notePath);
   if (proposed.wikiId !== request.expectedWikiId) throw new BridgeError(409, "Proposed Note wiki_id does not match expectedWikiId");
-  const exists = existsSync5(targetPath);
+  const exists = existsSync6(targetPath);
   let beforeContent = null;
   if (request.operation === "create") {
     if (request.expectedHash !== null) throw new BridgeError(400, "Create requires expectedHash: null");
@@ -24592,7 +24603,7 @@ function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
         throw new BridgeError(409, `Expected hash conflict: Note was created concurrently: ${error2 instanceof Error ? error2.message : String(error2)}`);
       }
     } else {
-      if (!existsSync5(change.targetPath) || contentHash(readFileSync5(change.targetPath, "utf8")) !== change.request.expectedHash) {
+      if (!existsSync6(change.targetPath) || contentHash(readFileSync5(change.targetPath, "utf8")) !== change.request.expectedHash) {
         throw new BridgeError(409, "Expected hash conflict: Note changed concurrently");
       }
       beforeAtomicExchange?.(change.targetPath);
@@ -24639,7 +24650,7 @@ async function startWriteBridge(options) {
     const resolved = realpathSync2(path7.resolve(vaultRoot, ...root.split("/")));
     if (!inside(resolved, vaultRoot)) throw new Error(`Allowed Source root escapes the Vault: ${root}`);
     const manifestPath = path7.join(resolved, "_meta", "wiki-source.md");
-    if (!existsSync5(manifestPath) || !lstatSync3(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
+    if (!existsSync6(manifestPath) || !lstatSync3(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
     parseSourceManifest(readFileSync5(manifestPath, "utf8"), manifestPath);
     allowedRoots.set(root, { resolvedRoot: resolved, manifestPath });
   }

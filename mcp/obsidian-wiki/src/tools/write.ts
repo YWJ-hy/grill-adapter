@@ -100,7 +100,7 @@ function validateIdentity(
     }
     if (matchingCards.length > 0) {
       throw new Error(
-        `Skill Card identity ${proposed.skillProvider}/${proposed.skillName} already exists in a bound Source`,
+        `Skill Card identity ${proposed.skillName} already exists in a bound Source`,
       );
     }
     return;
@@ -121,24 +121,21 @@ function validateIdentity(
       `ADR source identity ${proposed.adrSourceId} already exists in another bound Note`,
     );
   }
-  if (existing.skillProvider && !proposed.skillProvider) {
+  if (existing.skillName && !proposed.skillName) {
     throw new Error('An existing Skill Card cannot be converted to a plain Note');
   }
   if (
-    existing.skillProvider
-    && (
-      existing.skillProvider !== proposed.skillProvider
-      || existing.skillName !== proposed.skillName
-    )
+    existing.skillName
+    && existing.skillName !== proposed.skillName
   ) {
-    throw new Error('Skill Card provider/name identity must be preserved on update');
+    throw new Error('Skill Card name identity must be preserved on update');
   }
   const conflictingCards = matchingCards.filter((card) => (
     card.path !== existing.path || card.sourceId !== existing.sourceId
   ));
   if (conflictingCards.length > 0) {
     throw new Error(
-      `Skill Card identity ${proposed.skillProvider}/${proposed.skillName} already exists in another bound Note`,
+      `Skill Card identity ${proposed.skillName} already exists in another bound Note`,
     );
   }
   if (existing.wikiId !== proposed.wikiId) {

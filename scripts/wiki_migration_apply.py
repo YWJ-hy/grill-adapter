@@ -417,7 +417,6 @@ def render_note(
     skill = item.get("skillCard")
     if isinstance(skill, dict):
         fields.extend([
-            f"skill_provider: {skill['provider']}",
             f"skill_name: {skill['name']}",
             f"skill_version: {skill['version']}",
             f"skill_contract_hash: {skill['contractHash']}",

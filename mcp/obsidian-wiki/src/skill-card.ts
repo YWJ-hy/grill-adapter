@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import type { AtomicNote } from './note.js';
 
@@ -9,7 +9,6 @@ export type SkillAvailability = {
 };
 
 export type SkillRegistration = {
-  provider: 'claude-code-project';
   name: string;
   version: string;
   contractHash: string;
@@ -24,9 +23,8 @@ export type SkillValidationContext =
   | { mode: 'discovery'; baseSynchronized: boolean };
 
 export function pendingSkillRegistration(note: AtomicNote): SkillRegistration | undefined {
-  if (!note.skillProvider) return undefined;
+  if (!note.skillName) return undefined;
   return {
-    provider: note.skillProvider,
     name: note.skillName!,
     version: note.skillVersion!,
     contractHash: note.skillContractHash!,
@@ -80,33 +78,50 @@ export function skillCardAvailability(
   projectDir: string,
   context: SkillValidationContext,
 ): SkillAvailability {
-  if (!note.skillProvider) return { available: true };
+  if (!note.skillName) return { available: true };
   if (context.mode === 'discovery' && !context.baseSynchronized) {
     return { available: false, reason: 'Card Source base is not synchronized with its remote' };
   }
-  if (note.skillProvider !== 'claude-code-project') {
-    return { available: false, reason: `unsupported provider ${note.skillProvider}` };
+  const packRoots = [
+    path.join(projectDir, '.agents', 'skills', note.skillName),
+    path.join(projectDir, '.claude', 'skills', note.skillName),
+  ];
+  for (const packRoot of packRoots) {
+    const skillPath = path.join(packRoot, 'SKILL.md');
+    if (!existsSync(skillPath)) {
+      return {
+        available: false,
+        reason: `project skill pack is missing: ${path.relative(projectDir, skillPath)}`,
+      };
+    }
+    try {
+      const frontmatter = skillFrontmatter(skillPath);
+      if (frontmatter.name !== note.skillName) {
+        return {
+          available: false,
+          reason: `${path.relative(projectDir, packRoot)} name does not match the Card`,
+        };
+      }
+      if (frontmatter.version !== note.skillVersion) {
+        return {
+          available: false,
+          reason: `${path.relative(projectDir, packRoot)} version does not match the Card`,
+        };
+      }
+      if (skillContractHash(packRoot) !== note.skillContractHash) {
+        return {
+          available: false,
+          reason: `${path.relative(projectDir, packRoot)} contract hash does not match the Card`,
+        };
+      }
+    } catch (error) {
+      return {
+        available: false,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
-  const packRoot = path.join(projectDir, '.claude', 'skills', note.skillName!);
-  const skillPath = path.join(packRoot, 'SKILL.md');
-  try {
-    const frontmatter = skillFrontmatter(skillPath);
-    if (frontmatter.name !== note.skillName) {
-      return { available: false, reason: 'pack name does not match the Card' };
-    }
-    if (frontmatter.version !== note.skillVersion) {
-      return { available: false, reason: 'pack version does not match the Card' };
-    }
-    if (skillContractHash(packRoot) !== note.skillContractHash) {
-      return { available: false, reason: 'pack contract hash does not match the Card' };
-    }
-    return { available: true };
-  } catch (error) {
-    return {
-      available: false,
-      reason: error instanceof Error ? error.message : String(error),
-    };
-  }
+  return { available: true };
 }
 
 export function assertSkillCardAvailable(
