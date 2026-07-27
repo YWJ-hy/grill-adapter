@@ -24,6 +24,25 @@ Formal planning uses only the bound Obsidian Sources exposed by `obsidian_wiki_*
 - Codex does not register plugin `agents/*.md` as callable agents. In Codex, read `${CLAUDE_PLUGIN_ROOT}/agents/wiki-researcher.md` completely, then spawn one general sub-agent with that file as its role instructions plus the phase input below. Do not perform the research inline in the main session.
 - The same prompt and output contract apply on both runtimes; only the dispatch mechanism differs.
 
+#### Codex dispatch transaction (mandatory)
+
+Codex sub-agent dispatch is asynchronous. Treat the agent path as a handle, not a result:
+
+1. Spawn exactly one researcher for this invocation and keep its returned path/handle.
+2. Wait for that same agent path to reach a terminal result before reading or interpreting any
+   research output. `queued`, `running`, `unknown`, `interrupted`, and tool errors are not
+   researcher results.
+3. If dispatch reports a capacity or duplicate-path error but the agent path already exists, do not
+   spawn a second researcher. Reuse that path, waiting for it or issuing at most one bounded
+   follow-up when the host exposes that operation. If the path cannot be recovered, classify the
+   dispatch as `broken`.
+4. Do not call any `obsidian_wiki_*` tool, perform an inline search, write a selection, or record
+   readiness while the researcher is non-terminal. A main-agent search is never a substitute for
+   an incomplete dispatch.
+5. Only a terminal researcher result may be mapped to `ok`, `partial`, `missing_wiki_root`, or
+   `no_relevant_wiki`. A dispatch, transport, capacity, or agent-lifecycle failure maps to
+   `broken` (for `brainstorm`, surface that failure as a caveat rather than `no_relevant`).
+
 ---
 
 ## Phase `brainstorm` — lightweight disclosure
@@ -59,7 +78,9 @@ Generate the sidecar mechanically from the selection, then edit only the semanti
 1. Act on the researcher's compact summary by `status`:
    - `ok`/`partial` with selected pages: the selection file was written — confirm it exists; do not re-author or echo it.
    - `missing_wiki_root`/`no_relevant_wiki`: no file was written — record the one-line N/A reason and plan without wiki context.
-   - fallback (summary says the researcher returned the selection inline): save that inline JSON to `selectionOutputPath` yourself, then continue.
+   - fallback (a terminal researcher summary explicitly says it returned the selection inline):
+     save that inline JSON to `selectionOutputPath` yourself, then continue. Never use a
+     main-agent search as this fallback.
 
    When invoked by `wiki-readiness`, translate a healthy empty result to readiness `no-relevant`,
    an absent provider to `disabled`, and any configured health/research/Carry failure to `broken`.

@@ -28,6 +28,22 @@ assert len(skills) == 12
 assert root / "skills" / "wiki-readiness" / "SKILL.md" in skills
 removed_capability = "lan" + "hu"
 assert not any(removed_capability in path.as_posix().lower() for path in skills)
+research_skill = (root / "skills" / "wiki-research" / "SKILL.md").read_text(encoding="utf-8")
+for required in (
+    "Codex dispatch transaction",
+    "agent path as a handle, not a result",
+    "Wait for that same agent path to reach a terminal result",
+    "Do not call any `obsidian_wiki_*` tool",
+    "Only a terminal researcher result",
+):
+    assert required in research_skill, required
+readiness_skill = (root / "skills" / "wiki-readiness" / "SKILL.md").read_text(encoding="utf-8")
+for required in (
+    "Wait for the researcher dispatch to reach a terminal result",
+    "do not\n   infer `no-relevant`",
+    "Those failures follow the `broken` path",
+):
+    assert required in readiness_skill, required
 assert len(list((root / "agents").glob("*.md"))) == 1
 assert not any(removed_capability in path.as_posix().lower() for path in (root / "agents").glob("*.md"))
 

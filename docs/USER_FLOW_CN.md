@@ -6,7 +6,7 @@ grill-adapter 是一个**宿主无关（host-agnostic）的 Claude Code adapter*
 - **真实源校验 / lint（source-of-truth verify/lint）**；
 - **break-loop 调试复盘与知识回流**。
 
-核心原则：grill-adapter **从不 patch 任何宿主 skill**，只在宿主阶段之间挂接自己的 skill 与 hook。默认宿主是 **grill**（mattpocock/skills）：
+核心原则：grill-adapter **从不 patch 任何宿主 skill**，只在宿主阶段之间挂接自己的 skill 与 hook。默认宿主是 **grill**（mattpocock/skills）；grill host 的约定块只有在用户明确调用对应 grill 阶段时才激活，普通直接需求不会自动进入 Wiki 触点：
 
 ```
 /grill-with-docs → /to-spec → /to-tickets → /implement → /code-review
@@ -248,7 +248,7 @@ grill-adapter 同时以 **Claude Code plugin** 与 **Codex plugin** 形式发布
 >
 > 约定块里对 grill-adapter 自己的 skill 一律带命名空间调用（`/grill-adapter:wiki-research` 等）；grill 自带的 `/grill-with-docs`、`/to-spec`、`/implement` 等不加。
 
-**Agent roles（1）**：`wiki-researcher`。Claude Code 直接注册；Codex 由入口 skill 读取同一 prompt 并派生通用 sub-agent。
+**Agent roles（1）**：`wiki-researcher`。Claude Code 直接注册；Codex 由入口 skill 读取同一 prompt 并派生通用 sub-agent，必须等待同一 agent path 终态；dispatch/容量/生命周期失败走 `broken`，不能降级为 `no-relevant`。
 
 **MCP server（1）**：`obsidian-wiki` 解析受约束的 Obsidian Source binding，并提供状态、Source、读取、proposal 与 apply 工具。它随 plugin 自动启动，无需手工注册；只操作当前项目 `.grill-adapter/settings.json` 声明的 binding，未绑定、Vault/仓库不健康或 policy 不兼容时 fail-closed。实际写入由另行启动、只监听 loopback 的 write bridge 完成，MCP 自身不开放 HTTP 端口。
 

@@ -9,7 +9,7 @@ When discovery (or `grill-with-docs`), specification, tickets, implementation, r
 
 ### Disclose — before proposing an approach
 
-Run `/grill-adapter:wiki-research` (phase `brainstorm`) to surface relevant project/shared wiki as lightweight context. If none applies, record a one-line N/A and continue. Write no sidecar here.
+Run `/grill-adapter:wiki-research` (phase `brainstorm`) to surface relevant project/shared wiki as lightweight context. On Codex, wait for the same researcher agent path to reach a terminal result; dispatch/capacity/lifecycle failure is a caveat or `broken`, never `no-relevant`. If none applies, record a one-line N/A and continue. Write no sidecar here.
 
 ### Verify — while drafting a spec/plan
 

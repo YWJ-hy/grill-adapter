@@ -87,12 +87,16 @@ When no formal finalized context matches the task:
    - Configured but unhealthy/ambiguous/unavailable: follow the `broken` path below.
    - Healthy: invoke `wiki-research` with phase `plan`, the single task's complete text, and the
      feature selection output path.
-2. If formal selection reports no relevant knowledge, do not create a context. Record
+2. Wait for the researcher dispatch to reach a terminal result. Only an explicit terminal
+   `no_relevant_wiki` result means that formal selection found no relevant knowledge; do not
+   infer `no-relevant` from a dispatch error, missing output, an existing agent path, or a
+   one-off main-agent search. Those failures follow the `broken` path below.
+3. If formal selection reports no relevant knowledge, do not create a context. Record
    `no-relevant` with a precise reason and continue.
-3. If selection succeeds, follow `wiki-research` exactly: scaffold schema v6, route each applicable
+4. If selection succeeds, follow `wiki-research` exactly: scaffold schema v6, route each applicable
    Note/Card to this one task (or global/planning-only as appropriate), confirm routing, then
    `--finalize` using the single-task roster. Do not place Note bodies in the sidecar.
-4. Run the fingerprint preflight and the readiness `bind` command above. Only its successful,
+5. Run the fingerprint preflight and the readiness `bind` command above. Only its successful,
    atomic stdout may enter the implementation context.
 
 Record a non-ready result with:

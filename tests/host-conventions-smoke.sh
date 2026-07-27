@@ -33,6 +33,9 @@ done
 need "$CODEX_GRILL" '$mattpocock-skills:grill-with-docs'
 need "$CODEX_GRILL" '$mattpocock-skills:to-tickets'
 need "$CODEX_GRILL" '$mattpocock-skills:implement'
+need "$CODEX_GRILL" 'Activation gate:'
+need "$CODEX_GRILL" 'ordinary user request'
+need "$CODEX_GRILL" 'A direct request that does not enter'
 need "$CODEX_PLAIN" '$grill-adapter:wiki-research'
 need "$CODEX_PLAIN" '$grill-adapter:wiki-readiness'
 need "$CODEX_PLAIN" '$grill-adapter:wiki-materialize'
@@ -43,6 +46,9 @@ need "$CODEX_PLAIN" 'plain Codex host'
 need "$GRILL" 'grill-adapter:host:grill:start'
 need "$GRILL" 'grill-adapter:host:grill:end'
 need "$GRILL" 'never patches any grill skill'
+need "$GRILL" 'Activation gate:'
+need "$GRILL" 'ordinary user request'
+need "$GRILL" 'A direct request that does not enter'
 need "$GRILL" '/grill-adapter:wiki-research'       # Disclose
 need "$GRILL" '/grill-adapter:wiki-readiness'      # implementation-entry readiness
 need "$GRILL" '/grill-adapter:wiki-materialize'    # Bind

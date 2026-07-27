@@ -29,6 +29,8 @@ grill-adapter 本身是一个双运行时插件：`.claude-plugin/plugin.json` �
 
 映射 grill 阶段 → grill-adapter 触点（全文见该文件，install 会写进目标 CLAUDE.md）：
 
+grill host 约定块默认保持静默，只有当前任务明确调用对应的 grill skill/stage 才激活相应触点。普通用户需求、计划措辞或准备编辑代码都不能推断出 grill 阶段；用户仍可直接显式调用某个 `grill-adapter` skill。
+
 | grill 阶段 | 约定动作 |
 |---|---|
 | `/grill-with-docs` | **Disclose**：`/grill-adapter:wiki-research`（phase brainstorm）披露相关 wiki |
@@ -48,7 +50,7 @@ grill 自己的 skill（`/grill-with-docs`、`/to-spec` 等）按宿主原样引
 
 ### Agent 角色在两种运行时的差异
 
-Claude Code 会直接注册 `agents/wiki-researcher.md`。Codex 插件当前不注册该目录，因此 `wiki-research` skill 会读取同一份自包含 agent prompt，并派生通用 sub-agent 执行。职责边界、输入与输出契约不变，只改变 dispatch 机制。
+Claude Code 会直接注册 `agents/wiki-researcher.md`。Codex 插件当前不注册该目录，因此 `wiki-research` skill 会读取同一份自包含 agent prompt，并派生通用 sub-agent 执行；Codex 必须等待同一 agent path 的终态，dispatch/容量/生命周期失败不得被当作 `no-relevant`。职责边界、输入与输出契约不变，只改变 dispatch 机制。
 
 ## hook 配置（`hooks/hooks.json`）
 
