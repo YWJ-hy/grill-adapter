@@ -1,6 +1,6 @@
 {
   "name": "grill-adapter",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Host-agnostic Claude Code/Codex adapter with governed Wiki, source-truth verification, and debugging retrospectives.",
   "type": "module",
   "author": {
