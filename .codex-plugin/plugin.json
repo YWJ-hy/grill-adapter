@@ -1,6 +1,6 @@
 {
   "name": "grill-adapter",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "description": "Host-agnostic coding adapter with governed Obsidian atomic Notes, source-of-truth verification, and debugging retrospectives for grill or plain Codex workflows.",
   "author": {
     "name": "yewenjie",
