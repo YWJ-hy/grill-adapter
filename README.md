@@ -52,7 +52,9 @@ obsidian-wiki bridge start
 It creates a commented JSONC example and a non-overwriting active config under
 `~/.config/grill-adapter/`. Use `obsidian-wiki config set-location <path>` to
 move the active file. The plugin MCP and the independently running bridge use
-the same config; the bridge remains loopback-only and token-authenticated. Use
+the same config; the bridge remains loopback-only and token-authenticated.
+`obsidian-wiki bridge start` starts it in the background and exits after the
+health check passes. Use
 `obsidian-wiki bridge stop` for a graceful shutdown and
 `obsidian-wiki bridge restart` to stop the old process and start a detached
 background instance.

@@ -121,7 +121,7 @@ obsidian-wiki bridge stop
 obsidian-wiki bridge restart
 ```
 
-MCP 和 bridge 使用相同的配置发现顺序：`--config`、`OBSIDIAN_WIKI_CONFIG`、CLI 写入的 location pointer、默认 JSONC 路径，最后兼容旧的 `OBSIDIAN_WIKI_REGISTRY` 与 JSON 文件。bridge 仍然是独立的 loopback HTTP 进程，但不再需要手动拼接 Vault/root/project 环境变量；`bridge start` 从统一配置读取它们。token 仍由配置中声明的环境变量提供，不写入 example 文件。`bridge start` 前台运行，可用 `Ctrl-C` 停止；`bridge stop` 通过 token 鉴权的 loopback 请求优雅关闭；`bridge restart` 停止旧实例后以 detached 后台进程重新启动，并等待健康检查恢复。
+MCP 和 bridge 使用相同的配置发现顺序：`--config`、`OBSIDIAN_WIKI_CONFIG`、CLI 写入的 location pointer、默认 JSONC 路径，最后兼容旧的 `OBSIDIAN_WIKI_REGISTRY` 与 JSON 文件。bridge 仍然是独立的 loopback HTTP 进程，但不再需要手动拼接 Vault/root/project 环境变量；`bridge start` 从统一配置读取它们。token 仍由配置中声明的环境变量提供，不写入 example 文件。`bridge start` 启动 detached 后台进程并在健康检查通过后退出终端；`bridge stop` 通过 token 鉴权的 loopback 请求优雅关闭；`bridge restart` 停止旧实例后重新启动后台进程，并等待健康检查恢复。需要前台运行或由外部 supervisor 管理时，使用兼容入口 `serve-write-bridge`。
 
 ## 本机 Registry
 

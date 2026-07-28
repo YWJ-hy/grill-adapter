@@ -44,10 +44,12 @@ Vault root, allowed Source roots, project allowlist, host, and port from the
 same configuration file. The bearer token remains in the environment variable
 named by `bridge.tokenEnv`.
 
-`bridge start` stays in the foreground and can be stopped with `Ctrl-C`.
-`bridge stop` sends an authenticated loopback shutdown request and waits for
-the health endpoint to go offline. `bridge restart` performs the same stop,
-then starts a detached background bridge and waits for it to become healthy.
+`bridge start` starts a detached background bridge, waits for its health endpoint,
+and then exits the terminal. `bridge stop` sends an authenticated loopback
+shutdown request and waits for the health endpoint to go offline. `bridge restart`
+performs the same stop, then starts a detached background bridge and waits for it
+to become healthy. Use `serve-write-bridge` when a foreground process is needed
+for an external supervisor.
 
 `upsert-vault` and `upsert-repository` are idempotent and preserve unrelated
 registry entries. If an existing entry differs, they fail unless `--replace` is

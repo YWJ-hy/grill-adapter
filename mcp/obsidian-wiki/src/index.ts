@@ -122,18 +122,29 @@ async function restartBridge(
   configPath?: string,
 ): Promise<{ pid: number | undefined; endpoint: string }> {
   const stopped = await stopBridge(resolved);
+  return startDetachedBridge(resolved, configPath, stopped.endpoint);
+}
+
+async function startDetachedBridge(
+  resolved: ReturnType<typeof resolveBridgeConfig>,
+  configPath?: string,
+  endpoint = bridgeEndpoint(resolved),
+): Promise<{ pid: number | undefined; endpoint: string }> {
+  if (await bridgeHealth(endpoint)) {
+    return { pid: undefined, endpoint };
+  }
   const scriptPath = process.argv[1];
-  if (!scriptPath) throw new Error('Cannot restart Obsidian Wiki bridge without the CLI entrypoint path');
-  const childArgs = [scriptPath, 'bridge', 'start'];
+  if (!scriptPath) throw new Error('Cannot start Obsidian Wiki bridge without the CLI entrypoint path');
+  const childArgs = [scriptPath, 'serve-write-bridge'];
   if (configPath) childArgs.push('--config', configPath);
   const child = spawn(process.execPath, childArgs, {
     detached: true,
     env: process.env,
     stdio: 'ignore',
+    windowsHide: true,
   });
   child.unref();
   const deadline = Date.now() + 5000;
-  const endpoint = stopped.endpoint;
   while (Date.now() < deadline) {
     if (await bridgeHealth(endpoint)) return { pid: child.pid, endpoint };
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -143,7 +154,7 @@ async function restartBridge(
   } catch {
     // The child may have exited while the health check was polling.
   }
-  throw new Error(`Obsidian Wiki bridge restart did not become healthy at ${endpoint}`);
+  throw new Error(`Obsidian Wiki bridge did not become healthy at ${endpoint}`);
 }
 
 function printHelp(): void {
@@ -161,11 +172,11 @@ Usage:
   obsidian-wiki config validate [--config <path>]
   obsidian-wiki doctor [--config <path>]           Validate project bindings and runtime health
   printf '<json>' | obsidian-wiki search-by-wiki-ids
-  obsidian-wiki bridge start [--config <path>]    Start the foreground write bridge
+  obsidian-wiki bridge start [--config <path>]    Start a detached background write bridge
   obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
   obsidian-wiki bridge stop [--config <path>]    Gracefully stop the write bridge
-  obsidian-wiki bridge restart [--config <path>] Restart the write bridge in background
-  obsidian-wiki serve-write-bridge                Compatibility alias for bridge start
+  obsidian-wiki bridge restart [--config <path>] Restart the detached write bridge
+  obsidian-wiki serve-write-bridge                Run the write bridge in the foreground
 `);
 }
 
@@ -213,7 +224,9 @@ async function main(): Promise<void> {
     return;
   }
   if (subcommand === 'bridge' && action === 'start') {
-    await runWriteBridgeFromEnvironment(process.env);
+    const resolved = resolveBridgeConfig(process.env, parsed.configPath, process.env.OBSIDIAN_WIKI_BRIDGE_VAULT_REF);
+    const result = await startDetachedBridge(resolved, parsed.configPath);
+    printJson({ ...result, running: true, started: result.pid !== undefined, registryPath: resolved.registryPath });
     return;
   }
   if (subcommand === 'bridge' && action === 'status') {

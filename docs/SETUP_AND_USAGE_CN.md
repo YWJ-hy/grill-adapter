@@ -97,9 +97,10 @@ obsidian-wiki doctor
 obsidian-wiki bridge start
 ```
 
+`bridge start` 会启动 detached 后台实例并等待 `/health` 恢复后退出终端。
 bridge 需要关闭时运行 `obsidian-wiki bridge stop`；需要重启时运行
-`obsidian-wiki bridge restart`。后者会启动一个 detached 后台实例，并等待
-`/health` 恢复。
+`obsidian-wiki bridge restart`。需要前台运行时可使用
+`obsidian-wiki serve-write-bridge`。
 
 也可以用 `obsidian-wiki config set-location <path>` 修改配置文件位置。配置完成后运行：
 
