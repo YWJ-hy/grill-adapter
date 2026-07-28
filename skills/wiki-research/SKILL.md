@@ -97,17 +97,19 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .grill-adapter/cont
 
 3. Read the generated `.wiki-context.json` for its Note summaries and use them like spec input while shaping the work. The sidecar is the record of which bound Notes and Skill Cards constrain this feature; tell the user what was selected and where it lives.
 
-4. Once the host's tickets exist and their ids are stable, edit each selected Note/Card's `destination` **once**:
-   - `destination.kind`: `planning-only` for soft Notes the task text already embodies (never for a hard Note); `global` for rules every task and reviewer needs; else `task-bound`.
+4. Before finalizing, compare every selected Note/Card with the confirmed task/spec. A search hit or graph neighbor is not evidence of applicability. If a candidate is not independently applicable, preserve it in the sidecar with `destination.kind: not-applicable` and a concrete `destination.reason`; this audit-only state must not be routed to any task or role.
+
+5. Once the host's tickets exist and their ids are stable, edit each selected Note/Card's `destination` **once**:
+   - `destination.kind`: `planning-only` for soft Notes the task text already embodies (never for a hard Note); `global` for rules every task and reviewer needs; `task-bound` for a directly applicable subset of tickets; `not-applicable` for a candidate verified as unrelated.
    - `destination.reason`: one line per Note/Card (the generator leaves it empty on purpose).
    - For every `task-bound` Note/Card, list the roster ticket ids in `destination.tasks` (e.g. `["01","03"]`).
    - Do not change `requiredSkills[].requiredFor` or its `skillName`/`skillVersion`/`skillContractHash`/`skillTriggers`/`discoveryState`; all are copied from mechanically validated reviewed Card metadata.
    - Flip `taskRouting.status` to `confirmed` with `selectedSectionsFrozen: true`.
    - Surface every global Note/Card summary to the user as a feature-wide constraint.
 
-5. Build the ticket roster `.grill-adapter/context/<feature-slug>.ticket-roster.json` from the host's real tickets (shape: `${CLAUDE_PLUGIN_ROOT}/contracts/ticket-roster-v1.example.jsonc`). Your host's convention block in the project `CLAUDE.md` or `AGENTS.md` says where its tickets live and which `ticketSource` applies — read it rather than guessing. Copy each ticket's `text` verbatim: it is the fingerprint input.
+6. Build the ticket roster `.grill-adapter/context/<feature-slug>.ticket-roster.json` from the host's real tickets (shape: `${CLAUDE_PLUGIN_ROOT}/contracts/ticket-roster-v1.example.jsonc`). Your host's convention block in the project `CLAUDE.md` or `AGENTS.md` says where its tickets live and which `ticketSource` applies — read it rather than guessing. Copy each ticket's `text` verbatim: it is the fingerprint input.
 
-6. Finalize in one call — builds the `taskWikiRefs` roster, stamps each `taskFingerprint`, validates execution readiness, writes once:
+7. Finalize in one call — builds the `taskWikiRefs` roster, stamps each `taskFingerprint`, validates execution readiness, writes once:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .grill-adapter/context/<feature-slug>.wiki-context.json --finalize --strict --project-root <project-root> --ticket-roster .grill-adapter/context/<feature-slug>.ticket-roster.json

@@ -21,7 +21,7 @@ Sidecars anchor on the feature, not on a plan file: they live in `.grill-adapter
 
 1. Run `/grill-adapter:wiki-research` (phase `plan`), then follow it to scaffold the schema-v6 `.grill-adapter/context/<feature-slug>.wiki-context.json` from its bound Obsidian Note/Skill Card selection (`wiki_context_render.py --scaffold … --feature-slug <feature-slug> --ticket-source manual`) and edit each Note/Card's `destination` once. The sidecar must not contain Note bodies.
 2. Once the tasks are settled, write the ticket roster `.grill-adapter/context/<feature-slug>.ticket-roster.json` (`/grill-adapter:wiki-research` carries the roster shape). There is no fixed tracker here, so use whatever the user points you at — a task list, issues, a plan document's sections. `taskId` is any stable id; `text` is that task's full text verbatim, since it is the fingerprint input.
-3. Run `--finalize` once with `--ticket-roster`, route each Note/Card to roster task IDs, and preserve every Card's name/version/contract hash/triggers/roles/discovery state.
+3. Run `--finalize` once with `--ticket-roster`, mark selected but unrelated candidates `not-applicable` so they stay out of execution, route each applicable Note/Card to roster task IDs, and preserve every Card's name/version/contract hash/triggers/roles/discovery state.
 
 The sidecar is the record of which wiki constrains this feature. Nothing under `.grill-adapter/context/` is committed — sidecar, roster, and candidates are local working state that execution reads in place. Never `git add -f` them.
 

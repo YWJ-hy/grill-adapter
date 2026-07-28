@@ -99,7 +99,7 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
    /wiki-research      # phase: plan
    ```
 
-2. 用 render 脚本把选择 scaffold 成 schema-v6 sidecar，编辑每个 Note/Card 的 destination，由真实 ticket 建 roster，再 finalize：
+2. 用 render 脚本把选择 scaffold 成 schema-v6 sidecar，先逐项核对候选与确认后的任务；检索命中但实际无关的候选标记为 `destination.kind: not-applicable`（保留审计记录但不进入执行），再编辑其余 Note/Card 的 destination，由真实 ticket 建 roster，最后 finalize：
 
    ```bash
    wiki_context_render.py --scaffold --feature-slug <slug> --ticket-source <source>

@@ -48,6 +48,8 @@
     }
   ],
   // Skill Cards are a distinct collection. They may route independently from normal Wiki Notes.
+  // Any selected but unrelated candidate may use destination.kind "not-applicable" with a reason;
+  // that audit-only route is excluded from execution and review materialization.
   "requiredSkills": [
     {
       "sourceId": "example-project",

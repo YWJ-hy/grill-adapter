@@ -18,7 +18,9 @@ from adr_identity import AdrIdentityError, source_id_for_path, validate_identity
 KIND = "grill-adapter.wiki-context"
 SCHEMA_VERSION = 6
 SUPPORTED_SCHEMA_VERSIONS = {SCHEMA_VERSION}
-DESTINATION_KINDS = {"task-bound", "global", "planning-only"}
+# Preserve a researcher candidate for audit while explicitly excluding it from execution/review.
+# `_v6_task_notes` only returns `global` and task-bound entries, so this state cannot leak.
+DESTINATION_KINDS = {"task-bound", "global", "planning-only", "not-applicable"}
 SCAFFOLD_GENERATED_BY = "grill-adapter"
 # taskRouting block emitted by --scaffold. These are the pre-confirmation values: the author flips
 # status to "confirmed" and selectedSectionsFrozen to true once routing is final, and

@@ -97,8 +97,9 @@ When no formal finalized context matches the task:
    agent path, or a one-off main-agent search. Those failures follow the `broken` path below.
 3. If formal selection reports no relevant knowledge, do not create a context. Record
    `no-relevant` with a precise reason and continue.
-4. If selection succeeds, follow `wiki-research` exactly: scaffold schema v6, route each applicable
-   Note/Card to this one task (or global/planning-only as appropriate), confirm routing, then
+4. If selection succeeds, follow `wiki-research` exactly: scaffold schema v6, mark unrelated
+   candidates `not-applicable`, route each applicable Note/Card to this one task (or
+   global/planning-only as appropriate), confirm routing, then
    `--finalize` using the single-task roster. Do not place Note bodies in the sidecar.
 5. Run the fingerprint preflight and the readiness `bind` command above. Only its successful,
    atomic stdout may enter the implementation context.

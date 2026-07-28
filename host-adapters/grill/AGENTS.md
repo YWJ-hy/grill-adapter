@@ -38,7 +38,7 @@ grill publishes tickets to the tracker configured by `$mattpocock-skills:setup-m
    - **Local markdown** (`ticketSource: grill-local-scratch`) — one roster entry per `.scratch/<feature-slug>/issues/<NN>-<slug>.md`. `taskId` is the `NN` prefix; `text` is the whole file body, verbatim.
    - **GitHub / Linear** (`ticketSource: github-issues`) — one roster entry per ticket issue (`gh issue view <n> --json body,title`). `taskId` is the issue number; `text` is the issue body, verbatim.
    Never summarize or reformat ticket text: `text` is the fingerprint input, and a rewritten body reads as ticket drift at execution.
-4. Run `--finalize` once with `--ticket-roster` to build taskWikiRefs and fingerprints. Route each Note/Card to roster task IDs; preserve every Card's name/version/contract hash/triggers/roles/discovery state.
+4. Run `--finalize` once with `--ticket-roster` to build taskWikiRefs and fingerprints. Mark selected but unrelated candidates `not-applicable` so they stay out of execution, and route each applicable Note/Card to roster task IDs; preserve every Card's name/version/contract hash/triggers/roles/discovery state.
 5. Run `$grill-adapter:source-truth-check` (renders `plan-pre`, and `plan-review` during review) and apply any policy output.
 
 The sidecar **is** the record of which wiki constrains this feature — there is no plan document to add a `## Referenced Project Wiki` section to. Tell the user which pages/sections were selected and where the sidecar lives.

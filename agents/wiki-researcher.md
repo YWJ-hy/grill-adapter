@@ -39,10 +39,10 @@ focus: <optional module, concern, or changed files>
 
 1. Call `obsidian_wiki_status` and `obsidian_wiki_sources`. If either reports unhealthy bindings, return `missing_wiki_root` with its errors; do not fall back to legacy Wiki sources.
 2. Search each bound Source narrowly with task/focus terms using `obsidian_wiki_search`. Search results are metadata only.
-3. Select only Notes whose active, agent-visible metadata applies. Keep project and Shared Notes independently represented by their `sourceId` and `role`.
+3. Select only Notes whose active, agent-visible metadata applies directly to the supplied task. A keyword hit, same module, same page, or graph adjacency is insufficient; the Note must constrain the exact behavior, files, interface, or failure mode under discussion. When applicability is uncertain, omit the Note rather than widening the selection. Keep project and Shared Notes independently represented by their `sourceId` and `role`.
 4. For each proposed Note, use `obsidian_wiki_read_notes` for one bounded stable batch. Use its returned metadata and `snapshotHash`; do not preserve `content` in the output.
 5. Select a Skill Card independently only when its result declares `discoveryState: discoverable`, non-empty `skillRoles`, and matching `skillTriggers`. The MCP has already proved that the Card came from a synchronized remote base and that its pack name, version, and contract hash are available in both runtime directories of the current project. Copy those identity fields unchanged and copy `skillRoles` to `requiredFor`; never infer or broaden them.
-6. Run one `obsidian_wiki_graph_neighbors` query for the selected Note `wikiId` values. Consider direct typed neighbors only; select a neighbor only if it independently applies. Do not expand a neighbor's neighbors.
+6. Run one `obsidian_wiki_graph_neighbors` query for the selected Note `wikiId` values. Consider direct typed neighbors only; select a neighbor only if it independently applies to the exact task; never include a neighbor solely to preserve graph completeness. Do not expand a neighbor's neighbors.
 7. During `brainstorm`, return only relevant Note metadata. During `plan`, produce the same bounded metadata selection for Carry. During `debug`, select at most two Notes and state that their claims require code/test verification.
 
 ## Output
