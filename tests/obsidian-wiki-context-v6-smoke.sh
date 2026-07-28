@@ -92,6 +92,20 @@ cat > "$SELECTION" <<'JSON'
       "requiredFor": ["reviewer"]
     }
   ],
+  "selectionRationales": [
+    {
+      "wikiId": "project/runtime/constraints",
+      "reason": "The planned change crosses the runtime transaction boundary."
+    },
+    {
+      "wikiId": "shared/testing/coverage",
+      "reason": "The planned workflow needs its public behavior seam covered."
+    },
+    {
+      "wikiId": "shared/skills/review-contracts",
+      "reason": "The review task needs the contract review workflow."
+    }
+  ],
   "caveats": [],
   "maintenanceWarnings": []
 }
@@ -113,6 +127,7 @@ assert note['path'] == 'Projects/example/Runtime/constraints.md'
 assert note['contentHash'].startswith('sha256:')
 assert note['destination'] == {'kind': 'task-bound', 'reason': '', 'tasks': []}
 assert 'content' not in note
+assert 'selectionRationales' not in context
 skill = context['requiredSkills'][0]
 assert skill['wikiId'] == 'shared/skills/review-contracts'
 assert skill['requiredFor'] == ['reviewer']
@@ -307,6 +322,82 @@ if python3 "$SCRIPT" "$TMP/no-results.wiki-context.json" --scaffold "$BAD_STATUS
 fi
 if ! grep -q 'selection.status must be ok or partial' /tmp/obsidian-v6-status.out; then
   cat /tmp/obsidian-v6-status.out >&2
+  exit 1
+fi
+
+BAD_TOP_LEVEL_FIELD="$TMP/selection-with-body.obsidian-wiki-selection.json"
+python3 - "$SELECTION" "$BAD_TOP_LEVEL_FIELD" <<'PY'
+import json
+import sys
+
+selection = json.load(open(sys.argv[1], encoding='utf-8'))
+selection['content'] = 'A Note body must never cross the Carry boundary.'
+with open(sys.argv[2], 'w', encoding='utf-8') as handle:
+    json.dump(selection, handle)
+PY
+if python3 "$SCRIPT" "$TMP/selection-with-body.wiki-context.json" --scaffold "$BAD_TOP_LEVEL_FIELD" --strict >/tmp/obsidian-v6-selection-body.out 2>&1; then
+  printf 'Expected a top-level selection body field to fail\n' >&2
+  exit 1
+fi
+if ! grep -q 'Obsidian selection contains unsupported fields: content' /tmp/obsidian-v6-selection-body.out; then
+  cat /tmp/obsidian-v6-selection-body.out >&2
+  exit 1
+fi
+
+BAD_RATIONALE_ID="$TMP/unknown-rationale-id.obsidian-wiki-selection.json"
+python3 - "$SELECTION" "$BAD_RATIONALE_ID" <<'PY'
+import json
+import sys
+
+selection = json.load(open(sys.argv[1], encoding='utf-8'))
+selection['selectionRationales'][0]['wikiId'] = 'project/runtime/not-selected'
+with open(sys.argv[2], 'w', encoding='utf-8') as handle:
+    json.dump(selection, handle)
+PY
+if python3 "$SCRIPT" "$TMP/unknown-rationale-id.wiki-context.json" --scaffold "$BAD_RATIONALE_ID" --strict >/tmp/obsidian-v6-rationale-id.out 2>&1; then
+  printf 'Expected a rationale for an unselected Note to fail\n' >&2
+  exit 1
+fi
+if ! grep -q 'must name a selected Note or Skill Card' /tmp/obsidian-v6-rationale-id.out; then
+  cat /tmp/obsidian-v6-rationale-id.out >&2
+  exit 1
+fi
+
+BAD_RATIONALE_FIELD="$TMP/rationale-body.obsidian-wiki-selection.json"
+python3 - "$SELECTION" "$BAD_RATIONALE_FIELD" <<'PY'
+import json
+import sys
+
+selection = json.load(open(sys.argv[1], encoding='utf-8'))
+selection['selectionRationales'][0]['content'] = 'A Note body must never cross the Carry boundary.'
+with open(sys.argv[2], 'w', encoding='utf-8') as handle:
+    json.dump(selection, handle)
+PY
+if python3 "$SCRIPT" "$TMP/rationale-body.wiki-context.json" --scaffold "$BAD_RATIONALE_FIELD" --strict >/tmp/obsidian-v6-rationale-body.out 2>&1; then
+  printf 'Expected rationale body content to fail\n' >&2
+  exit 1
+fi
+if ! grep -q 'selectionRationales\[0\] contains unsupported fields: content' /tmp/obsidian-v6-rationale-body.out; then
+  cat /tmp/obsidian-v6-rationale-body.out >&2
+  exit 1
+fi
+
+MISSING_RATIONALE="$TMP/missing-rationale.obsidian-wiki-selection.json"
+python3 - "$SELECTION" "$MISSING_RATIONALE" <<'PY'
+import json
+import sys
+
+selection = json.load(open(sys.argv[1], encoding='utf-8'))
+selection['selectionRationales'].pop()
+with open(sys.argv[2], 'w', encoding='utf-8') as handle:
+    json.dump(selection, handle)
+PY
+if python3 "$SCRIPT" "$TMP/missing-rationale.wiki-context.json" --scaffold "$MISSING_RATIONALE" --strict >/tmp/obsidian-v6-missing-rationale.out 2>&1; then
+  printf 'Expected an incomplete rationale set to fail\n' >&2
+  exit 1
+fi
+if ! grep -q 'selectionRationales must include every selected Note and Skill Card' /tmp/obsidian-v6-missing-rationale.out; then
+  cat /tmp/obsidian-v6-missing-rationale.out >&2
   exit 1
 fi
 

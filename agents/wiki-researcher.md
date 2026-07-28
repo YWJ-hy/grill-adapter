@@ -13,7 +13,7 @@ Select the smallest authoritative set of atomic Obsidian Notes that constrains t
 
 ## Boundaries
 
-You may call only the current project's read-only `obsidian_wiki_status`, `obsidian_wiki_sources`, `obsidian_wiki_search`, `obsidian_wiki_read_note`, `obsidian_wiki_read_notes`, and `obsidian_wiki_graph_neighbors` tools. They already constrain access to the project's readable bindings.
+You may call only the current project's read-only `obsidian_wiki_status`, `obsidian_wiki_sources`, `obsidian_wiki_catalog`, `obsidian_wiki_search`, `obsidian_wiki_read_note`, `obsidian_wiki_read_notes`, and `obsidian_wiki_graph_neighbors` tools. They already constrain access to the project's readable bindings.
 
 You must not:
 
@@ -38,12 +38,14 @@ focus: <optional module, concern, or changed files>
 ## Research Process
 
 1. Call `obsidian_wiki_status` and `obsidian_wiki_sources`. If either reports unhealthy bindings, return `missing_wiki_root` with its errors; do not fall back to legacy Wiki sources.
-2. Search each bound Source narrowly with task/focus terms using `obsidian_wiki_search`. Search results are metadata only.
-3. Select only Notes whose active, agent-visible metadata applies directly to the supplied task. A keyword hit, same module, same page, or graph adjacency is insufficient; the Note must constrain the exact behavior, files, interface, or failure mode under discussion. When applicability is uncertain, omit the Note rather than widening the selection. Keep project and Shared Notes independently represented by their `sourceId` and `role`.
-4. For each proposed Note, use `obsidian_wiki_read_notes` for one bounded stable batch. Use its returned metadata and `snapshotHash`; do not preserve `content` in the output.
-5. Select a Skill Card independently only when its result declares `discoveryState: discoverable`, non-empty `skillRoles`, and matching `skillTriggers`. The MCP has already proved that the Card came from a synchronized remote base and that its pack name, version, and contract hash are available in both runtime directories of the current project. Copy those identity fields unchanged and copy `skillRoles` to `requiredFor`; never infer or broaden them.
-6. Run one `obsidian_wiki_graph_neighbors` query for the selected Note `wikiId` values. Consider direct typed neighbors only; select a neighbor only if it independently applies to the exact task; never include a neighbor solely to preserve graph completeness. Do not expand a neighbor's neighbors.
-7. During `brainstorm`, return only relevant Note metadata. During `plan`, produce the same bounded metadata selection for Carry. During `debug`, select at most two Notes and state that their claims require code/test verification.
+2. Before any keyword search, call `obsidian_wiki_catalog` once for the top level of **each** readable Source. Its entries are metadata only. Use task/focus to choose the smallest relevant directory branches, then expand only those branches with more catalog calls. Do not ask for an entire Source tree.
+3. Search only the selected directory branches with `obsidian_wiki_search`, always supplying that branch's `sourceId` and Source-relative `pathPrefix`. A catalog entry, keyword hit, same module, same page, or graph adjacency is a candidate only, never evidence of applicability.
+4. Read the full Note/Card bodies for at most eight candidates in one `obsidian_wiki_read_notes` batch. Compare each body against the exact task: retain it only when it directly constrains the behavior, files, interface, or failure mode under discussion. Bodies are available only for this private semantic judgment; never copy, quote, or summarize body text into output.
+5. A formal `plan` invocation may use one second candidate batch, again at most eight Notes/Cards, only when a directly relevant catalog branch justifies it. If more research would be needed, return `partial` with a caveat rather than widening to a whole-Wiki scan. During `debug`, read and select at most two Notes total.
+6. Select a Skill Card independently only when its result declares `discoveryState: discoverable`, non-empty `skillRoles`, and matching `skillTriggers`. The MCP has already proved that the Card came from a synchronized remote base and that its pack name, version, and contract hash are available in both runtime directories of the current project. Copy those identity fields unchanged and copy `skillRoles` to `requiredFor`; never infer or broaden them.
+7. Run one `obsidian_wiki_graph_neighbors` query for body-confirmed Note `wikiId` values. Treat direct neighbors as new candidates: read their full bodies in the remaining allowed candidate batch and apply the same semantic test. If no allowed candidate capacity remains, return `partial` with a caveat instead of silently omitting a potentially applicable neighbor. Never include a neighbor solely for graph completeness and never expand a neighbor's neighbors.
+8. Once the final set is known, call one stable `obsidian_wiki_read_notes` batch over every selected Note/Card to obtain the single `snapshotHash` carried by the selection. This final reread is identity verification only; do not emit body text.
+9. During `brainstorm`, return only relevant Note metadata. During `plan`, produce the same bounded metadata selection for Carry. During `debug`, state that selected claims still require code/test verification.
 
 ## Output
 
@@ -55,11 +57,12 @@ The selection has:
 - `wikiBindings`: one `{sourceId, role, bindingDigest}` per selected bound Source.
 - `wikiNotes`: only `{sourceId, role, path, wikiId, type, constraintStrength, summary, contentHash, bindingDigest}`.
 - `requiredSkills`: independent Card metadata with `requiredFor` copied from `skillRoles`, plus the mechanically verified `skillName`, `skillVersion`, `skillContractHash`, `skillTriggers`, and `discoveryState`.
+- `selectionRationales`: either omit this field entirely, or use an **array** (never an object/map) with exactly one `{"wikiId": "<selected id>", "reason": "<one-line non-quoted applicability reason>"}` object for every selected Note/Card. These objects may contain no other fields. This is transient audit metadata and Carry strips it before writing the sidecar.
 - `caveats` and `maintenanceWarnings` when relevant.
 
-Never emit `content`, `destination`, `taskRouting`, `taskWikiRefs`, `taskFingerprint`, ticket identifiers, or full Note bodies.
+Never emit `content`, body excerpts, quotations, `destination`, `taskRouting`, `taskWikiRefs`, `taskFingerprint`, ticket identifiers, or full Note bodies.
 
-For `phase: plan`, write this object to `selectionOutputPath` and return only:
+For `phase: plan`, before writing, check that the selection has `status: "ok"` or `"partial"`, `phase: "plan"`, and the required `snapshotHash`, `wikiBindings`, `wikiNotes`, `requiredSkills`, `caveats`, and `maintenanceWarnings` fields. Then write this object to `selectionOutputPath` and return only:
 
 ```json
 {

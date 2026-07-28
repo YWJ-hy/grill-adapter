@@ -76,7 +76,7 @@ grill 进入质询/发现阶段时，用 wiki-research 披露与当前话题相�
 /wiki-research      # phase: brainstorm
 ```
 
-- 由 `wiki-researcher` agent 渐进式挑选相关页面 / 节。
+- 由 `wiki-researcher` agent 先查看每个 bound Source 的 metadata 目录，再按需展开相关分支、在该分支内检索，并只全文复核少量候选 Note/Card；正文不离开该子 agent。
 - 此阶段**只披露、不写 selection/context sidecar**。若质询解决了 durable 决策，可经 `/candidate-journal` 以 `grill-with-docs` stage 追加候选，但不写 Obsidian。
 
 ### 步骤 2 · `/to-spec` — 真实源 Verify
@@ -93,7 +93,7 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
 
 这是 wiki 正式「入册」的阶段：从披露升级为**正式选择 + 固化进 sidecar**。
 
-1. 正式选择受绑定的 Obsidian atomic Note 和独立 Skill Card。Card 只有在 merged/base-synchronized 且本地双运行时 pack 的 name/version/hash 可用时才由 MCP 标记 `discoverable`，选择结果把这组身份写入 metadata-only selection：
+1. 正式选择受绑定的 Obsidian atomic Note 和独立 Skill Card：研究员先以 `obsidian_wiki_catalog` 浏览受限目录，再在选中的 `sourceId` / `pathPrefix` 分支检索；每轮最多全文复核 8 个候选（规划最多两轮），关键词、目录或一跳图邻居都必须经正文语义判断才可入选。Card 只有在 merged/base-synchronized 且本地双运行时 pack 的 name/version/hash 可用时才由 MCP 标记 `discoverable`，选择结果把这组身份与不含正文的一行适用性理由写入 transient metadata-only selection：
 
    ```
    /wiki-research      # phase: plan

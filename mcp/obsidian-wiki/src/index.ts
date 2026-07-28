@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { createServer } from './server.js';
 import { statusTool } from './tools/status.js';
 import { searchTool, searchWikiIdsTool } from './tools/search.js';
+import { catalogTool } from './tools/catalog.js';
 import { readNotesByWikiIdsTool, readNotesTool } from './tools/read.js';
 import { graphNeighborsTool } from './tools/graph.js';
 import { applyNoteChangeTool, proposeNoteChangeTool, type NoteChangeInput } from './tools/write.js';
@@ -30,6 +31,13 @@ async function readJsonRequest(): Promise<Record<string, unknown>> {
   } catch (error) {
     throw new Error(`Invalid JSON request: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+function optionalStringField(request: Record<string, unknown>, field: string): string | undefined {
+  const value = request[field];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') throw new Error(`${field} must be a string`);
+  return value;
 }
 
 function parseCliArguments(argv: string[]): { args: string[]; configPath?: string } {
@@ -171,6 +179,7 @@ Usage:
                                                     Upsert one Git repository entry
   obsidian-wiki config validate [--config <path>]
   obsidian-wiki doctor [--config <path>]           Validate project bindings and runtime health
+  printf '<json>' | obsidian-wiki catalog
   printf '<json>' | obsidian-wiki search-by-wiki-ids
   obsidian-wiki bridge start [--config <path>]    Start a detached background write bridge
   obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
@@ -262,14 +271,25 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify(statusTool(process.env))}\n`);
     return;
   }
+  if (subcommand === 'catalog') {
+    const request = await readJsonRequest();
+    process.stdout.write(`${JSON.stringify(catalogTool(request as never))}\n`);
+    return;
+  }
   if (subcommand === 'search' || subcommand === 'search-by-wiki-ids') {
     const request = await readJsonRequest();
     if (subcommand === 'search') {
       if (typeof request.query !== 'string' || !request.query.trim()) {
         throw new Error('query must be a non-empty string');
       }
+      const sourceId = optionalStringField(request, 'sourceId');
+      if (sourceId !== undefined && !sourceId.trim()) {
+        throw new Error('sourceId must be a non-empty string');
+      }
       process.stdout.write(`${JSON.stringify(searchTool({
         query: request.query,
+        sourceId,
+        pathPrefix: optionalStringField(request, 'pathPrefix'),
         publishFeatureSlug: typeof request.publishFeatureSlug === 'string' ? request.publishFeatureSlug : undefined,
       }))}\n`);
       return;

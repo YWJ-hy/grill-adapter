@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { catalogTool } from '../src/tools/catalog.js';
 import { searchTool } from '../src/tools/search.js';
 import { readNotesByWikiIdsTool, readNotesTool } from '../src/tools/read.js';
 import { graphNeighborsTool } from '../src/tools/graph.js';
@@ -70,6 +71,9 @@ function fixture() {
   writeFileSync(path.join(sourceRoot, 'Transitive.md'), note('project/example/transitive', 'Transitive note'), 'utf8');
   writeFileSync(path.join(sourceRoot, 'Archived.md'), note('project/example/archived', 'Archived note', { status: 'archived' }), 'utf8');
   writeFileSync(path.join(sourceRoot, 'Private.md'), note('project/example/private', 'Private note', { agentVisible: false }), 'utf8');
+  mkdirSync(path.join(sourceRoot, 'guides', 'runtime'), { recursive: true });
+  writeFileSync(path.join(sourceRoot, 'guides', 'Overview.md'), note('project/example/guides/overview', 'Guide overview'), 'utf8');
+  writeFileSync(path.join(sourceRoot, 'guides', 'runtime', 'Boundary.md'), note('project/example/guides/runtime-boundary', 'Runtime guide boundary'), 'utf8');
   const matchingSkill = {
     name: 'review-runtime',
     version: '1.0.0',
@@ -113,6 +117,8 @@ else if (args.includes('search')) {
     'Projects/example/Transitive.md',
     'Projects/example/Archived.md',
     'Projects/example/Private.md',
+    'Projects/example/guides/Overview.md',
+    'Projects/example/guides/runtime/Boundary.md',
     'Projects/example/ReviewSkill.md',
     'Projects/example/StaleSkill.md',
     'Projects/example/MissingSkill.md',
@@ -189,6 +195,71 @@ describe('Obsidian Wiki retrieval', () => {
     expect(result.notes.map((note) => note.wikiId)).not.toContain('project/other/private');
   });
 
+  it('lists a paginated metadata-only catalog and expands selected directories', () => {
+    const { env } = fixture();
+    const root = catalogTool({ sourceId: 'project' }, env);
+
+    expect(root).toMatchObject({
+      sourceId: 'project',
+      role: 'project',
+      pathPrefix: '',
+    });
+    expect(root.entries).toContainEqual({ kind: 'directory', pathPrefix: 'guides', noteCount: 2 });
+    expect(root.entries.every((entry) => !('content' in entry))).toBe(true);
+    expect(root.entries.map((entry) => (
+      entry.kind === 'directory' ? `directory:${entry.pathPrefix}` : `note:${entry.relativePath}`
+    ))).toEqual([
+      'directory:guides',
+      'note:Dependency.md',
+      'note:ReviewSkill.md',
+      'note:Transitive.md',
+      'note:Visible.md',
+    ]);
+    const catalogJson = JSON.stringify(root);
+    expect(catalogJson).not.toContain('project/example/archived');
+    expect(catalogJson).not.toContain('project/example/private');
+    expect(catalogJson).not.toContain('_meta');
+
+    const firstPage = catalogTool({ sourceId: 'project', limit: 1 }, env);
+    expect(firstPage.entries).toEqual([root.entries[0]]);
+    expect(firstPage.nextOffset).toBe(1);
+    expect(catalogTool({ sourceId: 'project', offset: 1, limit: 1 }, env).entries)
+      .toEqual([root.entries[1]]);
+
+    const guides = catalogTool({ sourceId: 'project', pathPrefix: 'guides' }, env);
+    expect(guides.entries).toContainEqual({ kind: 'directory', pathPrefix: 'guides/runtime', noteCount: 1 });
+    expect(guides.entries).toContainEqual(expect.objectContaining({
+      kind: 'note',
+      relativePath: 'guides/Overview.md',
+      wikiId: 'project/example/guides/overview',
+      summary: 'Guide overview',
+    }));
+  });
+
+  it('scopes searches to catalog directories and rejects unbound scope expansion', () => {
+    const { env } = fixture();
+    const scoped = searchTool({ query: 'guide', sourceId: 'project', pathPrefix: 'guides' }, env);
+
+    expect(scoped.notes.map((note) => note.wikiId).sort()).toEqual([
+      'project/example/guides/overview',
+      'project/example/guides/runtime-boundary',
+    ]);
+    expect(() => searchTool({ query: 'guide', pathPrefix: 'guides' }, env))
+      .toThrow(/pathPrefix requires sourceId/);
+    expect(() => catalogTool({ sourceId: 'missing' }, env))
+      .toThrow(/Unknown readable Obsidian Wiki Source/);
+    expect(() => catalogTool({ sourceId: 'project', pathPrefix: '../other' }, env))
+      .toThrow(/escapes its Source/);
+    expect(() => catalogTool({ sourceId: 'project', pathPrefix: 'guides/../other' }, env))
+      .toThrow(/escapes its Source/);
+    expect(() => catalogTool({ sourceId: 'project', pathPrefix: '/other' }, env))
+      .toThrow(/must be Source-relative/);
+    expect(() => catalogTool({ sourceId: 'project', pathPrefix: 'C:\\other' }, env))
+      .toThrow(/must be Source-relative/);
+    expect(() => catalogTool({ sourceId: 'project', limit: 51 }, env))
+      .toThrow(/between 1 and 50/);
+  });
+
   it('discovers only base-synchronized Skill Cards whose local name/version/hash are available', () => {
     const { env } = fixture();
     const result = searchTool({ query: 'skill' }, env);
@@ -262,6 +333,24 @@ describe('Obsidian Wiki retrieval', () => {
       notes: [expect.objectContaining({ wikiId: 'project/example/visible' })],
       snapshotHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     });
+  });
+
+  it('serves metadata-only catalogs through the built JSON CLI seam', () => {
+    const { env } = fixture();
+    const bundle = path.resolve(import.meta.dirname, '..', 'dist', 'index.js');
+
+    const output = execFileSync('node', [bundle, 'catalog'], {
+      encoding: 'utf8',
+      input: JSON.stringify({ sourceId: 'project', pathPrefix: 'guides' }),
+      env: { ...process.env, ...env },
+    });
+
+    const result = JSON.parse(output);
+    expect(result.entries).toContainEqual(expect.objectContaining({
+      kind: 'note',
+      relativePath: 'guides/Overview.md',
+    }));
+    expect(JSON.stringify(result)).not.toContain('Rule body.');
   });
 
   it('batch reads bound Notes with stable content and snapshot hashes', () => {

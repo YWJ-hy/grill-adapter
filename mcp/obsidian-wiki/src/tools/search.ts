@@ -2,11 +2,12 @@ import { resolveBindings } from '../bindings.js';
 import { assertUniqueBoundSkillCard, searchBoundNotes } from '../retrieval.js';
 import { skillCardAvailability } from '../skill-card.js';
 import { publishBranchOptions } from '../publish.js';
+import type { BoundNoteScope } from '../retrieval.js';
 
-type SearchOptions = { publishFeatureSlug?: string };
+export type SearchOptions = BoundNoteScope & { publishFeatureSlug?: string };
 type SearchInput = SearchOptions & { query: string };
 
-function searchResolution(input: SearchOptions, env: NodeJS.ProcessEnv) {
+export function searchResolution(input: SearchOptions, env: NodeJS.ProcessEnv) {
   const resolution = resolveBindings(env, process.cwd(), {
     allowStagedWikiChanges: input.publishFeatureSlug !== undefined,
     allowedRepositoryBranches: input.publishFeatureSlug
@@ -19,7 +20,7 @@ function searchResolution(input: SearchOptions, env: NodeJS.ProcessEnv) {
   return resolution;
 }
 
-function presentNotes(
+export function presentNotes(
   found: ReturnType<typeof searchBoundNotes>,
   resolution: ReturnType<typeof searchResolution>,
   env: NodeJS.ProcessEnv,
@@ -67,7 +68,7 @@ function presentNotes(
 export function searchTool(input: SearchInput, env: NodeJS.ProcessEnv = process.env) {
   const resolution = searchResolution(input, env);
   return presentNotes(
-    searchBoundNotes(input.query, resolution.bindings, env),
+    searchBoundNotes(input.query, resolution.bindings, env, true, input),
     resolution,
     env,
     input.publishFeatureSlug,

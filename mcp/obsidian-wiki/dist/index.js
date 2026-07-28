@@ -22914,8 +22914,48 @@ function normalizeVaultPath(value) {
   }
   return normalized.replace(/^\.\//, "");
 }
+function normalizeSourceRelativePath(value) {
+  if (typeof value !== "string") throw new Error("Obsidian Source pathPrefix must be a string");
+  const candidate = value.replaceAll("\\", "/");
+  if (path4.posix.isAbsolute(candidate) || /^[A-Za-z]:\//.test(candidate)) {
+    throw new Error("Obsidian Source pathPrefix must be Source-relative");
+  }
+  if (candidate.split("/").includes("..")) {
+    throw new Error("Obsidian Source pathPrefix escapes its Source");
+  }
+  const normalized = path4.posix.normalize(candidate);
+  if (normalized === "." || normalized === "") return "";
+  if (normalized.includes('"')) {
+    throw new Error("Obsidian Source pathPrefix cannot contain a quote");
+  }
+  return normalized.replace(/^\.\//, "").replace(/\/+$/, "");
+}
 function noteIsWithinBinding(notePath, binding) {
   return notePath === binding.root || notePath.startsWith(`${binding.root}/`);
+}
+function noteIsWithinPathPrefix(notePath, prefix) {
+  return notePath === prefix || notePath.startsWith(`${prefix}/`);
+}
+function sourceRelativePath(notePath, binding) {
+  const normalized = assertPathWithinBinding(notePath, binding);
+  if (normalized === binding.root) return "";
+  return normalized.slice(`${binding.root}/`.length);
+}
+function readableBindingsForScope(bindings, scope = {}) {
+  const readable = bindings.filter((binding2) => binding2.effectiveReadPolicy === "allow");
+  if (scope.pathPrefix !== void 0 && scope.sourceId === void 0) {
+    throw new Error("Obsidian Source pathPrefix requires sourceId");
+  }
+  if (scope.sourceId === void 0) return readable;
+  const binding = readable.find((candidate) => candidate.sourceId === scope.sourceId);
+  if (!binding) {
+    throw new Error(`Unknown readable Obsidian Wiki Source: ${scope.sourceId}`);
+  }
+  return [binding];
+}
+function sourcePathPrefix(binding, relativePrefix) {
+  const normalized = relativePrefix === void 0 ? "" : normalizeSourceRelativePath(relativePrefix);
+  return normalized ? `${binding.root}/${normalized}` : binding.root;
 }
 function assertPathWithinBinding(notePath, binding) {
   const normalized = normalizeVaultPath(notePath);
@@ -22994,20 +23034,21 @@ function readBoundNotesByWikiIds(wikiIds, bindings, env) {
   if (resolved.some(({ binding }) => !binding)) throw new Error("Obsidian Note resolved without its bound Source");
   return stableBatchRead(resolved, env);
 }
-function searchBoundNotes(query, bindings, env, requireActiveAndVisible = true) {
-  const readableBindings = bindings.filter((binding) => binding.effectiveReadPolicy === "allow");
+function searchBoundNotes(query, bindings, env, requireActiveAndVisible = true, scope = {}) {
+  const readableBindings = readableBindingsForScope(bindings, scope);
   const notes = [];
   const seenPaths = /* @__PURE__ */ new Set();
   const seenIds = /* @__PURE__ */ new Set();
   for (const binding of readableBindings) {
-    const scopedQuery = `${query} path:"${binding.root}"`;
+    const queryPath = sourcePathPrefix(binding, scope.sourceId === void 0 ? void 0 : scope.pathPrefix);
+    const scopedQuery = `${query} path:"${queryPath}"`;
     for (const entry of searchNotes(binding.vaultSelector, scopedQuery, env)) {
       const notePath = normalizeVaultPath(entry.path);
       const pathKey = `${binding.bindingDigest}
 ${notePath}`;
       if (seenPaths.has(pathKey)) continue;
       seenPaths.add(pathKey);
-      if (!noteIsWithinBinding(notePath, binding)) continue;
+      if (!noteIsWithinBinding(notePath, binding) || !noteIsWithinPathPrefix(notePath, queryPath)) continue;
       if (notePath === `${binding.root}/_meta` || notePath.startsWith(`${binding.root}/_meta/`)) continue;
       const note = readBoundNote(notePath, [binding], env, false);
       if (requireActiveAndVisible && (note.status !== "active" || !note.agentVisible)) continue;
@@ -23772,7 +23813,7 @@ function presentNotes(found, resolution, env, publishFeatureSlug) {
 function searchTool(input, env = process.env) {
   const resolution = searchResolution(input, env);
   return presentNotes(
-    searchBoundNotes(input.query, resolution.bindings, env),
+    searchBoundNotes(input.query, resolution.bindings, env, true, input),
     resolution,
     env,
     input.publishFeatureSlug
@@ -23782,6 +23823,85 @@ function searchWikiIdsTool(input, env = process.env) {
   const resolution = searchResolution(input, env);
   const found = input.wikiIds.flatMap((wikiId) => searchBoundNotes(`[wiki_id:${wikiId}]`, resolution.bindings, env).filter((note) => note.wikiId === wikiId));
   return presentNotes(found, resolution, env, input.publishFeatureSlug);
+}
+
+// src/tools/catalog.ts
+var CATALOG_QUERY = "[wiki_schema:grill-adapter.obsidian-note/v1]";
+var MAX_CATALOG_LIMIT = 50;
+function comparePaths(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+function catalogResolution(env) {
+  const resolution = resolveBindings(env);
+  if (resolution.errors.length > 0) {
+    throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
+  }
+  return resolution;
+}
+function boundedInteger(value, field, defaultValue, minimum, maximum) {
+  if (value === void 0) return defaultValue;
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${field} must be an integer between ${minimum} and ${maximum}`);
+  }
+  return value;
+}
+function catalogInput(input) {
+  if (typeof input.sourceId !== "string" || !input.sourceId.trim()) {
+    throw new Error("sourceId must be a non-empty string");
+  }
+  const limit = boundedInteger(input.limit, "limit", MAX_CATALOG_LIMIT, 1, MAX_CATALOG_LIMIT);
+  return {
+    sourceId: input.sourceId,
+    pathPrefix: normalizeSourceRelativePath(input.pathPrefix ?? ""),
+    offset: boundedInteger(input.offset, "offset", 0, 0, Number.MAX_SAFE_INTEGER),
+    limit
+  };
+}
+function immediateEntry(relativePath, pathPrefix) {
+  const suffix = pathPrefix ? relativePath.slice(`${pathPrefix}/`.length) : relativePath;
+  const separator = suffix.indexOf("/");
+  if (separator === -1) return { direct: true };
+  const firstSegment = suffix.slice(0, separator);
+  return { directory: pathPrefix ? `${pathPrefix}/${firstSegment}` : firstSegment, direct: false };
+}
+function catalogTool(input, env = process.env) {
+  const normalized = catalogInput(input);
+  const resolution = catalogResolution(env);
+  const [binding] = readableBindingsForScope(resolution.bindings, { sourceId: normalized.sourceId });
+  const found = searchBoundNotes(
+    CATALOG_QUERY,
+    resolution.bindings,
+    env,
+    true,
+    { sourceId: normalized.sourceId }
+  );
+  const notes = presentNotes(found, resolution, env).notes;
+  const directories = /* @__PURE__ */ new Map();
+  const directNotes = [];
+  for (const note of notes) {
+    const relativePath = sourceRelativePath(note.path, binding);
+    if (normalized.pathPrefix && relativePath !== normalized.pathPrefix && !relativePath.startsWith(`${normalized.pathPrefix}/`)) continue;
+    const entry = immediateEntry(relativePath, normalized.pathPrefix);
+    if (entry.directory) {
+      directories.set(entry.directory, (directories.get(entry.directory) ?? 0) + 1);
+    } else if (entry.direct) {
+      directNotes.push({ kind: "note", relativePath, ...note });
+    }
+  }
+  const entries = [
+    ...[...directories.entries()].sort(([left], [right]) => comparePaths(left, right)).map(([pathPrefix, noteCount]) => ({ kind: "directory", pathPrefix, noteCount })),
+    ...directNotes.sort((left, right) => comparePaths(left.relativePath, right.relativePath))
+  ];
+  const page = entries.slice(normalized.offset, normalized.offset + normalized.limit);
+  const nextOffset = normalized.offset + page.length;
+  return {
+    sourceId: binding.sourceId,
+    role: binding.role,
+    bindingDigest: binding.bindingDigest,
+    pathPrefix: normalized.pathPrefix,
+    entries: page,
+    nextOffset: nextOffset < entries.length ? nextOffset : void 0
+  };
 }
 
 // src/tools/read.ts
@@ -24207,10 +24327,24 @@ function createServer(env = process.env) {
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (_input, extra) => toResult(sourcesTool(requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_search", {
-    description: "Search active, agent-visible atomic Notes only within the current project\u2019s readable bound Sources.",
-    inputSchema: object({ query: string2().min(1) }),
+    description: "Search active, agent-visible atomic Notes within readable bound Sources, optionally scoped to one Source-relative directory.",
+    inputSchema: object({
+      query: string2().min(1),
+      sourceId: string2().min(1).optional(),
+      pathPrefix: string2().optional()
+    }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(searchTool(input, requestEnv(extra._meta))));
+  server.registerTool("obsidian_wiki_catalog", {
+    description: "List a bounded metadata-only directory view for one readable bound Obsidian Wiki Source; it never returns Note bodies.",
+    inputSchema: object({
+      sourceId: string2().min(1),
+      pathPrefix: string2().optional(),
+      offset: number2().int().nonnegative().optional(),
+      limit: number2().int().min(1).max(50).optional()
+    }),
+    annotations: { readOnlyHint: true, idempotentHint: true }
+  }, async (input, extra) => toResult(catalogTool(input, requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_read_note", {
     description: "Read one atomic Note only when its Vault-relative path is under a readable bound Source.",
     inputSchema: object({ path: string2().min(1) }),
@@ -24762,6 +24896,12 @@ async function readJsonRequest() {
     throw new Error(`Invalid JSON request: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
 }
+function optionalStringField(request, field) {
+  const value = request[field];
+  if (value === void 0) return void 0;
+  if (typeof value !== "string") throw new Error(`${field} must be a string`);
+  return value;
+}
 function parseCliArguments(argv) {
   const args = [];
   let configPath;
@@ -24878,6 +25018,7 @@ Usage:
                                                     Upsert one Git repository entry
   obsidian-wiki config validate [--config <path>]
   obsidian-wiki doctor [--config <path>]           Validate project bindings and runtime health
+  printf '<json>' | obsidian-wiki catalog
   printf '<json>' | obsidian-wiki search-by-wiki-ids
   obsidian-wiki bridge start [--config <path>]    Start a detached background write bridge
   obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
@@ -24968,14 +25109,26 @@ async function main() {
 `);
     return;
   }
+  if (subcommand === "catalog") {
+    const request = await readJsonRequest();
+    process.stdout.write(`${JSON.stringify(catalogTool(request))}
+`);
+    return;
+  }
   if (subcommand === "search" || subcommand === "search-by-wiki-ids") {
     const request = await readJsonRequest();
     if (subcommand === "search") {
       if (typeof request.query !== "string" || !request.query.trim()) {
         throw new Error("query must be a non-empty string");
       }
+      const sourceId = optionalStringField(request, "sourceId");
+      if (sourceId !== void 0 && !sourceId.trim()) {
+        throw new Error("sourceId must be a non-empty string");
+      }
       process.stdout.write(`${JSON.stringify(searchTool({
         query: request.query,
+        sourceId,
+        pathPrefix: optionalStringField(request, "pathPrefix"),
         publishFeatureSlug: typeof request.publishFeatureSlug === "string" ? request.publishFeatureSlug : void 0
       }))}
 `);

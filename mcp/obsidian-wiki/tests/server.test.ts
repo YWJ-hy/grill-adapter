@@ -13,6 +13,9 @@ describe('Obsidian Wiki MCP server', () => {
       const result = await client.listTools();
       const tools = new Map(result.tools.map((tool) => [tool.name, tool]));
 
+      expect(tools.get('obsidian_wiki_catalog')).toMatchObject({
+        annotations: { readOnlyHint: true, idempotentHint: true },
+      });
       expect(tools.get('obsidian_wiki_propose_note_change')).toMatchObject({
         annotations: { readOnlyHint: true, idempotentHint: true },
       });

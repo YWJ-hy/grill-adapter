@@ -10,6 +10,11 @@ export type RetrievedNote = AtomicNote & {
   bindingDigest: string;
 };
 
+export type BoundNoteScope = {
+  sourceId?: string;
+  pathPrefix?: string;
+};
+
 export function normalizeVaultPath(value: string): string {
   if (path.posix.isAbsolute(value)) throw new Error('Obsidian Note path must be Vault-relative');
   const normalized = path.posix.normalize(value.replaceAll('\\', '/'));
@@ -19,8 +24,56 @@ export function normalizeVaultPath(value: string): string {
   return normalized.replace(/^\.\//, '');
 }
 
+export function normalizeSourceRelativePath(value: string): string {
+  if (typeof value !== 'string') throw new Error('Obsidian Source pathPrefix must be a string');
+  const candidate = value.replaceAll('\\', '/');
+  if (path.posix.isAbsolute(candidate) || /^[A-Za-z]:\//.test(candidate)) {
+    throw new Error('Obsidian Source pathPrefix must be Source-relative');
+  }
+  if (candidate.split('/').includes('..')) {
+    throw new Error('Obsidian Source pathPrefix escapes its Source');
+  }
+  const normalized = path.posix.normalize(candidate);
+  if (normalized === '.' || normalized === '') return '';
+  if (normalized.includes('"')) {
+    throw new Error('Obsidian Source pathPrefix cannot contain a quote');
+  }
+  return normalized.replace(/^\.\//, '').replace(/\/+$/, '');
+}
+
 export function noteIsWithinBinding(notePath: string, binding: ResolvedBinding): boolean {
   return notePath === binding.root || notePath.startsWith(`${binding.root}/`);
+}
+
+function noteIsWithinPathPrefix(notePath: string, prefix: string): boolean {
+  return notePath === prefix || notePath.startsWith(`${prefix}/`);
+}
+
+export function sourceRelativePath(notePath: string, binding: ResolvedBinding): string {
+  const normalized = assertPathWithinBinding(notePath, binding);
+  if (normalized === binding.root) return '';
+  return normalized.slice(`${binding.root}/`.length);
+}
+
+export function readableBindingsForScope(
+  bindings: ResolvedBinding[],
+  scope: BoundNoteScope = {},
+): ResolvedBinding[] {
+  const readable = bindings.filter((binding) => binding.effectiveReadPolicy === 'allow');
+  if (scope.pathPrefix !== undefined && scope.sourceId === undefined) {
+    throw new Error('Obsidian Source pathPrefix requires sourceId');
+  }
+  if (scope.sourceId === undefined) return readable;
+  const binding = readable.find((candidate) => candidate.sourceId === scope.sourceId);
+  if (!binding) {
+    throw new Error(`Unknown readable Obsidian Wiki Source: ${scope.sourceId}`);
+  }
+  return [binding];
+}
+
+export function sourcePathPrefix(binding: ResolvedBinding, relativePrefix?: string): string {
+  const normalized = relativePrefix === undefined ? '' : normalizeSourceRelativePath(relativePrefix);
+  return normalized ? `${binding.root}/${normalized}` : binding.root;
 }
 
 export function assertPathWithinBinding(notePath: string, binding: ResolvedBinding): string {
@@ -115,19 +168,21 @@ export function searchBoundNotes(
   bindings: ResolvedBinding[],
   env: NodeJS.ProcessEnv,
   requireActiveAndVisible = true,
+  scope: BoundNoteScope = {},
 ): RetrievedNote[] {
-  const readableBindings = bindings.filter((binding) => binding.effectiveReadPolicy === 'allow');
+  const readableBindings = readableBindingsForScope(bindings, scope);
   const notes: RetrievedNote[] = [];
   const seenPaths = new Set<string>();
   const seenIds = new Set<string>();
   for (const binding of readableBindings) {
-    const scopedQuery = `${query} path:"${binding.root}"`;
+    const queryPath = sourcePathPrefix(binding, scope.sourceId === undefined ? undefined : scope.pathPrefix);
+    const scopedQuery = `${query} path:"${queryPath}"`;
     for (const entry of searchNotes(binding.vaultSelector, scopedQuery, env)) {
       const notePath = normalizeVaultPath(entry.path);
       const pathKey = `${binding.bindingDigest}\n${notePath}`;
       if (seenPaths.has(pathKey)) continue;
       seenPaths.add(pathKey);
-      if (!noteIsWithinBinding(notePath, binding)) continue;
+      if (!noteIsWithinBinding(notePath, binding) || !noteIsWithinPathPrefix(notePath, queryPath)) continue;
       if (notePath === `${binding.root}/_meta` || notePath.startsWith(`${binding.root}/_meta/`)) continue;
       const note = readBoundNote(notePath, [binding], env, false);
       if (requireActiveAndVisible && (note.status !== 'active' || !note.agentVisible)) continue;

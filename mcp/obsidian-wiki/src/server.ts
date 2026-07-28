@@ -3,6 +3,7 @@ import * as z from 'zod/v4';
 import { statusTool } from './tools/status.js';
 import { sourcesTool } from './tools/sources.js';
 import { searchTool } from './tools/search.js';
+import { catalogTool } from './tools/catalog.js';
 import { readNoteTool, readNotesByWikiIdsTool, readNotesTool } from './tools/read.js';
 import { graphNeighborsTool } from './tools/graph.js';
 import { applyNoteChangeTool, proposeNoteChangeTool } from './tools/write.js';
@@ -30,10 +31,24 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (_input, extra) => toResult(sourcesTool(requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_search', {
-    description: 'Search active, agent-visible atomic Notes only within the current project’s readable bound Sources.',
-    inputSchema: z.object({ query: z.string().min(1) }),
+    description: 'Search active, agent-visible atomic Notes within readable bound Sources, optionally scoped to one Source-relative directory.',
+    inputSchema: z.object({
+      query: z.string().min(1),
+      sourceId: z.string().min(1).optional(),
+      pathPrefix: z.string().optional(),
+    }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(searchTool(input, requestEnv(extra._meta))));
+  server.registerTool('obsidian_wiki_catalog', {
+    description: 'List a bounded metadata-only directory view for one readable bound Obsidian Wiki Source; it never returns Note bodies.',
+    inputSchema: z.object({
+      sourceId: z.string().min(1),
+      pathPrefix: z.string().optional(),
+      offset: z.number().int().nonnegative().optional(),
+      limit: z.number().int().min(1).max(50).optional(),
+    }),
+    annotations: { readOnlyHint: true, idempotentHint: true },
+  }, async (input, extra) => toResult(catalogTool(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_read_note', {
     description: 'Read one atomic Note only when its Vault-relative path is under a readable bound Source.',
     inputSchema: z.object({ path: z.string().min(1) }),

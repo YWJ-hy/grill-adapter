@@ -53,6 +53,15 @@
       "requiredFor": ["reviewer"]
     }
   ],
+  // Optional transient audit only. When present, there is one reason for every selected
+  // Note/Card; each is a one-line paraphrase and must not quote or copy a Note body.
+  // Carry validates it and then deliberately omits it from the schema-v6 sidecar.
+  "selectionRationales": [
+    {
+      "wikiId": "example/constraints/runtime",
+      "reason": "The requested runtime write change crosses this transaction boundary."
+    }
+  ],
   "caveats": [],
   "maintenanceWarnings": []
 }

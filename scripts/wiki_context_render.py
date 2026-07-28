@@ -52,6 +52,18 @@ ADR_SOURCE_ID_RE = re.compile(r"^project-adr:[a-f0-9]{64}$")
 # real sha256. Rejecting it stops copy-pasted skeleton fingerprints from passing validation and
 # only blowing up later at the execution-side --fingerprint-preflight.
 PLACEHOLDER_FINGERPRINT_RE = re.compile(r"^([0-9a-f])\1{63}$")
+SELECTION_RATIONALE_MAX_LENGTH = 240
+SELECTION_ALLOWED_FIELDS = {
+    "status",
+    "phase",
+    "snapshotHash",
+    "wikiBindings",
+    "wikiNotes",
+    "requiredSkills",
+    "selectionRationales",
+    "caveats",
+    "maintenanceWarnings",
+}
 
 
 class ValidationError(Exception):
@@ -219,6 +231,43 @@ def _validate_v6_note(
     elif value.get("constraintStrength") not in ("hard", "soft", None):
         raise ValidationError(f"{field}.constraintStrength must be hard or soft when present")
     return value
+
+
+def _validate_selection_rationales(selection: dict[str, Any], selected_wiki_ids: set[str]) -> None:
+    """Validate transient researcher reasoning without letting it cross the Carry boundary."""
+    if "selectionRationales" not in selection:
+        return
+    rationales = _as_list(selection["selectionRationales"], "selectionRationales")
+    seen_ids: set[str] = set()
+    for index, raw_rationale in enumerate(rationales):
+        field = f"selectionRationales[{index}]"
+        rationale = dict(_as_dict(raw_rationale, field))
+        unknown_fields = sorted(set(rationale) - {"wikiId", "reason"})
+        if unknown_fields:
+            raise ValidationError(f"{field} contains unsupported fields: {', '.join(unknown_fields)}")
+        wiki_id = rationale.get("wikiId")
+        if not isinstance(wiki_id, str) or not wiki_id.strip():
+            raise ValidationError(f"{field}.wikiId must be a non-empty string")
+        if wiki_id not in selected_wiki_ids:
+            raise ValidationError(f"{field}.wikiId must name a selected Note or Skill Card")
+        if wiki_id in seen_ids:
+            raise ValidationError(f"{field}.wikiId must not be duplicated")
+        seen_ids.add(wiki_id)
+        reason = rationale.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValidationError(f"{field}.reason must be a non-empty string")
+        if "\n" in reason or "\r" in reason:
+            raise ValidationError(f"{field}.reason must be a single line")
+        if len(reason) > SELECTION_RATIONALE_MAX_LENGTH:
+            raise ValidationError(
+                f"{field}.reason must be at most {SELECTION_RATIONALE_MAX_LENGTH} characters"
+            )
+    missing_ids = sorted(selected_wiki_ids - seen_ids)
+    if missing_ids:
+        raise ValidationError(
+            "selectionRationales must include every selected Note and Skill Card: "
+            + ", ".join(missing_ids)
+        )
 
 
 def _validate_v6_execution_ready(data: dict[str, Any]) -> None:
@@ -620,7 +669,17 @@ def scaffold_from_selection(
         raise ValidationError(
             "Obsidian selection must contain wikiNotes, wikiBindings, or requiredSkills"
         )
-    return _scaffold_v6_from_selection(selection, feature_slug, ticket_source)
+    unknown_fields = sorted(set(selection) - SELECTION_ALLOWED_FIELDS)
+    if unknown_fields:
+        raise ValidationError(
+            "Obsidian selection contains unsupported fields: " + ", ".join(unknown_fields)
+        )
+    data = _scaffold_v6_from_selection(selection, feature_slug, ticket_source)
+    _validate_selection_rationales(
+        selection,
+        {note["wikiId"] for note in [*data["wikiNotes"], *data["requiredSkills"]]},
+    )
+    return data
 
 
 def scaffold_tasks(data: dict[str, Any], roster_path: Path) -> tuple[list[str], list[str]]:

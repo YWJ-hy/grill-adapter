@@ -35,7 +35,7 @@ grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 
 
 | 触点 | 机制 | 落到 grill |
 |---|---|---|
-| **Disclose** 选 wiki | 独立 `/grill-adapter:wiki-research` skill（驱动 `grill-adapter:wiki-researcher` agent），任何 host 都能调 | grill-with-docs 质询期 |
+| **Disclose** 选 wiki | 独立 `/grill-adapter:wiki-research` skill（驱动 `grill-adapter:wiki-researcher` agent）：先读 bound Source metadata catalog，再在选定分支检索并私下复核少量 Note body，任何 host 都能调 | grill-with-docs 质询期 |
 | **Carry** 带约束 | schema-v6 `.grill-adapter/context/<feature-slug>.wiki-context.json` 保存 binding digest、atomic Note ID/path/hash/summary、已验证 Skill Card 的 name/version/contract hash/triggers/roles 与 ticket roster 指纹，绝不保存 Note body；锚点是 feature，不是 plan 文件；direct task 可由 readiness 在首次代码修改前 late Carry | to-tickets，或无 formal context 的 implement 入口 |
 | **Bind** 执行期 reread | `/grill-adapter:wiki-readiness` 先固定/复用 task identity 并记录原子结果；`ready` 时由 `/grill-adapter:wiki-materialize <ticket>` 经 bound Obsidian MCP 按 stable-ID 读取路由硬 Note、当前角色 Card 和 1 跳 `depends_on`；implement 用 implementer 角色，review 在两个隔离 reviewer 前复用同一 receipt、以 reviewer 角色生成单一原子 handoff | implement 逐 task + code-review 两轴前 |
 | **Capture** 回写 | `/grill-adapter:update-wiki`（最终证据 reconciliation + related-claim 显式归并 + 语义门），其可选前置步经 `grill_context_to_candidates.py` 吃 grill CONTEXT.md/ADR 增量；ADR 只生成 project-only metadata projection candidate，Obsidian provider 经 proposal → loopback bridge CAS apply → receipt allowlist Git/draft-PR publish | code-review 后 |
@@ -57,9 +57,11 @@ Readiness 不是第五个 Wiki 触点，而是 implement/review 对 Carry + Bind
 - **模板、迁移与导出**：`wiki-template/`、`wiki-repo-skills/` + `wiki-repo-ci/`、`contracts/`。`migrate-wiki` 在迁移前提供 bounded legacy section-repartition proposal，在迁移后提供 Obsidian Note maintenance/repartition；两者都只先产出 proposal/plan，确认后复用既有 Source binding、proposal/apply、candidate journal、publisher、CAS 与 verify。`wiki_migration_plan.py` fail-closed 产出 deterministic plan，并为 update 固化审核时 Note hash；`wiki_migration_apply.py` 在首个 bridge 写前固化完整 plan、binding/policy snapshot 与 CAS intent roster，并先切到专用 PR branch，再经两阶段 CAS 与 receipt publisher 写 draft PR。恢复只接受精确 before/seed/final state，`publishing` 中断从 publisher manifest 对账。verify 从不可变 plan 推导 coverage，重验 legacy source 与 binding/policy，只认 merged + synchronized base；cutover 另需确认、拒绝 active schema-v5 sidecar，并只把 plan 覆盖的 legacy root 标成机械只读 archive，bootstrap/init/update/import/migration 写路径都必须拒绝归档 root。契约示例还包括 migration plan/manifest、wiki context/selection、ticket roster、candidate journal 与 publish run manifest。
 - **rollout 运维门**：`doctor.sh` 只读识别 `obsidian-native`、`shadow-validation`、`cutover-complete`；active Obsidian provider 的 bundle/status/health 任一失败均非零退出并卡 release-check。shadow 只保留 legacy roots 作为 migration evidence，正式四触点不双读、不 fallback；`bootstrap-wiki` 在 active Obsidian provider 下拒绝重新播种 legacy root。
 
-## section 图
+## section 图与渐进披露
 
-wiki 页被 `<!-- wiki-section:xxx summary="..." -->` 标记切成 section；section 间以 `[[page#section]]` **typed 边**（如 `depends-on`）互链。跨页根 `.graph.json`（section 边 + backlinks）是**派生物**，由 `wiki_migrate_helper.py --generate-indexes` 从 markdown 生成，供维护 + lint + MCP `graph-neighbors` + 执行期 1 跳闭包读。渐进披露：先读目录 `index.md` 与逐文档 `<stem>.index.md`，再选相关 section，不整树扫。
+legacy Markdown Wiki 页被 `<!-- wiki-section:xxx summary="..." -->` 标记切成 section；section 间以 `[[page#section]]` **typed 边**（如 `depends-on`）互链。跨页根 `.graph.json`（section 边 + backlinks）是**派生物**，由 `wiki_migrate_helper.py --generate-indexes` 从 markdown 生成，供维护 + lint + MCP `graph-neighbors` + 执行期 1 跳闭包读。legacy/migration 维护时的渐进披露先读目录 `index.md` 与逐文档 `<stem>.index.md`，再选相关 section，不整树扫。
+
+正式 Obsidian runtime 不读取 legacy index：researcher 先通过受 binding 限制、分页的 `obsidian_wiki_catalog` 看 Source 相对目录和 Note 元数据，再只在相关 `sourceId` / `pathPrefix` 分支中检索。目录、关键词和一跳图关系只负责召回候选；正文只在 researcher 子 agent 内做有界语义复核，选择与 schema-v6 sidecar 仍只保存 metadata/hash，不保存 Note body。
 
 ## Obsidian Source（跨 repo 共享）
 

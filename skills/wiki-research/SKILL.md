@@ -16,7 +16,7 @@ It does not patch any host skill. A host wires it in by convention:
 - **Codex**: use `$grill-adapter:wiki-research` at the same two points.
 - **direct implementation entry**: `wiki-readiness` may call phase `plan` once, before the first code edit, when no formal finalized context matches its stable single-task roster. It never reselects when a formal context exists.
 
-Formal planning uses only the bound Obsidian Sources exposed by `obsidian_wiki_*`. Select the smallest relevant atomic Notes from project and Shared Sources, and select applicable Skill Cards independently. A Card is eligible only when MCP search/read returns `discoveryState: discoverable` after proving its Source is synchronized to the remote base and verifying its project pack name, version, and contract hash. Read search results and stable batch-read metadata; do not copy Note bodies into a selection or sidecar.
+Formal planning uses only the bound Obsidian Sources exposed by `obsidian_wiki_*`. The researcher first navigates their bounded metadata catalog, then searches only selected Source-relative branches, reads a small candidate set privately to verify semantic applicability, and selects the smallest relevant Notes/Cards. A Card is eligible only when MCP search/read returns `discoveryState: discoverable` after proving its Source is synchronized to the remote base and verifying its project pack name, version, and contract hash. No Note body crosses into a selection or sidecar.
 
 ### Researcher dispatch compatibility
 
@@ -39,9 +39,11 @@ Codex sub-agent dispatch is asynchronous. Treat the agent path as a handle, not 
    spawn a second researcher. Reuse that path, waiting for it or issuing at most one bounded
    follow-up when the host exposes that operation. If the path cannot be recovered, classify the
    dispatch as `broken`.
-5. Do not call any `obsidian_wiki_*` tool, perform an inline search, write a selection, or record
-   readiness while the researcher is non-terminal. A main-agent search is never a substitute for
-   an incomplete dispatch.
+5. Do not call any `obsidian_wiki_*` tool, including `obsidian_wiki_catalog`,
+   `obsidian_wiki_search`, `obsidian_wiki_read_note`, `obsidian_wiki_read_notes`, or
+   `obsidian_wiki_graph_neighbors`; do not perform an inline search, write a selection, or record
+   readiness while the researcher is non-terminal. A main-agent search is never a substitute for an
+   incomplete dispatch.
 6. Only a terminal researcher result may be mapped to `ok`, `partial`, `missing_wiki_root`, or
    `no_relevant_wiki`. A dispatch, transport, capacity, or agent-lifecycle failure maps to
    `broken` (for `brainstorm`, surface that failure as a caveat rather than `no_relevant`).
@@ -72,7 +74,7 @@ focus: <feature goal and likely task areas>
 selectionOutputPath: .grill-adapter/context/<feature-slug>.obsidian-wiki-selection.json
 ```
 
-At `plan` phase the agent writes the JSON **selection** object (shape in `${CLAUDE_PLUGIN_ROOT}/contracts/obsidian-wiki-selection-v1.example.jsonc`) to `selectionOutputPath` itself and returns only a compact summary. It must contain bounded `wikiBindings`, metadata-only `wikiNotes`, independent `requiredSkills`, and the stable `snapshotHash` returned by `obsidian_wiki_read_notes`. An ADR execution projection may additionally carry the MCP-returned `adrSourceId`, normalized project-relative `adrSourcePath`, and `adrSourceContentHash`; these identify the authority only and never include ADR body text. The selection must not emit Note bodies, `destination`, `taskRouting`, `taskWikiRefs`, `taskFingerprint`, or future task ids.
+At `plan` phase the agent writes the JSON **selection** object (shape in `${CLAUDE_PLUGIN_ROOT}/contracts/obsidian-wiki-selection-v1.example.jsonc`) to `selectionOutputPath` itself and returns only a compact summary. It must contain bounded `wikiBindings`, metadata-only `wikiNotes`, independent `requiredSkills`, the stable `snapshotHash` returned by the final `obsidian_wiki_read_notes` batch, and optional one-line `selectionRationales`. An ADR execution projection may additionally carry the MCP-returned `adrSourceId`, normalized project-relative `adrSourcePath`, and `adrSourceContentHash`; these identify the authority only and never include ADR body text. Carry validates but deliberately drops `selectionRationales`; the selection must not emit Note bodies, body excerpts, `destination`, `taskRouting`, `taskWikiRefs`, `taskFingerprint`, or future task ids.
 
 ### Author the sidecar (Carry) — do not hand-write it
 
@@ -128,4 +130,4 @@ Only as a last resort (generator unavailable) hand-author a new sidecar from `${
 - This is a standalone utility skill, not a host development workflow step. Do not auto-invoke the host's planning, implementation, review, completion, or verification skills because it ran.
 - Execution-time rereads are **not** this skill — that is `wiki-materialize`, which runs per ticket during implementation and closes the bounded 1-hop `depends-on` set.
 - Single-task late Carry is allowed only through `wiki-readiness`, before the first code edit, when no formal finalized context matches. Once execution starts, do not research or reselect.
-- Never scan whole wiki trees as formal planning constraints; use indexed structure and companion section indexes only.
+- Never scan whole Wiki trees as formal planning constraints; use the bound Obsidian catalog, selected Source-relative branches, and bounded candidate batches only. Legacy Markdown indexes are not a runtime fallback.

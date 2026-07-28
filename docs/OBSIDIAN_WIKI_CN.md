@@ -177,8 +177,10 @@ Shared Source 必须声明 `blocked_terms` 与 `blocked_patterns`。manifest 的
 
 ## 只读检索
 
-`obsidian_wiki_search`、`obsidian_wiki_read_note`、`obsidian_wiki_read_notes` 与 `obsidian_wiki_graph_neighbors` 只操作当前项目可读 binding 下的 atomic Note。每次 Obsidian CLI 调用都带 resolver 得到的 Vault selector；调用者只能提供搜索语句、Vault 相对 Note 路径或 `wiki_id`，不能指定 Vault、Source 或 root。
+`obsidian_wiki_catalog`、`obsidian_wiki_search`、`obsidian_wiki_read_note`、`obsidian_wiki_read_notes` 与 `obsidian_wiki_graph_neighbors` 只操作当前项目可读 binding 下的 atomic Note。每次 Obsidian CLI 调用都带 resolver 得到的 Vault selector；调用者不能指定 Vault 或 root。catalog/search 可接受已绑定的 `sourceId`，catalog/search 的 `pathPrefix` 只能是该 Source 内的相对目录，绝对路径、`..` 逃逸和未知 Source 都拒绝。
 
+- `obsidian_wiki_catalog` 是分页的 metadata-only 目录视图：根调用返回顶层目录和 Note 计数，展开调用返回直接子目录与直接 Note 的 path/summary/type/Card discovery metadata，永不返回 `content`。它不引入第二份索引或持久缓存。
+- `obsidian_wiki_search` 保持仅 `query` 的兼容调用，同时可加 `sourceId` + `pathPrefix` 将检索限制到 catalog 选中的分支。
 - 搜索结果会机械排除 `_meta/`、未绑定路径、非 active/visible Note；Skill Card 还要求 Source 已明确同步到 remote base，并排除本地 name/version/contract hash 不可用者。`syncBeforeResearch: false` 或 stale-read 降级都不能让 Card 变为 discoverable。通过者返回 `discoveryState: discoverable` 与完整 Card 身份。
 - 批量读取经两轮 Obsidian CLI 重读，返回每条 Note 的 canonical `contentHash` 及整批稳定 `snapshotHash`；读取期间内容、路径或 ID 改变，以及重复 `wiki_id`，都会 fail-closed。
 - typed neighbor 查询仅解析请求 Note 的 `depends_on`、`see_also`、`supersedes`、`contradicts` 一跳目标，去重且不递归跟随 target 的边；source/target 若是 Card，同样先通过 remote-base、pack availability 与唯一性门。
@@ -186,6 +188,9 @@ Shared Source 必须声明 `blocked_terms` 与 `blocked_patterns`。manifest 的
 执行层可使用 bundle 的固定 JSON 子命令，避免另写一套 Vault reader：
 
 ```bash
+printf '%s' '{"sourceId":"project-wiki","pathPrefix":"Architecture"}' \
+  | node mcp/obsidian-wiki/dist/index.js catalog
+
 printf '%s' '{"paths":["Projects/grill-adapter/Architecture/runtime.md"]}' \
   | node mcp/obsidian-wiki/dist/index.js read-notes
 

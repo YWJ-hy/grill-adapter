@@ -217,7 +217,11 @@ set -uo pipefail
 INPUT="$TMP/node-input.json"
 OUTPUT="$TMP/node-output.json"
 ERROR="$TMP/node-error.txt"
-cat > "\$INPUT"
+if [[ "\${2:-}" == "status" ]]; then
+  : > "\$INPUT"
+else
+  cat > "\$INPUT"
+fi
 "$REAL_NODE" "\$@" < "\$INPUT" > "\$OUTPUT" 2> "\$ERROR"
 STATUS=\$?
 cat "\$OUTPUT"
