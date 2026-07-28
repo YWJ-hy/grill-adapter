@@ -50,7 +50,7 @@ grill 自己的 skill（`/grill-with-docs`、`/to-spec` 等）按宿主原样引
 
 ### Agent 角色在两种运行时的差异
 
-Claude Code 会直接注册 `agents/wiki-researcher.md`。Codex 插件当前不注册该目录，因此 `wiki-research` skill 会读取同一份自包含 agent prompt，并派生通用 sub-agent 执行；Codex 必须等待同一 agent path 的终态，dispatch/容量/生命周期失败不得被当作 `no-relevant`。职责边界、输入与输出契约不变，只改变 dispatch 机制。
+Claude Code 会直接注册 `agents/wiki-researcher.md`。Codex 插件当前不注册该目录，因此 `wiki-research` skill 会读取同一份自包含 agent prompt，并派生通用 sub-agent 执行。Codex dispatch 返回的是句柄；必须把等待同一路径作为 dispatch 后唯一的下一步，在任何用户消息、提问、MCP 调用或后续流程前重复有界等待直到终态。dispatch/容量/生命周期失败不得被当作 `no-relevant`。职责边界、输入与输出契约不变，只改变 dispatch 机制。
 
 ## hook 配置（`hooks/hooks.json`）
 

@@ -9,7 +9,7 @@ When discovery (or `grill-with-docs`), specification, tickets, implementation, r
 
 ### Disclose — before proposing an approach
 
-Run `/grill-adapter:wiki-research` (phase `brainstorm`) to surface relevant project/shared wiki as lightweight context. On Codex, wait for the same researcher agent path to reach a terminal result; dispatch/capacity/lifecycle failure is a caveat or `broken`, never `no-relevant`. If none applies, record a one-line N/A and continue. Write no sidecar here.
+Run `/grill-adapter:wiki-research` (phase `brainstorm`) to surface relevant project/shared wiki as lightweight context. On Codex, dispatch is a handle: immediately wait on that same researcher path before any user-facing response, question, MCP call, or next workflow step, repeating bounded waits until terminal. Dispatch/capacity/lifecycle failure is a caveat or `broken`, never `no-relevant`. If none applies, record a one-line N/A and continue. Write no sidecar here.
 
 ### Verify — while drafting a spec/plan
 

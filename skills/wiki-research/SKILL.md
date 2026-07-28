@@ -29,17 +29,20 @@ Formal planning uses only the bound Obsidian Sources exposed by `obsidian_wiki_*
 Codex sub-agent dispatch is asynchronous. Treat the agent path as a handle, not a result:
 
 1. Spawn exactly one researcher for this invocation and keep its returned path/handle.
-2. Wait for that same agent path to reach a terminal result before reading or interpreting any
-   research output. `queued`, `running`, `unknown`, `interrupted`, and tool errors are not
-   researcher results.
-3. If dispatch reports a capacity or duplicate-path error but the agent path already exists, do not
+2. **The wait is the only legal next operation after dispatch.** Do not send any user message,
+   ask a question, call an MCP tool, search inline, or start another workflow step after
+   `spawn_agent` returns. Immediately use the host's wait-for-task operation with that exact path.
+3. Wait for that same agent path to reach a terminal result. Keep waiting when needed: a wait timeout and
+   `queued`/`running`/`started`/`unknown`/`interrupted` status are not researcher results; repeat
+   the bounded wait or classify an unrecoverable lifecycle failure as `broken`.
+4. If dispatch reports a capacity or duplicate-path error but the agent path already exists, do not
    spawn a second researcher. Reuse that path, waiting for it or issuing at most one bounded
    follow-up when the host exposes that operation. If the path cannot be recovered, classify the
    dispatch as `broken`.
-4. Do not call any `obsidian_wiki_*` tool, perform an inline search, write a selection, or record
+5. Do not call any `obsidian_wiki_*` tool, perform an inline search, write a selection, or record
    readiness while the researcher is non-terminal. A main-agent search is never a substitute for
    an incomplete dispatch.
-5. Only a terminal researcher result may be mapped to `ok`, `partial`, `missing_wiki_root`, or
+6. Only a terminal researcher result may be mapped to `ok`, `partial`, `missing_wiki_root`, or
    `no_relevant_wiki`. A dispatch, transport, capacity, or agent-lifecycle failure maps to
    `broken` (for `brainstorm`, surface that failure as a caveat rather than `no_relevant`).
 

@@ -249,7 +249,7 @@ grill-adapter 同时以 **Claude Code plugin** 与 **Codex plugin** 形式发布
 >
 > 约定块里对 grill-adapter 自己的 skill 一律带命名空间调用（`/grill-adapter:wiki-research` 等）；grill 自带的 `/grill-with-docs`、`/to-spec`、`/implement` 等不加。
 
-**Agent roles（1）**：`wiki-researcher`。Claude Code 直接注册；Codex 由入口 skill 读取同一 prompt 并派生通用 sub-agent，必须等待同一 agent path 终态；dispatch/容量/生命周期失败走 `broken`，不能降级为 `no-relevant`。
+**Agent roles（1）**：`wiki-researcher`。Claude Code 直接注册；Codex 由入口 skill 读取同一 prompt 并派生通用 sub-agent。dispatch 返回句柄后，等待同一 agent path 是唯一允许的下一步；在终态前不得发送用户消息、提问、调用 MCP 或继续主流程，且有界等待超时要继续等待。dispatch/容量/生命周期失败走 `broken`，不能降级为 `no-relevant`。
 
 **MCP server（1）**：`obsidian-wiki` 解析受约束的 Obsidian Source binding，并提供状态、Source、读取、proposal 与 apply 工具。它随 plugin 自动启动，无需手工注册；只操作当前项目 `.grill-adapter/settings.json` 声明的 binding，未绑定、Vault/仓库不健康或 policy 不兼容时 fail-closed。实际写入由另行启动、只监听 loopback 的 write bridge 完成，MCP 自身不开放 HTTP 端口。
 

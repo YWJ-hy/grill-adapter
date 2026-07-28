@@ -32,6 +32,9 @@ research_skill = (root / "skills" / "wiki-research" / "SKILL.md").read_text(enco
 for required in (
     "Codex dispatch transaction",
     "agent path as a handle, not a result",
+    "The wait is the only legal next operation after dispatch",
+    "Do not send any user message",
+    "wait timeout",
     "Wait for that same agent path to reach a terminal result",
     "Do not call any `obsidian_wiki_*` tool",
     "Only a terminal researcher result",
@@ -40,7 +43,9 @@ for required in (
 readiness_skill = (root / "skills" / "wiki-readiness" / "SKILL.md").read_text(encoding="utf-8")
 for required in (
     "Wait for the researcher dispatch to reach a terminal result",
-    "do not\n   infer `no-relevant`",
+    "wait-for-task operation is the only permitted next operation",
+    "timeouts and `queued`/`running`/`started` statuses",
+    "do not infer `no-relevant`",
     "Those failures follow the `broken` path",
 ):
     assert required in readiness_skill, required

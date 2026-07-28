@@ -22,7 +22,7 @@ Whenever a stage surfaces a possible durable Wiki Note or executable Skill Card 
 
 ### Disclose — during `/grill-with-docs`
 
-Once `/grill-with-docs` is explicitly active, after exploring project context and before settling on an approach, run `/grill-adapter:wiki-research` (phase `brainstorm`) to surface relevant project/shared wiki as lightweight context. On Codex, wait for the same researcher agent path to reach a terminal result; dispatch/capacity/lifecycle failure is a caveat or `broken`, never `no-relevant`. Do not block discovery if no wiki applies — record a one-line N/A and continue. Do not write any sidecar at this stage.
+Once `/grill-with-docs` is explicitly active, after exploring project context and before settling on an approach, run `/grill-adapter:wiki-research` (phase `brainstorm`) to surface relevant project/shared wiki as lightweight context. On Codex, dispatch is a handle: immediately wait on that same researcher path before any user-facing response, question, MCP call, or next workflow step. Repeat bounded waits until terminal; dispatch/capacity/lifecycle failure is a caveat or `broken`, never `no-relevant`. Do not block discovery if no wiki applies — record a one-line N/A and continue. Do not write any sidecar at this stage.
 
 ### Verify (spec) — during `/to-spec`
 
@@ -32,7 +32,7 @@ Run `/grill-adapter:source-truth-check` (renders `spec-pre`). If it emits a poli
 
 grill publishes tickets to the tracker configured by `/setup-matt-pocock-skills` and recorded in `docs/agents/issue-tracker.md`; it produces **no plan document**. So grill-adapter anchors on the feature, not on a plan file: all sidecars live in `.grill-adapter/context/<feature-slug>.*`, and the ticket roster — not a plan's headings — is the task identity.
 
-1. Run `/grill-adapter:wiki-research` (phase `plan`) to formally select bound atomic Obsidian Notes and reviewed Skill Cards; the `wiki-researcher` agent writes `.grill-adapter/context/<feature-slug>.obsidian-wiki-selection.json`.
+1. Run `/grill-adapter:wiki-research` (phase `plan`) to formally select bound atomic Obsidian Notes and reviewed Skill Cards; on Codex, wait for the dispatched researcher path before reading its summary or continuing Carry. The `wiki-researcher` agent writes `.grill-adapter/context/<feature-slug>.obsidian-wiki-selection.json`.
 2. Follow `/grill-adapter:wiki-research` to scaffold the schema-v6 `.grill-adapter/context/<feature-slug>.wiki-context.json` sidecar (`wiki_context_render.py --scaffold … --feature-slug <feature-slug> --ticket-source <source>`), then edit each Note/Card's `destination` once. The sidecar carries no Note bodies.
 3. **After the tickets are published**, build the ticket roster `.grill-adapter/context/<feature-slug>.ticket-roster.json` (`/grill-adapter:wiki-research` carries the roster shape). Read `docs/agents/issue-tracker.md` to know which form applies — do not guess:
    - **Local markdown** (`ticketSource: grill-local-scratch`) — one roster entry per `.scratch/<feature-slug>/issues/<NN>-<slug>.md`. `taskId` is the `NN` prefix; `text` is the whole file body, verbatim.
