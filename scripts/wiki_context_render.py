@@ -728,9 +728,9 @@ def _write_context(path: Path, data: dict[str, Any]) -> None:
 def main() -> int:
     _configure_stdio()
     parser = argparse.ArgumentParser(description="Validate and render schemaVersion 6 Obsidian wiki context JSON.")
-    parser.add_argument("context_path", help="Path to .grill-adapter/context/<feature-slug>.wiki-context.json")
+    parser.add_argument("context_path", help="Path to .grill-adapter/context/<feature-slug>/wiki-context.json")
     parser.add_argument("--task-id", help="Render only wiki refs bound to the finalized ticket id, plus global refs")
-    parser.add_argument("--ticket-roster", help="Path to the host-produced ticket roster JSON (.grill-adapter/context/<feature-slug>.ticket-roster.json) used as the task identity + fingerprint source")
+    parser.add_argument("--ticket-roster", help="Path to the host-produced ticket roster JSON (.grill-adapter/context/<feature-slug>/ticket-roster.json) used as the task identity + fingerprint source")
     parser.add_argument("--project-root", help="Project root used to revalidate ADR projection authority (defaults to the current directory)")
     parser.add_argument("--feature-slug", help="With --scaffold, the feature identity stamped into the sidecar")
     parser.add_argument("--ticket-source", choices=sorted(TICKET_SOURCES), help="With --scaffold, records where the roster's tickets came from (audit metadata; the engine never branches on it)")

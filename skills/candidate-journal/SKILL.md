@@ -5,7 +5,7 @@ description: Append, supersede, validate, fold, or record Capture outcomes for d
 
 # Candidate Journal
 
-Record candidates mechanically without writing Obsidian or deciding whether knowledge is durable. The journal is append-only working state at `.grill-adapter/context/<feature-slug>.wiki-candidates.jsonl`; never edit, truncate, delete, or commit it.
+Record candidates mechanically without writing Obsidian or deciding whether knowledge is durable. The journal is append-only working state at `.grill-adapter/context/<feature-slug>/wiki-candidates.jsonl`; never edit, truncate, delete, or commit it.
 
 Use one `feature-slug` for the entire workflow. Choose the stage from `grill-with-docs`, `specification`, `tickets`, `implementation`, `review`, `debugging`, or `capture`.
 
@@ -15,7 +15,7 @@ Capture one atomic claim. Use `candidate-type=wiki_note` for facts, constraints,
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py append \
-  --journal .grill-adapter/context/<feature-slug>.wiki-candidates.jsonl \
+  --journal .grill-adapter/context/<feature-slug>/wiki-candidates.jsonl \
   --feature-slug <feature-slug> --stage <stage> \
   --candidate-type wiki_note|skill_card \
   --kind decision|gotcha|contract|convention|domain|guide|skill_registration \
@@ -49,7 +49,7 @@ Append the replacement candidate first. Then link the old active candidate to it
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py supersede \
-  --journal .grill-adapter/context/<feature-slug>.wiki-candidates.jsonl \
+  --journal .grill-adapter/context/<feature-slug>/wiki-candidates.jsonl \
   --feature-slug <feature-slug> --candidate-id <old-id> \
   --by-candidate-id <replacement-id> --reason "<why the old claim is obsolete>"
 ```
@@ -62,10 +62,10 @@ Before Capture, validate and fold. Stop on any error; do not recover by hand-edi
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py validate \
-  --journal .grill-adapter/context/<feature-slug>.wiki-candidates.jsonl \
+  --journal .grill-adapter/context/<feature-slug>/wiki-candidates.jsonl \
   --feature-slug <feature-slug>
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py fold \
-  --journal .grill-adapter/context/<feature-slug>.wiki-candidates.jsonl \
+  --journal .grill-adapter/context/<feature-slug>/wiki-candidates.jsonl \
   --feature-slug <feature-slug>
 ```
 
@@ -75,7 +75,7 @@ When several active candidates express the same final claim, do not write the cl
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py outcome \
-  --journal .grill-adapter/context/<feature-slug>.wiki-candidates.jsonl \
+  --journal .grill-adapter/context/<feature-slug>/wiki-candidates.jsonl \
   --feature-slug <feature-slug> --candidate-id <id> \
   --status kept|skipped|deferred --reason "<Capture result>"
 ```
@@ -89,7 +89,7 @@ changes this identity cannot complete the ADR candidate.
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py outcome \
-  --journal .grill-adapter/context/<feature-slug>.wiki-candidates.jsonl \
+  --journal .grill-adapter/context/<feature-slug>/wiki-candidates.jsonl \
   --feature-slug <feature-slug> --candidate-id <id> \
   --status kept --reason "Write bridge returned matching post-write identity." \
   --write-state applied --operation update \

@@ -518,13 +518,24 @@ git -C "$VAULT" add "$SOURCE_ROOT/rules/api-contract.md"
 git -C "$VAULT" commit -m "restore reviewed migration Note" >/dev/null
 git -C "$VAULT" push origin main >/dev/null
 
-printf '{"schemaVersion":5,"kind":"grill-adapter.wiki-context"}\n' > "$PROJECT/.grill-adapter/context/active.wiki-context.json"
+mkdir -p "$PROJECT/.grill-adapter/context/active"
+printf '{"schemaVersion":5,"kind":"grill-adapter.wiki-context"}\n' > "$PROJECT/.grill-adapter/context/active/wiki-context.json"
 if python3 "$MIGRATOR" cutover --project-root "$PROJECT" --manifest "$MANIFEST" --confirmed > /dev/null 2> "$TMP/v5.err"; then
   printf 'Migration cutover accepted an active schema-v5 sidecar\n' >&2
   exit 1
 fi
 grep -Fq 'schemaVersion 5' "$TMP/v5.err"
-printf '{"schemaVersion":6,"kind":"grill-adapter.wiki-context"}\n' > "$PROJECT/.grill-adapter/context/active.wiki-context.json"
+printf '{"schemaVersion":6,"kind":"grill-adapter.wiki-context"}\n' > "$PROJECT/.grill-adapter/context/active/wiki-context.json"
+
+# A pre-directory sidecar is still an active execution artifact and must not be bypassed
+# during cutover merely because new work is stored in feature directories.
+printf '{"schemaVersion":5,"kind":"grill-adapter.wiki-context"}\n' > "$PROJECT/.grill-adapter/context/legacy.wiki-context.json"
+if python3 "$MIGRATOR" cutover --project-root "$PROJECT" --manifest "$MANIFEST" --confirmed > /dev/null 2> "$TMP/legacy-v5.err"; then
+  printf 'Migration cutover ignored an active legacy schema-v5 sidecar\n' >&2
+  exit 1
+fi
+grep -Fq 'schemaVersion 5' "$TMP/legacy-v5.err"
+rm -f "$PROJECT/.grill-adapter/context/legacy.wiki-context.json"
 
 if python3 "$MIGRATOR" cutover --project-root "$PROJECT" --manifest "$MANIFEST" > /dev/null 2> "$TMP/unconfirmed-cutover.err"; then
   printf 'Migration cutover accepted missing explicit confirmation\n' >&2

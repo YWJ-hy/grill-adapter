@@ -16,7 +16,8 @@ source "${SCRIPT_DIR}/_windows-compat.bash"
 TMP="$(portable_tmpdir)"
 trap 'rm -rf "$TMP"' EXIT
 PROJECT="$TMP/project"
-CTX_DIR="$PROJECT/.grill-adapter/context"
+CONTEXT_ROOT="$PROJECT/.grill-adapter/context"
+CTX_DIR="$CONTEXT_ROOT/reviewer"
 mkdir -p "$CTX_DIR"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
@@ -28,10 +29,10 @@ SHA_B="$(printf 'b%.0s' {1..64})"
 SHA_C="$(printf 'c%.0s' {1..64})"
 SHA_D="$(printf 'd%.0s' {1..64})"
 
-ROSTER="$CTX_DIR/reviewer.ticket-roster.json"
-CONTEXT="$CTX_DIR/reviewer.wiki-context.json"
-RECEIPT="$CTX_DIR/reviewer.wiki-readiness.json"
-HANDOFF="$CTX_DIR/reviewer.wiki-review.md"
+ROSTER="$CTX_DIR/ticket-roster.json"
+CONTEXT="$CTX_DIR/wiki-context.json"
+RECEIPT="$CTX_DIR/wiki-readiness.json"
+HANDOFF="$CTX_DIR/21.wiki-review.md"
 CALL_LOG="$TMP/obsidian-calls.log"
 
 cat > "$ROSTER" <<'JSON'
@@ -151,7 +152,7 @@ receipt = {
     "generatedBy": "grill-adapter",
     "featureSlug": "reviewer",
     "ticketSource": "github-issues",
-    "rosterFile": "reviewer.ticket-roster.json",
+    "rosterFile": "ticket-roster.json",
     "tasks": [{
         "taskId": "21",
         "taskTitle": roster["tickets"][0]["taskTitle"],
@@ -159,7 +160,7 @@ receipt = {
         "status": "ready",
         "contextDisposition": "materialized",
         "reason": "Implementer constraints materialized successfully.",
-        "contextFile": "reviewer.wiki-context.json",
+        "contextFile": "wiki-context.json",
     }],
 }
 with open(receipt_path, "w", encoding="utf-8") as handle:
@@ -301,7 +302,7 @@ PY
 HANDOFF_AFTER="$(sha256_file "$HANDOFF")"
 [[ "$HANDOFF_BEFORE" == "$HANDOFF_AFTER" ]] || fail "review consumers mutated the shared handoff"
 
-CAPTURE_JOURNAL="$CTX_DIR/reviewer.wiki-candidates.jsonl"
+CAPTURE_JOURNAL="$CTX_DIR/wiki-candidates.jsonl"
 python3 "$JOURNAL_CLI" append \
   --journal "$CAPTURE_JOURNAL" \
   --feature-slug reviewer \
@@ -334,7 +335,7 @@ assert folded["counts"]["skipped"] == 1
 '
 
 # Independent review with no task/receipt is fail-open and performs no Wiki read.
-UNKNOWN="$CTX_DIR/unknown.wiki-review.md"
+UNKNOWN="$CONTEXT_ROOT/independent.wiki-review.md"
 CALLS_BEFORE="$(wc -l < "$CALL_LOG")"
 FAKE_CALL_LOG="$CALL_LOG" python3 "$READINESS" review-handoff \
   --project-root "$PROJECT" \

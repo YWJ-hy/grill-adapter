@@ -80,6 +80,7 @@ for f in "$GRILL" "$PLAIN"; do
   need "$f" 'review'
   need "$f" 'debugging'
   need "$f" 'wiki-candidates.jsonl'
+  need "$f" '.grill-adapter/context/<feature-slug>/'
 done
 
 # The implementation entry is one readiness seam for formal tickets, direct tracker issues,

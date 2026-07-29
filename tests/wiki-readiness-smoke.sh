@@ -21,15 +21,18 @@ done
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-CTX_DIR="$TMP/project/.grill-adapter/context"
-mkdir -p "$CTX_DIR"
+CONTEXT_ROOT="$TMP/project/.grill-adapter/context"
+ISSUE_DIR="$CONTEXT_ROOT/issue-19"
+MANUAL_DIR="$CONTEXT_ROOT/manual-change"
+FORMAL_DIR="$CONTEXT_ROOT/formal-feature"
+mkdir -p "$ISSUE_DIR" "$MANUAL_DIR" "$FORMAL_DIR"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 need() { grep -Fq "$2" "$1" || fail "$1 missing: $2"; }
 
 # Direct GitHub issue implementation uses the real issue id and exact body as the fingerprint input.
-ISSUE_JSON="$TMP/issue.json"
-ISSUE_ROSTER="$CTX_DIR/issue-19.ticket-roster.json"
+ISSUE_JSON="$ISSUE_DIR/issue.json"
+ISSUE_ROSTER="$ISSUE_DIR/ticket-roster.json"
 cat > "$ISSUE_JSON" <<'JSON'
 {
   "number": 19,
@@ -56,8 +59,8 @@ assert roster["tickets"] == [{
 PY
 
 # A confirmed conversational request becomes one manual task; the full brief is authoritative.
-MANUAL_TEXT="$TMP/manual-brief.md"
-MANUAL_ROSTER="$CTX_DIR/manual-change.ticket-roster.json"
+MANUAL_TEXT="$MANUAL_DIR/task-brief.md"
+MANUAL_ROSTER="$MANUAL_DIR/ticket-roster.json"
 printf '%s\n' 'Implement the confirmed request exactly as discussed.' > "$MANUAL_TEXT"
 python3 "$READINESS" prepare-manual \
   --feature-slug manual-change \
@@ -78,9 +81,9 @@ assert roster["tickets"] == [{
 PY
 
 # Build a finalized context through the existing public Carry seam.
-SELECTION="$TMP/issue-19.obsidian-wiki-selection.json"
-CONTEXT="$CTX_DIR/issue-19.wiki-context.json"
-RECEIPT="$CTX_DIR/issue-19.wiki-readiness.json"
+SELECTION="$ISSUE_DIR/obsidian-wiki-selection.json"
+CONTEXT="$ISSUE_DIR/wiki-context.json"
+RECEIPT="$ISSUE_DIR/wiki-readiness.json"
 cat > "$SELECTION" <<'JSON'
 {
   "status": "ok",
@@ -158,10 +161,10 @@ fi
 need "$TMP/failed-bind.stderr" "materialization"
 
 # Reuse an already-finalized formal-ticket context through the Obsidian materializer.
-FORMAL_ROSTER="$CTX_DIR/formal-feature.ticket-roster.json"
-FORMAL_SELECTION="$TMP/formal-feature.obsidian-wiki-selection.json"
-FORMAL_CONTEXT="$CTX_DIR/formal-feature.wiki-context.json"
-FORMAL_RECEIPT="$CTX_DIR/formal-feature.wiki-readiness.json"
+FORMAL_ROSTER="$FORMAL_DIR/ticket-roster.json"
+FORMAL_SELECTION="$FORMAL_DIR/obsidian-wiki-selection.json"
+FORMAL_CONTEXT="$FORMAL_DIR/wiki-context.json"
+FORMAL_RECEIPT="$FORMAL_DIR/wiki-readiness.json"
 FORMAL_SNAPSHOT="sha256:6240d8cadfd2df3df96ee005f0349145191b5b219b922c3c93aab9c7f2bd2e6e"
 FORMAL_BINDING="d44631c6c041e294a6823d3986d7195e517e84038cfad4f2f78ee71d4a1e8798"
 FORMAL_CONTENT="sha256:ab31c6c9848e035118b3dc7a8c9926d5862f5802e0a567c70873b0e082ae943b"
@@ -292,13 +295,13 @@ receipt = json.load(open(receipt_path, encoding="utf-8"))
 assert receipt["kind"] == "grill-adapter.wiki-readiness"
 assert receipt["featureSlug"] == "formal-feature"
 assert receipt["ticketSource"] == "grill-local-scratch"
-assert receipt["rosterFile"] == "formal-feature.ticket-roster.json"
+assert receipt["rosterFile"] == "ticket-roster.json"
 assert len(receipt["tasks"]) == 1
 task = receipt["tasks"][0]
 assert task["taskId"] == "01"
 assert task["status"] == "ready"
 assert task["contextDisposition"] == "materialized"
-assert task["contextFile"] == "formal-feature.wiki-context.json"
+assert task["contextFile"] == "wiki-context.json"
 assert len(task["taskFingerprint"]) == 64
 assert hashlib.sha256(open(context_path, "rb").read()).hexdigest() == context_before
 assert hashlib.sha256(open(roster_path, "rb").read()).hexdigest() == roster_before
@@ -323,7 +326,7 @@ need "$TMP/drift.out" "fingerprint"
 
 # Fail-open outcomes keep the stable task identity but never point at partial or stale context.
 for status in no-relevant disabled broken; do
-  state_receipt="$CTX_DIR/manual-change.${status}.wiki-readiness.json"
+  state_receipt="$MANUAL_DIR/${status}.wiki-readiness.json"
   python3 "$READINESS" record \
     --receipt "$state_receipt" \
     --roster "$MANUAL_ROSTER" \
@@ -345,7 +348,7 @@ PY
 done
 
 if python3 "$READINESS" record \
-  --receipt "$CTX_DIR/invalid-broken.wiki-readiness.json" \
+  --receipt "$MANUAL_DIR/invalid-broken.wiki-readiness.json" \
   --roster "$MANUAL_ROSTER" \
   --task-id manual \
   --status broken \

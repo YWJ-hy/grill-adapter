@@ -18,7 +18,7 @@ planner 先按正式治理规则校验 binding topology（重复 ID/root、root 
 
 PR 由用户审查/合并且 configured base worktree 同步后，`verify` 才运行。它先重算 manifest 内完整 plan 的 `planHash`、legacy source snapshot、binding/policy snapshot，并从 immutable plan + operation roster 推导完整 coverage，删除 receipt 行或改写 receipt 身份都会失败。随后核实所有 PR `MERGED` 与 base freshness，再通过 bundled `status/search/read-notes-by-wiki-ids/graph-neighbors` seam 检查唯一 ID、Source/path containment、schema/policy、精确 content hash、search identity、Skill Card availability、typed edges 与 hard Note 全文 reread。verify 不写 Note；任何人工修改都表现为 drift，绝不覆盖。
 
-`cutover` 需要另一次显式 `--confirmed`，并在写 settings 前重新跑完整 verify。若当前最新 `.grill-adapter/context/*.wiki-context.json` 仍是 schema v5，则 fail-closed。成功后 `.grill-adapter/settings.json` 保持 `wiki.provider: obsidian`，并记录 `wiki.legacyRuntime.mode: read-only-archive`、confirmed plan 实际覆盖的旧 roots 和 migration manifest；未被 plan 选择的另一 root 不会被误归档。旧 Markdown/index/graph 不删除、不移动、不重写；legacy bootstrap/init/update/import/migration 路径都会拒绝对 archive roots 的后续写入。
+`cutover` 需要另一次显式 `--confirmed`，并在写 settings 前重新跑完整 verify。若当前最新 `.grill-adapter/context/<feature-slug>/wiki-context.json`（或兼容保留的旧平铺 sidecar）仍是 schema v5，则 fail-closed。成功后 `.grill-adapter/settings.json` 保持 `wiki.provider: obsidian`，并记录 `wiki.legacyRuntime.mode: read-only-archive`、confirmed plan 实际覆盖的旧 roots 和 migration manifest；未被 plan 选择的另一 root 不会被误归档。旧 Markdown/index/graph 不删除、不移动、不重写；legacy bootstrap/init/update/import/migration 路径都会拒绝对 archive roots 的后续写入。
 
 ## 运行边界
 
@@ -239,14 +239,14 @@ JSON CLI 同样暴露 `propose-note-change` / `apply-note-change`，请求从 st
 
 ```bash
 python3 <plugin-root>/scripts/wiki_candidate_journal.py fold \
-  --journal .grill-adapter/context/<feature-slug>.wiki-candidates.jsonl \
+  --journal .grill-adapter/context/<feature-slug>/wiki-candidates.jsonl \
   --feature-slug <feature-slug> \
 | node <plugin-root>/mcp/obsidian-wiki/dist/index.js publish
 ```
 
 publisher 每仓依次验证当前 binding digest、`publishing.mode: git-pr`、remote identity、base branch 与 remote/base 同步、Source containment、wiki ID、before/after hash，以及 worktree changed paths 与 receipts 完全相等；拿到 repository lock 后会再次核对 Note hash 与精确 path scope。它创建 `.grill-adapter-wiki.publish.lock` 阻止 formal read，在 run 专属 branch 上只 add allowlist paths、commit/push、创建 draft PR，并在所有仓库拿到 URL 后回填 peer PR 列表。成功或普通外部失败都会切回 clean base 后移除 lock；若 base 恢复本身失败则保留 lock 并 fail-closed。publisher 不 merge、approve、force-push、reset、stash、clean 或删 branch。
 
-本地 `.grill-adapter/context/<feature-slug>.wiki-publish.json` 是恢复 receipt，不提交。commit 前失败时，manifest 的 `stagedTree` 只保存已验证 Git tree 的 object ID（不保存 Note body），publisher 清理 base index/worktree；重跑时从该 tree 恢复同一 allowlist。已有 local commit、remote branch 或 GitHub PR 会按 content hash/commit/path/URL 重新核验并复用；base 上若出现新的 Capture 改动则 fail-closed，必须另行处理。PR 分支内容不是 runtime truth；只有人工 merge 后，配置的 base worktree 完成同步并重新通过 binding/Note 校验，formal research 才能读取。
+本地 `.grill-adapter/context/<feature-slug>/wiki-publish.json` 是恢复 receipt，不提交。commit 前失败时，manifest 的 `stagedTree` 只保存已验证 Git tree 的 object ID（不保存 Note body），publisher 清理 base index/worktree；重跑时从该 tree 恢复同一 allowlist。已有 local commit、remote branch 或 GitHub PR 会按 content hash/commit/path/URL 重新核验并复用；base 上若出现新的 Capture 改动则 fail-closed，必须另行处理。PR 分支内容不是 runtime truth；只有人工 merge 后，配置的 base worktree 完成同步并重新通过 binding/Note 校验，formal research 才能读取。
 
 ## 诊断与失败模式
 

@@ -27,6 +27,7 @@ from wiki_migration_plan import (  # noqa: E402
     build_plan,
     canonical_edges,
 )
+from feature_context import context_root, feature_artifact_paths  # noqa: E402
 from wiki_section import extract_all_sections  # noqa: E402
 
 
@@ -1096,7 +1097,13 @@ def verify_command(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def active_sidecar(project_root: Path) -> tuple[Path, int] | None:
-    candidates = [path for path in (project_root / ".grill-adapter" / "context").glob("*.wiki-context.json") if path.is_file()]
+    root = context_root(project_root)
+    # New feature-scoped sidecars are canonical. Retain flat sidecars so an in-progress
+    # pre-directory workflow remains protected by the schema-v5 cutover gate.
+    candidates = [
+        *(path for path in root.glob("*.wiki-context.json") if path.is_file()),
+        *feature_artifact_paths(project_root, "context"),
+    ]
     if not candidates:
         return None
     path = max(candidates, key=lambda candidate: candidate.stat().st_mtime_ns)

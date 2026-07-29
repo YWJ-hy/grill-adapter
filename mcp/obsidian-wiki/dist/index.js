@@ -23326,7 +23326,16 @@ function writeManifest(manifestPath, manifest) {
   renameSync2(temporaryPath, manifestPath);
 }
 function manifestPathFor(projectDir, featureSlug) {
+  return path6.join(projectDir, ".grill-adapter", "context", featureSlug, "wiki-publish.json");
+}
+function legacyManifestPathFor(projectDir, featureSlug) {
   return path6.join(projectDir, ".grill-adapter", "context", `${featureSlug}.wiki-publish.json`);
+}
+function manifestPathForResume(projectDir, featureSlug) {
+  const canonical = manifestPathFor(projectDir, featureSlug);
+  if (existsSync4(canonical)) return canonical;
+  const legacy = legacyManifestPathFor(projectDir, featureSlug);
+  return existsSync4(legacy) ? legacy : canonical;
 }
 function readPublishManifest(manifestPath) {
   return existsSync4(manifestPath) ? PublishManifestSchema.parse(JSON.parse(readFileSync4(manifestPath, "utf8"))) : void 0;
@@ -23334,7 +23343,7 @@ function readPublishManifest(manifestPath) {
 function publishBranchOptions(featureSlug, env = process.env) {
   const parsedFeature = string2().regex(/^[a-z0-9][a-z0-9._-]*$/).parse(featureSlug);
   const projectDir = path6.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
-  const manifest = readPublishManifest(manifestPathFor(projectDir, parsedFeature));
+  const manifest = readPublishManifest(manifestPathForResume(projectDir, parsedFeature));
   if (!manifest || manifest.featureSlug !== parsedFeature) {
     throw new Error(`publish transaction is unavailable for ${parsedFeature}`);
   }
@@ -23343,7 +23352,7 @@ function publishBranchOptions(featureSlug, env = process.env) {
 function preparePublishBranches(input, env = process.env) {
   const request = PublishPreparationSchema.parse(input);
   const projectDir = path6.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
-  const manifestPath = manifestPathFor(projectDir, request.featureSlug);
+  const manifestPath = manifestPathForResume(projectDir, request.featureSlug);
   const existing = readPublishManifest(manifestPath);
   const allowedRepositoryBranches = existing ? Object.fromEntries(existing.repositories.map((run) => [run.repositoryRef, run.branch])) : void 0;
   const resolution = resolveBindings(env, projectDir, {
@@ -23649,7 +23658,7 @@ ${normalizeVaultPath(receipt.path)}`;
     receiptPaths.add(key);
   }
   const projectDir = path6.resolve(env.CLAUDE_PROJECT_DIR ?? process.cwd());
-  const manifestPath = manifestPathFor(projectDir, journal.featureSlug);
+  const manifestPath = manifestPathForResume(projectDir, journal.featureSlug);
   const existingManifest = readPublishManifest(manifestPath);
   const allowedRepositoryBranches = existingManifest ? Object.fromEntries(existingManifest.repositories.map((run) => [run.repositoryRef, run.branch])) : void 0;
   const resolution = resolveBindings(env, projectDir, {

@@ -108,7 +108,7 @@ fi
 
 # A stripped generic Note receipt cannot complete an ADR projection candidate. The applied
 # receipt must carry the exact authority identity returned by the write boundary.
-ADR_JOURNAL="$T/.grill-adapter/context/adr-receipt.wiki-candidates.jsonl"
+ADR_JOURNAL="$T/.grill-adapter/context/adr-receipt/wiki-candidates.jsonl"
 mkdir -p "$(dirname "$ADR_JOURNAL")"
 cp "$ADR_EVENT" "$ADR_JOURNAL"
 ADR_CANDIDATE_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["candidateId"])' "$ADR_EVENT")"
@@ -150,7 +150,7 @@ assert first["adrProjection"]["sourceContentHash"] != second["adrProjection"]["s
 ' || fail "ADR source identity did not remain stable across a content revision"
 
 # Ordinary non-ADR decision candidates keep the existing journal contract.
-ORDINARY="$T/.grill-adapter/context/ordinary-decision.wiki-candidates.jsonl"
+ORDINARY="$T/.grill-adapter/context/ordinary-decision/wiki-candidates.jsonl"
 python3 "$ROOT/scripts/wiki_candidate_journal.py" append \
   --journal "$ORDINARY" --feature-slug ordinary-decision \
   --event-id ordinary-event --candidate-id ordinary-candidate \
@@ -200,7 +200,7 @@ printf '%s' "$OUT2" | grep -q 'Idempotency Key' && fail "increment mode leaked p
 
 # append mode writes one feature-scoped journal that validates through the shared helper.
 python3 "$BRIDGE" "$T" --feature-slug feature-a --all >/dev/null 2>&1 || fail "append mode failed"
-JOURNAL="$T/.grill-adapter/context/feature-a.wiki-candidates.jsonl"
+JOURNAL="$T/.grill-adapter/context/feature-a/wiki-candidates.jsonl"
 [[ -f "$JOURNAL" ]] || fail "append did not create the feature journal"
 python3 "$ROOT/scripts/wiki_candidate_journal.py" validate \
   --journal "$JOURNAL" --feature-slug feature-a >/dev/null || fail "bridge journal did not validate"
@@ -213,7 +213,8 @@ AFTER="$(sha256_file "$JOURNAL")"
 [[ "$BEFORE" == "$AFTER" ]] || fail "identical bridge replay mutated the journal"
 
 # A stable bridge identity with different payload is a conflict, not an idempotent replay.
-CONFLICT_JOURNAL="$T/.grill-adapter/context/conflict.wiki-candidates.jsonl"
+CONFLICT_JOURNAL="$T/.grill-adapter/context/conflict/wiki-candidates.jsonl"
+mkdir -p "$(dirname "$CONFLICT_JOURNAL")"
 cp "$JOURNAL" "$CONFLICT_JOURNAL"
 python3 - "$CONFLICT_JOURNAL" <<'PY'
 import json, pathlib, sys

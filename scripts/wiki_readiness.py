@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from feature_context import context_root, infer_project_root, is_feature_context_dir
 from wiki_context_render import FingerprintError, ValidationError, load_ticket_roster
 
 
@@ -91,7 +92,15 @@ def _feature_slug(value: Any) -> str:
 
 def _same_context_directory(reference: Path, candidate: Path, label: str) -> None:
     if reference.resolve().parent != candidate.resolve().parent:
-        raise ReadinessError(f"{label} must be in the same .grill-adapter/context directory as the readiness receipt")
+        raise ReadinessError(f"{label} must be in the same feature context directory as the readiness receipt")
+
+
+def _is_allowed_context_directory(directory: Path, project_root: Path) -> bool:
+    root = context_root(project_root)
+    resolved = directory.resolve()
+    # The root is retained only for pre-directory legacy artifacts. New task artifacts
+    # belong in one direct <feature-slug> child directory.
+    return resolved == root or is_feature_context_dir(resolved, project_root)
 
 
 def _safe_context_filename(value: Any, field: str) -> str:
@@ -341,6 +350,7 @@ def record_readiness(
     reason: str,
     context_path: Path | None,
     materialized: bool = False,
+    project_root: Path | None = None,
 ) -> str:
     _same_context_directory(receipt_path, roster_path, "ticket roster")
     raw_roster, feature_slug, ticket_source, tasks = _roster_metadata(roster_path)
@@ -358,7 +368,11 @@ def record_readiness(
         if context_path is None:
             raise ReadinessError("ready readiness requires --context")
         _same_context_directory(receipt_path, context_path, "Wiki context")
-        context = _validate_context(context_path, roster_path, roster_path.parent.parent)
+        context = _validate_context(
+            context_path,
+            roster_path,
+            project_root or infer_project_root(roster_path),
+        )
         _validate_context_identity(context, feature_slug, ticket_source, task_id)
         context_file = context_path.name
     elif context_path is not None:
@@ -446,19 +460,25 @@ def bind_readiness(
         reason,
         context_path,
         materialized=True,
+        project_root=project_root,
     )
     parts = [part.rstrip() for part in (rendered, materialized_output) if part.strip()]
     return "\n\n".join(parts)
 
 
-def validate_readiness(receipt_path: Path, task_id: str) -> str:
-    _, _, entry, _ = _validated_readiness_task(receipt_path, task_id)
+def validate_readiness(
+    receipt_path: Path,
+    task_id: str,
+    project_root: Path | None = None,
+) -> str:
+    _, _, entry, _ = _validated_readiness_task(receipt_path, task_id, project_root)
     return f"readiness {entry['status']} is valid for task {entry['taskId']}"
 
 
 def _validated_readiness_task(
     receipt_path: Path,
     task_id: str,
+    project_root: Path | None = None,
 ) -> tuple[dict[str, Any], Path, dict[str, Any], Path | None]:
     receipt = _load_json(receipt_path, "readiness receipt")
     _validate_receipt_shape(receipt)
@@ -493,7 +513,11 @@ def _validated_readiness_task(
 
     if entry["status"] == "ready":
         context_path = receipt_path.parent / _safe_context_filename(entry["contextFile"], "contextFile")
-        context = _validate_context(context_path, roster_path, roster_path.parent.parent)
+        context = _validate_context(
+            context_path,
+            roster_path,
+            project_root or infer_project_root(roster_path),
+        )
         _validate_context_identity(context, feature_slug, ticket_source, task_id)
     else:
         context_path = None
@@ -552,9 +576,11 @@ def review_handoff(
 ) -> str:
     if not project_root.is_dir():
         raise ReadinessError(f"project root is not a directory: {project_root}")
-    context_dir = (project_root / ".grill-adapter" / "context").resolve()
-    if handoff_path.resolve().parent != context_dir:
-        raise ReadinessError("review handoff must be a plain file in <project-root>/.grill-adapter/context")
+    handoff_directory = handoff_path.resolve().parent
+    if not _is_allowed_context_directory(handoff_directory, project_root):
+        raise ReadinessError(
+            "review handoff must be a plain file in <project-root>/.grill-adapter/context/<feature-slug>"
+        )
 
     # A failed refresh must never leave an older reviewer handoff available to subagents.
     handoff_path.unlink(missing_ok=True)
@@ -572,9 +598,16 @@ def review_handoff(
         return f"wrote fail-open unknown reviewer handoff -> {handoff_path}"
 
     try:
-        if receipt_path.resolve().parent != context_dir:
+        receipt_directory = receipt_path.resolve().parent
+        if not _is_allowed_context_directory(receipt_directory, project_root):
             raise ReadinessError("readiness receipt is outside the current project .grill-adapter/context")
-        _, _, entry, context_path = _validated_readiness_task(receipt_path, normalized_task_id)
+        if handoff_directory != receipt_directory:
+            raise ReadinessError("review handoff must be in the same feature context directory as the readiness receipt")
+        _, _, entry, context_path = _validated_readiness_task(
+            receipt_path,
+            normalized_task_id,
+            project_root,
+        )
     except (ReadinessError, ValidationError, FingerprintError):
         _write_text(
             handoff_path,
@@ -672,6 +705,7 @@ def main() -> int:
     validate = subparsers.add_parser("validate", help="Validate a receipt against its current roster/context")
     validate.add_argument("--receipt", required=True)
     validate.add_argument("--task-id", required=True)
+    validate.add_argument("--project-root")
 
     review = subparsers.add_parser(
         "review-handoff",
@@ -725,7 +759,13 @@ def main() -> int:
                 )
             )
         elif args.command == "validate":
-            print(validate_readiness(Path(args.receipt), args.task_id))
+            print(
+                validate_readiness(
+                    Path(args.receipt),
+                    args.task_id,
+                    Path(args.project_root) if args.project_root else None,
+                )
+            )
         else:
             print(
                 review_handoff(

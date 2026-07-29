@@ -11,7 +11,7 @@ source "${SCRIPT_DIR}/_windows-compat.bash"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 T="$(portable_tmpdir)"; trap 'rm -rf "$T"' EXIT
-JOURNAL="$T/.grill-adapter/context/feature-a.wiki-candidates.jsonl"
+JOURNAL="$T/.grill-adapter/context/feature-a/wiki-candidates.jsonl"
 
 append_candidate() {
   ARGS=(
@@ -59,7 +59,7 @@ for invalid_identity in \
   '--skill-name receipt-verifier --skill-version latest' \
   '--skill-name receipt-verifier --skill-version 1.2'; do
   if python3 "$JOURNAL_CLI" append \
-    --journal "$T/.grill-adapter/context/invalid-skill.wiki-candidates.jsonl" \
+    --journal "$T/.grill-adapter/context/invalid-skill/wiki-candidates.jsonl" \
     --feature-slug invalid-skill --event-id invalid-event --candidate-id invalid-card \
     --stage implementation --candidate-type skill_card --kind skill_registration \
     --claim 'Invalid skill registration.' --why 'The identity must fail closed.' \
@@ -73,7 +73,7 @@ for invalid_identity in \
 done
 
 # Public CLI output stays UTF-8 even when the inherited stdio encoding is ASCII.
-UTF8_JOURNAL="$T/.grill-adapter/context/utf8-feature.wiki-candidates.jsonl"
+UTF8_JOURNAL="$T/.grill-adapter/context/utf8-feature/wiki-candidates.jsonl"
 PYTHONIOENCODING=ascii python3 "$JOURNAL_CLI" append \
   --journal "$UTF8_JOURNAL" --feature-slug utf8-feature \
   --event-id utf8-event --candidate-id utf8-candidate --stage review \
@@ -84,7 +84,7 @@ UTF8_FOLD="$(PYTHONIOENCODING=ascii python3 "$JOURNAL_CLI" fold --journal "$UTF8
 printf '%s' "$UTF8_FOLD" | grep -q '候选日志' || fail "CLI did not emit UTF-8 journal content"
 
 # Concurrent writers serialize through the journal lock without losing events.
-CONCURRENT_JOURNAL="$T/.grill-adapter/context/concurrent.wiki-candidates.jsonl"
+CONCURRENT_JOURNAL="$T/.grill-adapter/context/concurrent/wiki-candidates.jsonl"
 PIDS=()
 for i in $(seq 1 12); do
   python3 "$JOURNAL_CLI" append \
@@ -362,7 +362,7 @@ fi
 [[ "$(wc -l < "$CORRUPT" | tr -d ' ')" == "1" ]] || fail "corrupt journal was mutated"
 
 # Candidate type and kind cannot disagree about Note versus Skill Card routing.
-TYPE_JOURNAL="$T/.grill-adapter/context/type-check.wiki-candidates.jsonl"
+TYPE_JOURNAL="$T/.grill-adapter/context/type-check/wiki-candidates.jsonl"
 if python3 "$JOURNAL_CLI" append \
   --journal "$TYPE_JOURNAL" --feature-slug type-check \
   --stage review --candidate-type skill_card --kind decision \

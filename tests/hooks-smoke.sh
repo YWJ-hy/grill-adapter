@@ -12,8 +12,8 @@ HOOKS="$ROOT/hooks"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 # --- wiki-capture-suggest: fires only when journal candidates are unresolved ---
-T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.grill-adapter/context"
-JOURNAL="$T/.grill-adapter/context/feature-a.wiki-candidates.jsonl"
+T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.grill-adapter/context/feature-a"
+JOURNAL="$T/.grill-adapter/context/feature-a/wiki-candidates.jsonl"
 python3 "$ROOT/scripts/wiki_candidate_journal.py" append \
   --journal "$JOURNAL" --feature-slug feature-a --event-id evt-1 --candidate-id cand-1 \
   --stage implementation --candidate-type wiki_note --kind decision \
@@ -26,6 +26,18 @@ python3 "$ROOT/scripts/wiki_candidate_journal.py" outcome \
   --status skipped --reason 'not durable' >/dev/null
 OUT="$(printf '{"cwd":"%s","hook_event_name":"Stop"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-capture-suggest.sh")"
 [[ -z "$OUT" ]] || fail "capture-suggest fired when every candidate was terminal"
+
+# Pre-directory journals remain visible during recovery.
+LEGACY_JOURNAL="$T/.grill-adapter/context/legacy.wiki-candidates.jsonl"
+python3 "$ROOT/scripts/wiki_candidate_journal.py" append \
+  --journal "$LEGACY_JOURNAL" --feature-slug legacy --event-id legacy-1 --candidate-id legacy-candidate \
+  --stage implementation --candidate-type wiki_note --kind decision \
+  --claim x --why y --source-ref z >/dev/null
+OUT="$(printf '{"cwd":"%s","hook_event_name":"Stop"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-capture-suggest.sh")"
+printf '%s' "$OUT" | grep -q 'legacy.wiki-candidates.jsonl' || fail "capture-suggest did not find a legacy flat journal"
+python3 "$ROOT/scripts/wiki_candidate_journal.py" outcome \
+  --journal "$LEGACY_JOURNAL" --feature-slug legacy --event-id legacy-2 --candidate-id legacy-candidate \
+  --status skipped --reason 'not durable' >/dev/null
 
 printf '%s\n' '{not-json}' > "$JOURNAL"
 OUT="$(printf '{"cwd":"%s","hook_event_name":"Stop"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-capture-suggest.sh")"
@@ -61,12 +73,19 @@ OUT="$(printf '{"cwd":"%s","hook_event_name":"UserPromptSubmit"}' "$T" | CLAUDE_
 rm -rf "$T"
 
 # --- wiki-reread: UserPromptSubmit must not reread schema-v6 notes; explicit Bind owns it. ---
-T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.grill-adapter/context"
-printf '{"schemaVersion":6,"kind":"grill-adapter.wiki-context"}\n' > "$T/.grill-adapter/context/feature.wiki-context.json"
+T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.grill-adapter/context/feature"
+printf '{"schemaVersion":6,"kind":"grill-adapter.wiki-context"}\n' > "$T/.grill-adapter/context/feature/wiki-context.json"
 OUT="$(printf '{"cwd":"%s","hook_event_name":"UserPromptSubmit"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-reread.sh")"
 [[ -z "$OUT" ]] || fail "wiki-reread must not materialize schema-v6 notes on UserPromptSubmit"
 OUT="$(printf '{"cwd":"%s","hook_event_name":"SessionStart"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-reread.sh")"
 printf '%s' "$OUT" | grep -q 'wiki-materialize' || fail "wiki-reread SessionStart did not remind about explicit schema-v6 Bind"
+rm -rf "$T"
+
+# The hook remains able to resume an existing flat sidecar without moving it.
+T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.grill-adapter/context"
+printf '{"schemaVersion":6,"kind":"grill-adapter.wiki-context"}\n' > "$T/.grill-adapter/context/legacy.wiki-context.json"
+OUT="$(printf '{"cwd":"%s","hook_event_name":"SessionStart"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-reread.sh")"
+printf '%s' "$OUT" | grep -q 'legacy.wiki-context.json' || fail "wiki-reread did not find a legacy flat sidecar"
 rm -rf "$T"
 
 printf 'hooks smoke OK\n'

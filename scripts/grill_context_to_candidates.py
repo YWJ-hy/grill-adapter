@@ -35,6 +35,7 @@ import sys
 from pathlib import Path
 
 from adr_identity import AdrIdentityError, content_hash, normalize_source_path, source_id_for_path
+from feature_context import feature_artifact_path
 
 from wiki_candidate_journal import append_events, new_event
 
@@ -292,7 +293,7 @@ def main() -> int:
     parser.add_argument("--adr-dir", default="docs/adr", help="ADR directory, relative to repo root")
     parser.add_argument("--since", default=None, help="Git ref to diff against (default: working tree vs HEAD)")
     parser.add_argument("--all", action="store_true", help="Convert the entire current CONTEXT.md + all ADRs, ignoring git diff (backfill/testing)")
-    parser.add_argument("--out", default=None, help="Journal path (default: <repo-root>/.grill-adapter/context/<feature-slug>.wiki-candidates.jsonl)")
+    parser.add_argument("--out", default=None, help="Journal path (default: <repo-root>/.grill-adapter/context/<feature-slug>/wiki-candidates.jsonl)")
     parser.add_argument("--stdout", action="store_true", help="Write events to stdout instead of appending to a journal")
     args = parser.parse_args()
 
@@ -310,7 +311,7 @@ def main() -> int:
         out_path = (
             Path(args.out).expanduser().resolve()
             if args.out
-            else repo_root / ".grill-adapter" / "context" / f"{args.feature_slug}.wiki-candidates.jsonl"
+            else feature_artifact_path(repo_root, args.feature_slug, "journal")
         )
         appended, skipped = append_events(
             out_path,

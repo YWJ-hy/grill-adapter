@@ -9,7 +9,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 PROJECT="${TMP}/project"
-CONTEXT_DIR="${PROJECT}/.grill-adapter/context"
+CONTEXT_DIR="${PROJECT}/.grill-adapter/context/feature"
 mkdir -p "${PROJECT}/docs/adr" "${CONTEXT_DIR}"
 
 cat > "${PROJECT}/docs/adr/0001-runtime.md" <<'MD'
@@ -18,7 +18,7 @@ cat > "${PROJECT}/docs/adr/0001-runtime.md" <<'MD'
 Future writes must preserve the runtime boundary.
 MD
 
-python3 - "${PROJECT}" "${CONTEXT_DIR}/selection.json" <<'PY'
+python3 - "${PROJECT}" "${CONTEXT_DIR}/obsidian-wiki-selection.json" <<'PY'
 import hashlib
 import json
 import pathlib
@@ -53,8 +53,8 @@ selection = {
 output.write_text(json.dumps(selection), encoding="utf-8")
 PY
 
-CONTEXT="${CONTEXT_DIR}/feature.wiki-context.json"
-python3 "${RENDER}" "${CONTEXT}" --scaffold "${CONTEXT_DIR}/selection.json" \
+CONTEXT="${CONTEXT_DIR}/wiki-context.json"
+python3 "${RENDER}" "${CONTEXT}" --scaffold "${CONTEXT_DIR}/obsidian-wiki-selection.json" \
   --feature-slug feature --ticket-source manual --project-root "${PROJECT}" --strict --keep-selection >/dev/null
 
 python3 - "${CONTEXT}" <<'PY'
@@ -72,7 +72,7 @@ context["taskRouting"]["selectedSectionsFrozen"] = True
 json.dump(context, open(sys.argv[1], "w", encoding="utf-8"))
 PY
 
-ROSTER="${CONTEXT_DIR}/feature.ticket-roster.json"
+ROSTER="${CONTEXT_DIR}/ticket-roster.json"
 cat > "${ROSTER}" <<'JSON'
 {"featureSlug":"feature","ticketSource":"manual","tickets":[{"taskId":"T1","taskTitle":"Runtime","text":"Preserve runtime boundary."}]}
 JSON
@@ -134,7 +134,7 @@ else:
 PY
 
 printf '\nChanged ADR must fail Carry validation\n' >> "${PROJECT}/docs/adr/0001-runtime.md"
-RECEIPT="${CONTEXT_DIR}/feature.wiki-readiness.json"
+RECEIPT="${CONTEXT_DIR}/wiki-readiness.json"
 if python3 "${READINESS}" bind --receipt "${RECEIPT}" --roster "${ROSTER}" \
   --context "${CONTEXT}" --task-id T1 --project-root "${PROJECT}" \
   --reason "ADR authority must be checked before implementation." >/tmp/adr-bind.out 2>&1; then
@@ -174,7 +174,7 @@ grep -q "ADR source path" /tmp/adr-path.out
 
 python3 "${READINESS}" record --receipt "${RECEIPT}" --roster "${ROSTER}" \
   --task-id T1 --status broken --reason "ADR authority drift; continue without Wiki." >/dev/null
-HANDOFF="${CONTEXT_DIR}/feature.wiki-review.md"
+HANDOFF="${CONTEXT_DIR}/T1.wiki-review.md"
 python3 "${READINESS}" review-handoff --receipt "${RECEIPT}" --task-id T1 \
   --project-root "${PROJECT}" --handoff "${HANDOFF}" >/dev/null
 grep -q "Status: broken" "${HANDOFF}"

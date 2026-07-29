@@ -35,17 +35,20 @@ PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-}"
 [ -z "$PROJECT_ROOT" ] && exit 0
 [ -d "$PROJECT_ROOT" ] || exit 0
 
-# Find the active sidecar in the canonical location. A project may carry several features'
-# sidecars at once, so the newest wins -- this hook is a coarse session-level guess, and the
-# precise path is the per-ticket /wiki-materialize call.
+# Find the active sidecar in the canonical feature-directory layout. A project may carry
+# several features' sidecars at once, so the newest wins -- this hook is a coarse
+# session-level guess, and the precise path is the per-ticket /wiki-materialize call.
 SIDECAR=""
-for f in "$PROJECT_ROOT"/.grill-adapter/context/*.wiki-context.json; do
+for f in \
+  "$PROJECT_ROOT"/.grill-adapter/context/*/wiki-context.json \
+  "$PROJECT_ROOT"/.grill-adapter/context/*.wiki-context.json; do
   [ -f "$f" ] || continue
   if [ -z "$SIDECAR" ] || [ "$f" -nt "$SIDECAR" ]; then SIDECAR="$f"; fi
 done
 if [ -z "$SIDECAR" ]; then
   # Fall back to a bounded search so a non-standard layout still binds.
-  SIDECAR="$(find "$PROJECT_ROOT" -maxdepth 4 -name '*.wiki-context.json' -not -path '*/.git/*' -type f 2>/dev/null | head -1)"
+  SIDECAR="$(find "$PROJECT_ROOT" -maxdepth 4 -type f -not -path '*/.git/*' \
+    \( -name 'wiki-context.json' -o -name '*.wiki-context.json' \) 2>/dev/null | head -1)"
 fi
 [ -n "$SIDECAR" ] || exit 0
 

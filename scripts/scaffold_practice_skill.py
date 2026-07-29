@@ -44,6 +44,7 @@ from wiki_section import (  # noqa: E402
     parse_binding_roles,
 )
 from wiki_candidate_journal import append_events, new_event  # noqa: E402
+from feature_context import feature_artifact_path  # noqa: E402
 
 SKILLS_DIRS_REL = (
     Path(".agents") / "skills",
@@ -607,7 +608,7 @@ def cmd_stage_card(args: argparse.Namespace) -> None:
         )
     )
     candidate_id = f"skill-card-{uuid.uuid5(uuid.NAMESPACE_URL, identity).hex}"
-    journal = project / ".grill-adapter" / "context" / f"{args.feature_slug}.wiki-candidates.jsonl"
+    journal = feature_artifact_path(project, args.feature_slug, "journal")
     event = new_event(
         "candidate",
         args.feature_slug,

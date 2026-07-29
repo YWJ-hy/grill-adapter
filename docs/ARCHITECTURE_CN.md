@@ -36,7 +36,7 @@ grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 
 | 触点 | 机制 | 落到 grill |
 |---|---|---|
 | **Disclose** 选 wiki | 独立 `/grill-adapter:wiki-research` skill（驱动 `grill-adapter:wiki-researcher` agent）：先读 bound Source metadata catalog，再在选定分支检索并私下复核少量 Note body，任何 host 都能调 | grill-with-docs 质询期 |
-| **Carry** 带约束 | schema-v6 `.grill-adapter/context/<feature-slug>.wiki-context.json` 保存 binding digest、atomic Note ID/path/hash/summary、已验证 Skill Card 的 name/version/contract hash/triggers/roles 与 ticket roster 指纹，绝不保存 Note body；锚点是 feature，不是 plan 文件；direct task 可由 readiness 在首次代码修改前 late Carry | to-tickets，或无 formal context 的 implement 入口 |
+| **Carry** 带约束 | schema-v6 `.grill-adapter/context/<feature-slug>/wiki-context.json` 保存 binding digest、atomic Note ID/path/hash/summary、已验证 Skill Card 的 name/version/contract hash/triggers/roles 与 ticket roster 指纹，绝不保存 Note body；锚点是 feature，不是 plan 文件；direct task 可由 readiness 在首次代码修改前 late Carry | to-tickets，或无 formal context 的 implement 入口 |
 | **Bind** 执行期 reread | `/grill-adapter:wiki-readiness` 先固定/复用 task identity 并记录原子结果；`ready` 时由 `/grill-adapter:wiki-materialize <ticket>` 经 bound Obsidian MCP 按 stable-ID 读取路由硬 Note、当前角色 Card 和 1 跳 `depends_on`；implement 用 implementer 角色，review 在两个隔离 reviewer 前复用同一 receipt、以 reviewer 角色生成单一原子 handoff | implement 逐 task + code-review 两轴前 |
 | **Capture** 回写 | `/grill-adapter:update-wiki`（最终证据 reconciliation + related-claim 显式归并 + 语义门），其可选前置步经 `grill_context_to_candidates.py` 吃 grill CONTEXT.md/ADR 增量；ADR 只生成 project-only metadata projection candidate，Obsidian provider 经 proposal → loopback bridge CAS apply → receipt allowlist Git/draft-PR publish | code-review 后 |
 

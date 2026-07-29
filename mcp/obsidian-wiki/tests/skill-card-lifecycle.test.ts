@@ -53,7 +53,7 @@ describe('reviewed Skill Card lifecycle', () => {
     const obsidianScript = process.platform === 'win32' ? path.join(root, 'obsidian.js') : obsidianCli;
     const ghCli = path.join(root, process.platform === 'win32' ? 'gh.cmd' : 'gh');
     const ghScript = process.platform === 'win32' ? path.join(root, 'gh.js') : ghCli;
-    const journal = path.join(projectDir, '.grill-adapter', 'context', 'card-lifecycle.wiki-candidates.jsonl');
+    const journal = path.join(projectDir, '.grill-adapter', 'context', 'card-lifecycle', 'wiki-candidates.jsonl');
 
     command('git', ['init', '--bare', '--initial-branch=main', remoteRoot]);
     command('git', ['init', '--initial-branch=main', worktreeRoot]);

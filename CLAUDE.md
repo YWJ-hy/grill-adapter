@@ -53,7 +53,7 @@ claude --plugin-dir "$PWD" plugin details grill-adapter             # 开发期�
 
 ## 用户流程模型
 
-见 `docs/USER_FLOW_CN.md`。要点：grill 是主工作流，grill-adapter 只在 grill 各阶段旁挂触点（Disclose/Verify/Carry/Bind/Capture），全靠 CLAUDE.md 约定 + hook，不动 grill 内部。执行阶段只消费 `.grill-adapter/context/<feature-slug>.wiki-context.json` + 有界 1 跳 `depends-on` 闭包；任务完成后由 `update-wiki` 审查回写。
+见 `docs/USER_FLOW_CN.md`。要点：grill 是主工作流，grill-adapter 只在 grill 各阶段旁挂触点（Disclose/Verify/Carry/Bind/Capture），全靠 CLAUDE.md 约定 + hook，不动 grill 内部。执行阶段只消费 `.grill-adapter/context/<feature-slug>/wiki-context.json` + 有界 1 跳 `depends-on` 闭包；任务完成后由 `update-wiki` 审查回写。
 
 不要把 `python3 scripts/*.py` 描述成普通用户主要入口；它们是 skill/hook 的执行层。
 

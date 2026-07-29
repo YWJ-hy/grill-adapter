@@ -21,6 +21,16 @@ A code assistant forgets your project's durable rules between sessions and acros
 
 Plus **source-of-truth** verify (`/grill-adapter:source-truth-check`) + lint hook and **break-loop** debugging retrospective (`/grill-adapter:break-loop`).
 
+## Local feature workspace
+
+Each feature's local, uncommitted workflow state is grouped under
+`.grill-adapter/context/<feature-slug>/`, with fixed names such as
+`wiki-context.json`, `ticket-roster.json`, `wiki-candidates.jsonl`,
+`wiki-readiness.json`, and `wiki-publish.json`. This keeps selection, task
+identity, review handoffs, and recovery state together in the file explorer.
+Existing legacy flat artifacts remain resumable through their explicit paths;
+new work uses the directory layout.
+
 ## Install (30 seconds, if you already have grill)
 
 **1. Install the plugin**.

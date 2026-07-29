@@ -195,6 +195,10 @@ fs.writeFileSync(statePath, JSON.stringify(state));
   };
 }
 
+function featureManifestPath(projectDir: string, featureSlug: string): string {
+  return path.join(projectDir, '.grill-adapter', 'context', featureSlug, 'wiki-publish.json');
+}
+
 function addSecondRepository(input: ReturnType<typeof fixture>): { worktreeRoot: string; remoteRoot: string; notePath: string } {
   const root = path.dirname(input.worktreeRoot);
   const worktreeRoot = path.join(root, 'shared-knowledge');
@@ -283,7 +287,7 @@ describe('Obsidian Wiki GitHub publishing', () => {
     expect(command('git', ['branch', '--show-current'], input.worktreeRoot)).toBe('main');
     expect(readFileSync(path.join(input.worktreeRoot, input.notePath), 'utf8')).toBe(input.original);
     expect(existsSync(path.join(input.worktreeRoot, '.grill-adapter-wiki.publish.lock'))).toBe(false);
-    expect(existsSync(path.join(input.projectDir, '.grill-adapter', 'context', 'publish-contracts.wiki-publish.json'))).toBe(true);
+    expect(existsSync(featureManifestPath(input.projectDir, 'publish-contracts'))).toBe(true);
     const gh = JSON.parse(readFileSync(input.ghState, 'utf8'));
     expect(gh.calls.filter((args: string[]) => args[0] === 'pr' && args[1] === 'create')).toHaveLength(1);
     expect(gh.calls.find((args: string[]) => args[1] === 'create')).toContain('--draft');
@@ -310,7 +314,7 @@ describe('Obsidian Wiki GitHub publishing', () => {
 
     expect(() => publishFromFoldedJournal(input.folded, input.env))
       .toThrow(/changes differ from the applied receipt allowlist/);
-    expect(existsSync(path.join(input.projectDir, '.grill-adapter', 'context', 'publish-contracts.wiki-publish.json'))).toBe(false);
+    expect(existsSync(featureManifestPath(input.projectDir, 'publish-contracts'))).toBe(false);
     expect(command('git', ['branch', '--show-current'], input.worktreeRoot)).toBe('main');
   });
 
@@ -448,7 +452,7 @@ describe('Obsidian Wiki GitHub publishing', () => {
     expect(command('git', ['branch', '--show-current'], input.worktreeRoot)).toBe('main');
     expect(command('git', ['status', '--porcelain'], input.worktreeRoot)).toBe('');
     expect(readFileSync(path.join(input.worktreeRoot, input.notePath), 'utf8')).toBe(input.original);
-    const manifestPath = path.join(input.projectDir, '.grill-adapter', 'context', 'publish-contracts.wiki-publish.json');
+    const manifestPath = featureManifestPath(input.projectDir, 'publish-contracts');
     expect(JSON.parse(readFileSync(manifestPath, 'utf8')).repositories[0].stagedTree)
       .toMatch(/^[a-f0-9]{40,64}$/);
 
@@ -459,7 +463,7 @@ describe('Obsidian Wiki GitHub publishing', () => {
     expect(command('git', [`--git-dir=${input.remoteRoot}`, 'rev-list', '--count', `main..${result.repositories[0].branch}`])).toBe('1');
   });
 
-  it('recovers a publish commit created before its manifest receipt was persisted', () => {
+  it('recovers a publish commit from a legacy flat manifest', () => {
     const input = fixture();
     const runId = '123e4567-e89b-42d3-a456-426614174000';
     const branch = `grill-adapter/wiki/${input.folded.featureSlug}-wiki-${runId.slice(0, 8)}`;
@@ -497,7 +501,7 @@ describe('Obsidian Wiki GitHub publishing', () => {
 
     command('git', ['restore', '--staged', '--worktree', '--', input.notePath], input.worktreeRoot);
     command('git', ['config', 'user.name', 'Test User'], input.worktreeRoot);
-    const manifestPath = path.join(input.projectDir, '.grill-adapter', 'context', 'publish-contracts.wiki-publish.json');
+    const manifestPath = featureManifestPath(input.projectDir, 'publish-contracts');
     const publishBranch = JSON.parse(readFileSync(manifestPath, 'utf8')).repositories[0].branch;
     command('git', ['switch', publishBranch], input.worktreeRoot);
     writeFileSync(

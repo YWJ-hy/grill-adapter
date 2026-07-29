@@ -49,7 +49,8 @@ print(d["counts"]["pending"] + d["counts"]["deferred"])
   if [ "${UNRESOLVED:-0}" -gt 0 ] 2>/dev/null; then
     FOUND="${FOUND:+$FOUND, }$rel"
   fi
-done < <(find "$PROJECT_ROOT" -maxdepth 4 -name '*.wiki-candidates.jsonl' -not -path '*/.git/*' -type f 2>/dev/null)
+done < <(find "$PROJECT_ROOT" -maxdepth 4 -type f -not -path '*/.git/*' \
+  \( -name 'wiki-candidates.jsonl' -o -name '*.wiki-candidates.jsonl' \) 2>/dev/null)
 
 [ -n "$FOUND$INVALID" ] || exit 0
 

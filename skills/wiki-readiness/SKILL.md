@@ -20,8 +20,8 @@ read, inject, or execute any unverified Wiki content.
 
 ## 1. Establish exactly one task identity
 
-Use `.grill-adapter/context/<feature-slug>.ticket-roster.json` and
-`.grill-adapter/context/<feature-slug>.wiki-readiness.json`. Nothing under `.grill-adapter/context/` is committed.
+Use `.grill-adapter/context/<feature-slug>/ticket-roster.json` and
+`.grill-adapter/context/<feature-slug>/wiki-readiness.json`. Nothing under `.grill-adapter/context/` is committed.
 
 1. **Existing formal ticket:** find the formal finalized context and its ticket roster. Match the
    current task to one exact `taskId`. Keep the roster, finalized context, routing, and fingerprints
@@ -32,8 +32,8 @@ Use `.grill-adapter/context/<feature-slug>.ticket-roster.json` and
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py prepare-issue \
      --feature-slug <feature-slug> \
-     --issue-json .grill-adapter/context/<feature-slug>.issue.json \
-     --roster .grill-adapter/context/<feature-slug>.ticket-roster.json
+     --issue-json .grill-adapter/context/<feature-slug>/issue.json \
+     --roster .grill-adapter/context/<feature-slug>/ticket-roster.json
    ```
 
    The issue number is the stable `taskId`; the issue body is copied verbatim as the fingerprint
@@ -45,8 +45,8 @@ Use `.grill-adapter/context/<feature-slug>.ticket-roster.json` and
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py prepare-manual \
      --feature-slug <feature-slug> \
      --task-title "<one-task title>" \
-     --task-text-file .grill-adapter/context/<feature-slug>.task-brief.md \
-     --roster .grill-adapter/context/<feature-slug>.ticket-roster.json
+     --task-text-file .grill-adapter/context/<feature-slug>/task-brief.md \
+     --roster .grill-adapter/context/<feature-slug>/ticket-roster.json
    ```
 
 If a stable task cannot be established, stop before editing code. Do not invent a ticket or a fake
@@ -65,9 +65,9 @@ When the current task already exists in a formal finalized context:
 
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py bind \
-     --receipt .grill-adapter/context/<feature-slug>.wiki-readiness.json \
-     --roster .grill-adapter/context/<feature-slug>.ticket-roster.json \
-     --context .grill-adapter/context/<feature-slug>.wiki-context.json \
+     --receipt .grill-adapter/context/<feature-slug>/wiki-readiness.json \
+     --roster .grill-adapter/context/<feature-slug>/ticket-roster.json \
+     --context .grill-adapter/context/<feature-slug>/wiki-context.json \
      --task-id <taskId> \
      --project-root <project-root> \
      --reason "Implementer constraints materialized successfully."
@@ -108,8 +108,8 @@ Record a non-ready result with:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py record \
-  --receipt .grill-adapter/context/<feature-slug>.wiki-readiness.json \
-  --roster .grill-adapter/context/<feature-slug>.ticket-roster.json \
+  --receipt .grill-adapter/context/<feature-slug>/wiki-readiness.json \
+  --roster .grill-adapter/context/<feature-slug>/ticket-roster.json \
   --task-id <taskId> \
   --status <no-relevant|disabled|broken> \
   --reason "<specific result>"
@@ -143,10 +143,10 @@ For a known task, write one all-or-nothing reviewer handoff:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py review-handoff \
-  --receipt .grill-adapter/context/<feature-slug>.wiki-readiness.json \
+  --receipt .grill-adapter/context/<feature-slug>/wiki-readiness.json \
   --task-id <taskId> \
   --project-root <project-root> \
-  --handoff .grill-adapter/context/<feature-slug>.<taskId>.wiki-review.md
+  --handoff .grill-adapter/context/<feature-slug>/<taskId>.wiki-review.md
 ```
 
 For an independent review with no exact task/receipt:
@@ -181,7 +181,7 @@ Later stages validate the exact task receipt before reusing it:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py validate \
-  --receipt .grill-adapter/context/<feature-slug>.wiki-readiness.json \
+  --receipt .grill-adapter/context/<feature-slug>/wiki-readiness.json \
   --task-id <taskId>
 ```
 

@@ -18,7 +18,7 @@ grill stage → grill-adapter touchpoint:
 
 ### Candidate journal — throughout the workflow
 
-Whenever a stage surfaces a possible durable Wiki Note or executable Skill Card registration, run `/grill-adapter:candidate-journal append <feature-slug> <stage>` instead of writing Obsidian or hand-editing JSONL. Every stage targets the same `.grill-adapter/context/<feature-slug>.wiki-candidates.jsonl` append-only journal. Use these stage values: `grill-with-docs`, `specification`, `tickets`, `implementation`, `review`, and `debugging`. Capture liberally; `/grill-adapter:update-wiki` remains the only semantic keep-or-skip gate.
+Whenever a stage surfaces a possible durable Wiki Note or executable Skill Card registration, run `/grill-adapter:candidate-journal append <feature-slug> <stage>` instead of writing Obsidian or hand-editing JSONL. Every stage targets the same `.grill-adapter/context/<feature-slug>/wiki-candidates.jsonl` append-only journal. Use these stage values: `grill-with-docs`, `specification`, `tickets`, `implementation`, `review`, and `debugging`. Capture liberally; `/grill-adapter:update-wiki` remains the only semantic keep-or-skip gate.
 
 ### Disclose — during `/grill-with-docs`
 
@@ -30,11 +30,11 @@ Run `/grill-adapter:source-truth-check` (renders `spec-pre`). If it emits a poli
 
 ### Disclose + Carry — during `/to-tickets`
 
-grill publishes tickets to the tracker configured by `/setup-matt-pocock-skills` and recorded in `docs/agents/issue-tracker.md`; it produces **no plan document**. So grill-adapter anchors on the feature, not on a plan file: all sidecars live in `.grill-adapter/context/<feature-slug>.*`, and the ticket roster — not a plan's headings — is the task identity.
+grill publishes tickets to the tracker configured by `/setup-matt-pocock-skills` and recorded in `docs/agents/issue-tracker.md`; it produces **no plan document**. So grill-adapter anchors on the feature, not on a plan file: all sidecars live in `.grill-adapter/context/<feature-slug>/`, and the ticket roster — not a plan's headings — is the task identity.
 
-1. Run `/grill-adapter:wiki-research` (phase `plan`) to formally select bound atomic Obsidian Notes and reviewed Skill Cards; on Codex, wait for the dispatched researcher path before reading its summary or continuing Carry. The `wiki-researcher` agent writes `.grill-adapter/context/<feature-slug>.obsidian-wiki-selection.json`.
-2. Follow `/grill-adapter:wiki-research` to scaffold the schema-v6 `.grill-adapter/context/<feature-slug>.wiki-context.json` sidecar (`wiki_context_render.py --scaffold … --feature-slug <feature-slug> --ticket-source <source>`), then edit each Note/Card's `destination` once. The sidecar carries no Note bodies.
-3. **After the tickets are published**, build the ticket roster `.grill-adapter/context/<feature-slug>.ticket-roster.json` (`/grill-adapter:wiki-research` carries the roster shape). Read `docs/agents/issue-tracker.md` to know which form applies — do not guess:
+1. Run `/grill-adapter:wiki-research` (phase `plan`) to formally select bound atomic Obsidian Notes and reviewed Skill Cards; on Codex, wait for the dispatched researcher path before reading its summary or continuing Carry. The `wiki-researcher` agent writes `.grill-adapter/context/<feature-slug>/obsidian-wiki-selection.json`.
+2. Follow `/grill-adapter:wiki-research` to scaffold the schema-v6 `.grill-adapter/context/<feature-slug>/wiki-context.json` sidecar (`wiki_context_render.py --scaffold … --feature-slug <feature-slug> --ticket-source <source>`), then edit each Note/Card's `destination` once. The sidecar carries no Note bodies.
+3. **After the tickets are published**, build the ticket roster `.grill-adapter/context/<feature-slug>/ticket-roster.json` (`/grill-adapter:wiki-research` carries the roster shape). Read `docs/agents/issue-tracker.md` to know which form applies — do not guess:
    - **Local markdown** (`ticketSource: grill-local-scratch`) — one roster entry per `.scratch/<feature-slug>/issues/<NN>-<slug>.md`. `taskId` is the `NN` prefix; `text` is the whole file body, verbatim.
    - **GitHub / Linear** (`ticketSource: github-issues`) — one roster entry per ticket issue (`gh issue view <n> --json body,title`). `taskId` is the issue number; `text` is the issue body, verbatim.
    Never summarize or reformat ticket text: `text` is the fingerprint input, and a rewritten body reads as ticket drift at execution.
@@ -69,7 +69,7 @@ A valid `ready` receipt materializes the current task again with role `reviewer`
 
 Once the work is reviewed and accepted, run the Capture gate:
 
-Run `/grill-adapter:update-wiki` to validate/fold the `.grill-adapter/context/<feature-slug>.wiki-candidates.jsonl` journal, reconcile unresolved candidates against final review/code/spec evidence, explicitly consolidate related claims, and record keep/skip/defer for each final candidate. Because this project keeps grill's `CONTEXT.md`/`docs/adr`, the skill first converts that knowledge increment into journal events via its own grill bridge (grill's glossary/ADRs are tier-1; the wiki is tier-2). Do **not** route grill knowledge through `import-wiki`: that is a flat structural copy, not an increment.
+Run `/grill-adapter:update-wiki` to validate/fold the `.grill-adapter/context/<feature-slug>/wiki-candidates.jsonl` journal, reconcile unresolved candidates against final review/code/spec evidence, explicitly consolidate related claims, and record keep/skip/defer for each final candidate. Because this project keeps grill's `CONTEXT.md`/`docs/adr`, the skill first converts that knowledge increment into journal events via its own grill bridge (grill's glossary/ADRs are tier-1; the wiki is tier-2). Do **not** route grill knowledge through `import-wiki`: that is a flat structural copy, not an increment.
 
 For a generated ADR projection candidate, keep the project ADR authoritative: extract only durable execution constraints, skip when none exist, target only the project Source, and update the sole Note with the same `adr_source_id`. Never copy ADR rationale/options/consequences or neutralize the projection into Shared Wiki. Ordinary non-ADR decision candidates are unchanged.
 
@@ -93,7 +93,7 @@ If Note apply or Git publishing is interrupted, preserve the candidate journal, 
 
 ### Debug — during explicitly active `/diagnosing-bugs`
 
-Do not call `/grill-adapter:wiki-research` at the start of debugging. After Phase-1 evidence narrows the failure to a specific component, contract, workflow, or convention, you may run `/grill-adapter:wiki-research` (phase `debug`, ≤2 sections) for a targeted lookup; verify every wiki-derived idea against code/logs/tests. If the bug is happening while implementing a feature's tickets, prefer that feature's `.grill-adapter/context/<feature-slug>.wiki-context.json` sidecar instead of reselecting. Do not write wiki or run `update-wiki` during debugging. After the fix is verified, run `/grill-adapter:break-loop` when a retrospective is warranted; it hands durable candidates to `/grill-adapter:update-wiki`.
+Do not call `/grill-adapter:wiki-research` at the start of debugging. After Phase-1 evidence narrows the failure to a specific component, contract, workflow, or convention, you may run `/grill-adapter:wiki-research` (phase `debug`, ≤2 sections) for a targeted lookup; verify every wiki-derived idea against code/logs/tests. If the bug is happening while implementing a feature's tickets, prefer that feature's `.grill-adapter/context/<feature-slug>/wiki-context.json` sidecar instead of reselecting. Do not write wiki or run `update-wiki` during debugging. After the fix is verified, run `/grill-adapter:break-loop` when a retrospective is warranted; it hands durable candidates to `/grill-adapter:update-wiki`.
 
 ### Boundary
 

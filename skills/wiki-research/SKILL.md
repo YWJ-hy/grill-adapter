@@ -64,6 +64,16 @@ Use the returned metadata as lightweight context while shaping the spec. Do not 
 
 ## Phase `plan` — formal selection + sidecar
 
+### Feature working directory
+
+For every new feature, keep all local workflow artifacts together in
+`.grill-adapter/context/<feature-slug>/`. Use the fixed names
+`obsidian-wiki-selection.json`, `wiki-context.json`, `ticket-roster.json`,
+`wiki-candidates.jsonl`, `wiki-readiness.json`, and `wiki-publish.json`; use
+`issue.json` or `task-brief.md` only for the matching direct-task entry form.
+Reviewer handoffs live in the same directory as `<taskId>.wiki-review.md`.
+The journal lock is local recovery state and must never be moved by hand while a workflow is active.
+
 When writing the implementation plan, or when `wiki-readiness` performs single-task late Carry before implementation, invoke the `grill-adapter:wiki-researcher` agent to formally select the Notes/Cards that constrain the work:
 
 ```yaml
@@ -71,7 +81,7 @@ task: <confirmed spec or requirements summary>
 phase: plan
 featureSlug: <feature-slug>
 focus: <feature goal and likely task areas>
-selectionOutputPath: .grill-adapter/context/<feature-slug>.obsidian-wiki-selection.json
+selectionOutputPath: .grill-adapter/context/<feature-slug>/obsidian-wiki-selection.json
 ```
 
 At `plan` phase the agent writes the JSON **selection** object (shape in `${CLAUDE_PLUGIN_ROOT}/contracts/obsidian-wiki-selection-v1.example.jsonc`) to `selectionOutputPath` itself and returns only a compact summary. It must contain bounded `wikiBindings`, metadata-only `wikiNotes`, independent `requiredSkills`, the stable `snapshotHash` returned by the final `obsidian_wiki_read_notes` batch, and optional one-line `selectionRationales`. An ADR execution projection may additionally carry the MCP-returned `adrSourceId`, normalized project-relative `adrSourcePath`, and `adrSourceContentHash`; these identify the authority only and never include ADR body text. Carry validates but deliberately drops `selectionRationales`; the selection must not emit Note bodies, body excerpts, `destination`, `taskRouting`, `taskWikiRefs`, `taskFingerprint`, or future task ids.
@@ -94,7 +104,7 @@ Generate the sidecar mechanically from the selection, then edit only the semanti
 2. Generate the schemaVersion 6 sidecar skeleton. This copies only bound Source identity, Note ID/path/hash/summary metadata, the independent Skill Card selection, and the stable batch `snapshotHash`; it adds the `taskRouting` block and default `destination.kind` for every Note/Card. It never embeds a Note body:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .grill-adapter/context/<feature-slug>.wiki-context.json --scaffold .grill-adapter/context/<feature-slug>.obsidian-wiki-selection.json --strict --project-root <project-root> --feature-slug <feature-slug> --ticket-source <source>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .grill-adapter/context/<feature-slug>/wiki-context.json --scaffold .grill-adapter/context/<feature-slug>/obsidian-wiki-selection.json --strict --project-root <project-root> --feature-slug <feature-slug> --ticket-source <source>
 ```
 
 3. Read the generated `.wiki-context.json` for its Note summaries and use them like spec input while shaping the work. The sidecar is the record of which bound Notes and Skill Cards constrain this feature; tell the user what was selected and where it lives.
@@ -109,12 +119,12 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .grill-adapter/cont
    - Flip `taskRouting.status` to `confirmed` with `selectedSectionsFrozen: true`.
    - Surface every global Note/Card summary to the user as a feature-wide constraint.
 
-6. Build the ticket roster `.grill-adapter/context/<feature-slug>.ticket-roster.json` from the host's real tickets (shape: `${CLAUDE_PLUGIN_ROOT}/contracts/ticket-roster-v1.example.jsonc`). Your host's convention block in the project `CLAUDE.md` or `AGENTS.md` says where its tickets live and which `ticketSource` applies — read it rather than guessing. Copy each ticket's `text` verbatim: it is the fingerprint input.
+6. Build the ticket roster `.grill-adapter/context/<feature-slug>/ticket-roster.json` from the host's real tickets (shape: `${CLAUDE_PLUGIN_ROOT}/contracts/ticket-roster-v1.example.jsonc`). Your host's convention block in the project `CLAUDE.md` or `AGENTS.md` says where its tickets live and which `ticketSource` applies — read it rather than guessing. Copy each ticket's `text` verbatim: it is the fingerprint input.
 
 7. Finalize in one call — builds the `taskWikiRefs` roster, stamps each `taskFingerprint`, validates execution readiness, writes once:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .grill-adapter/context/<feature-slug>.wiki-context.json --finalize --strict --project-root <project-root> --ticket-roster .grill-adapter/context/<feature-slug>.ticket-roster.json
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .grill-adapter/context/<feature-slug>/wiki-context.json --finalize --strict --project-root <project-root> --ticket-roster .grill-adapter/context/<feature-slug>/ticket-roster.json
 ```
 
 `--finalize` is the single source of truth for `taskFingerprint` and the roster; never compute the sha256 or build `taskWikiRefs` by hand. A clean finalize guarantees the execution-time `--fingerprint-preflight` (run by `wiki-materialize`) passes. Do not re-read the sidecar afterward to "verify" — the transactional write already validated it. If selected wiki conflicts with the confirmed spec, stop and ask the user to resolve it before finalizing.

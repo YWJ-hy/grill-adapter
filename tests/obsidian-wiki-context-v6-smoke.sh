@@ -17,9 +17,11 @@ fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-ROSTER="$TMP/feature.ticket-roster.json"
-SELECTION="$TMP/feature.obsidian-wiki-selection.json"
-CONTEXT="$TMP/new-project/.grill-adapter/context/feature.wiki-context.json"
+FEATURE_DIR="$TMP/new-project/.grill-adapter/context/atomic-note-carry"
+ROSTER="$FEATURE_DIR/ticket-roster.json"
+SELECTION="$FEATURE_DIR/obsidian-wiki-selection.json"
+CONTEXT="$FEATURE_DIR/wiki-context.json"
+mkdir -p "$FEATURE_DIR"
 
 cat > "$ROSTER" <<'JSON'
 {
