@@ -69,10 +69,13 @@ Use the returned metadata as lightweight context while shaping the spec. Do not 
 For every new feature, keep all local workflow artifacts together in
 `.grill-adapter/context/<feature-slug>/`. Use the fixed names
 `obsidian-wiki-selection.json`, `wiki-context.json`, `ticket-roster.json`,
-`wiki-candidates.jsonl`, `wiki-readiness.json`, and `wiki-publish.json`; use
+`wiki-candidates.jsonl`, `wiki-readiness.json`, `wiki-session-state.json`, and `wiki-publish.json`; use
 `issue.json` or `task-brief.md` only for the matching direct-task entry form.
 Reviewer handoffs live in the same directory as `<taskId>.wiki-review.md`.
 The journal lock is local recovery state and must never be moved by hand while a workflow is active.
+`wiki-session-state.json` is generated from explicit task selection/readiness and candidate activity;
+it is non-authoritative, must not contain Wiki body text, and must not be hand-authored as a substitute
+for a finalized context.
 
 When writing the implementation plan, or when `wiki-readiness` performs single-task late Carry before implementation, invoke the `grill-adapter:wiki-researcher` agent to formally select the Notes/Cards that constrain the work:
 

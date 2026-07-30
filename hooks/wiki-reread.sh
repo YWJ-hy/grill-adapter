@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# grill-adapter — SessionStart Bind reminder.
+# grill-adapter — SessionStart Bind / continuation reminder.
 #
-# Per-ticket Bind has trustworthy task identity; this SessionStart backstop does not. For schema-v6
-# it only reports approved snapshots that have not yet received a readiness result. It never reads
-# task snapshot content or falls back to live Wiki materialization.
+# A continuation summary may name the last explicitly selected task, but it is advisory only.
+# Per-ticket readiness remains the sole authority for task identity and validates the current
+# roster/context/snapshot set before constraints can be consumed. Without that summary this hook
+# retains the older pending-snapshot reminder. It never reads task snapshot content or falls back
+# to live Wiki materialization.
 set -uo pipefail
 
 INPUT="$(cat 2>/dev/null || true)"
@@ -30,6 +32,106 @@ PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-}"
 [ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -z "$PROJECT_ROOT" ] && exit 0
 [ -d "$PROJECT_ROOT" ] || exit 0
+
+emit() {
+  # $1 = additionalContext text. Emitted as SessionStart context.
+  python3 - "$HOOK_EVENT" "$1" <<'PY' 2>/dev/null || true
+import json, sys
+event = sys.argv[1] or "SessionStart"
+text = sys.argv[2]
+print(json.dumps({"hookSpecificOutput": {
+    "hookEventName": event,
+    "additionalContext": text,
+}}))
+PY
+}
+
+# Prefer the canonical feature-level continuation projection when it records an explicit task.
+# It is intentionally not validated against live artifacts here: a stale or tampered summary is
+# merely ignored by the authoritative readiness command invoked after this hint.
+SESSION_STATE=""
+SESSION_STATE_VALUES=""
+for f in "$PROJECT_ROOT"/.grill-adapter/context/*/wiki-session-state.json; do
+  [ -f "$f" ] || continue
+  state_values="$(python3 - "$f" <<'PY' 2>/dev/null || true
+import json
+import re
+import shlex
+import sys
+from pathlib import Path
+
+
+def emit(name, value):
+    print(f"{name}=" + shlex.quote(value))
+
+
+path = Path(sys.argv[1])
+try:
+    state = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    raise SystemExit(0)
+if not isinstance(state, dict):
+    raise SystemExit(0)
+if (
+    state.get("schemaVersion") != 1
+    or state.get("kind") != "grill-adapter.wiki-session-state"
+    or state.get("generatedBy") != "grill-adapter"
+):
+    raise SystemExit(0)
+feature = state.get("featureSlug")
+task = state.get("lastSelectedTask")
+next_command = state.get("nextCommand")
+if (
+    not isinstance(feature, str)
+    or not feature.strip()
+    or feature != path.parent.name
+    or any(marker in feature for marker in ("/", "\\"))
+    or feature in {".", ".."}
+    or not isinstance(task, str)
+    or not task.strip()
+    or any(marker in task for marker in ("/", "\\"))
+    or task in {".", ".."}
+    or not isinstance(next_command, str)
+    or not next_command.strip()
+    or len(next_command) > 500
+):
+    raise SystemExit(0)
+if state.get("readinessStatus") not in {"ready", "no-relevant", "disabled", "broken", "unknown", "unrecorded"}:
+    raise SystemExit(0)
+candidate_count = state.get("candidateCount")
+if isinstance(candidate_count, bool) or not isinstance(candidate_count, int) or candidate_count < 0:
+    raise SystemExit(0)
+for field in ("rosterDigest", "contextDigest", "snapshotDigest"):
+    digest = state.get(field)
+    if digest is not None and (not isinstance(digest, str) or not re.fullmatch(r"sha256:[a-f0-9]{64}", digest)):
+        raise SystemExit(0)
+
+emit("SESSION_FEATURE", feature.strip())
+emit("SESSION_TASK", task.strip())
+emit("SESSION_READINESS", state["readinessStatus"])
+emit("SESSION_CANDIDATES", str(candidate_count))
+emit("SESSION_NEXT_COMMAND", next_command.strip())
+PY
+)"
+  [ -n "$state_values" ] || continue
+  if [ -z "$SESSION_STATE" ] || [ "$f" -nt "$SESSION_STATE" ]; then
+    SESSION_STATE="$f"
+    SESSION_STATE_VALUES="$state_values"
+  fi
+done
+if [ -n "$SESSION_STATE" ]; then
+  SESSION_FEATURE=""
+  SESSION_TASK=""
+  SESSION_READINESS=""
+  SESSION_CANDIDATES=""
+  SESSION_NEXT_COMMAND=""
+  eval "$SESSION_STATE_VALUES"
+  if [ -n "${SESSION_TASK:-}" ]; then
+    REL_SESSION_STATE="${SESSION_STATE#$PROJECT_ROOT/}"
+    emit "Continuation hint for feature \`$SESSION_FEATURE\`: last explicitly selected task \`$SESSION_TASK\` (readiness: \`$SESSION_READINESS\`; candidates: \`$SESSION_CANDIDATES\`). Resume with \`$SESSION_NEXT_COMMAND\`. This summary in \`$REL_SESSION_STATE\` is non-authoritative: run wiki-readiness before using any Wiki constraints so it validates the current roster, context, and task snapshots."
+    exit 0
+  fi
+fi
 
 # Find the active sidecar in the canonical feature-directory layout. A project may carry
 # several features' sidecars at once, so the newest wins. The bounded fallback applies the
@@ -145,19 +247,6 @@ PY
 SIDECAR_SCHEMA="${SIDECAR_SCHEMA:-}"
 LEGACY_SIDECAR="${LEGACY_SIDECAR:-}"
 PENDING_TASKS="${PENDING_TASKS:-}"
-
-emit() {
-  # $1 = additionalContext text. Emitted as UserPromptSubmit/SessionStart context.
-  python3 - "$HOOK_EVENT" "$1" <<'PY' 2>/dev/null || true
-import json, sys
-event = sys.argv[1] or "UserPromptSubmit"
-text = sys.argv[2]
-print(json.dumps({"hookSpecificOutput": {
-    "hookEventName": event,
-    "additionalContext": text,
-}}))
-PY
-}
 
 # This hook intentionally does not discover a current ticket or consume constraints. A ticket marker
 # is only a host hint and cannot establish that the current prompt is acting on that ticket.

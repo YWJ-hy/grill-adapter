@@ -15,6 +15,7 @@ FEATURE_ARTIFACTS = {
     "brief": "task-brief.md",
     "journal": "wiki-candidates.jsonl",
     "readiness": "wiki-readiness.json",
+    "session_state": "wiki-session-state.json",
     "publish": "wiki-publish.json",
 }
 

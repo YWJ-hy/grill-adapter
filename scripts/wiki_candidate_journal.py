@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterator
 
+from wiki_session_state import SessionStateError, update_session_state
+
 
 SCHEMA_VERSION = 1
 EVENT_TYPES = {"candidate", "supersede", "outcome"}
@@ -618,6 +620,14 @@ def append_events(
             journal.write(encoded)
             journal.flush()
             os.fsync(journal.fileno())
+        # This projection is advisory. A summary refresh must never make an append-only
+        # candidate journal unavailable or affect its validation contract.
+        feature_slug = new_events[0]["featureSlug"]
+        if path.parent.name != "context" and path.parent.name == feature_slug:
+            try:
+                update_session_state(path.parent)
+            except (OSError, SessionStateError, ValueError):
+                pass
         return len(events_to_append), skipped
 
 

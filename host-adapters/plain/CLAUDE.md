@@ -26,6 +26,10 @@ Sidecars anchor on the feature, not on a plan file: they live in `.grill-adapter
 
 The sidecar is the record of which wiki constrains this feature. Nothing under `.grill-adapter/context/` is committed — sidecar, roster, and candidates are local working state that execution reads in place. Never `git add -f` them.
 
+### Cross-session continuation
+
+`wiki-readiness` and candidate-journal writes refresh a feature-local `wiki-session-state.json` best-effort. On SessionStart, the hook may show its last explicitly selected task, artifact digests, readiness status, candidate count, and next command. Treat it only as a navigation hint: it does not establish that the current prompt is for that ticket and it never supplies Wiki constraints. Resume through `/grill-adapter:wiki-readiness <task-id>`, which remains the authority and revalidates the current roster/context/snapshots.
+
 ### Wiki readiness + Bind — before implementing each task
 
 For every task, invoke `/grill-adapter:wiki-readiness` before the first code edit. It establishes one stable task identity: reuse a formal finalized context when present, create one full-body task for a direct tracker issue, or create one `manual` task from the confirmed conversational brief without silently splitting it.

@@ -22,6 +22,10 @@ read, inject, or execute any unverified Wiki content.
 
 Use `.grill-adapter/context/<feature-slug>/ticket-roster.json` and
 `.grill-adapter/context/<feature-slug>/wiki-readiness.json`. Nothing under `.grill-adapter/context/` is committed.
+Each explicit task selection also best-effort refreshes `wiki-session-state.json`, a compact
+cross-session hint containing only the selected task ID, artifact digests, readiness status,
+candidate count, and a next command. It is never a readiness input: do not infer the current task
+or inject Wiki context from it; always run this normal readiness flow again.
 
 1. **Existing formal ticket:** find the formal finalized context and its ticket roster. Match the
    current task to one exact `taskId`. Keep the roster, finalized context, routing, and fingerprints
@@ -51,6 +55,14 @@ Use `.grill-adapter/context/<feature-slug>/ticket-roster.json` and
 
 If a stable task cannot be established, stop before editing code. Do not invent a ticket or a fake
 Wiki constraint.
+
+### Cross-session continuation
+
+At SessionStart, `wiki-reread` may show the latest valid feature summary and its last explicitly
+selected task. Treat that output as navigation only. Resume through the displayed
+`grill-adapter:wiki-readiness` command, which revalidates the current roster, finalized context,
+fingerprint, and frozen role snapshots before any Wiki content can be used. A missing, stale, or
+malformed summary is not a reason to repair it manually or bypass normal readiness.
 
 ## 2. Reuse a formal finalized context
 

@@ -58,11 +58,11 @@ hook 随插件自动注册——**不再往任何项目的 `.claude/settings.jso
 
 | 事件 | hook | 作用 |
 |---|---|---|
-| `SessionStart` | `wiki-reread.sh` | 只对已冻结但尚无 readiness 结果的 schema-v6 task 提醒；绝不 materialize，正常实现入口由 `wiki-readiness` 精确消费角色 Markdown |
+| `SessionStart` | `wiki-reread.sh` | 优先显示 feature 级非权威续接摘要的最后显式 task 与下一条命令；无摘要时才提醒已冻结但尚无 readiness 结果的 schema-v6 task；绝不 materialize，正常实现入口由 `wiki-readiness` 精确消费角色 Markdown |
 | `PostToolUse`（Write/Edit/MultiEdit/Bash） | `source-truth-lint.sh` | 对真实 changed files 跑 source-truth lint，`block`/`ask` 注入提醒 |
 | `Stop` | `wiki-capture-suggest.sh` + `source-truth-lint.sh` | Capture 兜底（pending/deferred journal 提醒，invalid journal 报错，全终态静默）+ 收尾 lint |
 
-hook 命令写成 `${CLAUDE_PLUGIN_ROOT}/hooks/<hook>.sh`（Claude Code 在此替换）。hook 脚本自身用 `BASH_SOURCE` 定位自身 payload，无需任何改写。hook **无原生「当前 ticket」字段**，所以 `wiki-reread.sh` 只报告同一 feature 内已批准、但尚无 readiness 结果的 task ID；per-ticket 精度完全靠正常的 `wiki-readiness` 入口消费对应文件。
+hook 命令写成 `${CLAUDE_PLUGIN_ROOT}/hooks/<hook>.sh`（Claude Code 在此替换）。hook 脚本自身用 `BASH_SOURCE` 定位自身 payload，无需任何改写。hook **无原生「当前 ticket」字段**；`wiki-session-state.json` 只保存最后一次显式选择的 task 和本地 artifact digest，因此 `wiki-reread.sh` 可以给跨会话恢复一个提示，但不能据此认定当前 prompt 正在处理该 ticket，也不能绕过校验。per-ticket 权威性始终靠正常的 `wiki-readiness` 入口消费对应文件。
 
 ## 安装模型
 

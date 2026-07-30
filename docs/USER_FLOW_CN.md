@@ -55,6 +55,7 @@ Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specif
   wiki-candidates.jsonl
   wiki-candidates.jsonl.lock
   wiki-readiness.json
+  wiki-session-state.json      # 非权威续接摘要，不含 Wiki 正文
   <taskId>.wiki-approval.json
   <taskId>.wiki-implement.md
   <taskId>.wiki-review.md
@@ -164,7 +165,7 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
 
    Freeze 阶段由 `wiki_materialize_task.py` 经绑定 Obsidian MCP 读取权威全文，并做有界、去重 1 跳闭包；生成的 `<taskId>.wiki-implement.md` 与 `<taskId>.wiki-review.md` 在实现和评审阶段固定消费。ADR-backed projection 仍会在 freeze 时重算 `adrSourceId`、路径和 `adrSourceContentHash`；缺失、越界、格式错误或内容漂移都让 freeze fail-closed，不生成可消费快照。binding/Note/Card/base/pack 任一漂移都要求重新审核并 freeze；宿主是否停止实现则由 readiness 的用户选择决定。
 
-6. readiness 结果写入 `.grill-adapter/context/<feature-slug>/wiki-readiness.json`，保存 task identity、fingerprint、状态、context 文件名和两份 role Markdown 的 digest；Note body 只存在于用户可见的 task Markdown，不复制进 JSON receipt。roster/context/snapshot/receipt 都是本地工作态，不提交。
+6. readiness 结果写入 `.grill-adapter/context/<feature-slug>/wiki-readiness.json`，保存 task identity、fingerprint、状态、context 文件名和两份 role Markdown 的 digest；同时 best-effort 刷新 `wiki-session-state.json`。后者只记录 featureSlug、最后显式选择的 task、roster/context/snapshot digest、readiness 状态、候选数和下一条 readiness 命令，不含 Note body，也不参与执行期校验。Note body 只存在于用户可见的 task Markdown，不复制进 JSON receipt。roster/context/snapshot/receipt 都是本地工作态，不提交。
 
 7. `source-truth-lint` hook（PostToolUse / Stop）对**真实改动文件**做 lint；命中 **block / ask** 必须处理后才继续。执行中涌现的 durable 决策 / 坑，经 `/candidate-journal`（stage `implementation`）机械追加，留待步骤 5 捕获。
 
@@ -242,7 +243,7 @@ review 通过后，把本轮新沉淀的知识回写 wiki。约定块只让你�
 
 grill-adapter 明确承认自己不是无缝的，并把降级点讲清楚：
 
-- **Bind 靠约定 + SessionStart 提醒**：`wiki_readiness.py freeze --all` 是规划期唯一批量生成 task 正文的路径；`wiki-readiness` 是正常按 ticket/role 精确消费冻结 Markdown 的路径；`wiki-reread.sh` 只在 SessionStart 提醒已批准但尚无 readiness 结果的 task，绝不在 `UserPromptSubmit` 或 SessionStart 注入 Note 全文。
+- **Bind 靠约定 + SessionStart 提醒**：`wiki_readiness.py freeze --all` 是规划期唯一批量生成 task 正文的路径；`wiki-readiness` 是正常按 ticket/role 精确消费冻结 Markdown 的路径；`wiki-session-state.json` 能提示最后显式选择的 task 和恢复命令，`wiki-reread.sh` 优先显示这条非权威提示，否则提醒已批准但尚无 readiness 结果的 task。两条路径都绝不在 `UserPromptSubmit` 或 SessionStart 注入 Note 全文，恢复时仍须执行 `wiki-readiness` 的完整校验。
 - **中间阶段只 journal、不写 Obsidian**：所有 durable 候选先经机械 helper 追加；只有 review 后的 `/grill-adapter:update-wiki` 能做最终语义判断与后续回写。
 - **可恢复但非自动恢复**：journal 保留完整生命周期；损坏或非法转换 fail-closed，必须回到产生事件的 workflow 修复，不能手改 JSONL 绕过。
 
@@ -280,6 +281,6 @@ grill-adapter 同时以 **Claude Code plugin** 与 **Codex plugin** 形式发布
 
 | hook | 触发时机 | 作用 |
 | --- | --- | --- |
-| `wiki-reread.sh` | SessionStart | 已批准且尚无 readiness 结果的 task 提醒；不 reread Note |
+| `wiki-reread.sh` | SessionStart | 优先显示非权威 feature 续接摘要；否则提示已批准且尚无 readiness 结果的 task；不 reread Note |
 | `wiki-capture-suggest.sh` | Stop | Capture 兜底：pending/deferred 提醒、invalid 报错、全终态静默 |
 | `source-truth-lint.sh` | PostToolUse / Stop | 对真实改动文件做真实源 lint |

@@ -80,6 +80,8 @@ for f in "$GRILL" "$PLAIN"; do
   need "$f" 'review'
   need "$f" 'debugging'
   need "$f" 'wiki-candidates.jsonl'
+  need "$f" 'wiki-session-state.json'
+  need "$f" 'navigation hint'
   need "$f" '.grill-adapter/context/<feature-slug>/'
 done
 

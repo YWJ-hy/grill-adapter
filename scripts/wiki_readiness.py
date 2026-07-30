@@ -25,6 +25,7 @@ from wiki_task_snapshot import (
     write_approval,
     write_snapshot,
 )
+from wiki_session_state import SessionStateError, update_session_state
 
 
 KIND = "grill-adapter.wiki-readiness"
@@ -40,6 +41,26 @@ STATUS_DISPOSITIONS = {
 
 class ReadinessError(Exception):
     pass
+
+
+def _refresh_session_state(
+    feature_directory: Path,
+    *,
+    task_id: str | None = None,
+    next_command: str | None = None,
+    readiness_status: str | None = None,
+) -> None:
+    """Keep the continuation hint best-effort; never make it an authority or a gate."""
+
+    try:
+        update_session_state(
+            feature_directory,
+            task_id=task_id,
+            next_command=next_command,
+            readiness_status=readiness_status,
+        )
+    except (OSError, SessionStateError, ValueError):
+        pass
 
 
 def _configure_stdio() -> None:
@@ -167,6 +188,7 @@ def prepare_issue(issue_json_path: Path, roster_path: Path, feature_slug: str) -
         _required_text(issue.get("title"), "GitHub issue title"),
         _required_text(issue.get("body"), "GitHub issue body"),
     )
+    _refresh_session_state(roster_path.parent, task_id=task_id)
     return f"prepared GitHub issue task {task_id} -> {roster_path}"
 
 
@@ -183,6 +205,7 @@ def prepare_manual(task_text_path: Path, roster_path: Path, feature_slug: str, t
         task_title,
         task_text,
     )
+    _refresh_session_state(roster_path.parent, task_id="manual")
     return f"prepared manual task -> {roster_path}"
 
 
@@ -642,6 +665,7 @@ def record_readiness(
         "tasks": ordered_tasks,
     }
     _write_json(receipt_path, receipt)
+    _refresh_session_state(receipt_path.parent, task_id=task_id)
     return f"recorded {status} readiness for task {task_id} -> {receipt_path}"
 
 
@@ -750,6 +774,7 @@ def freeze_task_snapshots(
         obsidian_wiki_cmd=obsidian_wiki_cmd,
         origin="planning-approved",
     )
+    _refresh_session_state(context_path.parent, task_id=task_id)
     return (
         f"froze task Wiki snapshots for {task_id}: "
         f"{implement_info[0].name} ({implement_info[1]}), "
@@ -810,6 +835,7 @@ def freeze_all_task_snapshots(
             f"{task_id}: {implement_info[0].name} ({implement_info[1]}), "
             f"{review_info[0].name} ({review_info[1]})"
         )
+    _refresh_session_state(context_path.parent)
     return f"froze task Wiki snapshots for {len(frozen)} task(s): " + "; ".join(frozen)
 
 

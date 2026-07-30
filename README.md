@@ -27,8 +27,10 @@ Each feature's local, uncommitted workflow state is grouped under
 `.grill-adapter/context/<feature-slug>/`, with fixed names such as
 `wiki-context.json`, `ticket-roster.json`, `<taskId>.wiki-approval.json`,
 `<taskId>.wiki-implement.md`, `<taskId>.wiki-review.md`, `wiki-candidates.jsonl`,
-`wiki-readiness.json`, and `wiki-publish.json`. This keeps selection, task
-identity, review handoffs, and recovery state together in the file explorer.
+`wiki-readiness.json`, `wiki-session-state.json`, and `wiki-publish.json`.
+The session state is a non-authoritative cross-session hint containing the last explicitly
+selected task plus local artifact digests; it never substitutes for `wiki-readiness` validation.
+This keeps selection, task identity, review handoffs, and recovery state together in the file explorer.
 Existing legacy flat artifacts remain resumable through their explicit paths;
 new work uses the directory layout.
 
