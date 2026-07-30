@@ -17,8 +17,8 @@
       "taskTitle": "Unify implementation Wiki readiness",
       // The same normalized-text fingerprint stamped by wiki_context_render.py.
       "taskFingerprint": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-      // ready: the `bind` command validated a finalized context and completed the fixed implementer
-      // materializer. Generic `record --status ready` is rejected.
+      // ready: the `bind` command validated a finalized context and both role-specific task
+      // Markdown snapshots. Generic `record --status ready` is rejected.
       // no-relevant: formal selection found no applicable Wiki knowledge.
       // disabled: this project has no enabled Wiki provider.
       // broken: configured Wiki validation/Carry/Bind failed; any partial output was discarded.
@@ -27,7 +27,13 @@
       "contextDisposition": "materialized",
       "reason": "Implementer constraints materialized successfully.",
       // Present only for ready. Non-ready results must not point at partial or stale context.
-      "contextFile": "wiki-context.json"
+      "contextFile": "wiki-context.json",
+      // Role-specific task contracts. Both files are generated from the same approved snapshot;
+      // implementation and review consume their matching Markdown file.
+      "implementWikiFile": "01.wiki-implement.md",
+      "implementWikiDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "reviewWikiFile": "01.wiki-review.md",
+      "reviewWikiDigest": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     }
   ]
 }
@@ -35,6 +41,6 @@
 // Host availability is fail-open: no-relevant and disabled continue automatically; broken offers
 // the user a stop-or-continue choice. Continuing never injects unverified Wiki content. Wiki
 // validation itself remains fail-closed, and fingerprint drift invalidates this receipt.
-// Before code-review subagents start, `review-handoff` revalidates this receipt and materializes
-// `ready` with role reviewer. Every other status/failure becomes a caveat-only handoff; the receipt
-// never stores reviewer Note bodies.
+// Before code-review subagents start, `review-handoff` revalidates this receipt and reuses the
+// frozen reviewer Markdown. Every other status/failure becomes a caveat-only handoff; the receipt
+// never stores Note bodies.

@@ -87,8 +87,9 @@ When `.grill-adapter/settings.json` selects `wiki.provider: obsidian`, never edi
 
 #### Atomic Note targeting contract
 
-For Obsidian, an atomic Note is the runtime retrieval unit: Bind rereads the complete Note
-body. Treat one Note as one independently materializable durable contract, not as a bucket for
+For Obsidian, an atomic Note is the durable contract source: freeze captures the complete Note
+body into the approved role-specific task Markdown, while update-wiki remains the only write path.
+Treat one Note as one independently materializable durable contract, not as a bucket for
 every rule that happens to mention the same module or component.
 
 - A same-theme refinement (same trigger, lifecycle, and failure mode) updates the existing Note.

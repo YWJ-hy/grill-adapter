@@ -36,7 +36,7 @@ grill-adapter 把「wiki 如何进入并回流到工作流」抽象成四个触�
 | --- | --- | --- |
 | **Disclose（披露）** | 规划前轻量披露相关 wiki 作上下文 | `/grill-adapter:wiki-research` |
 | **Carry（携带）** | 把 bound Obsidian atomic Note/Skill Card 的 metadata 固化进 schema-v6 计划期 sidecar | `.wiki-context.json`（`wiki_context_render.py --scaffold` → `--finalize`，不含 Note body） |
-| **Bind（绑定）** | 每个 ticket/reviewer 前 reread 当前任务路由的权威硬约束；v6 使用 Obsidian stable ID，包含角色所需 Skill Card 与 1 跳 `depends_on` 闭包 | `/grill-adapter:wiki-materialize <ticket>`（唯一 reread 路径）+ SessionStart 提醒 |
+| **Bind（绑定）** | 规划审核后冻结当前 task 的角色化 Markdown；implement/review 各自消费对应文件，包含角色所需 Skill Card 与 1 跳 `depends_on` 闭包 | `wiki_readiness.py freeze` → `<taskId>.wiki-implement.md` / `<taskId>.wiki-review.md`；`/grill-adapter:wiki-materialize <ticket>` 校验并消费 + SessionStart 提醒 |
 | **Capture（捕获）** | 各阶段先经 `/grill-adapter:candidate-journal` 追加候选事件；review 后校验/折叠并回写 durable 知识 | `/grill-adapter:update-wiki`（逐条记录 keep/skip/defer；可选前置步骤把 grill 增量转成同款事件） |
 
 Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specification、tickets、implementation、review、debugging 发现的 Wiki Note / Skill Card 候选都进入同一个 `.grill-adapter/context/<feature-slug>/wiki-candidates.jsonl`。Skill Card 候选由 `scaffold-practice-skill stage-card` 在双运行时 pack 校验后追加，包含 name/version/contract hash/roles/triggers，并明确为 `pending`；中间阶段不写 Obsidian、不写 legacy discovery index。journal 只追加、不手改、不删除、不提交。
@@ -55,6 +55,8 @@ Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specif
   wiki-candidates.jsonl
   wiki-candidates.jsonl.lock
   wiki-readiness.json
+  <taskId>.wiki-approval.json
+  <taskId>.wiki-implement.md
   <taskId>.wiki-review.md
   wiki-publish.json
 ```
@@ -70,7 +72,7 @@ Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specif
 | 1 | `/grill-with-docs`（质询/发现） | Disclose | `/grill-adapter:wiki-research`（phase brainstorm） | 轻量上下文；durable 候选可追加 journal（不写 selection/context sidecar） |
 | 2 | `/to-spec` | Verify | `/grill-adapter:source-truth-check`（render spec-pre） | 真实源校验结果 |
 | 3 | `/to-tickets`（规划） | Disclose + Carry | `/grill-adapter:wiki-research`（phase plan）+ `wiki_context_render.py --scaffold` → 建 ticket roster → `--finalize` + `/grill-adapter:source-truth-check`（plan-pre / plan-review） | `.grill-adapter/context/<feature-slug>/` 下的 `obsidian-wiki-selection.json`、schema-v6 `wiki-context.json`、`ticket-roster.json` |
-| 4 | `/implement`（每 ticket/direct task） | Readiness + Bind | 首次代码修改前 `/grill-adapter:wiki-readiness`；`ready` 时做 fingerprint preflight + `/grill-adapter:wiki-materialize <ticket>` | 稳定 task identity + readiness receipt；可用时注入权威硬约束/角色 Skill Card/1 跳闭包，否则按显式 fail-open 结果继续 |
+| 4 | `/implement`（每 ticket/direct task） | Readiness + Bind | 首次代码修改前 `/grill-adapter:wiki-readiness`；`ready` 时做 fingerprint preflight + 消费 `<taskId>.wiki-implement.md` | 稳定 task identity + readiness receipt + 用户可见实现 Markdown；否则按显式 fail-open 结果继续 |
 | 5 | `/code-review` | Reviewer Bind + Capture | 启动 Standards/Spec sub-agents 前用 `/grill-adapter:wiki-readiness` 生成共享 reviewer handoff；review 完成后 `/grill-adapter:update-wiki` | 原子 reviewer context 或非阻塞 caveat；随后 journal outcome receipt + staged Note change |
 | 6 | `/diagnosing-bugs` | Disclose + Capture | `/grill-adapter:wiki-research`（phase debug）→ `/grill-adapter:break-loop` → `/grill-adapter:update-wiki` | 根因复盘 + wiki 回写 |
 
@@ -126,6 +128,8 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
    # 人工编辑每个 Note/Card 的 destination（一次）；sidecar 不保存 Note body
    # ticket 发布后：按 host 约定块建 .grill-adapter/context/<slug>/ticket-roster.json
    wiki_context_render.py --finalize --ticket-roster <roster>   # 固化 sidecar + 盖指纹
+   wiki_readiness.py freeze --context <context> --roster <roster> --task-id <ticket-id> --project-root <project-root>
+   # 用户审核后冻结一对角色化 Markdown task contract
    ```
 
    **task 身份来自 ticket roster，不来自 plan 文件**——grill 不产出 plan 文档，所以引擎不解析任何文档，只对 roster 交给它的 ticket 正文算 sha256 指纹。roster 怎么填由 host 约定块规定（grill 本地形态读 `.scratch/<slug>/issues/*.md`，GitHub 形态跑 `gh issue view`），引擎本身 host 无关、不碰网络。
@@ -159,17 +163,17 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
    /wiki-materialize <ticket>
    ```
 
-   背后仍由 `wiki_materialize_task.py` 唯一读取权威全文；schema-v6 只经 Obsidian MCP，并做有界、去重 1 跳闭包。ADR-backed projection 还会在项目根内重算 `adrSourceId`、路径和 `adrSourceContentHash`；缺失、越界、格式错误或内容漂移都让 Wiki 校验 fail-closed，不输出旧/部分投影。binding/Note/Card/base/pack 任一漂移都让 Wiki 校验 fail-closed；宿主是否停止实现则由 readiness 的用户选择决定。
+   Freeze 阶段由 `wiki_materialize_task.py` 经绑定 Obsidian MCP 读取权威全文，并做有界、去重 1 跳闭包；生成的 `<taskId>.wiki-implement.md` 与 `<taskId>.wiki-review.md` 在实现和评审阶段固定消费。ADR-backed projection 仍会在 freeze 时重算 `adrSourceId`、路径和 `adrSourceContentHash`；缺失、越界、格式错误或内容漂移都让 freeze fail-closed，不生成可消费快照。binding/Note/Card/base/pack 任一漂移都要求重新审核并 freeze；宿主是否停止实现则由 readiness 的用户选择决定。
 
-6. readiness 结果写入 `.grill-adapter/context/<feature-slug>/wiki-readiness.json`，只保存 task identity、fingerprint、状态和安全的 context 文件名引用，不保存 Note body。roster/context/receipt 都是本地工作态，不提交。
+6. readiness 结果写入 `.grill-adapter/context/<feature-slug>/wiki-readiness.json`，保存 task identity、fingerprint、状态、context 文件名和两份 role Markdown 的 digest；Note body 只存在于用户可见的 task Markdown，不复制进 JSON receipt。roster/context/snapshot/receipt 都是本地工作态，不提交。
 
 7. `source-truth-lint` hook（PostToolUse / Stop）对**真实改动文件**做 lint；命中 **block / ask** 必须处理后才继续。执行中涌现的 durable 决策 / 坑，经 `/candidate-journal`（stage `implementation`）机械追加，留待步骤 5 捕获。
 
 ### 步骤 5 · `/code-review` — Reviewer Bind + Capture
 
-code-review 确定当前任务后、启动 Standards/Spec 两个隔离 reviewer 前，复用 implement 阶段的 readiness receipt 运行 `review-handoff`。`ready` 会重新校验 roster/fingerprint/context，并以 reviewer 角色只读取该任务的 hard Note、直接 `depends_on` 与 reviewer-required Skill Card；两轴读取同一个本地 handoff，但各自职责和输出结构不变。Card 到达实际 reviewer 后，其 `MUST invoke` project skill 要求必须执行。
+code-review 确定当前任务后、启动 Standards/Spec 两个隔离 reviewer 前，复用 implement 阶段的 readiness receipt 运行 `review-handoff`。`ready` 会重新校验 roster/fingerprint/context 和 `<taskId>.wiki-review.md` digest；两轴读取同一个本地 reviewer Markdown，但各自职责和输出结构不变。Card 到达实际 reviewer 后，其 `MUST invoke` project skill 要求必须执行。
 
-   `no-relevant`、`disabled`、`broken`、无法确定 task 的 `unknown`，以及 receipt/context/Source/Card/ADR authority/revision/materialize 任一失败，都只生成不含 Wiki 正文的非阻塞 caveat。评审继续，不做 late research、不要求先修 Wiki，且失败路径会覆盖旧 handoff、丢弃所有部分输出。这里是“Wiki 内容验证 fail-closed、宿主 review 可用性 fail-open”。
+   `no-relevant`、`disabled`、`broken`、无法确定 task 的 `unknown`，以及 receipt/context/snapshot 任一失败，都只生成不含 Wiki 正文的非阻塞 caveat。评审继续，不做 late research、不要求先修 Wiki，且失败路径会覆盖旧 reviewer 文件，丢弃所有部分输出。这里是“Wiki 内容验证 fail-closed、宿主 review 可用性 fail-open”。
 
 review 通过后，把本轮新沉淀的知识回写 wiki。约定块只让你调一个 skill：
 
@@ -239,7 +243,7 @@ review 通过后，把本轮新沉淀的知识回写 wiki。约定块只让你�
 
 grill-adapter 明确承认自己不是无缝的，并把降级点讲清楚：
 
-- **Bind 靠约定 + SessionStart 提醒**：`/grill-adapter:wiki-materialize <ticket>` 是唯一按 ticket/rôle 精确 reread 的路径；`wiki-reread.sh` 只在 SessionStart 提醒 active sidecar，绝不在 `UserPromptSubmit` 或 SessionStart 注入 Note 全文。
+- **Bind 靠约定 + SessionStart 提醒**：`wiki_readiness.py freeze` 是规划期唯一生成 task 正文的路径；`/grill-adapter:wiki-materialize <ticket>` 是唯一按 ticket/role 精确消费冻结 Markdown 的路径；`wiki-reread.sh` 只在 SessionStart 提醒 active sidecar，绝不在 `UserPromptSubmit` 或 SessionStart 注入 Note 全文。
 - **中间阶段只 journal、不写 Obsidian**：所有 durable 候选先经机械 helper 追加；只有 review 后的 `/grill-adapter:update-wiki` 能做最终语义判断与后续回写。
 - **可恢复但非自动恢复**：journal 保留完整生命周期；损坏或非法转换 fail-closed，必须回到产生事件的 workflow 修复，不能手改 JSONL 绕过。
 

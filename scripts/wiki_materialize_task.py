@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Materialize task-scoped hard constraints from bound Obsidian Sources."""
+"""Consume role-specific task Wiki snapshots, with a legacy live fallback."""
 
 from __future__ import annotations
 
@@ -22,11 +22,18 @@ from wiki_context_render import (  # noqa: E402
     _v6_task_notes,
     _validate_context,
 )
+from wiki_task_snapshot import (  # noqa: E402
+    SnapshotError,
+    approval_path,
+    snapshot_path,
+    validate_approval,
+    validate_snapshot,
+)
 
 REREAD_HEADING = "## Hard Wiki Constraint Rereads"
 REREAD_PREAMBLE = (
-    "Authoritative full Note rereads of this task's hard constraints. Treat them as binding; "
-    "sidecar summaries never replace this runtime content."
+    "Approved full Note content for this task's hard constraints. Treat it as binding; "
+    "sidecar summaries never replace this task contract."
 )
 
 
@@ -338,13 +345,23 @@ def _append(path: Path, block: str) -> None:
 def main() -> int:
     _configure_stdio()
     parser = argparse.ArgumentParser(
-        description="Materialize task-scoped hard constraints from bound Obsidian Sources."
+        description="Consume role-specific task Wiki snapshots, with a legacy live fallback."
     )
     parser.add_argument("context_path", help="Path to the schema-v6 .wiki-context.json sidecar")
     parser.add_argument("--task-id", help="Render only rereads bound to this finalized task id")
     parser.add_argument("--role", choices=["implementer", "reviewer"], default="implementer")
     parser.add_argument("--project-root", default=None, help="Project root (auto-detected if omitted)")
     parser.add_argument("--append-to", default=None, help="Append rendered rereads to this file")
+    parser.add_argument(
+        "--snapshot-file",
+        default=None,
+        help="Read the frozen role-specific task Wiki Markdown instead of live materialization",
+    )
+    parser.add_argument(
+        "--ignore-snapshot",
+        action="store_true",
+        help="Force a live Obsidian reread when generating or refreshing a task snapshot",
+    )
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("--execution-ready", action="store_true")
     parser.add_argument("--obsidian-wiki-cmd", default=None)
@@ -354,6 +371,56 @@ def main() -> int:
     try:
         data = _load_context(Path(args.context_path))
         _validate_context(data, args.strict, args.execution_ready, project_root)
+        task_ref = next(
+            (
+                item
+                for item in data.get("taskWikiRefs", [])
+                if isinstance(item, dict) and item.get("taskId") == args.task_id
+            ),
+            None,
+        ) if args.task_id else None
+        snapshot = (
+            Path(args.snapshot_file)
+            if args.snapshot_file
+            else snapshot_path(Path(args.context_path), args.task_id, args.role)
+            if args.task_id
+            else None
+        )
+        if snapshot is not None and snapshot.is_file() and not args.ignore_snapshot:
+            if not isinstance(task_ref, dict):
+                raise SnapshotError(f"snapshot task {args.task_id} is not present in the finalized context")
+            context = data
+            approval_file = approval_path(Path(args.context_path), args.task_id)
+            if not approval_file.is_file():
+                raise SnapshotError(f"task Wiki approval manifest is missing: {approval_file.name}")
+            approved_implement, approved_review = validate_approval(
+                approval_file,
+                context_path=Path(args.context_path),
+                context=context,
+                task={
+                    "title": str(task_ref.get("taskTitle", "")),
+                    "hash": str(task_ref.get("taskFingerprint", "")),
+                },
+                task_id=args.task_id,
+            )
+            approved_digest = approved_implement if args.role == "implementer" else approved_review
+            _, snapshot_body = validate_snapshot(
+                snapshot,
+                context_path=Path(args.context_path),
+                feature_slug=str(data.get("featureSlug", "")),
+                ticket_source=str(data.get("ticketSource", "")),
+                task_id=args.task_id,
+                task_title=str(task_ref.get("taskTitle", "")),
+                task_fingerprint=str(task_ref.get("taskFingerprint", "")),
+                role=args.role,
+                expected_digest=approved_digest,
+            )
+            if args.append_to:
+                _append(Path(args.append_to), snapshot_body)
+                print(f"reused frozen task Wiki snapshot -> {args.append_to}", file=sys.stderr)
+            else:
+                sys.stdout.write(snapshot_body)
+            return 0
         materialized = _materialize(
             data,
             args.task_id,
@@ -361,7 +428,7 @@ def main() -> int:
             project_root,
             args.obsidian_wiki_cmd,
         )
-    except (ValidationError, MaterializeError) as exc:
+    except (ValidationError, MaterializeError, SnapshotError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 

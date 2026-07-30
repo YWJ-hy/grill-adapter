@@ -6,20 +6,24 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/_windows-compat.bash"
 TARGET_INPUT="${1:-${ROOT}}"
 READINESS="${TARGET_INPUT}/scripts/wiki_readiness.py"
 RENDER="${TARGET_INPUT}/scripts/wiki_context_render.py"
+MATERIALIZE="${TARGET_INPUT}/scripts/wiki_materialize_task.py"
 CONTRACT="${TARGET_INPUT}/contracts/wiki-readiness-v1.example.jsonc"
+SNAPSHOT_CONTRACT="${TARGET_INPUT}/contracts/wiki-task-snapshot-v1.example.jsonc"
+APPROVAL_CONTRACT="${TARGET_INPUT}/contracts/wiki-task-approval-v1.example.jsonc"
 SKILL="${TARGET_INPUT}/skills/wiki-readiness/SKILL.md"
 
-for file in "$READINESS" "$RENDER" "$CONTRACT" "$SKILL"; do
+for file in "$READINESS" "$RENDER" "$MATERIALIZE" "$CONTRACT" "$SNAPSHOT_CONTRACT" "$APPROVAL_CONTRACT" "$SKILL"; do
   if [[ ! -f "$file" ]]; then
     printf 'Missing readiness surface: %s\n' "$file" >&2
     exit 1
   fi
 done
 
-TMP="$(mktemp -d)"
+TMP="$(portable_tmpdir)"
 trap 'rm -rf "$TMP"' EXIT
 CONTEXT_ROOT="$TMP/project/.grill-adapter/context"
 ISSUE_DIR="$CONTEXT_ROOT/issue-19"
@@ -231,7 +235,7 @@ with open(path, "w", encoding="utf-8") as handle:
 PY
 python3 "$RENDER" "$FORMAL_CONTEXT" --finalize --strict --ticket-roster "$FORMAL_ROSTER" >/dev/null
 
-FAKE_OBSIDIAN="$TMP/fake-obsidian"
+FAKE_OBSIDIAN="$TMP/fake-obsidian.py"
 cat > "$FAKE_OBSIDIAN" <<'PY'
 #!/usr/bin/env python3
 import json
@@ -263,6 +267,7 @@ else:
     raise SystemExit(f"unexpected command: {sys.argv[1]}")
 PY
 chmod +x "$FAKE_OBSIDIAN"
+FAKE_OBSIDIAN_CMD="python3 $FAKE_OBSIDIAN"
 
 CONTEXT_HASH_BEFORE="$(python3 - "$FORMAL_CONTEXT" <<'PY'
 import hashlib
@@ -276,21 +281,55 @@ import sys
 print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())
 PY
 )"
-OBSIDIAN_WIKI_MCP_CMD="$FAKE_OBSIDIAN" python3 "$READINESS" bind \
+python3 "$READINESS" bind \
   --receipt "$FORMAL_RECEIPT" \
   --roster "$FORMAL_ROSTER" \
   --context "$FORMAL_CONTEXT" \
   --task-id 01 \
   --project-root "$TMP/project" \
+  --obsidian-wiki-cmd "$FAKE_OBSIDIAN_CMD" \
   --reason "Implementer constraints materialized successfully." >"$TMP/formal-bind.out"
 need "$TMP/formal-bind.out" "Formal execution boundary must be materialized"
+IMPLEMENT_SNAPSHOT="$FORMAL_DIR/01.wiki-implement.md"
+REVIEW_SNAPSHOT="$FORMAL_DIR/01.wiki-review.md"
+need "$IMPLEMENT_SNAPSHOT" 'Role: `implementer`'
+need "$REVIEW_SNAPSHOT" 'Role: `reviewer`'
+need "$REVIEW_SNAPSHOT" "Reviewer Handoff"
+need "$REVIEW_SNAPSHOT" "same read-only context"
+# Explicit planning approval refreshes both role files together. A subsequent Bind consumes the
+# frozen files and no longer depends on the current Obsidian CLI.
+python3 "$READINESS" freeze \
+  --context "$FORMAL_CONTEXT" \
+  --roster "$FORMAL_ROSTER" \
+  --task-id 01 \
+  --project-root "$TMP/project" \
+  --obsidian-wiki-cmd "$FAKE_OBSIDIAN_CMD" >/dev/null
+need "$IMPLEMENT_SNAPSHOT" '"snapshotOrigin": "planning-approved"'
+python3 "$READINESS" bind \
+  --receipt "$FORMAL_RECEIPT" \
+  --roster "$FORMAL_ROSTER" \
+  --context "$FORMAL_CONTEXT" \
+  --task-id 01 \
+  --project-root "$TMP/project" \
+  --obsidian-wiki-cmd "definitely-missing-obsidian-command" \
+  --reason "Approved role snapshots are the task contract." >"$TMP/frozen-bind.out"
+need "$TMP/frozen-bind.out" "Formal execution boundary must be materialized"
 python3 "$READINESS" validate --receipt "$FORMAL_RECEIPT" --task-id 01 >/dev/null
-python3 - "$FORMAL_RECEIPT" "$CONTEXT_HASH_BEFORE" "$ROSTER_HASH_BEFORE" "$FORMAL_CONTEXT" "$FORMAL_ROSTER" <<'PY'
+REVIEW_HASH_BEFORE="$(sha256_file "$REVIEW_SNAPSHOT")"
+python3 "$READINESS" review-handoff \
+  --receipt "$FORMAL_RECEIPT" \
+  --task-id 01 \
+  --project-root "$TMP/project" \
+  --handoff "$REVIEW_SNAPSHOT" \
+  --obsidian-wiki-cmd "definitely-missing-obsidian-command" >"$TMP/frozen-review-handoff.out"
+need "$TMP/frozen-review-handoff.out" "reused ready reviewer Wiki snapshot"
+[[ "$(sha256_file "$REVIEW_SNAPSHOT")" == "$REVIEW_HASH_BEFORE" ]] || fail "review handoff mutated the approved reviewer snapshot"
+python3 - "$FORMAL_RECEIPT" "$CONTEXT_HASH_BEFORE" "$ROSTER_HASH_BEFORE" "$FORMAL_CONTEXT" "$FORMAL_ROSTER" "$IMPLEMENT_SNAPSHOT" "$REVIEW_SNAPSHOT" <<'PY'
 import hashlib
 import json
 import sys
 
-receipt_path, context_before, roster_before, context_path, roster_path = sys.argv[1:]
+receipt_path, context_before, roster_before, context_path, roster_path, implement_path, review_path = sys.argv[1:]
 receipt = json.load(open(receipt_path, encoding="utf-8"))
 assert receipt["kind"] == "grill-adapter.wiki-readiness"
 assert receipt["featureSlug"] == "formal-feature"
@@ -302,10 +341,34 @@ assert task["taskId"] == "01"
 assert task["status"] == "ready"
 assert task["contextDisposition"] == "materialized"
 assert task["contextFile"] == "wiki-context.json"
+assert task["implementWikiFile"] == "01.wiki-implement.md"
+assert task["reviewWikiFile"] == "01.wiki-review.md"
+assert task["implementWikiDigest"] == "sha256:" + hashlib.sha256(open(implement_path, "rb").read()).hexdigest()
+assert task["reviewWikiDigest"] == "sha256:" + hashlib.sha256(open(review_path, "rb").read()).hexdigest()
 assert len(task["taskFingerprint"]) == 64
 assert hashlib.sha256(open(context_path, "rb").read()).hexdigest() == context_before
 assert hashlib.sha256(open(roster_path, "rb").read()).hexdigest() == roster_before
 PY
+
+# Runtime consumption reuses the approved role files and does not contact the current Source.
+python3 "$MATERIALIZE" "$FORMAL_CONTEXT" --task-id 01 --role implementer \
+  --project-root "$TMP/project" --strict --execution-ready \
+  --obsidian-wiki-cmd "definitely-missing-obsidian-command" >"$TMP/frozen-implement.out"
+need "$TMP/frozen-implement.out" "Formal execution boundary must be materialized"
+python3 "$MATERIALIZE" "$FORMAL_CONTEXT" --task-id 01 --role reviewer \
+  --project-root "$TMP/project" --strict --execution-ready \
+  --obsidian-wiki-cmd "definitely-missing-obsidian-command" >"$TMP/frozen-review.out"
+need "$TMP/frozen-review.out" "Reviewer Handoff"
+
+# Editing either user-visible task contract invalidates the readiness receipt.
+cp "$IMPLEMENT_SNAPSHOT" "$TMP/implement.before-edit.md"
+printf '\nEdited after approval.\n' >> "$IMPLEMENT_SNAPSHOT"
+if python3 "$READINESS" validate --receipt "$FORMAL_RECEIPT" --task-id 01 >"$TMP/snapshot-drift.out" 2>&1; then
+  fail "edited implementer snapshot must invalidate readiness"
+fi
+need "$TMP/snapshot-drift.out" "snapshot"
+mv "$TMP/implement.before-edit.md" "$IMPLEMENT_SNAPSHOT"
+python3 "$READINESS" validate --receipt "$FORMAL_RECEIPT" --task-id 01 >/dev/null
 
 # Formal-ticket drift invalidates the reusable readiness result.
 python3 - "$FORMAL_ROSTER" <<'PY'
@@ -366,6 +429,11 @@ for file in "$CONTRACT" "$SKILL"; do
   need "$file" "fingerprint"
   need "$file" "continue"
 done
+need "$SNAPSHOT_CONTRACT" "bodyDigest"
+need "$SNAPSHOT_CONTRACT" "taskFingerprint"
+need "$SNAPSHOT_CONTRACT" "role"
+need "$APPROVAL_CONTRACT" "implementWikiDigest"
+need "$APPROVAL_CONTRACT" "reviewWikiDigest"
 need "$SKILL" "before the first code edit"
 need "$SKILL" "gh issue view"
 need "$SKILL" "manual"

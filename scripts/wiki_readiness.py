@@ -14,6 +14,17 @@ from typing import Any
 
 from feature_context import context_root, infer_project_root, is_feature_context_dir
 from wiki_context_render import FingerprintError, ValidationError, load_ticket_roster
+from wiki_task_snapshot import (
+    SnapshotError,
+    approval_path,
+    file_digest,
+    render_snapshot,
+    snapshot_path,
+    validate_approval,
+    validate_snapshot,
+    write_approval,
+    write_snapshot,
+)
 
 
 KIND = "grill-adapter.wiki-readiness"
@@ -231,6 +242,7 @@ def _render_and_materialize_context(
     role: str,
     project_root: Path,
     obsidian_wiki_cmd: str | None = None,
+    ignore_snapshot: bool = False,
 ) -> tuple[str, str]:
     renderer = Path(__file__).with_name("wiki_context_render.py")
     materializer = Path(__file__).with_name("wiki_materialize_task.py")
@@ -252,6 +264,8 @@ def _render_and_materialize_context(
     ]
     if obsidian_wiki_cmd:
         materialize_command.extend(["--obsidian-wiki-cmd", obsidian_wiki_cmd])
+    if ignore_snapshot:
+        materialize_command.append("--ignore-snapshot")
     renderer_args = [*common_args, "--project-root", str(project_root)]
 
     rendered = _run_context_command(
@@ -263,6 +277,142 @@ def _render_and_materialize_context(
         f"{role.capitalize()} Wiki materialization",
     )
     return rendered, materialized
+
+
+def _snapshot_paths(context_path: Path, task_id: str) -> tuple[Path, Path]:
+    return (
+        snapshot_path(context_path, task_id, "implementer"),
+        snapshot_path(context_path, task_id, "reviewer"),
+    )
+
+
+def _load_role_snapshots(
+    *,
+    context_path: Path,
+    context: dict[str, Any],
+    feature_slug: str,
+    ticket_source: str,
+    task_id: str,
+    task: dict[str, str],
+    implement_digest: str | None = None,
+    review_digest: str | None = None,
+) -> tuple[tuple[Path, str], tuple[Path, str]]:
+    implement_path, review_path = _snapshot_paths(context_path, task_id)
+    if not implement_path.is_file() or not review_path.is_file():
+        raise ReadinessError(
+            f"task Wiki snapshots are incomplete; expected {implement_path.name} and {review_path.name}"
+        )
+    try:
+        approval_file = approval_path(context_path, task_id)
+        if not approval_file.is_file():
+            raise SnapshotError(f"task Wiki approval manifest is missing: {approval_file.name}")
+        approved_implement, approved_review = validate_approval(
+            approval_file,
+            context_path=context_path,
+            context=context,
+            task=task,
+            task_id=task_id,
+        )
+        if implement_digest is not None and approved_implement != implement_digest:
+            raise SnapshotError("receipt implementer snapshot digest differs from the approval manifest")
+        if review_digest is not None and approved_review != review_digest:
+            raise SnapshotError("receipt reviewer snapshot digest differs from the approval manifest")
+        _, implement_body = validate_snapshot(
+            implement_path,
+            context_path=context_path,
+            feature_slug=feature_slug,
+            ticket_source=ticket_source,
+            task_id=task_id,
+            task_title=task["title"],
+            task_fingerprint=task["hash"],
+            role="implementer",
+            expected_digest=approved_implement,
+        )
+        _, review_body = validate_snapshot(
+            review_path,
+            context_path=context_path,
+            feature_slug=feature_slug,
+            ticket_source=ticket_source,
+            task_id=task_id,
+            task_title=task["title"],
+            task_fingerprint=task["hash"],
+            role="reviewer",
+            expected_digest=approved_review,
+        )
+    except SnapshotError as exc:
+        raise ReadinessError(f"task Wiki snapshot validation failed: {exc}") from exc
+    return (implement_path, implement_body), (review_path, review_body)
+
+
+def _freeze_role_snapshots(
+    *,
+    context_path: Path,
+    roster_path: Path,
+    feature_slug: str,
+    ticket_source: str,
+    task_id: str,
+    task: dict[str, str],
+    project_root: Path,
+    obsidian_wiki_cmd: str | None,
+    origin: str,
+) -> tuple[tuple[Path, str], tuple[Path, str]]:
+    try:
+        context = _validate_context(context_path, roster_path, project_root)
+    except ReadinessError:
+        raise
+    except (ValidationError, FingerprintError) as exc:
+        raise ReadinessError(f"Wiki context is not execution-ready: {exc}") from exc
+    _validate_context_identity(context, feature_slug, ticket_source, task_id)
+
+    rendered_implement, materialized_implement = _render_and_materialize_context(
+        context_path=context_path,
+        task_id=task_id,
+        role="implementer",
+        project_root=project_root,
+        obsidian_wiki_cmd=obsidian_wiki_cmd,
+        ignore_snapshot=True,
+    )
+    rendered_review, materialized_review = _render_and_materialize_context(
+        context_path=context_path,
+        task_id=task_id,
+        role="reviewer",
+        project_root=project_root,
+        obsidian_wiki_cmd=obsidian_wiki_cmd,
+        ignore_snapshot=True,
+    )
+    implement_text = render_snapshot(
+        context=context,
+        context_path=context_path,
+        task=task,
+        task_id=task_id,
+        role="implementer",
+        rendered=rendered_implement,
+        materialized=materialized_implement,
+        origin=origin,
+    )
+    review_text = render_snapshot(
+        context=context,
+        context_path=context_path,
+        task=task,
+        task_id=task_id,
+        role="reviewer",
+        rendered=rendered_review,
+        materialized=materialized_review,
+        origin=origin,
+    )
+    implement_path, review_path = _snapshot_paths(context_path, task_id)
+    implement_digest = write_snapshot(implement_path, implement_text)
+    review_digest = write_snapshot(review_path, review_text)
+    write_approval(
+        approval_path(context_path, task_id),
+        context_path=context_path,
+        context=context,
+        task=task,
+        task_id=task_id,
+        implement_digest=implement_digest,
+        review_digest=review_digest,
+    )
+    return (implement_path, implement_digest), (review_path, review_digest)
 
 
 def _validate_context_identity(
@@ -319,6 +469,10 @@ def _validate_task_entry(task: Any) -> dict[str, Any]:
         "contextDisposition",
         "reason",
         "contextFile",
+        "implementWikiFile",
+        "implementWikiDigest",
+        "reviewWikiFile",
+        "reviewWikiDigest",
     }
     unknown = sorted(set(task) - allowed)
     if unknown:
@@ -337,8 +491,21 @@ def _validate_task_entry(task: Any) -> dict[str, Any]:
     context_file = task.get("contextFile")
     if status == "ready":
         _safe_context_filename(context_file, "contextFile")
+        snapshot_fields = ("implementWikiFile", "implementWikiDigest", "reviewWikiFile", "reviewWikiDigest")
+        present = [field in task for field in snapshot_fields]
+        if any(present) and not all(present):
+            raise ReadinessError("ready readiness must retain all role-specific task Wiki snapshot fields")
+        if all(present):
+            for field in ("implementWikiFile", "reviewWikiFile"):
+                _safe_context_filename(task.get(field), field)
+            for field in ("implementWikiDigest", "reviewWikiDigest"):
+                digest = _required_text(task.get(field), field)
+                if not digest.startswith("sha256:") or len(digest) != 71:
+                    raise ReadinessError(f"{field} must be a sha256 digest")
     elif context_file is not None:
         raise ReadinessError(f"{status} readiness must not retain a contextFile")
+    elif any(field in task for field in ("implementWikiFile", "implementWikiDigest", "reviewWikiFile", "reviewWikiDigest")):
+        raise ReadinessError(f"{status} readiness must not retain task Wiki snapshots")
     return task
 
 
@@ -351,6 +518,8 @@ def record_readiness(
     context_path: Path | None,
     materialized: bool = False,
     project_root: Path | None = None,
+    implement_wiki: tuple[Path, str] | None = None,
+    review_wiki: tuple[Path, str] | None = None,
 ) -> str:
     _same_context_directory(receipt_path, roster_path, "ticket roster")
     raw_roster, feature_slug, ticket_source, tasks = _roster_metadata(roster_path)
@@ -367,6 +536,8 @@ def record_readiness(
     if status == "ready":
         if context_path is None:
             raise ReadinessError("ready readiness requires --context")
+        if implement_wiki is None or review_wiki is None:
+            raise ReadinessError("ready readiness requires both role-specific task Wiki snapshots")
         _same_context_directory(receipt_path, context_path, "Wiki context")
         context = _validate_context(
             context_path,
@@ -405,6 +576,10 @@ def record_readiness(
     }
     if context_file is not None:
         entry["contextFile"] = context_file
+        entry["implementWikiFile"] = implement_wiki[0].name
+        entry["implementWikiDigest"] = implement_wiki[1]
+        entry["reviewWikiFile"] = review_wiki[0].name
+        entry["reviewWikiDigest"] = review_wiki[1]
     existing[task_id] = entry
 
     ordered_tasks = [
@@ -432,6 +607,7 @@ def bind_readiness(
     task_id: str,
     project_root: Path,
     reason: str,
+    obsidian_wiki_cmd: str | None = None,
 ) -> str:
     _same_context_directory(receipt_path, roster_path, "ticket roster")
     _same_context_directory(receipt_path, context_path, "Wiki context")
@@ -445,12 +621,48 @@ def bind_readiness(
     context = _validate_context(context_path, roster_path, project_root)
     _validate_context_identity(context, feature_slug, ticket_source, task_id)
 
-    rendered, materialized_output = _render_and_materialize_context(
-        context_path=context_path,
-        task_id=task_id,
-        role="implementer",
-        project_root=project_root,
-    )
+    implement_path, review_path = _snapshot_paths(context_path, task_id)
+    have_implement = implement_path.is_file()
+    have_review = review_path.is_file()
+    if have_implement != have_review:
+        raise ReadinessError(
+            f"task Wiki snapshots are incomplete; expected both {implement_path.name} and {review_path.name}"
+        )
+    if have_implement:
+        implement_info = (implement_path, file_digest(implement_path))
+        review_info = (review_path, file_digest(review_path))
+        snapshots = _load_role_snapshots(
+            context_path=context_path,
+            context=context,
+            feature_slug=feature_slug,
+            ticket_source=ticket_source,
+            task_id=task_id,
+            task=tasks[task_id],
+            implement_digest=implement_info[1],
+            review_digest=review_info[1],
+        )
+    else:
+        implement_info, review_info = _freeze_role_snapshots(
+            context_path=context_path,
+            roster_path=roster_path,
+            feature_slug=feature_slug,
+            ticket_source=ticket_source,
+            task_id=task_id,
+            task=tasks[task_id],
+            project_root=project_root,
+            obsidian_wiki_cmd=obsidian_wiki_cmd,
+            origin="implementation-entry",
+        )
+        snapshots = _load_role_snapshots(
+            context_path=context_path,
+            context=context,
+            feature_slug=feature_slug,
+            ticket_source=ticket_source,
+            task_id=task_id,
+            task=tasks[task_id],
+            implement_digest=implement_info[1],
+            review_digest=review_info[1],
+        )
 
     record_readiness(
         receipt_path,
@@ -461,9 +673,43 @@ def bind_readiness(
         context_path,
         materialized=True,
         project_root=project_root,
+        implement_wiki=implement_info,
+        review_wiki=review_info,
     )
-    parts = [part.rstrip() for part in (rendered, materialized_output) if part.strip()]
-    return "\n\n".join(parts)
+    return snapshots[0][1]
+
+
+def freeze_task_snapshots(
+    *,
+    context_path: Path,
+    roster_path: Path,
+    task_id: str,
+    project_root: Path,
+    obsidian_wiki_cmd: str | None,
+) -> str:
+    _same_context_directory(context_path, roster_path, "ticket roster")
+    if not project_root.is_dir():
+        raise ReadinessError(f"project root is not a directory: {project_root}")
+    _, feature_slug, ticket_source, tasks = _roster_metadata(roster_path)
+    task_id = _required_text(task_id, "taskId").strip()
+    if task_id not in tasks:
+        raise ReadinessError(f"ticket roster has no task {task_id}")
+    implement_info, review_info = _freeze_role_snapshots(
+        context_path=context_path,
+        roster_path=roster_path,
+        feature_slug=feature_slug,
+        ticket_source=ticket_source,
+        task_id=task_id,
+        task=tasks[task_id],
+        project_root=project_root,
+        obsidian_wiki_cmd=obsidian_wiki_cmd,
+        origin="planning-approved",
+    )
+    return (
+        f"froze task Wiki snapshots for {task_id}: "
+        f"{implement_info[0].name} ({implement_info[1]}), "
+        f"{review_info[0].name} ({review_info[1]})"
+    )
 
 
 def validate_readiness(
@@ -519,6 +765,17 @@ def _validated_readiness_task(
             project_root or infer_project_root(roster_path),
         )
         _validate_context_identity(context, feature_slug, ticket_source, task_id)
+        if "implementWikiFile" in entry:
+            _load_role_snapshots(
+                context_path=context_path,
+                context=context,
+                feature_slug=feature_slug,
+                ticket_source=ticket_source,
+                task_id=task_id,
+                task=roster_task,
+                implement_digest=entry["implementWikiDigest"],
+                review_digest=entry["reviewWikiDigest"],
+            )
     else:
         context_path = None
     return receipt, roster_path, entry, context_path
@@ -582,9 +839,6 @@ def review_handoff(
             "review handoff must be a plain file in <project-root>/.grill-adapter/context/<feature-slug>"
         )
 
-    # A failed refresh must never leave an older reviewer handoff available to subagents.
-    handoff_path.unlink(missing_ok=True)
-
     normalized_task_id = task_id.strip() if isinstance(task_id, str) and task_id.strip() else None
     if receipt_path is None or normalized_task_id is None or not receipt_path.is_file():
         _write_text(
@@ -603,7 +857,7 @@ def review_handoff(
             raise ReadinessError("readiness receipt is outside the current project .grill-adapter/context")
         if handoff_directory != receipt_directory:
             raise ReadinessError("review handoff must be in the same feature context directory as the readiness receipt")
-        _, _, entry, context_path = _validated_readiness_task(
+        _, roster_path, entry, context_path = _validated_readiness_task(
             receipt_path,
             normalized_task_id,
             project_root,
@@ -634,24 +888,56 @@ def review_handoff(
     if context_path is None:
         raise ReadinessError("ready readiness did not resolve a Wiki context")
 
-    try:
-        _, materialized = _render_and_materialize_context(
-            context_path=context_path,
-            task_id=normalized_task_id,
-            role="reviewer",
-            project_root=project_root,
-            obsidian_wiki_cmd=obsidian_wiki_cmd,
-        )
-    except ReadinessError as exc:
-        _write_text(
-            handoff_path,
-            _review_handoff_text(
-                status="materialize-failed",
+    if "reviewWikiFile" in entry:
+        try:
+            _, feature_slug, ticket_source, tasks = _roster_metadata(roster_path)
+            _, materialized = _load_role_snapshots(
+                context_path=context_path,
+                context=_load_json(context_path, "wiki context"),
+                feature_slug=feature_slug,
+                ticket_source=ticket_source,
                 task_id=normalized_task_id,
-                detail=f"reviewer render/materialize validation failed: {exc}; partial and stale output was discarded.",
-            ),
-        )
-        return f"wrote fail-open materialize-failed reviewer handoff -> {handoff_path}"
+                task=tasks[normalized_task_id],
+                implement_digest=entry["implementWikiDigest"],
+                review_digest=entry["reviewWikiDigest"],
+            )
+            review_path = context_path.parent / _safe_context_filename(entry["reviewWikiFile"], "reviewWikiFile")
+            if review_path.name != snapshot_path(context_path, normalized_task_id, "reviewer").name:
+                raise ReadinessError("reviewWikiFile does not match the task-specific reviewer snapshot name")
+            if handoff_path.resolve() != review_path.resolve():
+                raise ReadinessError(
+                    f"review handoff must use the role-specific snapshot path {review_path.name}"
+                )
+        except (ReadinessError, SnapshotError, KeyError) as exc:
+            _write_text(
+                handoff_path,
+                _review_handoff_text(
+                    status="materialize-failed",
+                    task_id=normalized_task_id,
+                    detail=f"reviewer task Wiki snapshot validation failed: {exc}; stale output was discarded.",
+                ),
+            )
+            return f"wrote fail-open materialize-failed reviewer handoff -> {handoff_path}"
+        return f"reused ready reviewer Wiki snapshot -> {handoff_path}"
+    else:
+        try:
+            _, materialized = _render_and_materialize_context(
+                context_path=context_path,
+                task_id=normalized_task_id,
+                role="reviewer",
+                project_root=project_root,
+                obsidian_wiki_cmd=obsidian_wiki_cmd,
+            )
+        except ReadinessError as exc:
+            _write_text(
+                handoff_path,
+                _review_handoff_text(
+                    status="materialize-failed",
+                    task_id=normalized_task_id,
+                    detail=f"reviewer render/materialize validation failed: {exc}; partial and stale output was discarded.",
+                ),
+            )
+            return f"wrote fail-open materialize-failed reviewer handoff -> {handoff_path}"
 
     _write_text(
         handoff_path,
@@ -693,7 +979,7 @@ def main() -> int:
 
     bind = subparsers.add_parser(
         "bind",
-        help="Atomically render/materialize one implementer task and record ready only on success",
+        help="Validate/consume one implementer task snapshot and record ready only on success",
     )
     bind.add_argument("--receipt", required=True)
     bind.add_argument("--roster", required=True)
@@ -701,6 +987,17 @@ def main() -> int:
     bind.add_argument("--task-id", required=True)
     bind.add_argument("--project-root", required=True)
     bind.add_argument("--reason", required=True)
+    bind.add_argument("--obsidian-wiki-cmd")
+
+    freeze = subparsers.add_parser(
+        "freeze",
+        help="Generate both role-specific task Wiki snapshots from an execution-ready context",
+    )
+    freeze.add_argument("--context", required=True)
+    freeze.add_argument("--roster", required=True)
+    freeze.add_argument("--task-id", required=True)
+    freeze.add_argument("--project-root", required=True)
+    freeze.add_argument("--obsidian-wiki-cmd")
 
     validate = subparsers.add_parser("validate", help="Validate a receipt against its current roster/context")
     validate.add_argument("--receipt", required=True)
@@ -709,7 +1006,7 @@ def main() -> int:
 
     review = subparsers.add_parser(
         "review-handoff",
-        help="Fail-open reviewer materialization from an existing implementation readiness receipt",
+        help="Fail-open reviewer snapshot handoff from an existing implementation readiness receipt",
     )
     review.add_argument("--receipt")
     review.add_argument("--task-id")
@@ -756,6 +1053,17 @@ def main() -> int:
                     args.task_id,
                     Path(args.project_root),
                     args.reason,
+                    args.obsidian_wiki_cmd,
+                )
+            )
+        elif args.command == "freeze":
+            print(
+                freeze_task_snapshots(
+                    context_path=Path(args.context),
+                    roster_path=Path(args.roster),
+                    task_id=args.task_id,
+                    project_root=Path(args.project_root),
+                    obsidian_wiki_cmd=args.obsidian_wiki_cmd,
                 )
             )
         elif args.command == "validate":
@@ -777,7 +1085,7 @@ def main() -> int:
                 )
             )
         return 0
-    except (ReadinessError, ValidationError, FingerprintError) as exc:
+    except (ReadinessError, ValidationError, FingerprintError, SnapshotError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 

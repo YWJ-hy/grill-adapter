@@ -96,6 +96,9 @@ for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
   need "$f" 'broken'
   need "$f" 'continue without Wiki context'
   need "$f" 'must not'
+  need "$f" 'freeze'
+  need "$f" 'wiki-implement.md'
+  need "$f" 'wiki-review.md'
 done
 
 # Review reuses the implementation readiness result before the host launches its isolated review

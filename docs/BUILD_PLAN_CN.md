@@ -74,7 +74,7 @@
 |---|---|---|
 | **Disclose** 选 wiki | 独立 `/wiki-research` skill（包 `wiki-researcher` agent），任何 host 都能调 | grill-with-docs 质询期调它 |
 | **Carry** 带约束 | `.wiki-context.json` sidecar = 中立载体（记选中 section 的 source-aware 引用 + `sharedWiki` 身份） | to-spec / to-tickets 阶段据 selection 写它 |
-| **Bind** 执行期 reread | ① 精确：每 ticket 调 `/wiki-materialize <ticket>` ② 粗兜底：hook 检测 active sidecar 注入（会话级——hook 无原生 ticket 字段，§14） | implement 逐 ticket 跑，**不 patch implement** |
+| **Bind** 角色化 task contract | ① 规划后 freeze 每 ticket 的 implement/review Markdown ② 每 ticket 调 `/wiki-materialize <ticket>` 校验并消费对应文件 ③ 粗兜底：hook 检测 active sidecar 提醒（会话级——hook 无原生 ticket 字段，§14） | implement/review 逐 task 跑，**不 patch implement** |
 | **Capture** 回写 | `/update-wiki`（语义门一字不动）经 Stop hook / 约定触发 | code-review 后跑 update-wiki；grill 质询也经 §9 桥写进 wiki |
 
 `/wiki-materialize` 复用 `wiki_materialize_task.py`——本地 + `github_mcp` 两类 section 统一取，含**执行期有界 1 跳 `depends-on` 闭包**（不变式，§10）。source-truth / break-loop 的触点见 §8.5–8.6。
@@ -287,7 +287,7 @@ grill 照常写 `CONTEXT.md` + `docs/adr/`，**不改 grill 任何 skill**。变
 ### 已查实（2026-07-15）
 
 - **✅ import-wiki 作 grill→wiki 桥**：不能一把梭（纯结构迁移）；语义升级归 `update-wiki`（增量）/ `migrate-wiki`（存量）。§9。
-- **✅ hook 无原生「当前 ticket」**：事件只给会话级 + 事件级字段。per-ticket 靠 ① 显式 `/wiki-materialize <ticket>`（首选）② `current-ticket` marker/env ③ 解析 tool_input/transcript。
+- **✅ hook 无原生「当前 ticket」**：事件只给会话级 + 事件级字段。per-ticket 靠 ① 显式 `/wiki-materialize <ticket>` 消费对应角色 Markdown（首选）② `current-ticket` marker/env ③ 解析 tool_input/transcript。
 - **✅ hook 能注入 context + shell 脚本**：可注入事件 = SessionStart/UserPromptSubmit/PostToolUse/Stop/PreCompact/PostCompact，经 `hookSpecificOutput.additionalContext`；`type: command` hook 可跑任意脚本（stdin 收事件 JSON、timeout 默认 600s、并行）。reread 用 UserPromptSubmit/SessionStart，capture 用 Stop，source-truth lint 用 PostToolUse/Stop。
 
 ### 已定决策

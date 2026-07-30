@@ -18,7 +18,7 @@
 grill-with-docs → to-spec / to-tickets → implement → code-review → update-wiki
 ```
 
-并确认各子系统触点确实生效（wiki 被披露/带入/执行期 reread/回写、source-truth 校验与 lint、break-loop→capture）。**只证 `python3 scripts/*.py` 单跑成功，不算通过验收**——脚本级测试只能证明执行层正确，不能替代安装后的 skill 集成路径验证。
+并确认各子系统触点确实生效（wiki 被披露/Carry/freeze/角色化消费/回写、source-truth 校验与 lint、break-loop→capture）。**只证 `python3 scripts/*.py` 单跑成功，不算通过验收**——脚本级测试只能证明执行层正确，不能替代安装后的 skill 集成路径验证。
 
 ---
 
@@ -39,7 +39,7 @@ grill-with-docs → to-spec / to-tickets → implement → code-review → updat
 
 `tests/` 下近 40 个脚本，`self-test.sh` 一次跑全套。按子系统速查：
 
-- **wiki 引擎 / readiness / section 图**：`test-wiki-section.sh`、`wiki-section-{e2e,graph,index}-smoke.sh`、`wiki-context-scaffold-smoke.sh`、`obsidian-wiki-context-v6-smoke.sh`（metadata-only Obsidian Carry + v6 materialize fail-closed）、`adr-projection-identity-smoke.sh`（ADR Carry/Bind authority identity、drift 与 implement/review fail-open）、`ticket-roster-smoke.sh`（host 无关 ticket roster 边界 + fail-closed）、`wiki-readiness-smoke.sh`（direct issue/manual 单任务 roster、formal reuse、fail-open receipt、fingerprint drift）、`wiki-review-context-smoke.sh`（reviewer-only Card、双轴共享 handoff、unknown/non-ready/materialize failure fail-open）、`wiki-graph-neighbors-smoke.sh`、`wiki-index-graph-smoke.sh`、`wiki-update-check-smoke.sh`、`update-wiki-atomic-note-targeting-smoke.sh`（Obsidian atomic Note 的 update/create/defer target 契约）、`wiki-page-type-smoke.sh`、`wiki-summary-backfill-smoke.sh`。
+- **wiki 引擎 / readiness / section 图**：`test-wiki-section.sh`、`wiki-section-{e2e,graph,index}-smoke.sh`、`wiki-context-scaffold-smoke.sh`、`obsidian-wiki-context-v6-smoke.sh`（metadata-only Obsidian Carry + freeze 时 materialize fail-closed）、`adr-projection-identity-smoke.sh`（ADR Carry/freeze authority identity、drift 与 implement/review fail-open）、`ticket-roster-smoke.sh`（host 无关 ticket roster 边界 + fail-closed）、`wiki-readiness-smoke.sh`（direct issue/manual 单任务 roster、formal reuse、双角色 Markdown freeze/消费、receipt/body digest、fingerprint drift）、`wiki-review-context-smoke.sh`（reviewer-only Card、双轴共享 handoff、unknown/non-ready/legacy materialize failure fail-open）、`wiki-graph-neighbors-smoke.sh`、`wiki-index-graph-smoke.sh`、`wiki-update-check-smoke.sh`、`update-wiki-atomic-note-targeting-smoke.sh`（Obsidian atomic Note 的 update/create/defer target 契约）、`wiki-page-type-smoke.sh`、`wiki-summary-backfill-smoke.sh`。
 - **wiki 初始化 / 授权 / 导入 / 导出 / 模板 / scaffold / 迁移**：`setup-init-obsidian-skill-smoke.sh`（双 npm 包检查、等待/恢复边界、legacy 授权路由）、`wiki-authorization-policy-smoke.sh`（含 cutover archive 的 update/import/migration 写保护）、`wiki-import-skill-path-smoke.sh`、`export-wiki-skills-smoke.sh`、`bootstrap-wiki-template-import.sh`（含 archive bootstrap 写保护）、`init-wiki-inventory-smoke.sh`、`scaffold-practice-skill-smoke.sh`、`obsidian-wiki-migration-plan-smoke.sh`（source/target 快照、update 审核 hash、逐项决策、确认门、确定性与零写入）、`obsidian-wiki-migration-apply-smoke.sh`（首写前专用 branch、持久 intent、崩溃恢复、CAS seed/finalize、publisher 对账恢复、typed edge/Card、幂等 PR、immutable-plan coverage、source/binding drift、merged-base verify、schema-v5 与 scoped cutover 门、legacy archive 不改写）、`migrate-wiki-repartition-smoke.sh`（legacy section 重组与 Obsidian Note maintenance/repartition 契约）。
 - **Obsidian runtime（绑定 / 中性化 / MCP）**：`mcp/obsidian-wiki/tests/` 与 `obsidian-runtime-operations-smoke.sh` 覆盖 Source bindings、policy、读取和写桥 contract。
 - **Obsidian rollout 运维面**：`obsidian-runtime-operations-smoke.sh` 覆盖 provider-aware bootstrap、doctor adoption state/health exit、release gate、host recovery 约定、plugin metadata 与最终验收文档。
@@ -159,7 +159,7 @@ bash tests/host-conventions-smoke.sh "$PWD"
 ## 6. 不变式与授权门（改引擎时逐条别破，详见 `docs/ARCHITECTURE_CN.md`）
 
 - **markdown 唯一真相源**：`.graph.json` 是派生物，**不引外部图数据库**。
-- **执行期有界 1 跳 `depends-on` 闭包**：执行期只消费 `.wiki-context.json` sidecar + 有界 1 跳闭包（不传递、去重、缺图静默 no-op），绝不追链。
+- **task contract 有界 1 跳 `depends-on` 闭包**：freeze 只展开有界、去重的 1 跳闭包；执行期只消费批准的 role-specific Markdown，绝不追链或重新读取 live Note。
 - **section 级 `[[page#section]]` typed 边** + 渐进披露。
 - **Obsidian Source 每项目绑定，fail-closed**：消费项目在自己的 `.grill-adapter/settings.json` 的 `wiki.obsidian.bindings` 声明 Source；未声明、换绑或 revision 漂移都 fail-closed。legacy GitHub 仓库只允许作为 `migrate-wiki` 的显式只读输入。
 - **root-specific 写授权门**：统一由 `.grill-adapter/settings.json` 的 `wiki.roots.project` / `wiki.roots.shared` 分别管理两个 legacy root。`updateExistingPage` 默认 **skip**，`createNewDocument` 默认 **ask**（可选 `skip` / `ask` / `refuse`）。执行层的 `--authorized-update` / `--authorized-create` 只表示 skill 已取得授权，**不能绕过 `refuse`**。

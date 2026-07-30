@@ -1,0 +1,19 @@
+{
+  // Internal control-plane receipt written next to the two user-visible role snapshots.
+  // It prevents a first implementation Bind from silently accepting a hand-edited Markdown file.
+  "schemaVersion": 1,
+  "kind": "grill-adapter.task-wiki-approval",
+  "generatedBy": "grill-adapter",
+  "featureSlug": "example-feature",
+  "ticketSource": "grill-local-scratch",
+  "taskId": "01",
+  "taskTitle": "Implement runtime write boundary",
+  "taskFingerprint": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  "contextFile": "wiki-context.json",
+  "contextDigest": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  "sourceSnapshotHash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "implementWikiFile": "01.wiki-implement.md",
+  "implementWikiDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "reviewWikiFile": "01.wiki-review.md",
+  "reviewWikiDigest": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+}

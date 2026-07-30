@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # grill-adapter — SessionStart Bind reminder.
 #
-# Per-ticket `/wiki-materialize <ticket>` is the only execution-time reread path. Hooks have no
+# Per-ticket `/wiki-materialize <ticket>` is the only task-contract consumption path. Hooks have no
 # trustworthy ticket identity, so this SessionStart backstop only reports an active sidecar and
-# reminds the session to run the explicit command. It never reads Note content or falls back to
+# reminds the session to run the explicit command. It never reads task snapshot content or falls back to
 # the filesystem. Scripts are resolved relative to this file's payload location.
 set -uo pipefail
 
@@ -78,8 +78,8 @@ PY
 # is only a host hint and cannot establish that the current prompt is acting on that ticket.
 REL_SIDECAR="${SIDECAR#$PROJECT_ROOT/}"
 if [ "$SIDECAR_SCHEMA" = "6" ]; then
-  emit "Active Obsidian Wiki binding detected in \`$REL_SIDECAR\`. Before implementing or reviewing each ticket, run \`/grill-adapter:wiki-materialize <ticket-id>\` to reread the authoritative routed Notes and required Skill Cards."
+  emit "Active Obsidian Wiki task binding detected in \`$REL_SIDECAR\`. Before implementing or reviewing each ticket, run \`/grill-adapter:wiki-materialize <ticket-id>\` to validate and consume the frozen role-specific Wiki Markdown."
 else
-  emit "Active wiki constraints detected in \`$REL_SIDECAR\`. Before implementing or reviewing each ticket, run \`/grill-adapter:wiki-materialize <ticket-id>\` to reread the authoritative hard-constraint sections."
+  emit "Active wiki constraints detected in \`$REL_SIDECAR\`. Before implementing or reviewing each ticket, run \`/grill-adapter:wiki-materialize <ticket-id>\` to consume the role-specific task contract."
 fi
 exit 0

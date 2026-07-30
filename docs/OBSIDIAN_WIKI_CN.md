@@ -1,6 +1,6 @@
 # Obsidian Wiki Source 绑定
 
-本页描述 Obsidian Wiki 的受控运行边界：项目只能解析它明确绑定的 Source；规划期将受绑定限制的 atomic Note 和 Skill Card 选择承载为 schema-v6 sidecar；执行期按 stable ID reread 权威 Note；review 后 atomic Note（含 Skill Card）只能经本机 loopback write bridge 做 proposal + expected-hash CAS 写入，再由 applied receipts 驱动可恢复的 GitHub draft-PR 发布。schema-v5 sidecar 在过渡期只读，不能再由新规划生成；legacy Wiki 通过 snapshot-bound plan、受治理 apply、base verify 与显式 cutover 迁移，旧目录始终保留。
+本页描述 Obsidian Wiki 的受控运行边界：项目只能解析它明确绑定的 Source；规划期将受绑定限制的 atomic Note 和 Skill Card 选择承载为 schema-v6 sidecar，并在用户批准后冻结 task 的 implement/review Markdown；执行期与评审分别消费对应角色文件；review 后 atomic Note（含 Skill Card）只能经本机 loopback write bridge 做 proposal + expected-hash CAS 写入，再由 applied receipts 驱动可恢复的 GitHub draft-PR 发布。schema-v5 sidecar 在过渡期只读，不能再由新规划生成；legacy Wiki 通过 snapshot-bound plan、受治理 apply、base verify 与显式 cutover 迁移，旧目录始终保留。
 
 ## Legacy Wiki 迁移规划
 
@@ -265,6 +265,6 @@ node mcp/obsidian-wiki/dist/index.js status
 
 以下条件均为 fail-closed 错误：缺少项目配置、缺少 registry entry、重复 Source/root、多个 project Source、缺失或不匹配 manifest、路径逃逸或 Source root 的符号链接逃逸、Obsidian CLI 未安装或无法列出 Vault selector、非法/不完整的 bridge 配置、带凭据或不匹配的 repository remote、非 `baseBranch`、脏 worktree，以及未解决的 merge/rebase/cherry-pick 等 Git 操作。写路径还会拒绝 token 缺失/错误、`_meta`、未绑定 root、policy deny/未确认 confirm、stable ID 漂移/重复、typed link 失效、expected-hash 冲突及 Shared neutrality 命中。`obsidian_wiki_sources` 在任一 binding 错误时拒绝列出 Source；`obsidian_wiki_status` 返回结构化错误以及已验证的 Vault/repository/bridge 配置摘要以便修复配置，但不暴露 token。
 
-每个成功 binding 有 canonical `bindingDigest`，由 vault reference、Source identity、role、root、publishing mode、repository reference、base branch、effective read/update/create policy 与 Source manifest 治理字段计算。schema-v6 sidecar 保存它、每个 Note 的 `wikiId`/path/`contentHash`/summary，以及批量读取的 `snapshotHash`，但不保存 Note body；这些字段为后续执行期检测换绑、策略和内容漂移提供身份快照。
+每个成功 binding 有 canonical `bindingDigest`，由 vault reference、Source identity、role、root、publishing mode、repository reference、base branch、effective read/update/create policy 与 Source manifest 治理字段计算。schema-v6 sidecar 保存它、每个 Note 的 `wikiId`/path/`contentHash`/summary，以及批量读取的 `snapshotHash`，但不保存 Note body；freeze 用这些字段检测换绑、策略和内容漂移，并把批准正文写入角色化 task Markdown。后续 Source 更新默认只影响新 task，不改写已批准快照。
 
 正式读取默认会在 registry 的 `syncBeforeResearch` 未显式关闭时 fetch 并 `--ff-only` 对齐 `remote/baseBranch`；无法证明 freshness 时仅在 `allowStaleRead: true` 时可继续。repository 根的 `.grill-adapter-wiki.publish.lock` 存在时所有读取都会拒绝，以防发布分支切换期间让 Obsidian 索引暴露混合内容。

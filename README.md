@@ -8,7 +8,7 @@ It defaults to [**grill** (mattpocock/skills)](https://github.com/mattpocock/ski
 
 ## What it solves
 
-A code assistant forgets your project's durable rules between sessions and across repos. grill-adapter gives your project a **wiki as tier-2 knowledge**: bound Obsidian atomic Notes with stable IDs, typed links, governed Skill Cards, and — crucially — **execution-time binding**, so the rules that constrain a task are reread from the synchronized Source while that task is implemented. grill's own `CONTEXT.md` glossary + `docs/adr/` are tier-1; ADRs remain the sole decision authority, while the Wiki receives only project-scoped, identity-bound execution-constraint projections after review. Carry and Bind revalidate each projection's project-relative ADR path and content identity; drift makes Wiki context unavailable rather than silently using stale constraints.
+A code assistant forgets your project's durable rules between sessions and across repos. grill-adapter gives your project a **wiki as tier-2 knowledge**: bound Obsidian atomic Notes with stable IDs, typed links, governed Skill Cards, and — crucially — **approved task binding**, so planning freezes user-visible role-specific Markdown contracts that implementation and review consume unchanged. grill's own `CONTEXT.md` glossary + `docs/adr/` are tier-1; ADRs remain the sole decision authority, while the Wiki receives only project-scoped, identity-bound execution-constraint projections after review. Carry and freeze revalidate each projection's project-relative ADR path and content identity; drift blocks snapshot generation rather than silently capturing stale constraints.
 
 ## The four wiki touchpoints (stable contract)
 
@@ -16,7 +16,7 @@ A code assistant forgets your project's durable rules between sessions and acros
 |---|---|---|
 | **Disclose** | `/grill-adapter:wiki-research` skill -> `wiki-researcher` navigates a bound metadata catalog, searches selected branches, privately verifies candidate Note bodies, then selects relevant atomic Notes and only merged/base-synchronized Skill Cards whose local pack identity is available | `/grill-with-docs` |
 | **Carry** | schema-v6 `.wiki-context.json` records bound Source digests and metadata-only Note/Card identity, name/version/contract hash, role routing, and ticket fingerprints; candidates verified as unrelated use `not-applicable` and never enter execution | `/to-tickets` |
-| **Bind** | `/grill-adapter:wiki-readiness` establishes/reuses a stable task receipt; `ready` rereads task-routed hard Notes, role-required Cards, and a bounded 1-hop `depends_on` closure for implementers, then revalidates the same receipt into one fail-open reviewer handoff shared by both review axes | `/implement` + before `/code-review` subagents |
+| **Bind** | Planning freezes `<taskId>.wiki-implement.md` and `<taskId>.wiki-review.md` from the same approved Source snapshot; `/grill-adapter:wiki-readiness` binds their digests to the task receipt, and each role consumes its matching user-visible Markdown | `/to-tickets` approval + `/implement` + before `/code-review` subagents |
 | **Capture** | every stage appends to one feature journal; ADR increments become metadata-only execution-projection candidates, `scaffold-practice-skill` stages content-addressed Card candidates, and `/grill-adapter:update-wiki` reconciles final evidence, makes explicit atomic-Note target decisions, applies policy-compliant Note/Card changes, then publishes applied receipts as resumable per-repository draft PRs; open PRs remain pending | after `/code-review` |
 
 Plus **source-of-truth** verify (`/grill-adapter:source-truth-check`) + lint hook and **break-loop** debugging retrospective (`/grill-adapter:break-loop`).
@@ -25,7 +25,8 @@ Plus **source-of-truth** verify (`/grill-adapter:source-truth-check`) + lint hoo
 
 Each feature's local, uncommitted workflow state is grouped under
 `.grill-adapter/context/<feature-slug>/`, with fixed names such as
-`wiki-context.json`, `ticket-roster.json`, `wiki-candidates.jsonl`,
+`wiki-context.json`, `ticket-roster.json`, `<taskId>.wiki-approval.json`,
+`<taskId>.wiki-implement.md`, `<taskId>.wiki-review.md`, `wiki-candidates.jsonl`,
 `wiki-readiness.json`, and `wiki-publish.json`. This keeps selection, task
 identity, review handoffs, and recovery state together in the file explorer.
 Existing legacy flat artifacts remain resumable through their explicit paths;

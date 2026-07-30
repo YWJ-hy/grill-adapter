@@ -1,0 +1,19 @@
+{
+  // Metadata embedded in <taskId>.wiki-implement.md and <taskId>.wiki-review.md.
+  // The Markdown body is the user-visible and agent-consumed task contract. The
+  // surrounding JSON sidecar/receipt remains the control-plane identity record.
+  "schemaVersion": 1,
+  "kind": "grill-adapter.task-wiki-snapshot",
+  "generatedBy": "grill-adapter",
+  "featureSlug": "example-feature",
+  "ticketSource": "grill-local-scratch",
+  "taskId": "01",
+  "taskTitle": "Implement runtime write boundary",
+  "taskFingerprint": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  "role": "implementer",
+  "contextFile": "wiki-context.json",
+  "contextDigest": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  "sourceSnapshotHash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "snapshotOrigin": "planning-approved",
+  "bodyDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+}

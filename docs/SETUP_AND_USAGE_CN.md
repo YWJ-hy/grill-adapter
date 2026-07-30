@@ -118,9 +118,9 @@ grill-adapter doctor /path/to/your/project
 |---|---|---|---|
 | 1 质询/发现 | `/grill-with-docs` | Disclose：约定提示 `/grill-adapter:wiki-research`（brainstorm） | spec 草稿 |
 | 2 定 spec | `/to-spec` | source-truth Verify：`/grill-adapter:source-truth-check`（spec-pre） | spec |
-| 3 拆 ticket | `/to-tickets` | Disclose+Carry：`/grill-adapter:wiki-research`（plan）→ scaffold sidecar → 由真实 ticket 建 roster → `--finalize` | `.grill-adapter/context/<feature-slug>/` 下的 `wiki-context.json`、`ticket-roster.json` |
-| 4 实现 | `/implement` | Readiness+Bind：首次修改前 `/grill-adapter:wiki-readiness`；`ready` 才按 task materialize；`source-truth-lint` hook | 稳定 task/receipt + 可用时的硬约束全文 |
-| 5 评审/回写 | `/code-review` → `/grill-adapter:update-wiki` | 两个 reviewer 前复用 readiness 生成同一 fail-open handoff；评审后 Capture：最终证据 reconcile → proposal/apply → 确认 scope 后发布 resumable draft PR | reviewer context/caveat + applied receipt + feature 目录中的 `wiki-publish.json` + draft PR |
+| 3 拆 ticket | `/to-tickets` | Disclose+Carry：`/grill-adapter:wiki-research`（plan）→ scaffold sidecar → 由真实 ticket 建 roster → `--finalize` → 用户批准后 `freeze` | `wiki-context.json`、`ticket-roster.json`、每 task 的 `wiki-implement.md` / `wiki-review.md` |
+| 4 实现 | `/implement` | Readiness+Bind：首次修改前 `/grill-adapter:wiki-readiness`；`ready` 消费角色化 implement Markdown；`source-truth-lint` hook | 稳定 task/receipt + 用户可见且 Agent 同步消费的硬约束全文 |
+| 5 评审/回写 | `/code-review` → `/grill-adapter:update-wiki` | 两个 reviewer 前复用 readiness 校验同一 task 的 review Markdown；评审后 Capture：最终证据 reconcile → proposal/apply → 确认 scope 后发布 resumable draft PR | reviewer Markdown/caveat + applied receipt + feature 目录中的 `wiki-publish.json` + draft PR |
 | 6 调试（如需） | `/diagnosing-bugs` → `/grill-adapter:break-loop` | debug Disclose + 复盘→Capture | 修复 + 复盘候选 |
 
 每一步的命令和约定都写在项目 `CLAUDE.md` 或 `AGENTS.md` 的 grill 约定块里。想看完整流程叙述见 `USER_FLOW_CN.md`。
@@ -131,7 +131,7 @@ grill-adapter doctor /path/to/your/project
 - **会改我的 grill 吗？** 不会。grill-adapter 零 skill patch。skill / agent / hook / MCP 全在 plugin 里自成一体；落到你仓库里的改动只有 `<project>/CLAUDE.md` 的那个约定块。
 - **Obsidian Wiki 不健康？** 先跑 `obsidian-wiki doctor`，再跑 `./manage.sh doctor <project>`；依次修复 settings、统一本机配置、Vault selector、Source manifest、repository remote/base/clean 状态与 bridge 配置。active Obsidian provider 的 doctor 非零退出，release-check 也会失败。
 - **MCP 只想在某一个项目里起？** 那就用 `--scope project` 装 plugin。plugin 自带的 MCP 不能单独设 scope，它跟着 plugin 的 scope 走。
-- **`/grill-adapter:wiki-materialize` 报 drift / 换绑？** 这是 fail-closed 设计：schema-v6 sidecar 的 binding digest、stable Note/Card identity、content hash、base sync 或 pack contract 与当前正式 Source 不一致。回规划期重新 research/scaffold/finalize，不能转读 legacy Wiki 绕过。
+- **`freeze` 报 drift / 换绑？** 这是 fail-closed 设计：schema-v6 sidecar 的 binding digest、stable Note/Card identity、content hash、base sync 或 pack contract 与当前正式 Source 不一致。回规划期重新 research/scaffold/finalize 并让用户重新批准，不能转读 legacy Wiki 绕过。已批准 task 的 role Markdown 在后续 Source 更新时保持冻结。
 - **怎么卸载？** 两步对应两步安装。
   1. **停用 plugin**：把 `grill-adapter@grill-adapter` 从项目 `.claude/settings.json` 的 `enabledPlugins` 删掉即可。注意 `claude plugin uninstall` 对 **project scope 会直接拒绝**（原话：「enabled at project scope (.claude/settings.json, shared with your team)」）——它不肯替你改一份团队共享的提交物。只想自己关掉、不动团队设置：`claude plugin disable grill-adapter@grill-adapter --scope local`。装在 `--scope user` 时 `claude plugin uninstall grill-adapter@grill-adapter` 才直接生效。
   2. **剥约定块**：`grill-adapter uninstall /path/to/your/project`（marker 包裹，干净移除，不动 `CLAUDE.md` 其余内容）。
