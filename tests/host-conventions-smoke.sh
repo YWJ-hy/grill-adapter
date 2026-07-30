@@ -19,8 +19,8 @@ CODEX_PLAIN="$ROOT/host-adapters/plain/AGENTS.md"
 HOOKS_JSON="$ROOT/hooks/hooks.json"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
-need() { grep -Fq "$2" "$1" || fail "$1 missing: $2"; }
-deny() { ! grep -Fq "$2" "$1" || fail "$1 must not contain: $2"; }
+need() { grep -Fq -- "$2" "$1" || fail "$1 missing: $2"; }
+deny() { ! grep -Fq -- "$2" "$1" || fail "$1 must not contain: $2"; }
 
 for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN" "$HOOKS_JSON"; do
   [[ -f "$f" ]] || fail "missing host-adapter file: $f"
@@ -97,6 +97,7 @@ for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
   need "$f" 'continue without Wiki context'
   need "$f" 'must not'
   need "$f" 'freeze'
+  need "$f" '--all'
   need "$f" 'wiki-implement.md'
   need "$f" 'wiki-review.md'
 done
@@ -131,6 +132,8 @@ PY
 for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
   need "$f" 'resumable publisher'
   need "$f" 'explicit Git publishing confirmation'
+  need "$f" 'Default Capture ends after all outcomes are recorded'
+  need "$f" 'explicitly asks'
   need "$f" 'Open PR content remains unavailable to formal research'
   deny "$f" '__GRILL_ADAPTER_ROOT__'
   deny "$f" 'CLAUDE_PLUGIN_ROOT'
@@ -151,6 +154,8 @@ done
 need "$ROOT/skills/update-wiki/SKILL.md" 'grill_context_to_candidates.py'
 need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/scripts/grill_context_to_candidates.py'
 need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/mcp/obsidian-wiki/dist/index.js publish'
+need "$ROOT/skills/update-wiki/SKILL.md" '`Capture` is the default mode'
+need "$ROOT/skills/update-wiki/SKILL.md" 'only when the user explicitly asks to publish'
 
 # no residual Superpowers host references in the host blocks
 if grep -nE 'Superpowers' "$GRILL" "$PLAIN" | grep -vE '\.grill-adapter/'; then

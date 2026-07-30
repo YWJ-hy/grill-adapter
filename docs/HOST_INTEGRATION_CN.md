@@ -35,11 +35,11 @@ grill host 约定块默认保持静默，只有当前任务明确调用对应的
 |---|---|
 | `/grill-with-docs` | **Disclose**：`/grill-adapter:wiki-research`（phase brainstorm）披露相关 wiki |
 | `/to-spec` | source-truth **Verify**：`/grill-adapter:source-truth-check`（spec-pre） |
-| `/to-tickets` | **Disclose+Carry**：`/grill-adapter:wiki-research`（phase plan）选 bound Obsidian Notes/Skill Cards → `wiki_context_render.py --scaffold` 生成 schema-v6 → 编辑 `destination`（一次）→ `--finalize` → 用户批准后 `wiki_readiness.py freeze` 生成每个 task 的 implement/review Markdown；`/grill-adapter:source-truth-check`（plan-pre/plan-review） |
+| `/to-tickets` | **Disclose+Carry**：`/grill-adapter:wiki-research`（phase plan）选 bound Obsidian Notes/Skill Cards → `wiki_context_render.py --scaffold` 生成 schema-v6 → 编辑 `destination`（一次）→ `--finalize` → 用户批准后一次 `wiki_readiness.py freeze --all` 生成所有 task 的 implement/review Markdown；`/grill-adapter:source-truth-check`（plan-pre/plan-review） |
 | 全阶段 | **Journal**：`/grill-adapter:candidate-journal` 把 Wiki Note / Skill Card 候选作为事件追加到同一 feature journal，不写 Obsidian |
 | `/implement`（每 task） | **Readiness+Bind**：首次代码修改前 `/grill-adapter:wiki-readiness` 复用 formal context，或为 direct issue/manual 建单任务 roster 并 late Carry；`ready` 做 fingerprint preflight + 消费 `<taskId>.wiki-implement.md`；`no-relevant`/`disabled` 直接继续，`broken` 由用户选择停止或无 Wiki 继续 |
 | `/code-review`（启动 sub-agents 前） | **Reviewer Bind**：复用当前 task 的 readiness receipt；`ready` 消费同一批准快照生成的 `<taskId>.wiki-review.md` 给 Standards/Spec 两轴，其他状态、无法确定 task 或任何验证失败只产生非阻塞 caveat，不 late research、不阻止 review |
-| `/code-review` 后 | **Capture**：`/grill-adapter:update-wiki` 校验/折叠 journal，以最终证据 reconcile、显式归并 related claims、展示并应用 policy-compliant diff；grill ADR 只生成 project-only metadata projection candidate，Capture 只保留可执行约束并按 authority identity 更新；skill pack 先由 `scaffold-practice-skill stage-card` 产生内容寻址候选，再与普通 Note 一样经 reviewed proposal/apply。确认精确发布 scope 后，把 applied receipts 按 repository 发布为可恢复的 draft PR，并恢复 base worktree（内含 grill 增量桥接的可选前置步）。开放 PR 仍 pending，merge + base 同步后才可发现 |
+| `/code-review` 后 | **Capture**：`/grill-adapter:update-wiki` 校验/折叠 journal，以最终证据 reconcile、显式归并 related claims、展示并应用 policy-compliant diff；grill ADR 只生成 project-only metadata projection candidate，Capture 只保留可执行约束并按 authority identity 更新；skill pack 先由 `scaffold-practice-skill stage-card` 产生内容寻址候选，再与普通 Note 一样经 reviewed proposal/apply。默认停在 applied receipt；只有用户显式请求 publish 才确认精确发布 scope、按 repository 建可恢复 draft PR 并恢复 base worktree。开放 PR 仍 pending，merge + base 同步后才可发现 |
 | `/diagnosing-bugs` | 根因收窄后可 `/grill-adapter:wiki-research`（phase debug，≤2 节）；修复验证后 `/grill-adapter:break-loop` → `/grill-adapter:update-wiki` |
 
 grill 自己的 skill（`/grill-with-docs`、`/to-spec` 等）按宿主原样引用，不加我们的命名空间。
@@ -58,11 +58,11 @@ hook 随插件自动注册——**不再往任何项目的 `.claude/settings.jso
 
 | 事件 | hook | 作用 |
 |---|---|---|
-| `SessionStart` | `wiki-reread.sh` | 只做 active sidecar 健康/显式 Bind 提醒；绝不 materialize，schema-v6 必须经 `/grill-adapter:wiki-materialize <ticket>` 精确消费角色 Markdown |
+| `SessionStart` | `wiki-reread.sh` | 只对已冻结但尚无 readiness 结果的 schema-v6 task 提醒；绝不 materialize，正常实现入口由 `wiki-readiness` 精确消费角色 Markdown |
 | `PostToolUse`（Write/Edit/MultiEdit/Bash） | `source-truth-lint.sh` | 对真实 changed files 跑 source-truth lint，`block`/`ask` 注入提醒 |
 | `Stop` | `wiki-capture-suggest.sh` + `source-truth-lint.sh` | Capture 兜底（pending/deferred journal 提醒，invalid journal 报错，全终态静默）+ 收尾 lint |
 
-hook 命令写成 `${CLAUDE_PLUGIN_ROOT}/hooks/<hook>.sh`（Claude Code 在此替换）。hook 脚本自身用 `BASH_SOURCE` 定位 `../scripts`，无需任何改写。hook **无原生「当前 ticket」字段**，所以 `wiki-reread.sh` 只报告 active sidecar；per-ticket 精度完全靠显式 `/grill-adapter:wiki-materialize <ticket>` 消费对应文件。
+hook 命令写成 `${CLAUDE_PLUGIN_ROOT}/hooks/<hook>.sh`（Claude Code 在此替换）。hook 脚本自身用 `BASH_SOURCE` 定位自身 payload，无需任何改写。hook **无原生「当前 ticket」字段**，所以 `wiki-reread.sh` 只报告同一 feature 内已批准、但尚无 readiness 结果的 task ID；per-ticket 精度完全靠正常的 `wiki-readiness` 入口消费对应文件。
 
 ## 安装模型
 

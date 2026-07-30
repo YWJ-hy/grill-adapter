@@ -18,9 +18,9 @@ doctor 必须报告 `Obsidian runtime healthy: yes`。新项目没有 legacy roo
 1. 在 Obsidian Desktop 打开 registry 中 `vaultRef` 对应的 Vault，确认绑定 Source 和 `_meta/wiki-source.md` 可见。
 2. 在 Desktop 修改一张测试 Note，保存并确认 CLI 能立即读到；恢复 clean base 后再开始正式读取验收。
 3. 从安装后的 host 调 `wiki-research`，确认搜索只返回 bound、active、agent-visible、base-synchronized Notes，且未合并分支内容不可见。
-4. 完成 schema-v6 Carry 后，让用户审核选中的约束并 freeze 每个 task 的 `<taskId>.wiki-implement.md` / `<taskId>.wiki-review.md`。确认文件包含对应角色的 Note/Card 与 1 跳闭包，且实现阶段消费的是该 Markdown。freeze 前改变正文 hash、binding 或 base 状态时必须 fail-closed。
+4. 完成 schema-v6 Carry 后，让用户审核选中的约束并以一次 `freeze --all` 生成每个 task 的 `<taskId>.wiki-implement.md` / `<taskId>.wiki-review.md`。确认文件包含对应角色的 Note/Card 与 1 跳闭包，且实现阶段消费的是该 Markdown；批量中任一 task 的 freeze 失败不得留下更早 task 的新批准快照。freeze 前改变正文 hash、binding 或 base 状态时必须 fail-closed。
 5. code-review 启动两个 reviewer 前复用 readiness：健康 context 的 reviewer-only Card 必须到达 `<taskId>.wiki-review.md`，由两个轴共同读取并由实际 reviewer 执行；再编辑 reviewer Markdown 或制造 ticket fingerprint drift，确认只产生 caveat、无部分内容且 Standards/Spec 正常完成。
-6. 对测试 candidate 走 proposal -> explicit confirmation -> apply，核对 journal 的 proposed/applied write receipts。再授权 publish，确认每 repository 一个 draft PR、base worktree恢复 clean、开放 PR 内容仍不可检索。
+6. 对测试 candidate 走 proposal -> explicit confirmation -> apply，核对 journal 的 proposed/applied write receipts，并确认默认 Capture 未要求 Git publish。随后显式请求 publish，再授权确认每 repository 一个 draft PR、base worktree恢复 clean、开放 PR 内容仍不可检索。
 7. 在 apply 或 publish 中断一次并恢复：保留 journal、write receipts 和 publish run manifest，rerun the same publish step；不得手改 Vault worktree或删除 manifest 来“修复”。
 
 ## 3. installed Claude Code

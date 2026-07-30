@@ -120,7 +120,7 @@ grill-adapter doctor /path/to/your/project
 | 2 定 spec | `/to-spec` | source-truth Verify：`/grill-adapter:source-truth-check`（spec-pre） | spec |
 | 3 拆 ticket | `/to-tickets` | Disclose+Carry：`/grill-adapter:wiki-research`（plan）→ scaffold sidecar → 由真实 ticket 建 roster → `--finalize` → 用户批准后 `freeze` | `wiki-context.json`、`ticket-roster.json`、每 task 的 `wiki-implement.md` / `wiki-review.md` |
 | 4 实现 | `/implement` | Readiness+Bind：首次修改前 `/grill-adapter:wiki-readiness`；`ready` 消费角色化 implement Markdown；`source-truth-lint` hook | 稳定 task/receipt + 用户可见且 Agent 同步消费的硬约束全文 |
-| 5 评审/回写 | `/code-review` → `/grill-adapter:update-wiki` | 两个 reviewer 前复用 readiness 校验同一 task 的 review Markdown；评审后 Capture：最终证据 reconcile → proposal/apply → 确认 scope 后发布 resumable draft PR | reviewer Markdown/caveat + applied receipt + feature 目录中的 `wiki-publish.json` + draft PR |
+| 5 评审/回写 | `/code-review` → `/grill-adapter:update-wiki` | 两个 reviewer 前复用 readiness 校验同一 task 的 review Markdown；评审后 Capture：最终证据 reconcile → proposal/apply → 保留 applied receipt。只有显式 publish 才确认 scope 并发布 resumable draft PR | reviewer Markdown/caveat + applied receipt；显式 publish 后才有 feature 目录中的 `wiki-publish.json` + draft PR |
 | 6 调试（如需） | `/diagnosing-bugs` → `/grill-adapter:break-loop` | debug Disclose + 复盘→Capture | 修复 + 复盘候选 |
 
 每一步的命令和约定都写在项目 `CLAUDE.md` 或 `AGENTS.md` 的 grill 约定块里。想看完整流程叙述见 `USER_FLOW_CN.md`。

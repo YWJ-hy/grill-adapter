@@ -30,7 +30,7 @@ PR 由用户审查/合并且 configured base worktree 同步后，`verify` 才�
 
 `grill-with-docs`、specification、tickets、implementation、review 与 debugging 阶段发现的 Wiki Note / Skill Card 候选，只能经 journal 追加，不能写 Obsidian。Skill Card 候选必须由已验证的双运行时 pack 产生，并携带 name/version/contract hash/roles/triggers；初始 `discoveryState` 恒为 `pending`。journal 每次追加前完整 replay，并对损坏、截断、重复 identity、未知引用和非法状态转换 fail-closed。
 
-review 后 `update-wiki` 先 validate/fold，以最终 review + 已验证 code/tests、final spec/ticket、原 candidate 的顺序对 pending/deferred 候选做语义审查；语义相同的 claims 先合并成一个 `capture` replacement 并显式 supersede，再只写一次。Obsidian outcome 可保存严格的 `writeReceipt`：proposal 暂停是 `proposed+deferred`，恢复后可用另一条 deferred 事件刷新漂移后的 proposal；bridge apply 成功是 `applied+kept`，且必须与最新 proposal 的 repository/binding/Note/path/hash 身份完全一致。Skill Card 的 receipt 还必须携带 write result 返回的完整 `skillRegistration`，并与 staged candidate 逐字段一致；没有匹配 applied receipt 的 Card 不能进入 `kept`。journal 是本地、不可提交的恢复 receipt，保留而不删除；它不包含权威 Note body、token 或授权 secret，也不是绕过 Source policy、write bridge 或后续 PR publishing 的写通道。
+review 后 `update-wiki` 先 validate/fold，以最终 review + 已验证 code/tests、final spec/ticket、原 candidate 的顺序对 pending/deferred 候选做语义审查；语义相同的 claims 先合并成一个 `capture` replacement 并显式 supersede，再只写一次。Obsidian outcome 可保存严格的 `writeReceipt`：proposal 暂停是 `proposed+deferred`，恢复后可用另一条 deferred 事件刷新漂移后的 proposal；bridge apply 成功是 `applied+kept`，且必须与最新 proposal 的 repository/binding/Note/path/hash 身份完全一致。Skill Card 的 receipt 还必须携带 write result 返回的完整 `skillRegistration`，并与 staged candidate 逐字段一致；没有匹配 applied receipt 的 Card 不能进入 `kept`。默认 Capture 到此停止；journal 是本地、不可提交的恢复 receipt，保留而不删除，只有用户显式请求 publish 时才消费其中的 applied allowlist。它不包含权威 Note body、token 或授权 secret，也不是绕过 Source policy、write bridge 或后续 PR publishing 的写通道。
 
 ## 项目配置
 
@@ -235,7 +235,7 @@ JSON CLI 同样暴露 `propose-note-change` / `apply-note-change`，请求从 st
 
 ## GitHub draft-PR 发布
 
-`update-wiki` 在所有 outcome 落入 journal 后再次 fold。只有 `status: kept` 且 `writeReceipt.state: applied` 的 Obsidian receipt 能进入发布 allowlist；`proposed`、`deferred`、无 receipt 的 kept candidate 都不会发布。agent 先按 `repositoryRef` 展示 Source/path/operation/after-hash，并取得这一次 commit/push/draft-PR scope 的明确确认，然后运行：
+只有在用户明确请求 publish 后，`update-wiki` 才再次 fold。只有 `status: kept` 且 `writeReceipt.state: applied` 的 Obsidian receipt 能进入发布 allowlist；`proposed`、`deferred`、无 receipt 的 kept candidate 都不会发布。agent 才按 `repositoryRef` 展示 Source/path/operation/after-hash，并取得这一次 commit/push/draft-PR scope 的明确确认，然后运行：
 
 ```bash
 python3 <plugin-root>/scripts/wiki_candidate_journal.py fold \

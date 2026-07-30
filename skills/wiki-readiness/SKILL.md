@@ -102,7 +102,7 @@ When no formal finalized context matches the task:
 4. If selection succeeds, follow `wiki-research` exactly: scaffold schema v6, mark unrelated
    candidates `not-applicable`, route each applicable Note/Card to this one task (or
    global/planning-only as appropriate), confirm routing, then `--finalize` using the single-task
-   roster. After the user approves the routed constraints, run `wiki_readiness.py freeze` to
+   roster. After the user approves the routed constraints, run `wiki_readiness.py freeze --all` to
    generate both role-specific Markdown contracts. Do not place Note bodies in the sidecar.
 5. Run the fingerprint preflight and the readiness `bind` command above. Only its successful,
    atomic snapshot Markdown may enter the implementation context.

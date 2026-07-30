@@ -127,21 +127,23 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .grill-adapter/cont
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .grill-adapter/context/<feature-slug>/wiki-context.json --finalize --strict --project-root <project-root> --ticket-roster .grill-adapter/context/<feature-slug>/ticket-roster.json
 ```
 
-`--finalize` is the single source of truth for `taskFingerprint` and the roster; never compute the sha256 or build `taskWikiRefs` by hand. A clean finalize guarantees the execution-time fingerprint check passes. After the user has reviewed and approved the routed constraints, freeze one pair of role-specific, user-visible task contracts for each roster ticket:
+`--finalize` is the single source of truth for `taskFingerprint` and the roster; never compute the sha256 or build `taskWikiRefs` by hand. A clean finalize guarantees the execution-time fingerprint check passes. After the user has reviewed and approved the routed constraints, freeze every roster task in one batch:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py freeze \
   --context .grill-adapter/context/<feature-slug>/wiki-context.json \
   --roster .grill-adapter/context/<feature-slug>/ticket-roster.json \
-  --task-id <ticket-id> \
+  --all \
   --project-root <project-root>
 ```
 
-Run it once per roster ticket. Each invocation writes `<ticket-id>.wiki-implement.md` and
+One invocation writes each ticket's `<ticket-id>.wiki-implement.md` and
 `<ticket-id>.wiki-review.md`. The two Markdown files are generated from the same approved
-materialization; the implementer and reviewer consume their matching file. Their embedded metadata,
-approval manifest, and readiness receipt protect against edits or ticket drift. If selected wiki
-conflicts with the confirmed spec, stop and ask the user to resolve it before finalizing or freezing.
+materialization; the implementer and reviewer consume their matching file. The batch fully prepares
+every task before it writes any approved snapshot, so a later materialization failure does not leave
+an earlier task approved. Their embedded metadata, approval manifest, and readiness receipt protect
+against edits or ticket drift. If selected wiki conflicts with the confirmed spec, stop and ask the
+user to resolve it before finalizing or freezing.
 
 Nothing under `.grill-adapter/context/` is committed — the sidecar, roster, and candidates are local working state that execution reads in place from the same working tree.
 

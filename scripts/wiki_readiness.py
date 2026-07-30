@@ -344,10 +344,10 @@ def _load_role_snapshots(
     return (implement_path, implement_body), (review_path, review_body)
 
 
-def _freeze_role_snapshots(
+def _prepare_role_snapshot_texts(
     *,
     context_path: Path,
-    roster_path: Path,
+    context: dict[str, Any],
     feature_slug: str,
     ticket_source: str,
     task_id: str,
@@ -355,13 +355,7 @@ def _freeze_role_snapshots(
     project_root: Path,
     obsidian_wiki_cmd: str | None,
     origin: str,
-) -> tuple[tuple[Path, str], tuple[Path, str]]:
-    try:
-        context = _validate_context(context_path, roster_path, project_root)
-    except ReadinessError:
-        raise
-    except (ValidationError, FingerprintError) as exc:
-        raise ReadinessError(f"Wiki context is not execution-ready: {exc}") from exc
+) -> tuple[str, str]:
     _validate_context_identity(context, feature_slug, ticket_source, task_id)
 
     rendered_implement, materialized_implement = _render_and_materialize_context(
@@ -400,6 +394,18 @@ def _freeze_role_snapshots(
         materialized=materialized_review,
         origin=origin,
     )
+    return implement_text, review_text
+
+
+def _write_role_snapshots(
+    *,
+    context_path: Path,
+    context: dict[str, Any],
+    task: dict[str, str],
+    task_id: str,
+    implement_text: str,
+    review_text: str,
+) -> tuple[tuple[Path, str], tuple[Path, str]]:
     implement_path, review_path = _snapshot_paths(context_path, task_id)
     implement_digest = write_snapshot(implement_path, implement_text)
     review_digest = write_snapshot(review_path, review_text)
@@ -413,6 +419,45 @@ def _freeze_role_snapshots(
         review_digest=review_digest,
     )
     return (implement_path, implement_digest), (review_path, review_digest)
+
+
+def _freeze_role_snapshots(
+    *,
+    context_path: Path,
+    roster_path: Path,
+    feature_slug: str,
+    ticket_source: str,
+    task_id: str,
+    task: dict[str, str],
+    project_root: Path,
+    obsidian_wiki_cmd: str | None,
+    origin: str,
+) -> tuple[tuple[Path, str], tuple[Path, str]]:
+    try:
+        context = _validate_context(context_path, roster_path, project_root)
+    except ReadinessError:
+        raise
+    except (ValidationError, FingerprintError) as exc:
+        raise ReadinessError(f"Wiki context is not execution-ready: {exc}") from exc
+    implement_text, review_text = _prepare_role_snapshot_texts(
+        context_path=context_path,
+        context=context,
+        feature_slug=feature_slug,
+        ticket_source=ticket_source,
+        task_id=task_id,
+        task=task,
+        project_root=project_root,
+        obsidian_wiki_cmd=obsidian_wiki_cmd,
+        origin=origin,
+    )
+    return _write_role_snapshots(
+        context_path=context_path,
+        context=context,
+        task=task,
+        task_id=task_id,
+        implement_text=implement_text,
+        review_text=review_text,
+    )
 
 
 def _validate_context_identity(
@@ -712,6 +757,62 @@ def freeze_task_snapshots(
     )
 
 
+def freeze_all_task_snapshots(
+    *,
+    context_path: Path,
+    roster_path: Path,
+    project_root: Path,
+    obsidian_wiki_cmd: str | None,
+) -> str:
+    """Freeze every finalized roster task from one approved planning snapshot.
+
+    Rendering/materialization is completed for the full roster before any snapshot or approval
+    manifest is written. This preserves the per-task approval contract while avoiding a partially
+    approved batch when a later task cannot be materialized.
+    """
+    _same_context_directory(context_path, roster_path, "ticket roster")
+    if not project_root.is_dir():
+        raise ReadinessError(f"project root is not a directory: {project_root}")
+    _, feature_slug, ticket_source, tasks = _roster_metadata(roster_path)
+    try:
+        context = _validate_context(context_path, roster_path, project_root)
+    except ReadinessError:
+        raise
+    except (ValidationError, FingerprintError) as exc:
+        raise ReadinessError(f"Wiki context is not execution-ready: {exc}") from exc
+
+    prepared: list[tuple[str, dict[str, str], str, str]] = []
+    for task_id, task in tasks.items():
+        implement_text, review_text = _prepare_role_snapshot_texts(
+            context_path=context_path,
+            context=context,
+            feature_slug=feature_slug,
+            ticket_source=ticket_source,
+            task_id=task_id,
+            task=task,
+            project_root=project_root,
+            obsidian_wiki_cmd=obsidian_wiki_cmd,
+            origin="planning-approved",
+        )
+        prepared.append((task_id, task, implement_text, review_text))
+
+    frozen: list[str] = []
+    for task_id, task, implement_text, review_text in prepared:
+        implement_info, review_info = _write_role_snapshots(
+            context_path=context_path,
+            context=context,
+            task=task,
+            task_id=task_id,
+            implement_text=implement_text,
+            review_text=review_text,
+        )
+        frozen.append(
+            f"{task_id}: {implement_info[0].name} ({implement_info[1]}), "
+            f"{review_info[0].name} ({review_info[1]})"
+        )
+    return f"froze task Wiki snapshots for {len(frozen)} task(s): " + "; ".join(frozen)
+
+
 def validate_readiness(
     receipt_path: Path,
     task_id: str,
@@ -991,11 +1092,13 @@ def main() -> int:
 
     freeze = subparsers.add_parser(
         "freeze",
-        help="Generate both role-specific task Wiki snapshots from an execution-ready context",
+        help="Generate approved role-specific task Wiki snapshots for one task or the full roster",
     )
     freeze.add_argument("--context", required=True)
     freeze.add_argument("--roster", required=True)
-    freeze.add_argument("--task-id", required=True)
+    freeze_target = freeze.add_mutually_exclusive_group(required=True)
+    freeze_target.add_argument("--task-id")
+    freeze_target.add_argument("--all", dest="all_tasks", action="store_true")
     freeze.add_argument("--project-root", required=True)
     freeze.add_argument("--obsidian-wiki-cmd")
 
@@ -1057,15 +1160,25 @@ def main() -> int:
                 )
             )
         elif args.command == "freeze":
-            print(
-                freeze_task_snapshots(
-                    context_path=Path(args.context),
-                    roster_path=Path(args.roster),
-                    task_id=args.task_id,
-                    project_root=Path(args.project_root),
-                    obsidian_wiki_cmd=args.obsidian_wiki_cmd,
+            if args.all_tasks:
+                print(
+                    freeze_all_task_snapshots(
+                        context_path=Path(args.context),
+                        roster_path=Path(args.roster),
+                        project_root=Path(args.project_root),
+                        obsidian_wiki_cmd=args.obsidian_wiki_cmd,
+                    )
                 )
-            )
+            else:
+                print(
+                    freeze_task_snapshots(
+                        context_path=Path(args.context),
+                        roster_path=Path(args.roster),
+                        task_id=args.task_id,
+                        project_root=Path(args.project_root),
+                        obsidian_wiki_cmd=args.obsidian_wiki_cmd,
+                    )
+                )
         elif args.command == "validate":
             print(
                 validate_readiness(

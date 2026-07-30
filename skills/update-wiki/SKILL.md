@@ -9,6 +9,18 @@ When you learn something valuable from implementation, debugging, review, or dis
 
 **Timing**: After completing a task, fixing a bug, discovering a new pattern, or making a design decision that future sessions should know.
 
+## Modes
+
+`Capture` is the default mode. It validates and folds the feature journal, makes the durable
+keep/skip/defer decisions, proposes and applies authorized Note/Card changes, and records the
+resulting receipts. It stops after reporting the staged applied receipts; it does **not** infer
+permission to create commits, push branches, or open draft PRs merely because Capture completed.
+
+Enter `Publish` only when the user explicitly asks to publish the staged Wiki changes, for example
+`/grill-adapter:update-wiki publish <feature-slug>`. Publish consumes the same retained journal
+receipts and keeps its existing separate Git confirmation. A later publish is safe: an applied
+receipt is the exact allowlist, not an invitation to rediscover or rewrite Notes.
+
 This skill is a thin router. Load a companion file under `references/` only when you reach the branch that needs it — the common "no durable knowledge, skip" path needs none of them:
 - `references/targeting.md` — read indexed pages, semantic-duplicate checks, target ownership, page-size/overload, and update-authorization policy (steps 3–5, 7–8).
 - `references/content-templates.md` — content depth requirements, page templates, and the final quality checklist (load when you actually write).
@@ -43,7 +55,7 @@ Apply this skill's normal responsibilities to every folded `pending` or `deferre
 
 Before targeting Notes, compare the unresolved candidates with each other. If several express the same settled claim, append one atomic `capture`-stage replacement candidate with the final wording and complete evidence refs, then supersede every related active candidate by that replacement. Propose one Note/Card change for the replacement only. Do not mark several duplicate claims `kept` against one implicit write, and do not let a script infer semantic similarity.
 
-For each candidate, invoke `candidate-journal outcome`: record `kept` only after the proposed Note/Card change succeeds, `skipped` with the durable-gate reason, or `deferred` while a conflict or authorization question remains recoverable. Later publishing is not a reason to defer an already applied Note: record it `kept` with an applied write receipt so publishing can consume the staged state. Never delete or rewrite the journal; retain it as the lifecycle receipt and never commit it. If it is missing, proceed with the normal end-of-flow review.
+For each candidate, invoke `candidate-journal outcome`: record `kept` only after the proposed Note/Card change succeeds, `skipped` with the durable-gate reason, or `deferred` while a conflict or authorization question remains recoverable. Later publishing is not a reason to defer an already applied Note: record it `kept` with an applied write receipt so an explicit Publish can consume the staged state. Never delete or rewrite the journal; retain it as the lifecycle receipt and never commit it. If it is missing, proceed with the normal end-of-flow review.
 
 ### ADR execution projection candidates
 
@@ -109,7 +121,13 @@ then mechanically enforces the selected operation, path, expected hash, and stab
 2. Show the returned structured diff to the user. A proposal does not write. If Capture pauses after a valid proposal, record `deferred` with a `proposed` write receipt using the exact proposal identity and hashes. On resume, Note drift may require a fresh proposal and another deferred receipt; only the latest validated proposal can transition to applied.
 3. Respect the returned effective policy: `deny` stops; `confirm` requires explicit user authorization; `direct` may proceed without a separate confirmation. Authorization never weakens `deny`.
 4. Call `obsidian_wiki_apply_note_change` with the exact proposal inputs and `authorized: true` only after confirmation when required. Treat authentication failure, expected-hash conflict, binding/path/schema/identity/typed-link failure, or Shared neutrality rejection as `deferred`; do not retry by editing files directly.
-5. Record `kept` only after the apply response returns matching post-write `wikiId`, path, and content hash. Include an `applied` write receipt with the returned `sourceId`, `repositoryRef`, `bindingDigest`, `wikiId`, path, operation, and before/after hashes; for a Card, also copy the returned `skillRegistration` exactly. The receipt contains no Note body or secret. The changed worktree plus receipt is staged knowledge state for the later publishing flow; do not claim it is merged or runtime-visible.
+5. Record `kept` only after the apply response returns matching post-write `wikiId`, path, and content hash. Include an `applied` write receipt with the returned `sourceId`, `repositoryRef`, `bindingDigest`, `wikiId`, path, operation, and before/after hashes; for a Card, also copy the returned `skillRegistration` exactly. The receipt contains no Note body or secret. The changed worktree plus receipt is staged knowledge state for a later explicit Publish; do not claim it is merged or runtime-visible.
+
+At the end of default Capture, fold once more and report the applied receipt count grouped by
+`repositoryRef`, then stop. Do not show a Git publish confirmation, invoke the publisher, or create
+`wiki-publish.json` unless Publish was explicitly requested. A fully terminal journal with applied
+receipts is intentionally silent to the Stop hook; it is a staged, recoverable choice rather than
+unfinished Capture.
 
 The loopback write bridge is the only automated Obsidian writer. Neither this skill nor a script may accept an arbitrary Vault/root override.
 
@@ -121,11 +139,14 @@ For a folded `skill_card` candidate, require its complete `skillRegistration` id
 - `skill_roles` ← `roles`
 - `skill_triggers` ← `triggers`
 
-Keep the body to a short discovery description; executable rules stay in the pack. Create/update this Card through the same proposal, authorization, applied receipt, and publisher steps as any other atomic Note. Copy the write result's complete `skillRegistration` into the journal receipt; a Skill Card cannot reach `kept` without an applied receipt whose registration exactly matches the staged candidate. The write boundary also rejects a second Card with the same skill name identity. The journal registration remains `pending` even after apply and while its draft PR is open. Report it as `discoverable` only when a later formal MCP search returns the sole Card for that pack from the merged, synchronized base and verifies the same name/version/hash.
+Keep the body to a short discovery description; executable rules stay in the pack. Create/update this Card through the same proposal, authorization, applied receipt, and explicit Publish steps as any other atomic Note. Copy the write result's complete `skillRegistration` into the journal receipt; a Skill Card cannot reach `kept` without an applied receipt whose registration exactly matches the staged candidate. The write boundary also rejects a second Card with the same skill name identity. The journal registration remains `pending` even after apply and while its draft PR is open. Report it as `discoverable` only when a later formal MCP search returns the sole Card for that pack from the merged, synchronized base and verifies the same name/version/hash.
 
-### Publish applied Obsidian receipts
+### Publish applied Obsidian receipts (explicit only)
 
-After every candidate outcome is recorded, fold the journal again. If it contains no `kept` candidate with an `applied` Obsidian write receipt, there is nothing to publish. Otherwise:
+Enter this section only when the user explicitly asks to publish a feature's staged Wiki changes.
+Do not infer that request from a completed review, a successful Capture, an applied Note, or an open
+conversation about Git. Fold the journal again. If it contains no `kept` candidate with an `applied`
+Obsidian write receipt, report that there is nothing to publish. Otherwise:
 
 1. Show the exact publish scope grouped by `repositoryRef`: Source, Note path, operation, and after-hash. Obtain explicit confirmation for the resulting commits, pushes, and draft PRs. Note-write authorization does not implicitly authorize Git publishing.
 2. After confirmation, pipe the mechanically validated folded journal into the bundled publisher:

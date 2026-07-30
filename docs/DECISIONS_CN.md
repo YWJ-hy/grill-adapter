@@ -310,7 +310,7 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 
 ### 决策
 
-- `update-wiki` 在 Capture outcomes 完成后，必须重新 fold journal，只把 `kept + writeReceipt.state: applied` 的 Obsidian identities 交给 bundle 的 `publish` JSON CLI。
+- `update-wiki` 在用户显式请求 publish 时，必须重新 fold journal，只把 `kept + writeReceipt.state: applied` 的 Obsidian identities 交给 bundle 的 `publish` JSON CLI；默认 Capture 停在 retained applied receipts。
 - publisher 按 `repositoryRef` 分组，验证 current binding/base/remote/Source/path/wiki ID/before-after hash，要求 worktree changed paths 与 receipt allowlist 完全相等，并在 repository lock 内重验内容与 scope；一仓一 commit + draft PR，所有 PR 用 run ID 与 peer URLs 协调。
 - `.grill-adapter/context/<feature-slug>/wiki-publish.json` 是本地恢复状态。commit 前先记录已验证 Git `stagedTree` object ID，普通 commit 失败也恢复 clean base，重跑时无需重复 Note apply；local commit、remote branch、GitHub PR 中断则通过现有 refs/PR 查询恢复。固定 staged tree/commit 后 base worktree 必须干净，防止新 Capture 改动混入旧 run。
 - 发布期间 repository lock 让 formal read fail-closed；成功或普通外部失败都恢复 base 后移除 lock，base 恢复本身失败则保留 lock。publisher 禁止自动 merge/approve/force-push/reset/stash/clean/delete branch。开放 PR 永不成为 runtime truth，必须 merge + base sync + revalidation 后才可见。

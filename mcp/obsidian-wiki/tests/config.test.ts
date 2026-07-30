@@ -38,21 +38,23 @@ describe('Obsidian Wiki unified configuration', () => {
   it('loads the custom config path and normalizes nested bridge settings', () => {
     const directory = temporaryDirectory();
     const configPath = path.join(directory, 'obsidian-wiki.jsonc');
+    const vaultRoot = JSON.stringify(path.join(directory, 'vault'));
+    const projectDir = JSON.stringify(path.join(directory, 'app'));
     writeFileSync(configPath, `{
       "vaults": {
         "knowledge": {
           "selector": "Knowledge",
           "bridge": {
             "url": "http://127.0.0.1:27128",
-            "vaultRoot": "${directory}/vault",
+            "vaultRoot": ${vaultRoot},
             "allowedRoots": ["Projects/app"],
-            "projectDirs": ["${directory}/app"]
+            "projectDirs": [${projectDir}]
           }
         }
       },
       "repositories": {
         "wiki": {
-          "worktreeRoot": "${directory}/vault",
+          "worktreeRoot": ${vaultRoot},
           "remote": "origin",
           "expectedRemote": "github.com/example/wiki",
           "baseBranch": "main"

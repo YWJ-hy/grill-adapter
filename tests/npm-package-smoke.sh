@@ -4,7 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-EXPECTED_VERSION="$(node -p "require('$ROOT/package.json').version")"
+ROOT_FOR_NODE="$ROOT"
+if command -v cygpath >/dev/null 2>&1; then
+  ROOT_FOR_NODE="$(cygpath -w "$ROOT")"
+fi
+EXPECTED_VERSION="$(node -e 'console.log(require(process.argv[1]).version)' "$ROOT_FOR_NODE/package.json")"
 
 PACK_JSON="$(
   cd "$ROOT"

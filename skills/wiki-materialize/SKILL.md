@@ -14,12 +14,13 @@ implementation or review this skill validates and consumes the matching role fil
 agent-consumed; its embedded metadata protects the task fingerprint, context identity, and body
 digest. Sidecar summaries never substitute for the frozen task contract.
 
-It does not patch any host skill. A host wires it in by convention:
+It does not patch any host skill. `wiki-readiness` is the normal host-facing entry; it owns the
+one-time fingerprint preflight and invokes this reader internally. Use this skill directly only when
+an explicit standalone Bind is needed outside that readiness seam:
 
-- **grill**: run `/grill-adapter:wiki-materialize <ticket>` per ticket at the start of `/implement`, before touching code for that ticket. `/implement` is never patched.
-- **plain Claude Code**: run `/grill-adapter:wiki-materialize <task-id>` yourself before implementing each task.
-- **unified implementation entry**: `wiki-readiness` runs this Bind step after it has reused or late-finalized the current task's context. It records `ready` only after both role files validate.
-- The session-level `wiki-reread` hook only reminds the session about active bindings; the explicit per-ticket call is the only task-contract consumption path.
+- **grill/plain implementation entry**: run `wiki-readiness` before the first code edit. It runs this Bind step after it has reused or late-finalized the current task's context, and records `ready` only after both role files validate.
+- **standalone Bind**: `/grill-adapter:wiki-materialize <ticket>` (or the Codex `$` form) remains available when an explicit host path requires it.
+- The session-level `wiki-reread` hook only reports approved snapshots that have no readiness result yet. It does not require a second direct materialization after `wiki-readiness` has run.
 
 The ticket id is the `taskId` from the feature's ticket roster — the same id the sidecar's `destination.tasks` routes to. Your host's convention block says how its tickets are identified (grill local-markdown: the `NN` filename prefix; a real tracker: the issue number). Resolve the sidecar and roster from the working tree (inside the final worktree if one is used).
 

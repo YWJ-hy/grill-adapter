@@ -29,7 +29,9 @@ CONTEXT_ROOT="$TMP/project/.grill-adapter/context"
 ISSUE_DIR="$CONTEXT_ROOT/issue-19"
 MANUAL_DIR="$CONTEXT_ROOT/manual-change"
 FORMAL_DIR="$CONTEXT_ROOT/formal-feature"
-mkdir -p "$ISSUE_DIR" "$MANUAL_DIR" "$FORMAL_DIR"
+BATCH_DIR="$CONTEXT_ROOT/batch-feature"
+ATOMIC_BATCH_DIR="$CONTEXT_ROOT/atomic-batch-feature"
+mkdir -p "$ISSUE_DIR" "$MANUAL_DIR" "$FORMAL_DIR" "$BATCH_DIR" "$ATOMIC_BATCH_DIR"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 need() { grep -Fq "$2" "$1" || fail "$1 missing: $2"; }
@@ -269,6 +271,39 @@ PY
 chmod +x "$FAKE_OBSIDIAN"
 FAKE_OBSIDIAN_CMD="python3 $FAKE_OBSIDIAN"
 
+write_runtime_selection() {
+  cat > "$1" <<JSON
+{
+  "status": "ok",
+  "phase": "plan",
+  "snapshotHash": "${FORMAL_SNAPSHOT}",
+  "wikiBindings": [
+    {
+      "sourceId": "project-runtime",
+      "role": "project",
+      "bindingDigest": "${FORMAL_BINDING}"
+    }
+  ],
+  "wikiNotes": [
+    {
+      "sourceId": "project-runtime",
+      "role": "project",
+      "path": "Projects/example/Runtime/execution-boundary.md",
+      "wikiId": "project/runtime/execution-boundary",
+      "type": "constraint",
+      "constraintStrength": "hard",
+      "summary": "Formal execution boundary must be materialized before implementation.",
+      "contentHash": "${FORMAL_CONTENT}",
+      "bindingDigest": "${FORMAL_BINDING}"
+    }
+  ],
+  "requiredSkills": [],
+  "caveats": [],
+  "maintenanceWarnings": []
+}
+JSON
+}
+
 CONTEXT_HASH_BEFORE="$(python3 - "$FORMAL_CONTEXT" <<'PY'
 import hashlib
 import sys
@@ -305,6 +340,120 @@ python3 "$READINESS" freeze \
   --project-root "$TMP/project" \
   --obsidian-wiki-cmd "$FAKE_OBSIDIAN_CMD" >/dev/null
 need "$IMPLEMENT_SNAPSHOT" '"snapshotOrigin": "planning-approved"'
+
+# One approved planning pass can freeze every roster task without exposing a per-ticket command
+# loop. Each task still receives its own role snapshots and approval manifest.
+BATCH_ROSTER="$BATCH_DIR/ticket-roster.json"
+BATCH_SELECTION="$BATCH_DIR/obsidian-wiki-selection.json"
+BATCH_CONTEXT="$BATCH_DIR/wiki-context.json"
+cat > "$BATCH_ROSTER" <<'JSON'
+{
+  "featureSlug": "batch-feature",
+  "ticketSource": "grill-local-scratch",
+  "tickets": [
+    {"taskId": "01", "taskTitle": "First routed task", "text": "# 01\n\nUse the shared execution boundary."},
+    {"taskId": "02", "taskTitle": "Second routed task", "text": "# 02\n\nUse the shared execution boundary too."}
+  ]
+}
+JSON
+write_runtime_selection "$BATCH_SELECTION"
+python3 "$RENDER" "$BATCH_CONTEXT" --scaffold "$BATCH_SELECTION" \
+  --feature-slug batch-feature --ticket-source grill-local-scratch --strict >/dev/null
+python3 - "$BATCH_CONTEXT" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+context = json.load(open(path, encoding="utf-8"))
+context["wikiNotes"][0]["destination"].update({
+    "reason": "Both planned tasks use this boundary.",
+    "tasks": ["01", "02"],
+})
+context["taskRouting"]["status"] = "confirmed"
+context["taskRouting"]["selectedSectionsFrozen"] = True
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(context, handle, indent=2)
+    handle.write("\n")
+PY
+python3 "$RENDER" "$BATCH_CONTEXT" --finalize --strict --ticket-roster "$BATCH_ROSTER" >/dev/null
+BATCH_OUT="$(python3 "$READINESS" freeze \
+  --context "$BATCH_CONTEXT" \
+  --roster "$BATCH_ROSTER" \
+  --all \
+  --project-root "$TMP/project" \
+  --obsidian-wiki-cmd "$FAKE_OBSIDIAN_CMD")"
+printf '%s' "$BATCH_OUT" | grep -q '2 task(s)' || fail "batch freeze did not report both roster tasks"
+for task_id in 01 02; do
+  need "$BATCH_DIR/${task_id}.wiki-implement.md" '"snapshotOrigin": "planning-approved"'
+  need "$BATCH_DIR/${task_id}.wiki-review.md" '"snapshotOrigin": "planning-approved"'
+  need "$BATCH_DIR/${task_id}.wiki-approval.json" '"implementWikiDigest"'
+done
+
+# A later task's materialization failure must leave no earlier task approved. The batch engine
+# prepares every role snapshot before it writes any Markdown or approval manifest.
+ATOMIC_ROSTER="$ATOMIC_BATCH_DIR/ticket-roster.json"
+ATOMIC_SELECTION="$ATOMIC_BATCH_DIR/obsidian-wiki-selection.json"
+ATOMIC_CONTEXT="$ATOMIC_BATCH_DIR/wiki-context.json"
+cat > "$ATOMIC_ROSTER" <<'JSON'
+{
+  "featureSlug": "atomic-batch-feature",
+  "ticketSource": "grill-local-scratch",
+  "tickets": [
+    {"taskId": "01", "taskTitle": "Working task", "text": "# 01\n\nRead the working Note."},
+    {"taskId": "02", "taskTitle": "Failing task", "text": "# 02\n\nRead the unavailable Note."}
+  ]
+}
+JSON
+write_runtime_selection "$ATOMIC_SELECTION"
+python3 - "$ATOMIC_SELECTION" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+selection = json.load(open(path, encoding="utf-8"))
+selection["wikiNotes"].append({
+    "sourceId": "project-runtime",
+    "role": "project",
+    "path": "Projects/example/Runtime/unavailable-boundary.md",
+    "wikiId": "project/runtime/unavailable-boundary",
+    "type": "constraint",
+    "constraintStrength": "hard",
+    "summary": "This Note is intentionally unavailable in the fake runtime.",
+    "contentHash": "sha256:cd31c6c9848e035118b3dc7a8c9926d5862f5802e0a567c70873b0e082ae943b",
+    "bindingDigest": "d44631c6c041e294a6823d3986d7195e517e84038cfad4f2f78ee71d4a1e8798"
+})
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(selection, handle, indent=2)
+    handle.write("\n")
+PY
+python3 "$RENDER" "$ATOMIC_CONTEXT" --scaffold "$ATOMIC_SELECTION" \
+  --feature-slug atomic-batch-feature --ticket-source grill-local-scratch --strict >/dev/null
+python3 - "$ATOMIC_CONTEXT" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+context = json.load(open(path, encoding="utf-8"))
+context["wikiNotes"][0]["destination"].update({"reason": "First task only.", "tasks": ["01"]})
+context["wikiNotes"][1]["destination"].update({"reason": "Second task only.", "tasks": ["02"]})
+context["taskRouting"]["status"] = "confirmed"
+context["taskRouting"]["selectedSectionsFrozen"] = True
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(context, handle, indent=2)
+    handle.write("\n")
+PY
+python3 "$RENDER" "$ATOMIC_CONTEXT" --finalize --strict --ticket-roster "$ATOMIC_ROSTER" >/dev/null
+if python3 "$READINESS" freeze \
+  --context "$ATOMIC_CONTEXT" \
+  --roster "$ATOMIC_ROSTER" \
+  --all \
+  --project-root "$TMP/project" \
+  --obsidian-wiki-cmd "$FAKE_OBSIDIAN_CMD" >"$TMP/atomic-batch.out" 2>&1; then
+  fail "batch freeze accepted an unavailable later task"
+fi
+[[ ! -e "$ATOMIC_BATCH_DIR/01.wiki-implement.md" ]] || fail "batch freeze approved an earlier task after a later failure"
+[[ ! -e "$ATOMIC_BATCH_DIR/01.wiki-approval.json" ]] || fail "batch freeze wrote an earlier approval after a later failure"
+
 python3 "$READINESS" bind \
   --receipt "$FORMAL_RECEIPT" \
   --roster "$FORMAL_ROSTER" \
@@ -435,6 +584,7 @@ need "$SNAPSHOT_CONTRACT" "role"
 need "$APPROVAL_CONTRACT" "implementWikiDigest"
 need "$APPROVAL_CONTRACT" "reviewWikiDigest"
 need "$SKILL" "before the first code edit"
+need "$SKILL" "freeze --all"
 need "$SKILL" "gh issue view"
 need "$SKILL" "manual"
 need "$SKILL" "Do not patch"

@@ -72,13 +72,44 @@ OUT="$(printf '{"cwd":"%s","hook_event_name":"UserPromptSubmit"}' "$T" | CLAUDE_
 [[ -z "$OUT" ]] || fail "wiki-reread not silent with no sidecar"
 rm -rf "$T"
 
-# --- wiki-reread: UserPromptSubmit must not reread schema-v6 notes; explicit Bind owns it. ---
+# --- wiki-reread: schema-v6 is silent until approved snapshots await their first Bind. ---
 T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.grill-adapter/context/feature"
 printf '{"schemaVersion":6,"kind":"grill-adapter.wiki-context"}\n' > "$T/.grill-adapter/context/feature/wiki-context.json"
 OUT="$(printf '{"cwd":"%s","hook_event_name":"UserPromptSubmit"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-reread.sh")"
 [[ -z "$OUT" ]] || fail "wiki-reread must not materialize schema-v6 notes on UserPromptSubmit"
 OUT="$(printf '{"cwd":"%s","hook_event_name":"SessionStart"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-reread.sh")"
-printf '%s' "$OUT" | grep -q 'wiki-materialize' || fail "wiki-reread SessionStart did not remind about explicit schema-v6 Bind"
+[[ -z "$OUT" ]] || fail "wiki-reread must stay silent for a planning-only schema-v6 sidecar"
+cat > "$T/.grill-adapter/context/feature/ticket-roster.json" <<'JSON'
+{"featureSlug":"","ticketSource":"manual","tickets":[{"taskId":"01","taskTitle":"task","text":"task"}]}
+JSON
+python3 - "$T/.grill-adapter/context/feature/wiki-context.json" "$T/.grill-adapter/context/feature/ticket-roster.json" <<'PY'
+import json
+import sys
+
+context_path, roster_path = sys.argv[1:]
+context = json.load(open(context_path, encoding="utf-8"))
+context["featureSlug"] = "feature"
+with open(context_path, "w", encoding="utf-8") as handle:
+    json.dump(context, handle)
+roster = json.load(open(roster_path, encoding="utf-8"))
+roster["featureSlug"] = "feature"
+with open(roster_path, "w", encoding="utf-8") as handle:
+    json.dump(roster, handle)
+PY
+touch "$T/.grill-adapter/context/feature/01.wiki-implement.md"
+touch "$T/.grill-adapter/context/feature/01.wiki-review.md"
+touch "$T/.grill-adapter/context/feature/01.wiki-approval.json"
+OUT="$(printf '{"cwd":"%s","hook_event_name":"SessionStart"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-reread.sh")"
+printf '%s' "$OUT" | grep -q 'wiki-readiness' || fail "wiki-reread SessionStart did not remind about pending readiness"
+printf '%s' "$OUT" | grep -q '01' || fail "wiki-reread SessionStart did not name the pending task"
+if printf '%s' "$OUT" | grep -q 'wiki-materialize <ticket-id>'; then
+  fail "wiki-reread still asks for a duplicate materialization"
+fi
+cat > "$T/.grill-adapter/context/feature/wiki-readiness.json" <<'JSON'
+{"schemaVersion":1,"kind":"grill-adapter.wiki-readiness","featureSlug":"feature","ticketSource":"manual","rosterFile":"ticket-roster.json","tasks":[{"taskId":"01","status":"ready"}]}
+JSON
+OUT="$(printf '{"cwd":"%s","hook_event_name":"SessionStart"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-reread.sh")"
+[[ -z "$OUT" ]] || fail "wiki-reread reminded after task readiness was already recorded"
 rm -rf "$T"
 
 # The hook remains able to resume an existing flat sidecar without moving it.
