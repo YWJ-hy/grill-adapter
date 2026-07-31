@@ -28,7 +28,7 @@ grill-with-docs → to-spec / to-tickets → implement → code-review → updat
 |---|---|---|---|
 | ① 脚本级 smoke / regression | `tests/wiki-*.sh`、`tests/source-truth-*.sh` 等 | 执行层（引擎脚本）行为正确 | **否**，不能替代集成路径 |
 | ② 项目接线测试 | `tests/install-project-wiring-smoke.sh` | `install` 只写/剥 `<project>/CLAUDE.md`、`AGENTS.md` 的约定块；覆盖 runtime/host 切换、幂等、干净卸载与零路径 | 否 |
-| ③ hook 行为测试 | `tests/hooks-smoke.sh` | 三个 host 无关 hook（wiki-reread / wiki-capture-suggest / source-truth-lint）在事件 JSON 驱动下的注入与静默路径 | 否 |
+| ③ hook / 激活行为测试 | `tests/hooks-smoke.sh`、`tests/project-opt-in-smoke.sh` | 三个 host 无关 hook 在事件 JSON 驱动下的注入与静默路径；全局 plugin 在 standalone grill 项目中的零写入，以及 workflow skill 的 marker/settings/显式调用 activation gate | 否 |
 | ④ 桥测试 | `tests/wiki-candidate-journal-smoke.sh`、`tests/grill-bridge-smoke.sh` | journal append/supersede/outcome/fold 的公开 CLI 契约；grill `CONTEXT.md` / `docs/adr` 增量批量转成标准 candidate events | 否 |
 | ⑤ host 约定测试 | `tests/host-conventions-smoke.sh` | grill / plain 约定块含全部触点、零 patch 不变式、skill 调用带 `grill-adapter:` 命名空间、块内零安装路径 | 否 |
 | ⑥ 集成验收 | 安装后 Claude Code/Codex 真跑 | 铁律那条端到端流真正跑通 | 这是**最终门** |

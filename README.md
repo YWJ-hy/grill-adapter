@@ -74,7 +74,14 @@ background instance.
 
 Both runtimes discover **12 skills, 3 hook events, and 1 MCP server**. Claude Code also registers `agents/wiki-researcher.md` directly; Codex keeps that prompt as plugin payload and `wiki-research` dispatches a general sub-agent with the same role instructions. The returned agent path is only a handle: waiting on that exact path is the only permitted next operation, and the main session must repeat bounded waits until terminal before messaging the user, asking questions, calling MCP, or continuing. Dispatch/capacity/lifecycle failures are classified as `broken` rather than `no-relevant`. The `obsidian-wiki` server starts with the plugin and exposes bound Source reads, governed Note proposal/apply tools, and a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server. Use `$grill-adapter:setup-init-obsidian` (or `/grill-adapter:setup-init-obsidian`) to check both npm packages and initialize a project (setup details: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
 
-> **Claude Code scope is shared.** Skills, agents, hooks, and bundled MCP servers all take the plugin's scope. Codex's current `plugin add` command has no project/user scope flag; project isolation comes from explicit Wiki bindings and fail-closed policy.
+> **Plugin installation is availability, not project opt-in.** Skills, agents, hooks, and bundled
+> MCP servers take the plugin's scope, and Codex's current `plugin add` command has no project/user
+> scope flag. Workflow-facing skills therefore run a read-only activation preflight before any
+> adapter action or filesystem write. They proceed only when the user explicitly invokes a
+> grill-adapter skill, the project contains the host marker installed in `AGENTS.md`/`CLAUDE.md`,
+> or `.grill-adapter/settings.json` exists. A standalone grill project remains inert and does not
+> create `.grill-adapter/`; global hooks run the same project preflight and remain silent even when
+> an unwired project contains leftover adapter context.
 
 **2. Wire the project** — the one thing a plugin cannot touch is your project's durable instruction file:
 
@@ -89,6 +96,9 @@ cd grill-adapter
 For a new project, use `setup-init-obsidian` to state how many Wiki libraries the project needs and what each is for; it then guides each Source binding and the machine-local registry. Each project may have at most one project Source plus multiple shared Sources. `doctor` must report `obsidian-native` and healthy before formal research. Existing legacy projects use `migrate-wiki`; for a GitHub-backed legacy shared Wiki, pass its repository URL explicitly to the migration planner. There is no legacy runtime fallback.
 
 - The convention block is marker-delimited and **names skills only — it carries no install path**, so plugin upgrades can't rot it. Claude Code uses `CLAUDE.md`; Codex uses `AGENTS.md`.
+- To use **grill only** while keeping a globally installed grill-adapter bundle, run
+  `./manage.sh uninstall /path/to/your/project --runtime claude|codex|both` to remove the project
+  marker. Existing `.grill-adapter/` working state is not deleted automatically.
 - **Zero host-skill patching.** To remove: drop `grill-adapter@grill-adapter` from the project's `.claude/settings.json` `enabledPlugins` (a project-scope plugin is a committed, team-shared setting, so `claude plugin uninstall` deliberately refuses to remove it for you — use `claude plugin disable grill-adapter@grill-adapter --scope local` to switch it off for yourself only), then `./manage.sh uninstall /path/to/your/project` to strip the convention block.
 - On Codex, remove the bundle with `codex plugin remove grill-adapter@grill-adapter`, then run `./manage.sh uninstall /path/to/your/project --runtime codex`.
 
@@ -135,7 +145,7 @@ Legacy Wiki migration to Obsidian runs through `/grill-adapter:migrate-wiki` (Cl
 
 ## Relationship to grill / Claude Code / Codex
 
-grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe to; grill-adapter never forks or edits it. grill-adapter adds wiki, source-truth, and break-loop touchpoints *around* grill by convention. The `grill` host block is inert until the corresponding grill stage is explicitly invoked; an ordinary direct request does not activate Wiki touchpoints. On plain Claude Code or Codex you invoke the same skills yourself at the matching moments (see the runtime-specific `plain` host block).
+grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe to; grill-adapter never forks or edits it. grill-adapter adds wiki, source-truth, and break-loop touchpoints *around* grill by convention. Without a grill-adapter host marker or settings, grill runs alone and adapter skills do not create local state. With the `grill` host block installed, that block remains inert until the corresponding grill stage is explicitly invoked; an ordinary direct request does not activate Wiki touchpoints. On plain Claude Code or Codex you invoke the same skills yourself at the matching moments (see the runtime-specific `plain` host block).
 
 ## Documentation
 

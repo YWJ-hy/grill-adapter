@@ -16,6 +16,22 @@ grill-adapter 本身是一个双运行时插件：`.claude-plugin/plugin.json` �
 
 **不变式**：约定块只引用 grill-adapter 自己的 skill（`/grill-adapter:wiki-research` 等），**不含任何安装路径**；绝不改宿主 skill 一行。宿主升级不影响 grill-adapter。
 
+### 项目激活边界
+
+安装 plugin 只表示 grill-adapter 的能力在运行时**可用**，不表示每个项目都已启用 adapter。
+所有会挂入 grill 日常流程的入口 skill 在任何 adapter 动作或文件写入前，必须先运行只读
+`scripts/project_activation.py`。只有以下任一条件成立才继续：
+
+- 用户在当前请求中显式点名/调用 grill-adapter skill；
+- 项目根 `AGENTS.md` 或 `CLAUDE.md` 含 install 写入的
+  `<!-- grill-adapter:host:<host>:start -->` marker；
+- 项目已有 `.grill-adapter/settings.json`，明确声明 adapter 配置。
+
+三者都不成立就是 **standalone grill**：skill 必须立即回到宿主流程，不调用其他 adapter
+skill、不输出 adapter 噪声、不创建 `.grill-adapter/`。全局 hook 同样先执行项目
+preflight；未接线且未配置的项目即使残留旧 context 也必须静默且零写入。这样 Codex
+的用户级 plugin 安装可以与只使用 grill 的项目并存。
+
 ### 为什么约定块里一个路径都不能有
 
 约定块落在**目标项目**的 `CLAUDE.md` 里，那不是插件内容，两条路都堵死：
@@ -79,7 +95,9 @@ codex plugin marketplace add YWJ-hy/grill-adapter
 codex plugin add grill-adapter@grill-adapter
 ```
 
-Codex 当前没有 `--scope project|user`；插件安装是用户级的，但 Wiki 读取仍由目标项目绑定 fail-closed，不会因全局安装而自动暴露其他项目的 Source。
+Codex 当前没有 `--scope project|user`；插件安装是用户级的。项目 activation preflight
+先阻止未接线项目进入 adapter workflow，Wiki Source 读取再由目标项目 binding
+fail-closed。两层边界分别防止意外本地状态和跨项目 Source 暴露。
 
 一次装齐 12 skills + 1 agent + 3 hooks + 1 MCP server（Source-binding `obsidian-wiki`）。开发期不必安装：
 
@@ -109,7 +127,7 @@ grill-adapter verify <project> --host grill --runtime both
 
 `npm update --global grill-adapter` 只更新本机 CLI 和 plugin payload；它不会自动修改项目文件。项目路径省略时，`install`、`uninstall`、`verify`、`status`、`doctor` 默认使用当前目录。
 
-只做一件事：按 `--runtime` 把选定 host 约定块写进目标 `CLAUDE.md`、`AGENTS.md` 或两者（marker 包裹、幂等、换宿主先剥旧块、保留既有内容）。`uninstall` 逆向剥块，`verify` 检查块在不在；`status` 对相应运行时报告提示性插件状态。
+只做一件事：按 `--runtime` 把选定 host 约定块写进目标 `CLAUDE.md`、`AGENTS.md` 或两者（marker 包裹、幂等、换宿主先剥旧块、保留既有内容）。这个 marker 同时是项目 workflow opt-in。`uninstall` 逆向剥块，使项目恢复 standalone grill；它保留既有 `.grill-adapter/` 工作态，不隐式删除用户数据。`verify` 检查块在不在；`status` 对相应运行时报告提示性插件状态。
 
 wiki 数据/绑定仍是项目级的：新项目在 `.grill-adapter/settings.json` 声明 `wiki.provider: obsidian` 与 Source bindings，机器本地 registry 解析 Vault/repository；`doctor` 校验 active provider 并报告 `obsidian-native` / `shadow-validation` / `cutover-complete`。legacy 内容只通过 `migrate-wiki` 的本地根或用户显式 Git URL 进入迁移计划，不提供 runtime fallback。
 

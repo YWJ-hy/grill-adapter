@@ -1,9 +1,24 @@
 ---
 name: candidate-journal
-description: Append, supersede, validate, fold, or record Capture outcomes for durable Wiki Note and Skill Card candidates in one feature-scoped journal. Use whenever discovery, specification, tickets, implementation, review, or debugging surfaces knowledge that may deserve post-review Capture.
+description: Append, supersede, validate, fold, or record Capture outcomes for durable Wiki Note and Skill Card candidates in one feature-scoped journal. Use whenever an opted-in grill-adapter workflow surfaces knowledge that may deserve post-review Capture. Use only when explicitly invoked or the project is wired/configured for grill-adapter; do not auto-use in a standalone grill workflow.
 ---
 
 # Candidate Journal
+
+## Activation gate
+
+Before any filesystem write or adapter workflow action, run:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/project_activation.py <project-root> [--explicit]
+```
+
+Pass `--explicit` only when the user explicitly named or invoked this grill-adapter skill for the
+current request. Otherwise the command requires either `.grill-adapter/settings.json` or an
+installed `<!-- grill-adapter:host:...:start -->` marker in the project-root `AGENTS.md` or
+`CLAUDE.md`. Exit 3 means this is a standalone grill workflow: stop this skill, return to the host
+workflow, and do not create `.grill-adapter/`, invoke another adapter skill, or emit adapter noise.
+A globally installed plugin is availability, not project opt-in.
 
 Record candidates mechanically without writing Obsidian or deciding whether knowledge is durable. The journal is append-only working state at `.grill-adapter/context/<feature-slug>/wiki-candidates.jsonl`; never edit, truncate, delete, or commit it.
 

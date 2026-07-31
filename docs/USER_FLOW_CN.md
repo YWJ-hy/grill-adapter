@@ -6,7 +6,7 @@ grill-adapter 是一个**宿主无关（host-agnostic）的 Claude Code adapter*
 - **真实源校验 / lint（source-of-truth verify/lint）**；
 - **break-loop 调试复盘与知识回流**。
 
-核心原则：grill-adapter **从不 patch 任何宿主 skill**，只在宿主阶段之间挂接自己的 skill 与 hook。默认宿主是 **grill**（mattpocock/skills）；grill host 的约定块只有在用户明确调用对应 grill 阶段时才激活，普通直接需求不会自动进入 Wiki 触点：
+核心原则：grill-adapter **从不 patch 任何宿主 skill**，只在宿主阶段之间挂接自己的 skill 与 hook。默认宿主是 **grill**（mattpocock/skills）。安装 plugin 只让能力可用，不会让所有 grill 项目自动启用 adapter：项目必须有 install 写入的 host marker、已有 `.grill-adapter/settings.json`，或用户显式调用当前 adapter skill，才会进入 adapter workflow。三者都没有时就是 standalone grill，任何入口都不得创建 `.grill-adapter/`。项目已接线后，grill host 的约定块也只有在用户明确调用对应 grill 阶段时才激活，普通直接需求不会自动进入 Wiki 触点：
 
 ```
 /grill-with-docs → /to-spec → /to-tickets → /implement → /code-review
@@ -15,6 +15,10 @@ grill-adapter 是一个**宿主无关（host-agnostic）的 Claude Code adapter*
 ```
 
 在没有 grill 的**纯 Claude Code** 上也能运行——只是失去了宿主阶段锚点，改由 hook 兜底。
+
+如果某项目只想使用 grill，运行 `manage.sh uninstall <project> --runtime <runtime>` 移除
+host marker 即可；全局安装的 grill-adapter plugin 可以保留。uninstall 不会删除既有
+`.grill-adapter/` 工作态，避免隐式丢失用户数据。
 
 ### 本机运行时配置
 
@@ -265,7 +269,7 @@ grill-adapter 明确承认自己不是无缝的，并把降级点讲清楚：
 
 grill-adapter 同时以 **Claude Code plugin** 与 **Codex plugin** 形式发布。Claude 使用 `claude plugin install grill-adapter@grill-adapter --scope project|user`；Codex 使用 `codex plugin marketplace add YWJ-hy/grill-adapter` 后 `codex plugin add grill-adapter@grill-adapter`。
 
-唯一不由 plugin 承载的是目标项目的 host 约定块：Claude 写 `CLAUDE.md`，Codex 写 `AGENTS.md`。由 `./manage.sh install <project> --host grill|plain --runtime claude|codex|both` 写入；块里只点名 skill，不含任何安装路径。
+唯一不由 plugin 承载的是目标项目的 host 约定块：Claude 写 `CLAUDE.md`，Codex 写 `AGENTS.md`。由 `./manage.sh install <project> --host grill|plain --runtime claude|codex|both` 写入；块里只点名 skill，不含任何安装路径，同时作为该项目的 workflow opt-in marker。
 
 **Skills（12）**：`wiki-readiness`、`wiki-research`、`wiki-materialize`、`candidate-journal`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`setup-init-obsidian`、`scaffold-practice-skill`、`break-loop`、`source-truth-check`。
 
