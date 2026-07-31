@@ -55,6 +55,20 @@
       {
         "sourceId": "example-project",
         "noteCount": 12,
+        "wikiIds": [
+          "example/runtime-policy",
+          "example/deployment",
+          "example/build",
+          "example/testing",
+          "example/operations",
+          "example/security",
+          "example/review",
+          "example/api",
+          "example/storage",
+          "example/observability",
+          "example/recovery",
+          "example/release"
+        ],
         "snapshotHash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       }
     ]

@@ -7,6 +7,7 @@ SANDBOX="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX"' EXIT
 
 python3 - "$ROOT" "$SANDBOX" <<'PY'
+import copy
 import json
 import os
 import pathlib
@@ -37,6 +38,7 @@ for required in (
     "Never emit Note body",
     "grill-adapter.wiki-maintenance-report",
     "snapshotIdentity",
+    "auditedNoteSnapshots.wikiIds",
     "affectedWikiIdentities",
     "recommendedAction",
 ):
@@ -58,6 +60,9 @@ for required in (
     "dispatch, transport, capacity, or lifecycle failure",
     "`broken`",
     "wiki_maintenance_report.py",
+    "--expected-as-of",
+    "--expected-identity-limit",
+    "--expected-note-read-limit",
     "wiki-maintenance-audit.json",
     "compact summary",
     "non-authoritative",
@@ -69,6 +74,7 @@ for required in (
     '"mode": "audit"',
     '"authoritative": false',
     '"snapshotIdentity"',
+    '"wikiIds"',
     '"affectedWikiIdentities"',
     '"recommendedAction"',
 ):
@@ -121,11 +127,19 @@ valid = {
             {
                 "sourceId": "project",
                 "noteCount": 5,
+                "wikiIds": [
+                    "project/runtime",
+                    "project/build",
+                    "project/deploy",
+                    "project/operations",
+                    "project/testing",
+                ],
                 "snapshotHash": "sha256:" + "b" * 64,
             },
             {
                 "sourceId": "shared",
                 "noteCount": 3,
+                "wikiIds": ["shared/api", "shared/review", "shared/security"],
                 "snapshotHash": "sha256:" + "d" * 64,
             },
         ],
@@ -194,6 +208,18 @@ invalid_calendar_time["snapshotIdentity"] = dict(
 )
 invalid_reports.append(invalid_calendar_time)
 
+unbound_finding = copy.deepcopy(valid)
+unbound_finding["findings"][0]["affectedWikiIdentities"] = [
+    {"sourceId": "unbound", "wikiId": "unbound/runtime"}
+]
+invalid_reports.append(unbound_finding)
+
+unread_overloaded_finding = copy.deepcopy(valid)
+unread_overloaded_finding["findings"][0]["affectedWikiIdentities"] = [
+    {"sourceId": "project", "wikiId": "project/not-read"}
+]
+invalid_reports.append(unread_overloaded_finding)
+
 for index, report in enumerate(invalid_reports):
     path = sandbox / f"invalid-{index}.json"
     path.write_text(json.dumps(report), encoding="utf-8")
@@ -205,6 +231,60 @@ for index, report in enumerate(invalid_reports):
     assert failed.returncode != 0, report
     assert "SECRET BODY" not in failed.stderr
     assert "/private/vault" not in failed.stderr
+
+write_project = sandbox / "write-project"
+write_project.mkdir()
+write_output = ".grill-adapter/context/issue-32/wiki-maintenance-audit.json"
+
+
+def write_command(*overrides):
+    values = {
+        "as_of": valid["asOf"],
+        "identity_limit": str(valid["limits"]["identityLimit"]),
+        "note_read_limit": str(valid["limits"]["noteReadLimit"]),
+    }
+    values.update(dict(overrides))
+    return [
+        sys.executable,
+        str(validator),
+        "write",
+        "--output",
+        write_output,
+        "--expected-as-of",
+        values["as_of"],
+        "--expected-identity-limit",
+        values["identity_limit"],
+        "--expected-note-read-limit",
+        values["note_read_limit"],
+    ]
+
+
+written = subprocess.run(
+    write_command(),
+    cwd=write_project,
+    input=json.dumps(valid),
+    check=True,
+    text=True,
+    capture_output=True,
+)
+written_summary = json.loads(written.stdout)
+expected_written_summary = json.loads(compact.stdout)
+expected_written_summary["reportPath"] = write_output
+assert written_summary == expected_written_summary
+
+for mismatch in (
+    (("as_of", "2026-07-31T12:00:01Z"),),
+    (("identity_limit", "21"),),
+    (("note_read_limit", "7"),),
+):
+    failed = subprocess.run(
+        write_command(*mismatch),
+        cwd=write_project,
+        input=json.dumps(valid),
+        text=True,
+        capture_output=True,
+    )
+    assert failed.returncode != 0, mismatch
 
 if os.name != "nt":
     project = sandbox / "project"
@@ -221,6 +301,12 @@ if os.name != "nt":
             "write",
             "--output",
             ".grill-adapter/context/issue-32/wiki-maintenance-audit.json",
+            "--expected-as-of",
+            valid["asOf"],
+            "--expected-identity-limit",
+            str(valid["limits"]["identityLimit"]),
+            "--expected-note-read-limit",
+            str(valid["limits"]["noteReadLimit"]),
         ],
         cwd=project,
         input=json.dumps(valid),

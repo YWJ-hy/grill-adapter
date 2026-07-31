@@ -11,6 +11,7 @@ import stat
 import sys
 import tempfile
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -30,9 +31,7 @@ IDENTITY = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$')
 FINDING_ID = re.compile(r'^[a-z0-9][a-z0-9._-]{0,63}$')
 FINDING_CATEGORIES = frozenset({'freshness', 'contradiction', 'overloaded-note'})
 SEVERITIES = frozenset({'info', 'warning', 'critical'})
-RECOMMENDED_ACTIONS = frozenset(
-    {'review-note', 'resolve-contradiction', 'split-note', 'no-action'}
-)
+RECOMMENDED_ACTIONS = frozenset({'review-note', 'resolve-contradiction', 'split-note'})
 FINDING_CONTRACTS = {
     'freshness': (frozenset({'review-date-reached', 'expiry-date-reached'}), 'review-note'),
     'contradiction': (frozenset({'typed-contradiction-present'}), 'resolve-contradiction'),
@@ -53,6 +52,13 @@ CAVEAT_CODES = frozenset(
 
 class ReportError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class AuditRequest:
+    as_of: str
+    identity_limit: int
+    note_read_limit: int
 
 
 def fail(field: str) -> None:
@@ -107,7 +113,7 @@ def validate_identity(value: Any, field: str) -> dict[str, str]:
     return row
 
 
-def validate_report(value: Any) -> dict[str, Any]:
+def validate_report(value: Any, expected: AuditRequest | None = None) -> dict[str, Any]:
     report = exact_keys(
         value,
         {
@@ -135,6 +141,12 @@ def validate_report(value: Any) -> dict[str, Any]:
     limits = exact_keys(report['limits'], {'identityLimit', 'noteReadLimit'}, 'limits')
     identity_limit = integer(limits['identityLimit'], 'limits.identityLimit', 1, 200)
     note_read_limit = integer(limits['noteReadLimit'], 'limits.noteReadLimit', 1, 24)
+    if expected is not None and (
+        as_of != expected.as_of
+        or identity_limit != expected.identity_limit
+        or note_read_limit != expected.note_read_limit
+    ):
+        fail('audit request identity')
 
     scanned = exact_keys(
         report['scanned'],
@@ -158,6 +170,7 @@ def validate_report(value: Any) -> dict[str, Any]:
     if not isinstance(findings, list) or len(findings) > identity_limit:
         fail('findings')
     finding_ids: set[str] = set()
+    finding_identities: list[tuple[str, set[tuple[str, str]]]] = []
     total_affected = 0
     for index, raw_finding in enumerate(findings):
         field = f'findings[{index}]'
@@ -200,6 +213,7 @@ def validate_report(value: Any) -> dict[str, Any]:
             if key in seen_identities:
                 fail(f'{field}.affectedWikiIdentities')
             seen_identities.add(key)
+        finding_identities.append((category, seen_identities))
         total_affected += len(identities)
     if total_affected > identity_limit:
         fail('affected Wiki identity limit')
@@ -230,20 +244,42 @@ def validate_report(value: Any) -> dict[str, Any]:
     if not isinstance(audited_snapshots, list) or len(audited_snapshots) > len(bindings):
         fail('snapshotIdentity.auditedNoteSnapshots')
     audited_sources: set[str] = set()
+    audited_identities: set[tuple[str, str]] = set()
     audited_note_count = 0
     for index, raw_audited in enumerate(audited_snapshots):
         field = f'snapshotIdentity.auditedNoteSnapshots[{index}]'
-        audited = exact_keys(raw_audited, {'sourceId', 'noteCount', 'snapshotHash'}, field)
+        audited = exact_keys(
+            raw_audited, {'sourceId', 'noteCount', 'wikiIds', 'snapshotHash'}, field
+        )
         source_id = text(audited['sourceId'], f'{field}.sourceId', 256)
         if source_id not in seen_sources or source_id in audited_sources:
             fail(f'{field}.sourceId')
         audited_sources.add(source_id)
-        audited_note_count += integer(audited['noteCount'], f'{field}.noteCount', 1, note_read_limit)
+        note_count = integer(audited['noteCount'], f'{field}.noteCount', 1, note_read_limit)
+        wiki_ids = audited['wikiIds']
+        if not isinstance(wiki_ids, list) or len(wiki_ids) != note_count:
+            fail(f'{field}.wikiIds')
+        for wiki_id_index, raw_wiki_id in enumerate(wiki_ids):
+            wiki_id = text(raw_wiki_id, f'{field}.wikiIds[{wiki_id_index}]', 256)
+            identity = (source_id, wiki_id)
+            if (
+                not IDENTITY.fullmatch(wiki_id)
+                or '..' in wiki_id
+                or identity in audited_identities
+            ):
+                fail(f'{field}.wikiIds[{wiki_id_index}]')
+            audited_identities.add(identity)
+        audited_note_count += note_count
         snapshot_hash = text(audited['snapshotHash'], f'{field}.snapshotHash', 71)
         if not SNAPSHOT_HASH.fullmatch(snapshot_hash):
             fail(f'{field}.snapshotHash')
     if audited_note_count != note_bodies_read:
         fail('snapshotIdentity audited Note count')
+    for category, identities in finding_identities:
+        if any(source_id not in seen_sources for source_id, _ in identities):
+            fail('finding binding identity')
+        if category == 'overloaded-note' and not identities <= audited_identities:
+            fail('overloaded finding audit identity')
 
     caveats = report['caveats']
     if not isinstance(caveats, list) or len(caveats) > 20:
@@ -268,12 +304,14 @@ def duplicate_safe_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def load_json_stream(stream: Any) -> dict[str, Any]:
+def load_json_stream(
+    stream: Any, expected: AuditRequest | None = None
+) -> dict[str, Any]:
     try:
         value = json.load(stream, object_pairs_hook=duplicate_safe_object)
     except json.JSONDecodeError as exc:
         raise ReportError(f'malformed JSON at line {exc.lineno}, column {exc.colno}') from exc
-    return validate_report(value)
+    return validate_report(value, expected)
 
 
 def load_path(path: Path) -> dict[str, Any]:
@@ -355,6 +393,9 @@ def parser() -> argparse.ArgumentParser:
     validate.add_argument('report')
     write = commands.add_parser('write')
     write.add_argument('--output', required=True)
+    write.add_argument('--expected-as-of', required=True)
+    write.add_argument('--expected-identity-limit', required=True, type=int)
+    write.add_argument('--expected-note-read-limit', required=True, type=int)
     compact_command = commands.add_parser('compact')
     compact_command.add_argument('report')
     compact_command.add_argument('--report-path', required=True)
@@ -365,7 +406,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
         if args.command == 'write':
-            report = load_json_stream(sys.stdin)
+            expected = AuditRequest(
+                as_of=timestamp(args.expected_as_of, 'expected asOf'),
+                identity_limit=integer(
+                    args.expected_identity_limit, 'expected identityLimit', 1, 200
+                ),
+                note_read_limit=integer(
+                    args.expected_note_read_limit, 'expected noteReadLimit', 1, 24
+                ),
+            )
+            report = load_json_stream(sys.stdin, expected)
             write_report(report, args.output)
             print(dump(compact(report, args.output)))
             return 0

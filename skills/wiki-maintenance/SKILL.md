@@ -64,18 +64,18 @@ focus: <optional concern>
 After the exact agent reaches a terminal result:
 
 1. A compact `status: broken` result is a caveat, not a report. Return it without creating or replacing the report artifact.
-2. For any claimed `ok` or `partial` result, validate before persistence with `${CLAUDE_PLUGIN_ROOT}/scripts/wiki_maintenance_report.py`. Pipe only the returned JSON object to its `write` command and target the canonical relative report path. The validator rejects partial shape, unknown/body/prose/path fields, unbounded reads, invalid identities, and malformed snapshot identity before writing atomically.
-3. Run the validator's `compact` command against the persisted report and return only that compact summary. Do not quote or restate findings in prose and do not expose the agent's private analysis.
+2. For any claimed `ok` or `partial` result, validate before persistence with `${CLAUDE_PLUGIN_ROOT}/scripts/wiki_maintenance_report.py`. Pipe only the returned JSON object to its `write` command, target the canonical relative report path, and pass the original `asOf`, `identityLimit`, and `noteReadLimit` as the required `--expected-*` arguments. The validator rejects request drift, partial shape, unknown/body/prose/path fields, unbounded reads, unbound findings, overloaded identities outside the audited stable batch, and malformed snapshot identity before writing atomically.
+3. Return only the compact summary emitted by the successful `write` command. Do not run a second compaction pass, quote or restate findings in prose, expose the agent's private analysis, or load an older report.
 4. If validation, persistence, or compact rendering fails, classify the invocation as `broken`; do not treat the agent's object or an older report file as valid.
 
 Example execution-layer calls:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_maintenance_report.py write \
-  --output .grill-adapter/context/<feature-slug>/wiki-maintenance-audit.json
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_maintenance_report.py compact \
-  .grill-adapter/context/<feature-slug>/wiki-maintenance-audit.json \
-  --report-path .grill-adapter/context/<feature-slug>/wiki-maintenance-audit.json
+  --output .grill-adapter/context/<feature-slug>/wiki-maintenance-audit.json \
+  --expected-as-of <asOf> \
+  --expected-identity-limit <identityLimit> \
+  --expected-note-read-limit <noteReadLimit>
 ```
 
 The report is uncommitted, proposal-only, and non-authoritative. It cannot supply task identity, enter Carry/Bind, authorize a Note write, append a candidate, or start Git publishing. A user-approved durable follow-up must enter the existing `candidate-journal` and `update-wiki` Capture gates as a separate action.
