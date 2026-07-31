@@ -74,6 +74,7 @@ for required in (
     '"mode": "audit"',
     '"authoritative": false',
     '"snapshotIdentity"',
+    '"summaryIdentities"',
     '"wikiIds"',
     '"affectedWikiIdentities"',
     '"recommendedAction"',
@@ -106,7 +107,28 @@ valid = {
             ],
             "reason": "independent-contracts-share-one-note",
             "recommendedAction": "split-note",
-        }
+        },
+        {
+            "findingId": "audit-002",
+            "category": "freshness",
+            "severity": "warning",
+            "affectedWikiIdentities": [
+                {"sourceId": "project", "wikiId": "project/review-due"}
+            ],
+            "reason": "review-date-reached",
+            "recommendedAction": "review-note",
+        },
+        {
+            "findingId": "audit-003",
+            "category": "contradiction",
+            "severity": "warning",
+            "affectedWikiIdentities": [
+                {"sourceId": "project", "wikiId": "project/contradiction"},
+                {"sourceId": "shared", "wikiId": "shared/runtime"},
+            ],
+            "reason": "typed-contradiction-present",
+            "recommendedAction": "resolve-contradiction",
+        },
     ],
     "snapshotIdentity": {
         "summarySchemaVersion": 1,
@@ -123,6 +145,32 @@ valid = {
                 "bindingDigest": "c" * 64,
             },
         ],
+        "summaryIdentities": {
+            "active": [
+                {"sourceId": "project", "wikiId": "project/runtime"},
+                {"sourceId": "project", "wikiId": "project/build"},
+                {"sourceId": "project", "wikiId": "project/deploy"},
+                {"sourceId": "project", "wikiId": "project/operations"},
+                {"sourceId": "project", "wikiId": "project/testing"},
+                {"sourceId": "project", "wikiId": "project/review-due"},
+                {"sourceId": "project", "wikiId": "project/expired"},
+                {"sourceId": "project", "wikiId": "project/contradiction"},
+                {"sourceId": "shared", "wikiId": "shared/api"},
+                {"sourceId": "shared", "wikiId": "shared/review"},
+                {"sourceId": "shared", "wikiId": "shared/security"},
+                {"sourceId": "shared", "wikiId": "shared/runtime"},
+            ],
+            "reviewDue": [
+                {"sourceId": "project", "wikiId": "project/review-due"}
+            ],
+            "expired": [
+                {"sourceId": "project", "wikiId": "project/expired"}
+            ],
+            "contradictory": [
+                {"sourceId": "project", "wikiId": "project/contradiction"},
+                {"sourceId": "shared", "wikiId": "shared/runtime"},
+            ],
+        },
         "auditedNoteSnapshots": [
             {
                 "sourceId": "project",
@@ -174,8 +222,8 @@ assert json.loads(compact.stdout) == {
     "status": "partial",
     "mode": "audit",
     "reportPath": ".grill-adapter/context/maintenance/wiki-maintenance-audit.json",
-    "counts": {"sources": 2, "noteBodiesRead": 8, "findings": 1},
-    "findingCounts": {"overloaded-note": 1},
+    "counts": {"sources": 2, "noteBodiesRead": 8, "findings": 3},
+    "findingCounts": {"contradiction": 1, "freshness": 1, "overloaded-note": 1},
     "caveats": ["note-read-limit-reached"],
 }
 
@@ -219,6 +267,40 @@ unread_overloaded_finding["findings"][0]["affectedWikiIdentities"] = [
     {"sourceId": "project", "wikiId": "project/not-read"}
 ]
 invalid_reports.append(unread_overloaded_finding)
+
+ungrounded_freshness_finding = copy.deepcopy(valid)
+ungrounded_freshness_finding["findings"] = [
+    {
+        "findingId": "audit-002",
+        "category": "freshness",
+        "severity": "warning",
+        "affectedWikiIdentities": [
+            {"sourceId": "project", "wikiId": "project/not-in-summary"}
+        ],
+        "reason": "review-date-reached",
+        "recommendedAction": "review-note",
+    }
+]
+invalid_reports.append(ungrounded_freshness_finding)
+
+ungrounded_contradiction_finding = copy.deepcopy(valid)
+ungrounded_contradiction_finding["findings"] = [
+    {
+        "findingId": "audit-003",
+        "category": "contradiction",
+        "severity": "warning",
+        "affectedWikiIdentities": [
+            {"sourceId": "project", "wikiId": "project/not-in-summary"}
+        ],
+        "reason": "typed-contradiction-present",
+        "recommendedAction": "resolve-contradiction",
+    }
+]
+invalid_reports.append(ungrounded_contradiction_finding)
+
+incomplete_summary_identities = copy.deepcopy(valid)
+incomplete_summary_identities["snapshotIdentity"]["summaryIdentities"]["active"].pop()
+invalid_reports.append(incomplete_summary_identities)
 
 for index, report in enumerate(invalid_reports):
     path = sandbox / f"invalid-{index}.json"

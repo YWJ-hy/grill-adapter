@@ -51,6 +51,38 @@
         "bindingDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       }
     ],
+    "summaryIdentities": {
+      "active": [
+        {"sourceId": "example-project", "wikiId": "example/runtime-policy"},
+        {"sourceId": "example-project", "wikiId": "example/deployment"},
+        {"sourceId": "example-project", "wikiId": "example/build"},
+        {"sourceId": "example-project", "wikiId": "example/testing"},
+        {"sourceId": "example-project", "wikiId": "example/operations"},
+        {"sourceId": "example-project", "wikiId": "example/security"},
+        {"sourceId": "example-project", "wikiId": "example/review"},
+        {"sourceId": "example-project", "wikiId": "example/api"},
+        {"sourceId": "example-project", "wikiId": "example/storage"},
+        {"sourceId": "example-project", "wikiId": "example/observability"},
+        {"sourceId": "example-project", "wikiId": "example/recovery"},
+        {"sourceId": "example-project", "wikiId": "example/release"},
+        {"sourceId": "example-project", "wikiId": "example/review-due"},
+        {"sourceId": "example-project", "wikiId": "example/expired"},
+        {"sourceId": "example-project", "wikiId": "example/contradiction"},
+        {"sourceId": "example-project", "wikiId": "example/ownership"},
+        {"sourceId": "example-project", "wikiId": "example/migration"},
+        {"sourceId": "example-project", "wikiId": "example/compatibility"}
+      ],
+      "reviewDue": [
+        {"sourceId": "example-project", "wikiId": "example/runtime-policy"},
+        {"sourceId": "example-project", "wikiId": "example/review-due"}
+      ],
+      "expired": [
+        {"sourceId": "example-project", "wikiId": "example/expired"}
+      ],
+      "contradictory": [
+        {"sourceId": "example-project", "wikiId": "example/contradiction"}
+      ]
+    },
     "auditedNoteSnapshots": [
       {
         "sourceId": "example-project",

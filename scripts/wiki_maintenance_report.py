@@ -170,7 +170,7 @@ def validate_report(value: Any, expected: AuditRequest | None = None) -> dict[st
     if not isinstance(findings, list) or len(findings) > identity_limit:
         fail('findings')
     finding_ids: set[str] = set()
-    finding_identities: list[tuple[str, set[tuple[str, str]]]] = []
+    finding_identities: list[tuple[str, str, set[tuple[str, str]]]] = []
     total_affected = 0
     for index, raw_finding in enumerate(findings):
         field = f'findings[{index}]'
@@ -198,7 +198,7 @@ def validate_report(value: Any, expected: AuditRequest | None = None) -> dict[st
             f'{field}.recommendedAction',
         )
         allowed_reasons, expected_action = FINDING_CONTRACTS[category]
-        enum(finding['reason'], allowed_reasons, f'{field}.reason')
+        reason = enum(finding['reason'], allowed_reasons, f'{field}.reason')
         if recommended_action != expected_action:
             fail(f'{field}.recommendedAction')
         identities = finding['affectedWikiIdentities']
@@ -213,14 +213,20 @@ def validate_report(value: Any, expected: AuditRequest | None = None) -> dict[st
             if key in seen_identities:
                 fail(f'{field}.affectedWikiIdentities')
             seen_identities.add(key)
-        finding_identities.append((category, seen_identities))
+        finding_identities.append((category, reason, seen_identities))
         total_affected += len(identities)
     if total_affected > identity_limit:
         fail('affected Wiki identity limit')
 
     snapshot = exact_keys(
         report['snapshotIdentity'],
-        {'summarySchemaVersion', 'asOf', 'bindings', 'auditedNoteSnapshots'},
+        {
+            'summarySchemaVersion',
+            'asOf',
+            'bindings',
+            'summaryIdentities',
+            'auditedNoteSnapshots',
+        },
         'snapshotIdentity',
     )
     if snapshot['summarySchemaVersion'] != 1 or timestamp(snapshot['asOf'], 'snapshotIdentity.asOf') != as_of:
@@ -240,6 +246,36 @@ def validate_report(value: Any, expected: AuditRequest | None = None) -> dict[st
         digest = text(binding['bindingDigest'], f'{field}.bindingDigest', 64)
         if not DIGEST.fullmatch(digest):
             fail(f'{field}.bindingDigest')
+
+    raw_summary_identities = exact_keys(
+        snapshot['summaryIdentities'],
+        {'active', 'reviewDue', 'expired', 'contradictory'},
+        'snapshotIdentity.summaryIdentities',
+    )
+    summary_count_fields = {
+        'active': 'activeNotes',
+        'reviewDue': 'reviewDueNotes',
+        'expired': 'expiredNotes',
+        'contradictory': 'contradictoryNotes',
+    }
+    summary_identities: dict[str, set[tuple[str, str]]] = {}
+    summary_truncated = False
+    for category, count_field in summary_count_fields.items():
+        field = f'snapshotIdentity.summaryIdentities.{category}'
+        values = raw_summary_identities[category]
+        expected_count = min(scanned[count_field], identity_limit)
+        summary_truncated = summary_truncated or scanned[count_field] > identity_limit
+        if not isinstance(values, list) or len(values) != expected_count:
+            fail(field)
+        identities: set[tuple[str, str]] = set()
+        for identity_index, raw_identity in enumerate(values):
+            identity = validate_identity(raw_identity, f'{field}[{identity_index}]')
+            key = (identity['sourceId'], identity['wikiId'])
+            if key[0] not in seen_sources or key in identities:
+                fail(f'{field}[{identity_index}]')
+            identities.add(key)
+        summary_identities[category] = identities
+
     audited_snapshots = snapshot['auditedNoteSnapshots']
     if not isinstance(audited_snapshots, list) or len(audited_snapshots) > len(bindings):
         fail('snapshotIdentity.auditedNoteSnapshots')
@@ -275,10 +311,22 @@ def validate_report(value: Any, expected: AuditRequest | None = None) -> dict[st
             fail(f'{field}.snapshotHash')
     if audited_note_count != note_bodies_read:
         fail('snapshotIdentity audited Note count')
-    for category, identities in finding_identities:
+    if not audited_identities <= summary_identities['active']:
+        fail('audited active identity')
+    if audited_identities & summary_identities['expired']:
+        fail('audited expired identity')
+    for category, reason, identities in finding_identities:
         if any(source_id not in seen_sources for source_id, _ in identities):
             fail('finding binding identity')
-        if category == 'overloaded-note' and not identities <= audited_identities:
+        if category == 'freshness':
+            summary_category = (
+                'reviewDue' if reason == 'review-date-reached' else 'expired'
+            )
+            if not identities <= summary_identities[summary_category]:
+                fail('freshness finding summary identity')
+        elif category == 'contradiction' and not identities <= summary_identities['contradictory']:
+            fail('contradiction finding summary identity')
+        elif category == 'overloaded-note' and not identities <= audited_identities:
             fail('overloaded finding audit identity')
 
     caveats = report['caveats']
@@ -292,6 +340,8 @@ def validate_report(value: Any, expected: AuditRequest | None = None) -> dict[st
         seen_caveats.add(code)
     if report['status'] == 'partial' and not caveats:
         fail('partial caveats')
+    if summary_truncated and 'identity-limit-reached' not in seen_caveats:
+        fail('summary identity limit caveat')
     return report
 
 
