@@ -40,6 +40,13 @@ function optionalStringField(request: Record<string, unknown>, field: string): s
   return value;
 }
 
+function optionalNumberField(request: Record<string, unknown>, field: string): number | undefined {
+  const value = request[field];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number') throw new Error(`${field} must be a number`);
+  return value;
+}
+
 function parseCliArguments(argv: string[]): { args: string[]; configPath?: string } {
   const args: string[] = [];
   let configPath: string | undefined;
@@ -290,6 +297,8 @@ async function main(): Promise<void> {
         query: request.query,
         sourceId,
         pathPrefix: optionalStringField(request, 'pathPrefix'),
+        limit: optionalNumberField(request, 'limit'),
+        cursor: optionalStringField(request, 'cursor'),
         publishFeatureSlug: typeof request.publishFeatureSlug === 'string' ? request.publishFeatureSlug : undefined,
       }))}\n`);
       return;

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import type { AtomicNote } from './note.js';
+import type { AtomicNote, AtomicNoteMetadata } from './note.js';
 
 export type SkillAvailability = {
   available: boolean;
@@ -74,7 +74,7 @@ function skillFrontmatter(skillPath: string): Record<string, string> {
 }
 
 export function skillCardAvailability(
-  note: AtomicNote,
+  note: AtomicNote | AtomicNoteMetadata,
   projectDir: string,
   context: SkillValidationContext,
 ): SkillAvailability {

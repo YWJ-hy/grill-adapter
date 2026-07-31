@@ -40,7 +40,7 @@ function note(wikiId: string, summary: string, options: {
   return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: ${type}\nstatus: ${options.status ?? 'active'}\nagent_visible: ${options.agentVisible ?? true}\nsummary: ${summary}\n${strength}${dependsOn}${skill}---\n\n# ${wikiId}\n\nRule body.\n`;
 }
 
-function fixture() {
+function fixture(options: { duplicateSkillActive?: boolean; extraNoteCount?: number } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'obsidian-retrieval-'));
   createdDirectories.push(root);
   const projectDir = path.join(root, 'project');
@@ -89,9 +89,21 @@ function fixture() {
     skill: { ...matchingSkill, name: 'missing-runtime' },
   }), 'utf8');
   writeFileSync(path.join(sourceRoot, 'DuplicateSkill.md'), note('project/example/duplicate-skill', 'Archived duplicate Skill Card', {
-    status: 'archived',
+    status: options.duplicateSkillActive ? 'active' : 'archived',
     skill: matchingSkill,
   }), 'utf8');
+  const bulkPaths: string[] = [];
+  for (let index = 0; index < (options.extraNoteCount ?? 0); index += 1) {
+    const name = `Note-${String(index).padStart(3, '0')}.md`;
+    const vaultPath = `Projects/example/bulk/${name}`;
+    bulkPaths.push(vaultPath);
+    mkdirSync(path.join(sourceRoot, 'bulk'), { recursive: true });
+    writeFileSync(
+      path.join(sourceRoot, 'bulk', name),
+      note(`project/example/bulk-${String(index).padStart(3, '0')}`, `Bulk note ${index}`),
+      'utf8',
+    );
+  }
   mkdirSync(path.join(vaultRoot, 'Projects', 'other'), { recursive: true });
   writeFileSync(path.join(vaultRoot, 'Projects', 'other', 'Other.md'), note('project/other/private', 'Other project note'), 'utf8');
   execFileSync('git', ['init', '--initial-branch=main', vaultRoot]);
@@ -102,16 +114,7 @@ function fixture() {
   execFileSync('git', ['-C', vaultRoot, 'add', '.']);
   execFileSync('git', ['-C', vaultRoot, 'commit', '-m', 'fixture']);
   execFileSync('git', ['-C', vaultRoot, 'push', '--set-upstream', 'origin', 'main']);
-  writeFileSync(obsidianScript, `#!/usr/bin/env node
-const fs = require('node:fs');
-const path = require('node:path');
-const args = process.argv.slice(2);
-const vaultRoot = process.env.FAKE_OBSIDIAN_VAULT_ROOT;
-if (process.env.FAKE_OBSIDIAN_CALLS) fs.appendFileSync(process.env.FAKE_OBSIDIAN_CALLS, args.join(' ') + '\\n');
-if (args[0] === 'vaults') process.stdout.write('Knowledge\\n');
-else if (args.includes('search')) {
-  if (process.env.FAKE_OBSIDIAN_NO_MATCHES === 'true') process.stdout.write('No matches found.\\n');
-  else process.stdout.write(JSON.stringify([
+  const searchPaths = [
     'Projects/example/Visible.md',
     'Projects/example/Dependency.md',
     'Projects/example/Transitive.md',
@@ -124,7 +127,18 @@ else if (args.includes('search')) {
     'Projects/example/MissingSkill.md',
     'Projects/example/DuplicateSkill.md',
     'Projects/other/Other.md',
-  ]));
+    ...bulkPaths,
+  ];
+  writeFileSync(obsidianScript, `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const args = process.argv.slice(2);
+const vaultRoot = process.env.FAKE_OBSIDIAN_VAULT_ROOT;
+if (process.env.FAKE_OBSIDIAN_CALLS) fs.appendFileSync(process.env.FAKE_OBSIDIAN_CALLS, args.join(' ') + '\\n');
+if (args[0] === 'vaults') process.stdout.write('Knowledge\\n');
+else if (args.includes('search')) {
+  if (process.env.FAKE_OBSIDIAN_NO_MATCHES === 'true') process.stdout.write('No matches found.\\n');
+  else process.stdout.write(JSON.stringify(${JSON.stringify(searchPaths)}));
 }
 else if (args.includes('read')) {
   const notePath = args.find((arg) => arg.startsWith('path='))?.slice('path='.length);
@@ -176,7 +190,102 @@ describe('Obsidian Wiki retrieval', () => {
     const { env } = fixture();
 
     expect(searchTool({ query: 'missing' }, { ...env, FAKE_OBSIDIAN_NO_MATCHES: 'true' }))
-      .toEqual({ notes: [] });
+      .toEqual({
+        notes: [],
+        page: {
+          limit: 20,
+          scannedCount: 0,
+          returnedCount: 0,
+          truncated: false,
+        },
+      });
+  });
+
+  it('bounds search body reads and continues in deterministic path order', () => {
+    const { env } = fixture({ extraNoteCount: 120 });
+    const callsPath = path.join(tmpdir(), `obsidian-search-calls-${process.pid}-${createdDirectories.length}`);
+    const measuredEnv = { ...env, FAKE_OBSIDIAN_CALLS: callsPath };
+
+    const first = searchTool({
+      query: 'bulk',
+      sourceId: 'project',
+      pathPrefix: 'bulk',
+      limit: 7,
+    }, measuredEnv);
+    expect(first.notes.map((entry) => entry.path)).toEqual(
+      Array.from({ length: 7 }, (_, index) => `Projects/example/bulk/Note-${String(index).padStart(3, '0')}.md`),
+    );
+    expect(first.page).toMatchObject({
+      limit: 7,
+      scannedCount: 7,
+      returnedCount: 7,
+      truncated: true,
+      nextCursor: expect.any(String),
+    });
+
+    const second = searchTool({
+      query: 'bulk',
+      sourceId: 'project',
+      pathPrefix: 'bulk',
+      limit: 7,
+      cursor: first.page.nextCursor,
+    }, measuredEnv);
+    expect(second.notes.map((entry) => entry.path)).toEqual(
+      Array.from({ length: 7 }, (_, index) => `Projects/example/bulk/Note-${String(index + 7).padStart(3, '0')}.md`),
+    );
+    expect(second.page).toMatchObject({
+      limit: 7,
+      scannedCount: 7,
+      returnedCount: 7,
+      truncated: true,
+      nextCursor: expect.any(String),
+    });
+
+    const calls = readFileSync(callsPath, 'utf8').split(/\r?\n/).filter(Boolean);
+    expect(calls.filter((line) => line.includes(' read '))).toHaveLength(14);
+    expect(() => searchTool({ query: 'bulk', limit: 0 }, env)).toThrow(/between 1 and 50/);
+    expect(() => searchTool({ query: 'bulk', limit: 51 }, env)).toThrow(/between 1 and 50/);
+    expect(() => searchTool({ query: 'bulk', cursor: 'not-a-cursor' }, env)).toThrow(/cursor/i);
+    const tamperedCursor = `${first.page.nextCursor!.slice(0, -1)}${first.page.nextCursor!.endsWith('a') ? 'b' : 'a'}`;
+    expect(() => searchTool({
+      query: 'bulk',
+      sourceId: 'project',
+      pathPrefix: 'bulk',
+      cursor: tamperedCursor,
+    }, env)).toThrow(/cursor/i);
+    expect(() => searchTool({
+      query: 'different',
+      sourceId: 'project',
+      pathPrefix: 'bulk',
+      cursor: first.page.nextCursor,
+    }, env)).toThrow(/cursor.*scope/i);
+    rmSync(callsPath, { force: true });
+  });
+
+  it('rejects duplicate active wiki IDs even when they would land on different pages', () => {
+    const { env, vaultRoot } = fixture({ extraNoteCount: 60 });
+    const duplicatePath = path.join(
+      vaultRoot,
+      'Projects',
+      'example',
+      'bulk',
+      'Note-055.md',
+    );
+    writeFileSync(
+      duplicatePath,
+      note('project/example/bulk-000', 'Duplicate bulk note'),
+      'utf8',
+    );
+    execFileSync('git', ['-C', vaultRoot, 'add', duplicatePath]);
+    execFileSync('git', ['-C', vaultRoot, 'commit', '-m', 'duplicate wiki id']);
+    execFileSync('git', ['-C', vaultRoot, 'push', 'origin', 'main']);
+
+    expect(() => searchTool({
+      query: 'bulk',
+      sourceId: 'project',
+      pathPrefix: 'bulk',
+      limit: 10,
+    }, env)).toThrow(/Duplicate wiki_id/);
   });
 
   it('searches only active agent-visible Notes under readable bound Sources', () => {
@@ -260,6 +369,73 @@ describe('Obsidian Wiki retrieval', () => {
       .toThrow(/between 1 and 50/);
   });
 
+  it('paginates a large catalog from metadata without Obsidian body reads', () => {
+    const { env } = fixture({ extraNoteCount: 120 });
+    const callsPath = path.join(tmpdir(), `obsidian-catalog-calls-${process.pid}-${createdDirectories.length}`);
+    writeFileSync(callsPath, '', 'utf8');
+    const measuredEnv = { ...env, FAKE_OBSIDIAN_CALLS: callsPath };
+
+    const first = catalogTool({ sourceId: 'project', pathPrefix: 'bulk', limit: 11 }, measuredEnv);
+    expect(first.entries).toHaveLength(11);
+    expect(first.page).toMatchObject({
+      limit: 11,
+      returnedCount: 11,
+      truncated: true,
+      nextCursor: expect.any(String),
+    });
+    expect(first.entries.every((entry) => !('content' in entry) && !('contentHash' in entry))).toBe(true);
+
+    const second = catalogTool({
+      sourceId: 'project',
+      pathPrefix: 'bulk',
+      limit: 11,
+      cursor: first.page.nextCursor,
+    }, measuredEnv);
+    expect(second.entries).toHaveLength(11);
+    expect(second.entries[0]).not.toEqual(first.entries[0]);
+    expect(second.page).toMatchObject({ limit: 11, returnedCount: 11, truncated: true });
+
+    expect(readFileSync(callsPath, 'utf8')).not.toContain(' read ');
+    expect(() => catalogTool({
+      sourceId: 'project',
+      pathPrefix: 'guides',
+      cursor: first.page.nextCursor,
+    }, env)).toThrow(/cursor.*scope/i);
+    rmSync(callsPath, { force: true });
+  });
+
+  it('rebuilds catalog metadata when the bound Git revision changes', () => {
+    const { env, vaultRoot } = fixture();
+    const firstPage = catalogTool({
+      sourceId: 'project',
+      pathPrefix: 'guides',
+      limit: 1,
+    }, env);
+    expect(catalogTool({ sourceId: 'project', pathPrefix: 'guides' }, env).entries)
+      .not.toContainEqual(expect.objectContaining({ relativePath: 'guides/New.md' }));
+
+    writeFileSync(
+      path.join(vaultRoot, 'Projects', 'example', 'guides', 'New.md'),
+      note('project/example/guides/new', 'New guide'),
+      'utf8',
+    );
+    execFileSync('git', ['-C', vaultRoot, 'add', 'Projects/example/guides/New.md']);
+    execFileSync('git', ['-C', vaultRoot, 'commit', '-m', 'add guide']);
+    execFileSync('git', ['-C', vaultRoot, 'push', 'origin', 'main']);
+
+    expect(catalogTool({ sourceId: 'project', pathPrefix: 'guides' }, env).entries)
+      .toContainEqual(expect.objectContaining({
+        kind: 'note',
+        relativePath: 'guides/New.md',
+        wikiId: 'project/example/guides/new',
+      }));
+    expect(() => catalogTool({
+      sourceId: 'project',
+      pathPrefix: 'guides',
+      cursor: firstPage.page.nextCursor,
+    }, env)).toThrow(/cursor.*scope/i);
+  });
+
   it('discovers only base-synchronized Skill Cards whose local name/version/hash are available', () => {
     const { env } = fixture();
     const result = searchTool({ query: 'skill' }, env);
@@ -296,14 +472,44 @@ describe('Obsidian Wiki retrieval', () => {
   });
 
   it('fails closed when one executable pack has multiple active Skill Cards', () => {
-    const { env } = fixture();
-    const duplicateEnv = { ...env, FAKE_OBSIDIAN_DUPLICATE_ACTIVE: 'true' };
+    const { env } = fixture({ duplicateSkillActive: true });
 
-    expect(() => searchTool({ query: 'skill' }, duplicateEnv))
+    expect(() => searchTool({ query: 'skill' }, env))
       .toThrow(/resolved 2 active Cards/);
-    expect(() => readNotesByWikiIdsTool({ wikiIds: ['project/example/review-skill'] }, duplicateEnv))
+    expect(() => catalogTool({ sourceId: 'project' }, env))
       .toThrow(/resolved 2 active Cards/);
-    expect(() => graphNeighborsTool({ wikiIds: ['project/example/review-skill'] }, duplicateEnv))
+    expect(() => readNotesByWikiIdsTool({ wikiIds: ['project/example/review-skill'] }, env))
+      .toThrow(/resolved 2 active Cards/);
+    expect(() => graphNeighborsTool({ wikiIds: ['project/example/review-skill'] }, env))
+      .toThrow(/resolved 2 active Cards/);
+  });
+
+  it('fails closed for duplicate active Skill Cards before availability filtering', () => {
+    const { env, vaultRoot } = fixture();
+    const duplicatePath = path.join(
+      vaultRoot,
+      'Projects',
+      'example',
+      'DuplicateMissingSkill.md',
+    );
+    writeFileSync(duplicatePath, note(
+      'project/example/duplicate-missing-skill',
+      'Duplicate missing Skill Card',
+      {
+        skill: {
+          name: 'missing-runtime',
+          version: '1.0.0',
+          contractHash: 'sha256:021891d0e3ddf819b18ba677a4bb740c814b363d02b0b2f1131aee9b1c155c02',
+          roles: ['reviewer'],
+          triggers: ['runtime review'],
+        },
+      },
+    ), 'utf8');
+    execFileSync('git', ['-C', vaultRoot, 'add', duplicatePath]);
+    execFileSync('git', ['-C', vaultRoot, 'commit', '-m', 'duplicate unavailable skill']);
+    execFileSync('git', ['-C', vaultRoot, 'push', 'origin', 'main']);
+
+    expect(() => catalogTool({ sourceId: 'project' }, env))
       .toThrow(/resolved 2 active Cards/);
   });
 
@@ -351,6 +557,17 @@ describe('Obsidian Wiki retrieval', () => {
       relativePath: 'guides/Overview.md',
     }));
     expect(JSON.stringify(result)).not.toContain('Rule body.');
+  });
+
+  it('rejects non-numeric search limits through the built JSON CLI seam', () => {
+    const { env } = fixture();
+    const bundle = path.resolve(import.meta.dirname, '..', 'dist', 'index.js');
+
+    expect(() => execFileSync('node', [bundle, 'search'], {
+      encoding: 'utf8',
+      input: JSON.stringify({ query: 'note', limit: '7' }),
+      env: { ...process.env, ...env },
+    })).toThrow(/limit must be a number/);
   });
 
   it('batch reads bound Notes with stable content and snapshot hashes', () => {

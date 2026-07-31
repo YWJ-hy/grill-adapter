@@ -1,6 +1,20 @@
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import {
+  closeSync,
+  lstatSync,
+  openSync,
+  readSync,
+  realpathSync,
+} from 'node:fs';
 import type { ResolvedBinding } from './bindings.js';
-import { parseAtomicNote, type AtomicNote } from './note.js';
+import {
+  parseAtomicNote,
+  parseAtomicNoteMetadata,
+  type AtomicNote,
+  type AtomicNoteMetadata,
+} from './note.js';
 import { readNote, searchNotes } from './obsidian-cli.js';
 
 export type RetrievedNote = AtomicNote & {
@@ -14,6 +28,26 @@ export type BoundNoteScope = {
   sourceId?: string;
   pathPrefix?: string;
 };
+
+export type RetrievedNoteMetadata = AtomicNoteMetadata & {
+  sourceId: string;
+  role: 'project' | 'shared';
+  path: string;
+  bindingDigest: string;
+};
+
+export type BoundSearchCandidate = {
+  binding: ResolvedBinding;
+  notePath: string;
+  sortKey: string;
+};
+
+const FRONTMATTER_CHUNK_BYTES = 4096;
+const MAX_FRONTMATTER_BYTES = 64 * 1024;
+const metadataCache = new Map<string, {
+  revision: string;
+  notes: RetrievedNoteMetadata[];
+}>();
 
 export function normalizeVaultPath(value: string): string {
   if (path.posix.isAbsolute(value)) throw new Error('Obsidian Note path must be Vault-relative');
@@ -101,6 +135,20 @@ function retrieved(binding: ResolvedBinding, notePath: string, note: AtomicNote)
   };
 }
 
+function retrievedMetadata(
+  binding: ResolvedBinding,
+  notePath: string,
+  note: AtomicNoteMetadata,
+): RetrievedNoteMetadata {
+  return {
+    ...note,
+    sourceId: binding.sourceId,
+    role: binding.role,
+    path: notePath,
+    bindingDigest: binding.bindingDigest,
+  };
+}
+
 function readBoundNoteFromBinding(notePath: string, binding: ResolvedBinding, env: NodeJS.ProcessEnv, requireActiveAndVisible = true): RetrievedNote {
   const normalizedPath = normalizeVaultPath(notePath);
   if (binding.effectiveReadPolicy !== 'allow') {
@@ -170,12 +218,33 @@ export function searchBoundNotes(
   requireActiveAndVisible = true,
   scope: BoundNoteScope = {},
 ): RetrievedNote[] {
-  const readableBindings = readableBindingsForScope(bindings, scope);
+  const candidates = searchBoundNoteCandidates(query, bindings, env, scope);
   const notes: RetrievedNote[] = [];
-  const seenPaths = new Set<string>();
   const seenIds = new Set<string>();
+  for (const { binding, notePath } of candidates) {
+    const note = readBoundNote(notePath, [binding], env, false);
+    if (requireActiveAndVisible && (note.status !== 'active' || !note.agentVisible)) continue;
+    if (seenIds.has(note.wikiId)) throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
+    seenIds.add(note.wikiId);
+    notes.push(note);
+  }
+  return notes;
+}
+
+export function searchBoundNoteCandidates(
+  query: string,
+  bindings: ResolvedBinding[],
+  env: NodeJS.ProcessEnv,
+  scope: BoundNoteScope = {},
+): BoundSearchCandidate[] {
+  const readableBindings = readableBindingsForScope(bindings, scope);
+  const candidates: BoundSearchCandidate[] = [];
+  const seenPaths = new Set<string>();
   for (const binding of readableBindings) {
-    const queryPath = sourcePathPrefix(binding, scope.sourceId === undefined ? undefined : scope.pathPrefix);
+    const queryPath = sourcePathPrefix(
+      binding,
+      scope.sourceId === undefined ? undefined : scope.pathPrefix,
+    );
     const scopedQuery = `${query} path:"${queryPath}"`;
     for (const entry of searchNotes(binding.vaultSelector, scopedQuery, env)) {
       const notePath = normalizeVaultPath(entry.path);
@@ -184,14 +253,150 @@ export function searchBoundNotes(
       seenPaths.add(pathKey);
       if (!noteIsWithinBinding(notePath, binding) || !noteIsWithinPathPrefix(notePath, queryPath)) continue;
       if (notePath === `${binding.root}/_meta` || notePath.startsWith(`${binding.root}/_meta/`)) continue;
-      const note = readBoundNote(notePath, [binding], env, false);
-      if (requireActiveAndVisible && (note.status !== 'active' || !note.agentVisible)) continue;
-      if (seenIds.has(note.wikiId)) throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
-      seenIds.add(note.wikiId);
-      notes.push(note);
+      candidates.push({
+        binding,
+        notePath,
+        sortKey: JSON.stringify([binding.sourceId, notePath, binding.bindingDigest]),
+      });
     }
   }
+  return candidates.sort((left, right) => (
+    left.sortKey < right.sortKey ? -1 : left.sortKey > right.sortKey ? 1 : 0
+  ));
+}
+
+export function assertUniqueActiveBoundSearchCandidateIds(
+  candidates: BoundSearchCandidate[],
+): void {
+  const seenIds = new Set<string>();
+  for (const { binding, notePath } of candidates) {
+    const absolute = path.resolve(binding.repository.worktreeRoot, ...notePath.split('/'));
+    if (!lstatSync(absolute).isFile()) {
+      throw new Error(`Obsidian search result is not a regular file: ${notePath}`);
+    }
+    const resolved = realpathSync(absolute);
+    if (!pathWithinRoot(resolved, binding.resolvedRoot)) {
+      throw new Error(`Obsidian search result escapes bound Source ${binding.sourceId}: ${notePath}`);
+    }
+    const note = parseAtomicNoteMetadata(frontmatterOnly(resolved), notePath);
+    if (note.status !== 'active' || !note.agentVisible) continue;
+    if (seenIds.has(note.wikiId)) {
+      throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
+    }
+    seenIds.add(note.wikiId);
+  }
+}
+
+function gitOutput(repositoryRoot: string, args: string[]): string {
+  return String(execFileSync('git', ['-C', repositoryRoot, ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }));
+}
+
+function frontmatterOnly(filePath: string): string {
+  const descriptor = openSync(filePath, 'r');
+  try {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    while (total < MAX_FRONTMATTER_BYTES) {
+      const chunk = Buffer.allocUnsafe(Math.min(FRONTMATTER_CHUNK_BYTES, MAX_FRONTMATTER_BYTES - total));
+      const count = readSync(descriptor, chunk, 0, chunk.length, null);
+      if (count === 0) break;
+      chunks.push(chunk.subarray(0, count));
+      total += count;
+      const text = Buffer.concat(chunks).toString('utf8').replaceAll('\r\n', '\n');
+      const closing = text.indexOf('\n---\n', 4);
+      if (closing !== -1) return text.slice(0, closing + 5);
+    }
+  } finally {
+    closeSync(descriptor);
+  }
+  throw new Error(`${filePath} frontmatter is not terminated within ${MAX_FRONTMATTER_BYTES} bytes`);
+}
+
+function pathWithinRoot(filePath: string, root: string): boolean {
+  const relative = path.relative(root, filePath);
+  return relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`));
+}
+
+export function boundNoteMetadataRevision(binding: ResolvedBinding): string {
+  const repositoryRoot = binding.repository.worktreeRoot;
+  const revision = gitOutput(repositoryRoot, ['rev-parse', 'HEAD']).trim();
+  const staged = gitOutput(
+    repositoryRoot,
+    ['diff', '--cached', '--raw', '-z', '--', `:(literal)${binding.root}`],
+  );
+  const stagedDigest = createHash('sha256').update(staged, 'utf8').digest('hex');
+  return `${revision}:index-sha256:${stagedDigest}`;
+}
+
+export function boundNoteMetadata(binding: ResolvedBinding): RetrievedNoteMetadata[] {
+  if (binding.effectiveReadPolicy !== 'allow') {
+    throw new Error(`Obsidian Wiki Source is not readable: ${binding.sourceId}`);
+  }
+  const key = `${binding.repository.worktreeRoot}\n${binding.bindingDigest}`;
+  const revision = boundNoteMetadataRevision(binding);
+  const cached = metadataCache.get(key);
+  if (cached?.revision === revision) return cached.notes;
+
+  const tracked = gitOutput(
+    binding.repository.worktreeRoot,
+    ['ls-files', '-z', '--', `:(literal)${binding.root}`],
+  ).split('\0').filter(Boolean);
+  const notes: RetrievedNoteMetadata[] = [];
+  const seenIds = new Set<string>();
+  for (const trackedPath of tracked) {
+    const notePath = normalizeVaultPath(trackedPath);
+    if (!notePath.endsWith('.md')) continue;
+    if (!noteIsWithinBinding(notePath, binding)) continue;
+    if (notePath === `${binding.root}/_meta` || notePath.startsWith(`${binding.root}/_meta/`)) continue;
+    const absolute = path.resolve(binding.repository.worktreeRoot, ...notePath.split('/'));
+    if (!lstatSync(absolute).isFile()) {
+      throw new Error(`Obsidian catalog entry is not a regular file: ${notePath}`);
+    }
+    const resolved = realpathSync(absolute);
+    if (!pathWithinRoot(resolved, binding.resolvedRoot)) {
+      throw new Error(`Obsidian catalog entry escapes bound Source ${binding.sourceId}: ${notePath}`);
+    }
+    const frontmatter = frontmatterOnly(resolved);
+    if (!/^wiki_schema:\s*grill-adapter\.obsidian-note\/v1\s*$/m.test(frontmatter)) continue;
+    const note = retrievedMetadata(binding, notePath, parseAtomicNoteMetadata(frontmatter, notePath));
+    if (seenIds.has(note.wikiId)) {
+      throw new Error(`Duplicate wiki_id in readable bound Source ${binding.sourceId}: ${note.wikiId}`);
+    }
+    seenIds.add(note.wikiId);
+    notes.push(note);
+  }
+  notes.sort((left, right) => (
+    left.path < right.path ? -1 : left.path > right.path ? 1 : 0
+  ));
+  metadataCache.set(key, { revision, notes });
   return notes;
+}
+
+export function assertUniqueBoundSkillCardMetadata(
+  note: Pick<RetrievedNoteMetadata, 'skillName' | 'wikiId' | 'path' | 'sourceId'>,
+  bindings: ResolvedBinding[],
+): void {
+  if (!note.skillName) return;
+  const matches = readableBindingsForScope(bindings)
+    .flatMap((binding) => boundNoteMetadata(binding))
+    .filter((candidate) => (
+      candidate.status === 'active'
+      && candidate.agentVisible
+      && candidate.skillName === note.skillName
+    ));
+  if (
+    matches.length !== 1
+    || matches[0].wikiId !== note.wikiId
+    || matches[0].path !== note.path
+    || matches[0].sourceId !== note.sourceId
+  ) {
+    throw new Error(
+      `Skill Card identity ${note.skillName} resolved ${matches.length} active Cards`,
+    );
+  }
 }
 
 export function matchingBoundSkillCards(

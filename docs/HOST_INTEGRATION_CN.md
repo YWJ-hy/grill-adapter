@@ -35,7 +35,7 @@ grill host 约定块默认保持静默，只有当前任务明确调用对应的
 |---|---|
 | `/grill-with-docs` | **Disclose**：`/grill-adapter:wiki-research`（phase brainstorm）披露相关 wiki |
 | `/to-spec` | source-truth **Verify**：`/grill-adapter:source-truth-check`（spec-pre） |
-| `/to-tickets` | **Disclose+Carry**：`/grill-adapter:wiki-research`（phase plan）选 bound Obsidian Notes/Skill Cards → `wiki_context_render.py --scaffold` 生成 schema-v6 → 编辑 `destination`（一次）→ `--finalize` → 用户批准后一次 `wiki_readiness.py freeze --all` 生成所有 task 的 implement/review Markdown；`/grill-adapter:source-truth-check`（plan-pre/plan-review） |
+| `/to-tickets` | **Disclose+Carry**：`/grill-adapter:wiki-research`（phase plan）以硬 limit + scope-bound cursor 浏览 frontmatter-only catalog / 搜索选定分支，再 stable-batch 全文复核入选的 bound Obsidian Notes/Skill Cards → `wiki_context_render.py --scaffold` 生成 schema-v6 → 编辑 `destination`（一次）→ `--finalize` → 用户批准后一次 `wiki_readiness.py freeze --all` 生成所有 task 的 implement/review Markdown；`/grill-adapter:source-truth-check`（plan-pre/plan-review） |
 | 全阶段 | **Journal**：`/grill-adapter:candidate-journal` 把 Wiki Note / Skill Card 候选作为事件追加到同一 feature journal，不写 Obsidian |
 | `/implement`（每 task） | **Readiness+Bind**：首次代码修改前 `/grill-adapter:wiki-readiness` 复用 formal context，或为 direct issue/manual 建单任务 roster 并 late Carry；`ready` 做 fingerprint preflight + 消费 `<taskId>.wiki-implement.md`；`no-relevant`/`disabled` 直接继续，`broken` 由用户选择停止或无 Wiki 继续 |
 | `/code-review`（启动 sub-agents 前） | **Reviewer Bind**：复用当前 task 的 readiness receipt；`ready` 消费同一批准快照生成的 `<taskId>.wiki-review.md` 给 Standards/Spec 两轴，其他状态、无法确定 task 或任何验证失败只产生非阻塞 caveat，不 late research、不阻止 review |

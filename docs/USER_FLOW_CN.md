@@ -116,7 +116,7 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
 
 这是 wiki 正式「入册」的阶段：从披露升级为**正式选择 + 固化进 sidecar**。
 
-1. 正式选择受绑定的 Obsidian atomic Note 和独立 Skill Card：研究员先以 `obsidian_wiki_catalog` 浏览受限目录，再在选中的 `sourceId` / `pathPrefix` 分支检索；每轮最多全文复核 8 个候选（规划最多两轮），关键词、目录或一跳图邻居都必须经正文语义判断才可入选。Card 只有在 merged/base-synchronized 且本地双运行时 pack 的 name/version/hash 可用时才由 MCP 标记 `discoverable`，选择结果把这组身份与不含正文的一行适用性理由写入 transient metadata-only selection：
+1. 正式选择受绑定的 Obsidian atomic Note 和独立 Skill Card：研究员先以 `obsidian_wiki_catalog` 浏览受限目录，每次显式给出硬 `limit`，必要时原样续传不透明 `page.nextCursor`；catalog 从已校验 bound Source 的 Git revision 缓存读取 frontmatter metadata，不调用 Obsidian 全文 read，也不返回 `contentHash`。随后只在选中的 `sourceId` / `pathPrefix` 分支检索，search 同样使用最大 50 的硬 `limit`、稳定 path 顺序、scope-bound cursor 与 `page.truncated`；每轮最多全文复核 8 个候选（规划最多两轮），关键词、目录或一跳图邻居都必须经正文语义判断才可入选。正式选中的 Note 仍通过 stable batch 全文 reread 计算 `contentHash` / `snapshotHash`。Card 只有在 merged/base-synchronized 且本地双运行时 pack 的 name/version/hash 可用时才由 MCP 标记 `discoverable`，选择结果把这组身份与不含正文的一行适用性理由写入 transient metadata-only selection：
 
    ```
    /wiki-research      # phase: plan

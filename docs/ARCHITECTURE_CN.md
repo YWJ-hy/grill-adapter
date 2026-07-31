@@ -35,7 +35,7 @@ grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 
 
 | 触点 | 机制 | 落到 grill |
 |---|---|---|
-| **Disclose** 选 wiki | 独立 `/grill-adapter:wiki-research` skill（驱动 `grill-adapter:wiki-researcher` agent）：先读 bound Source metadata catalog，再在选定分支检索并私下复核少量 Note body，任何 host 都能调 | grill-with-docs 质询期 |
+| **Disclose** 选 wiki | 独立 `/grill-adapter:wiki-research` skill（驱动 `grill-adapter:wiki-researcher` agent）：先用硬 limit + scope-bound cursor 读 frontmatter-only bound Source catalog，再在选定分支做稳定有界检索并私下复核少量 Note body，任何 host 都能调 | grill-with-docs 质询期 |
 | **Carry** 带约束 | schema-v6 `.grill-adapter/context/<feature-slug>/wiki-context.json` 保存 binding digest、atomic Note ID/path/hash/summary、已验证 Skill Card 的 name/version/contract hash/triggers/roles 与 ticket roster 指纹，绝不保存 Note body；锚点是 feature，不是 plan 文件；direct task 可由 readiness 在首次代码修改前 late Carry | to-tickets，或无 formal context 的 implement 入口 |
 | **Bind** 角色化 task contract | 规划确认后以一次 roster batch 生成同一批准快照的 `<taskId>.wiki-implement.md` 与 `<taskId>.wiki-review.md`；`wiki-readiness` 校验并消费对应 Markdown、在 receipt 中绑定文件 digest | implement 逐 task + code-review 两轴前 |
 | **Capture** 回写 | `/grill-adapter:update-wiki`（最终证据 reconciliation + related-claim 显式归并 + 语义门），其可选前置步经 `grill_context_to_candidates.py` 吃 grill CONTEXT.md/ADR 增量；ADR 只生成 project-only metadata projection candidate，Obsidian provider 经 proposal → loopback bridge CAS apply → receipt allowlist；Git/draft-PR publish 仅在用户显式请求时执行 | code-review 后 |
@@ -61,7 +61,7 @@ Readiness 不是第五个 Wiki 触点，而是 implement/review 对 Carry + Bind
 
 legacy Markdown Wiki 页被 `<!-- wiki-section:xxx summary="..." -->` 标记切成 section；section 间以 `[[page#section]]` **typed 边**（如 `depends-on`）互链。跨页根 `.graph.json`（section 边 + backlinks）是**派生物**，由 `wiki_migrate_helper.py --generate-indexes` 从 markdown 生成，供维护 + lint + MCP `graph-neighbors` + 执行期 1 跳闭包读。legacy/migration 维护时的渐进披露先读目录 `index.md` 与逐文档 `<stem>.index.md`，再选相关 section，不整树扫。
 
-正式 Obsidian runtime 不读取 legacy index：researcher 先通过受 binding 限制、分页的 `obsidian_wiki_catalog` 看 Source 相对目录和 Note 元数据，再只在相关 `sourceId` / `pathPrefix` 分支中检索。目录、关键词和一跳图关系只负责召回候选；正文只在 researcher 子 agent 内做有界语义复核，选择与 schema-v6 sidecar 仍只保存 metadata/hash，不保存 Note body。
+正式 Obsidian runtime 不读取 legacy index：researcher 先通过受 binding 限制、硬上限分页的 `obsidian_wiki_catalog` 看 Source 相对目录和 Note 元数据，再只在相关 `sourceId` / `pathPrefix` 分支中检索。catalog 由已验证 Git revision + binding digest 定位的 frontmatter metadata view 提供，branch pagination 不调用 Obsidian 全文 read，也不提供正文 hash；search 在任何 Note 呈现前完成 Source/path containment，并按稳定 path 顺序、最大 50 的 limit 与绑定 query/scope 的不透明 cursor 分页。目录、关键词和一跳图关系只负责召回候选；正文只在 researcher 子 agent 内做有界语义复核，最终入选 Note 仍经 stable batch reread 生成权威 `contentHash` / `snapshotHash`，selection 与 schema-v6 sidecar 只保存 metadata/hash，不保存 Note body。
 
 ## Obsidian Source（跨 repo 共享）
 

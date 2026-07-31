@@ -1,11 +1,30 @@
 import { resolveBindings } from '../bindings.js';
-import { assertUniqueBoundSkillCard, searchBoundNotes } from '../retrieval.js';
+import {
+  assertUniqueActiveBoundSearchCandidateIds,
+  assertUniqueBoundSkillCard,
+  assertUniqueBoundSkillCardMetadata,
+  boundNoteMetadataRevision,
+  normalizeSourceRelativePath,
+  readBoundNote,
+  readableBindingsForScope,
+  searchBoundNoteCandidates,
+  searchBoundNotes,
+} from '../retrieval.js';
 import { skillCardAvailability } from '../skill-card.js';
 import { publishBranchOptions } from '../publish.js';
 import type { BoundNoteScope } from '../retrieval.js';
+import {
+  boundedPageLimit,
+  cursorScope,
+  pageByKey,
+} from '../pagination.js';
 
 export type SearchOptions = BoundNoteScope & { publishFeatureSlug?: string };
-type SearchInput = SearchOptions & { query: string };
+type SearchInput = SearchOptions & {
+  query: string;
+  limit?: number;
+  cursor?: string;
+};
 
 export function searchResolution(input: SearchOptions, env: NodeJS.ProcessEnv) {
   const resolution = resolveBindings(env, process.cwd(), {
@@ -26,7 +45,10 @@ export function presentNotes(
   env: NodeJS.ProcessEnv,
   publishFeatureSlug?: string,
 ) {
-  for (const note of found) assertUniqueBoundSkillCard(note, resolution.bindings, env);
+  for (const note of found) {
+    if (publishFeatureSlug) assertUniqueBoundSkillCard(note, resolution.bindings, env);
+    else assertUniqueBoundSkillCardMetadata(note, resolution.bindings);
+  }
   return {
     notes: found
       .filter((note) => {
@@ -66,13 +88,63 @@ export function presentNotes(
 }
 
 export function searchTool(input: SearchInput, env: NodeJS.ProcessEnv = process.env) {
+  if (typeof input.query !== 'string' || !input.query.trim()) {
+    throw new Error('query must be a non-empty string');
+  }
   const resolution = searchResolution(input, env);
-  return presentNotes(
-    searchBoundNotes(input.query, resolution.bindings, env, true, input),
+  const limit = boundedPageLimit(input.limit, 20);
+  const normalizedPathPrefix = input.pathPrefix === undefined
+    ? undefined
+    : normalizeSourceRelativePath(input.pathPrefix);
+  const scope = cursorScope('obsidian-wiki-search', [
+    input.query,
+    input.sourceId ?? null,
+    normalizedPathPrefix ?? null,
+    input.publishFeatureSlug ?? null,
+    readableBindingsForScope(resolution.bindings, {
+      sourceId: input.sourceId,
+      pathPrefix: normalizedPathPrefix,
+    }).map((binding) => [
+      binding.bindingDigest,
+      boundNoteMetadataRevision(binding),
+    ]).sort(([left], [right]) => left.localeCompare(right)),
+  ]);
+  const candidates = searchBoundNoteCandidates(
+    input.query,
+    resolution.bindings,
+    env,
+    { sourceId: input.sourceId, pathPrefix: normalizedPathPrefix },
+  );
+  assertUniqueActiveBoundSearchCandidateIds(candidates);
+  const bounded = pageByKey(candidates, (candidate) => candidate.sortKey, {
+    kind: 'obsidian-wiki-search',
+    scope,
+    limit,
+    cursor: input.cursor,
+  });
+  const seenIds = new Set<string>();
+  const found = bounded.items.flatMap(({ binding, notePath }) => {
+    const note = readBoundNote(notePath, [binding], env, false);
+    if (note.status !== 'active' || !note.agentVisible) return [];
+    if (seenIds.has(note.wikiId)) {
+      throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
+    }
+    seenIds.add(note.wikiId);
+    return [note];
+  });
+  const presented = presentNotes(
+    found,
     resolution,
     env,
     input.publishFeatureSlug,
   );
+  return {
+    ...presented,
+    page: {
+      ...bounded.page,
+      returnedCount: presented.notes.length,
+    },
+  };
 }
 
 export function searchWikiIdsTool(

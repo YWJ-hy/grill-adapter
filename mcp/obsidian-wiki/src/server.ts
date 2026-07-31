@@ -36,6 +36,8 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
       query: z.string().min(1),
       sourceId: z.string().min(1).optional(),
       pathPrefix: z.string().optional(),
+      limit: z.number().int().min(1).max(50).optional(),
+      cursor: z.string().min(1).optional(),
     }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(searchTool(input, requestEnv(extra._meta))));
@@ -46,6 +48,7 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
       pathPrefix: z.string().optional(),
       offset: z.number().int().nonnegative().optional(),
       limit: z.number().int().min(1).max(50).optional(),
+      cursor: z.string().min(1).optional(),
     }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(catalogTool(input, requestEnv(extra._meta))));

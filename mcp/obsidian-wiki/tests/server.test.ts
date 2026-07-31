@@ -15,6 +15,21 @@ describe('Obsidian Wiki MCP server', () => {
 
       expect(tools.get('obsidian_wiki_catalog')).toMatchObject({
         annotations: { readOnlyHint: true, idempotentHint: true },
+        inputSchema: {
+          properties: {
+            limit: expect.any(Object),
+            cursor: expect.any(Object),
+          },
+        },
+      });
+      expect(tools.get('obsidian_wiki_search')).toMatchObject({
+        annotations: { readOnlyHint: true, idempotentHint: true },
+        inputSchema: {
+          properties: {
+            limit: expect.any(Object),
+            cursor: expect.any(Object),
+          },
+        },
       });
       expect(tools.get('obsidian_wiki_propose_note_change')).toMatchObject({
         annotations: { readOnlyHint: true, idempotentHint: true },

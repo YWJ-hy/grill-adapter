@@ -22725,6 +22725,15 @@ function sourcesTool(env = process.env) {
 
 // src/retrieval.ts
 import path4 from "node:path";
+import { execFileSync as execFileSync3 } from "node:child_process";
+import { createHash as createHash3 } from "node:crypto";
+import {
+  closeSync,
+  lstatSync as lstatSync2,
+  openSync,
+  readSync,
+  realpathSync as realpathSync2
+} from "node:fs";
 
 // src/note.ts
 import { createHash as createHash2 } from "node:crypto";
@@ -22804,7 +22813,7 @@ function canonicalContent(contents) {
 function contentHash(contents) {
   return `sha256:${createHash2("sha256").update(canonicalContent(contents), "utf8").digest("hex")}`;
 }
-function parseAtomicNote(contents, description = "Note") {
+function parseAtomicNoteMetadata(contents, description = "Note") {
   const raw = parseFrontmatter(contents);
   const parsed = NoteSchema.safeParse(raw);
   if (!parsed.success) {
@@ -22857,7 +22866,12 @@ function parseAtomicNote(contents, description = "Note") {
       seeAlso: note.see_also ?? [],
       supersedes: note.supersedes ?? [],
       contradicts: note.contradicts ?? []
-    },
+    }
+  };
+}
+function parseAtomicNote(contents, description = "Note") {
+  return {
+    ...parseAtomicNoteMetadata(contents, description),
     content: canonicalContent(contents),
     contentHash: contentHash(contents)
   };
@@ -22906,6 +22920,9 @@ function readNote(vaultSelector, notePath, env) {
 }
 
 // src/retrieval.ts
+var FRONTMATTER_CHUNK_BYTES = 4096;
+var MAX_FRONTMATTER_BYTES = 64 * 1024;
+var metadataCache = /* @__PURE__ */ new Map();
 function normalizeVaultPath(value) {
   if (path4.posix.isAbsolute(value)) throw new Error("Obsidian Note path must be Vault-relative");
   const normalized = path4.posix.normalize(value.replaceAll("\\", "/"));
@@ -22979,6 +22996,15 @@ function retrieved(binding, notePath, note) {
     bindingDigest: binding.bindingDigest
   };
 }
+function retrievedMetadata(binding, notePath, note) {
+  return {
+    ...note,
+    sourceId: binding.sourceId,
+    role: binding.role,
+    path: notePath,
+    bindingDigest: binding.bindingDigest
+  };
+}
 function readBoundNoteFromBinding(notePath, binding, env, requireActiveAndVisible = true) {
   const normalizedPath = normalizeVaultPath(notePath);
   if (binding.effectiveReadPolicy !== "allow") {
@@ -23035,12 +23061,27 @@ function readBoundNotesByWikiIds(wikiIds, bindings, env) {
   return stableBatchRead(resolved, env);
 }
 function searchBoundNotes(query, bindings, env, requireActiveAndVisible = true, scope = {}) {
-  const readableBindings = readableBindingsForScope(bindings, scope);
+  const candidates = searchBoundNoteCandidates(query, bindings, env, scope);
   const notes = [];
-  const seenPaths = /* @__PURE__ */ new Set();
   const seenIds = /* @__PURE__ */ new Set();
+  for (const { binding, notePath } of candidates) {
+    const note = readBoundNote(notePath, [binding], env, false);
+    if (requireActiveAndVisible && (note.status !== "active" || !note.agentVisible)) continue;
+    if (seenIds.has(note.wikiId)) throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
+    seenIds.add(note.wikiId);
+    notes.push(note);
+  }
+  return notes;
+}
+function searchBoundNoteCandidates(query, bindings, env, scope = {}) {
+  const readableBindings = readableBindingsForScope(bindings, scope);
+  const candidates = [];
+  const seenPaths = /* @__PURE__ */ new Set();
   for (const binding of readableBindings) {
-    const queryPath = sourcePathPrefix(binding, scope.sourceId === void 0 ? void 0 : scope.pathPrefix);
+    const queryPath = sourcePathPrefix(
+      binding,
+      scope.sourceId === void 0 ? void 0 : scope.pathPrefix
+    );
     const scopedQuery = `${query} path:"${queryPath}"`;
     for (const entry of searchNotes(binding.vaultSelector, scopedQuery, env)) {
       const notePath = normalizeVaultPath(entry.path);
@@ -23050,14 +23091,123 @@ ${notePath}`;
       seenPaths.add(pathKey);
       if (!noteIsWithinBinding(notePath, binding) || !noteIsWithinPathPrefix(notePath, queryPath)) continue;
       if (notePath === `${binding.root}/_meta` || notePath.startsWith(`${binding.root}/_meta/`)) continue;
-      const note = readBoundNote(notePath, [binding], env, false);
-      if (requireActiveAndVisible && (note.status !== "active" || !note.agentVisible)) continue;
-      if (seenIds.has(note.wikiId)) throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
-      seenIds.add(note.wikiId);
-      notes.push(note);
+      candidates.push({
+        binding,
+        notePath,
+        sortKey: JSON.stringify([binding.sourceId, notePath, binding.bindingDigest])
+      });
     }
   }
+  return candidates.sort((left, right) => left.sortKey < right.sortKey ? -1 : left.sortKey > right.sortKey ? 1 : 0);
+}
+function assertUniqueActiveBoundSearchCandidateIds(candidates) {
+  const seenIds = /* @__PURE__ */ new Set();
+  for (const { binding, notePath } of candidates) {
+    const absolute = path4.resolve(binding.repository.worktreeRoot, ...notePath.split("/"));
+    if (!lstatSync2(absolute).isFile()) {
+      throw new Error(`Obsidian search result is not a regular file: ${notePath}`);
+    }
+    const resolved = realpathSync2(absolute);
+    if (!pathWithinRoot(resolved, binding.resolvedRoot)) {
+      throw new Error(`Obsidian search result escapes bound Source ${binding.sourceId}: ${notePath}`);
+    }
+    const note = parseAtomicNoteMetadata(frontmatterOnly(resolved), notePath);
+    if (note.status !== "active" || !note.agentVisible) continue;
+    if (seenIds.has(note.wikiId)) {
+      throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
+    }
+    seenIds.add(note.wikiId);
+  }
+}
+function gitOutput(repositoryRoot, args) {
+  return String(execFileSync3("git", ["-C", repositoryRoot, ...args], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  }));
+}
+function frontmatterOnly(filePath) {
+  const descriptor = openSync(filePath, "r");
+  try {
+    const chunks = [];
+    let total = 0;
+    while (total < MAX_FRONTMATTER_BYTES) {
+      const chunk = Buffer.allocUnsafe(Math.min(FRONTMATTER_CHUNK_BYTES, MAX_FRONTMATTER_BYTES - total));
+      const count = readSync(descriptor, chunk, 0, chunk.length, null);
+      if (count === 0) break;
+      chunks.push(chunk.subarray(0, count));
+      total += count;
+      const text = Buffer.concat(chunks).toString("utf8").replaceAll("\r\n", "\n");
+      const closing = text.indexOf("\n---\n", 4);
+      if (closing !== -1) return text.slice(0, closing + 5);
+    }
+  } finally {
+    closeSync(descriptor);
+  }
+  throw new Error(`${filePath} frontmatter is not terminated within ${MAX_FRONTMATTER_BYTES} bytes`);
+}
+function pathWithinRoot(filePath, root) {
+  const relative = path4.relative(root, filePath);
+  return relative === "" || !path4.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path4.sep}`);
+}
+function boundNoteMetadataRevision(binding) {
+  const repositoryRoot = binding.repository.worktreeRoot;
+  const revision = gitOutput(repositoryRoot, ["rev-parse", "HEAD"]).trim();
+  const staged = gitOutput(
+    repositoryRoot,
+    ["diff", "--cached", "--raw", "-z", "--", `:(literal)${binding.root}`]
+  );
+  const stagedDigest = createHash3("sha256").update(staged, "utf8").digest("hex");
+  return `${revision}:index-sha256:${stagedDigest}`;
+}
+function boundNoteMetadata(binding) {
+  if (binding.effectiveReadPolicy !== "allow") {
+    throw new Error(`Obsidian Wiki Source is not readable: ${binding.sourceId}`);
+  }
+  const key = `${binding.repository.worktreeRoot}
+${binding.bindingDigest}`;
+  const revision = boundNoteMetadataRevision(binding);
+  const cached2 = metadataCache.get(key);
+  if (cached2?.revision === revision) return cached2.notes;
+  const tracked = gitOutput(
+    binding.repository.worktreeRoot,
+    ["ls-files", "-z", "--", `:(literal)${binding.root}`]
+  ).split("\0").filter(Boolean);
+  const notes = [];
+  const seenIds = /* @__PURE__ */ new Set();
+  for (const trackedPath of tracked) {
+    const notePath = normalizeVaultPath(trackedPath);
+    if (!notePath.endsWith(".md")) continue;
+    if (!noteIsWithinBinding(notePath, binding)) continue;
+    if (notePath === `${binding.root}/_meta` || notePath.startsWith(`${binding.root}/_meta/`)) continue;
+    const absolute = path4.resolve(binding.repository.worktreeRoot, ...notePath.split("/"));
+    if (!lstatSync2(absolute).isFile()) {
+      throw new Error(`Obsidian catalog entry is not a regular file: ${notePath}`);
+    }
+    const resolved = realpathSync2(absolute);
+    if (!pathWithinRoot(resolved, binding.resolvedRoot)) {
+      throw new Error(`Obsidian catalog entry escapes bound Source ${binding.sourceId}: ${notePath}`);
+    }
+    const frontmatter = frontmatterOnly(resolved);
+    if (!/^wiki_schema:\s*grill-adapter\.obsidian-note\/v1\s*$/m.test(frontmatter)) continue;
+    const note = retrievedMetadata(binding, notePath, parseAtomicNoteMetadata(frontmatter, notePath));
+    if (seenIds.has(note.wikiId)) {
+      throw new Error(`Duplicate wiki_id in readable bound Source ${binding.sourceId}: ${note.wikiId}`);
+    }
+    seenIds.add(note.wikiId);
+    notes.push(note);
+  }
+  notes.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+  metadataCache.set(key, { revision, notes });
   return notes;
+}
+function assertUniqueBoundSkillCardMetadata(note, bindings) {
+  if (!note.skillName) return;
+  const matches = readableBindingsForScope(bindings).flatMap((binding) => boundNoteMetadata(binding)).filter((candidate) => candidate.status === "active" && candidate.agentVisible && candidate.skillName === note.skillName);
+  if (matches.length !== 1 || matches[0].wikiId !== note.wikiId || matches[0].path !== note.path || matches[0].sourceId !== note.sourceId) {
+    throw new Error(
+      `Skill Card identity ${note.skillName} resolved ${matches.length} active Cards`
+    );
+  }
 }
 function matchingBoundSkillCards(note, bindings, env, requireActiveAndVisible = true) {
   if (!note.skillName) return [];
@@ -23088,8 +23238,8 @@ function assertUniqueBoundSkillCard(note, bindings, env) {
 }
 
 // src/skill-card.ts
-import { createHash as createHash3 } from "node:crypto";
-import { existsSync as existsSync3, lstatSync as lstatSync2, readFileSync as readFileSync3, readdirSync } from "node:fs";
+import { createHash as createHash4 } from "node:crypto";
+import { existsSync as existsSync3, lstatSync as lstatSync3, readFileSync as readFileSync3, readdirSync } from "node:fs";
 import path5 from "node:path";
 function pendingSkillRegistration(note) {
   if (!note.skillName) return void 0;
@@ -23108,7 +23258,7 @@ function packFiles(packRoot, current = packRoot) {
   for (const entry of readdirSync(current, { withFileTypes: true })) {
     const absolute = path5.join(current, entry.name);
     const relative = path5.relative(packRoot, absolute).split(path5.sep).join("/");
-    if (entry.isSymbolicLink() || lstatSync2(absolute).isSymbolicLink()) {
+    if (entry.isSymbolicLink() || lstatSync3(absolute).isSymbolicLink()) {
       throw new Error(`skill pack contract does not allow symlinks: ${relative}`);
     }
     if (entry.isDirectory()) files.push(...packFiles(packRoot, absolute));
@@ -23117,12 +23267,12 @@ function packFiles(packRoot, current = packRoot) {
   return files.sort((left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")));
 }
 function skillContractHash(packRoot) {
-  const digest = createHash3("sha256");
+  const digest = createHash4("sha256");
   digest.update("grill-adapter.skill-pack-contract/v1\0", "utf8");
   for (const relative of packFiles(packRoot)) {
     digest.update(relative, "utf8");
     digest.update("\0", "utf8");
-    digest.update(createHash3("sha256").update(readFileSync3(path5.join(packRoot, relative))).digest());
+    digest.update(createHash4("sha256").update(readFileSync3(path5.join(packRoot, relative))).digest());
     digest.update("\0", "utf8");
   }
   return `sha256:${digest.digest("hex")}`;
@@ -23195,7 +23345,7 @@ function assertSkillCardAvailable(note, projectDir, context) {
 
 // src/publish.ts
 import { randomUUID } from "node:crypto";
-import { execFileSync as execFileSync3 } from "node:child_process";
+import { execFileSync as execFileSync4 } from "node:child_process";
 import {
   existsSync as existsSync4,
   mkdirSync as mkdirSync2,
@@ -23279,7 +23429,7 @@ var PublishPreparationSchema = object({
 var PublishLockFile = ".grill-adapter-wiki.publish.lock";
 function runCommand(executable, args, env, workingDirectory) {
   try {
-    return String(execFileSync3(executable, args, {
+    return String(execFileSync4(executable, args, {
       cwd: workingDirectory,
       env,
       encoding: "utf8",
@@ -23296,7 +23446,7 @@ function git(args, env, workingDirectory) {
 }
 function gitFile(revision, notePath, env, workingDirectory) {
   try {
-    return String(execFileSync3("git", ["show", `${revision}:${notePath}`], {
+    return String(execFileSync4("git", ["show", `${revision}:${notePath}`], {
       cwd: workingDirectory,
       env,
       encoding: "utf8",
@@ -23771,6 +23921,90 @@ ${normalizeVaultPath(receipt.path)}`;
   return manifest;
 }
 
+// src/pagination.ts
+import { createHash as createHash5 } from "node:crypto";
+var MAX_PAGE_LIMIT = 50;
+function boundedPageLimit(value, defaultValue) {
+  if (value === void 0) return defaultValue;
+  if (!Number.isInteger(value) || value < 1 || value > MAX_PAGE_LIMIT) {
+    throw new Error(`limit must be an integer between 1 and ${MAX_PAGE_LIMIT}`);
+  }
+  return value;
+}
+function cursorScope(kind, values) {
+  const canonical = JSON.stringify([kind, ...values]);
+  return `sha256:${createHash5("sha256").update(canonical, "utf8").digest("hex")}`;
+}
+function cursorChecksum(kind, scope, after) {
+  return createHash5("sha256").update(JSON.stringify([kind, scope, after]), "utf8").digest("hex");
+}
+function encodeCursor(payload) {
+  return Buffer.from(JSON.stringify({
+    ...payload,
+    checksum: cursorChecksum(payload.kind, payload.scope, payload.after)
+  }), "utf8").toString("base64url");
+}
+function decodeCursor(cursor, kind, scope) {
+  if (typeof cursor !== "string" || cursor.length === 0 || cursor.length > 4096 || !/^[A-Za-z0-9_-]+$/.test(cursor)) {
+    throw new Error("continuation cursor is malformed");
+  }
+  let decoded;
+  try {
+    const bytes = Buffer.from(cursor, "base64url");
+    if (bytes.toString("base64url") !== cursor) throw new Error("non-canonical cursor");
+    decoded = bytes.toString("utf8");
+  } catch {
+    throw new Error("continuation cursor is malformed");
+  }
+  let payload;
+  try {
+    payload = JSON.parse(decoded);
+  } catch {
+    throw new Error("continuation cursor is malformed");
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) || payload.version !== 1 || payload.kind !== kind || typeof payload.scope !== "string" || typeof payload.after !== "string" || typeof payload.checksum !== "string") {
+    throw new Error("continuation cursor is malformed");
+  }
+  const parsed = payload;
+  if (parsed.checksum !== cursorChecksum(parsed.kind, parsed.scope, parsed.after)) {
+    throw new Error("continuation cursor is malformed");
+  }
+  if (parsed.scope !== scope) {
+    throw new Error("continuation cursor does not match the requested scope");
+  }
+  return parsed.after;
+}
+function pageByKey(items, key, options) {
+  if (options.cursor !== void 0 && options.offset !== void 0) {
+    throw new Error("continuation cursor and offset cannot be used together");
+  }
+  let start = options.offset ?? 0;
+  if (options.cursor !== void 0) {
+    const after = decodeCursor(options.cursor, options.kind, options.scope);
+    start = items.findIndex((item) => key(item) > after);
+    if (start === -1) start = items.length;
+  }
+  const pageItems = items.slice(start, start + options.limit);
+  const nextIndex = start + pageItems.length;
+  const truncated = nextIndex < items.length;
+  const nextCursor = truncated && pageItems.length > 0 ? encodeCursor({
+    version: 1,
+    kind: options.kind,
+    scope: options.scope,
+    after: key(pageItems.at(-1))
+  }) : void 0;
+  return {
+    items: pageItems,
+    start,
+    page: {
+      limit: options.limit,
+      scannedCount: pageItems.length,
+      truncated,
+      ...nextCursor ? { nextCursor } : {}
+    }
+  };
+}
+
 // src/tools/search.ts
 function searchResolution(input, env) {
   const resolution = resolveBindings(env, process.cwd(), {
@@ -23783,7 +24017,10 @@ function searchResolution(input, env) {
   return resolution;
 }
 function presentNotes(found, resolution, env, publishFeatureSlug) {
-  for (const note of found) assertUniqueBoundSkillCard(note, resolution.bindings, env);
+  for (const note of found) {
+    if (publishFeatureSlug) assertUniqueBoundSkillCard(note, resolution.bindings, env);
+    else assertUniqueBoundSkillCardMetadata(note, resolution.bindings);
+  }
   return {
     notes: found.filter((note) => {
       const binding = resolution.bindings.find(
@@ -23820,13 +24057,61 @@ function presentNotes(found, resolution, env, publishFeatureSlug) {
   };
 }
 function searchTool(input, env = process.env) {
+  if (typeof input.query !== "string" || !input.query.trim()) {
+    throw new Error("query must be a non-empty string");
+  }
   const resolution = searchResolution(input, env);
-  return presentNotes(
-    searchBoundNotes(input.query, resolution.bindings, env, true, input),
+  const limit = boundedPageLimit(input.limit, 20);
+  const normalizedPathPrefix = input.pathPrefix === void 0 ? void 0 : normalizeSourceRelativePath(input.pathPrefix);
+  const scope = cursorScope("obsidian-wiki-search", [
+    input.query,
+    input.sourceId ?? null,
+    normalizedPathPrefix ?? null,
+    input.publishFeatureSlug ?? null,
+    readableBindingsForScope(resolution.bindings, {
+      sourceId: input.sourceId,
+      pathPrefix: normalizedPathPrefix
+    }).map((binding) => [
+      binding.bindingDigest,
+      boundNoteMetadataRevision(binding)
+    ]).sort(([left], [right]) => left.localeCompare(right))
+  ]);
+  const candidates = searchBoundNoteCandidates(
+    input.query,
+    resolution.bindings,
+    env,
+    { sourceId: input.sourceId, pathPrefix: normalizedPathPrefix }
+  );
+  assertUniqueActiveBoundSearchCandidateIds(candidates);
+  const bounded = pageByKey(candidates, (candidate) => candidate.sortKey, {
+    kind: "obsidian-wiki-search",
+    scope,
+    limit,
+    cursor: input.cursor
+  });
+  const seenIds = /* @__PURE__ */ new Set();
+  const found = bounded.items.flatMap(({ binding, notePath }) => {
+    const note = readBoundNote(notePath, [binding], env, false);
+    if (note.status !== "active" || !note.agentVisible) return [];
+    if (seenIds.has(note.wikiId)) {
+      throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
+    }
+    seenIds.add(note.wikiId);
+    return [note];
+  });
+  const presented = presentNotes(
+    found,
     resolution,
     env,
     input.publishFeatureSlug
   );
+  return {
+    ...presented,
+    page: {
+      ...bounded.page,
+      returnedCount: presented.notes.length
+    }
+  };
 }
 function searchWikiIdsTool(input, env = process.env) {
   const resolution = searchResolution(input, env);
@@ -23835,8 +24120,6 @@ function searchWikiIdsTool(input, env = process.env) {
 }
 
 // src/tools/catalog.ts
-var CATALOG_QUERY = "[wiki_schema:grill-adapter.obsidian-note/v1]";
-var MAX_CATALOG_LIMIT = 50;
 function comparePaths(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
 }
@@ -23847,10 +24130,10 @@ function catalogResolution(env) {
   }
   return resolution;
 }
-function boundedInteger(value, field, defaultValue, minimum, maximum) {
+function boundedOffset(value, defaultValue) {
   if (value === void 0) return defaultValue;
-  if (!Number.isInteger(value) || value < minimum || value > maximum) {
-    throw new Error(`${field} must be an integer between ${minimum} and ${maximum}`);
+  if (!Number.isInteger(value) || value < 0 || value > Number.MAX_SAFE_INTEGER) {
+    throw new Error(`offset must be an integer between 0 and ${Number.MAX_SAFE_INTEGER}`);
   }
   return value;
 }
@@ -23858,12 +24141,12 @@ function catalogInput(input) {
   if (typeof input.sourceId !== "string" || !input.sourceId.trim()) {
     throw new Error("sourceId must be a non-empty string");
   }
-  const limit = boundedInteger(input.limit, "limit", MAX_CATALOG_LIMIT, 1, MAX_CATALOG_LIMIT);
   return {
     sourceId: input.sourceId,
     pathPrefix: normalizeSourceRelativePath(input.pathPrefix ?? ""),
-    offset: boundedInteger(input.offset, "offset", 0, 0, Number.MAX_SAFE_INTEGER),
-    limit
+    offset: input.offset === void 0 ? void 0 : boundedOffset(input.offset, 0),
+    limit: boundedPageLimit(input.limit, 50),
+    cursor: input.cursor
   };
 }
 function immediateEntry(relativePath, pathPrefix) {
@@ -23877,14 +24160,14 @@ function catalogTool(input, env = process.env) {
   const normalized = catalogInput(input);
   const resolution = catalogResolution(env);
   const [binding] = readableBindingsForScope(resolution.bindings, { sourceId: normalized.sourceId });
-  const found = searchBoundNotes(
-    CATALOG_QUERY,
-    resolution.bindings,
-    env,
-    true,
-    { sourceId: normalized.sourceId }
-  );
-  const notes = presentNotes(found, resolution, env).notes;
+  const activeNotes = boundNoteMetadata(binding).filter((note) => note.status === "active" && note.agentVisible);
+  for (const note of activeNotes) {
+    assertUniqueBoundSkillCardMetadata(note, resolution.bindings);
+  }
+  const notes = activeNotes.filter((note) => skillCardAvailability(note, resolution.projectDir, {
+    mode: "discovery",
+    baseSynchronized: binding.repositoryHealth.baseSynchronized
+  }).available);
   const directories = /* @__PURE__ */ new Map();
   const directNotes = [];
   for (const note of notes) {
@@ -23894,32 +24177,71 @@ function catalogTool(input, env = process.env) {
     if (entry.directory) {
       directories.set(entry.directory, (directories.get(entry.directory) ?? 0) + 1);
     } else if (entry.direct) {
-      directNotes.push({ kind: "note", relativePath, ...note });
+      directNotes.push({
+        kind: "note",
+        relativePath,
+        sourceId: note.sourceId,
+        role: note.role,
+        path: note.path,
+        wikiId: note.wikiId,
+        type: note.type,
+        constraintStrength: note.constraintStrength,
+        skillRoles: note.skillRoles,
+        skillName: note.skillName,
+        skillVersion: note.skillVersion,
+        skillContractHash: note.skillContractHash,
+        skillTriggers: note.skillTriggers,
+        adrSourceId: note.adrSourceId,
+        adrSourcePath: note.adrSourcePath,
+        adrSourceContentHash: note.adrSourceContentHash,
+        discoveryState: note.skillName ? "discoverable" : void 0,
+        summary: note.summary,
+        bindingDigest: note.bindingDigest
+      });
     }
   }
   const entries = [
     ...[...directories.entries()].sort(([left], [right]) => comparePaths(left, right)).map(([pathPrefix, noteCount]) => ({ kind: "directory", pathPrefix, noteCount })),
     ...directNotes.sort((left, right) => comparePaths(left.relativePath, right.relativePath))
   ];
-  const page = entries.slice(normalized.offset, normalized.offset + normalized.limit);
-  const nextOffset = normalized.offset + page.length;
+  const scope = cursorScope("obsidian-wiki-catalog", [
+    binding.bindingDigest,
+    boundNoteMetadataRevision(binding),
+    normalized.pathPrefix
+  ]);
+  const bounded = pageByKey(
+    entries,
+    (entry) => entry.kind === "directory" ? `0:${entry.pathPrefix}` : `1:${entry.relativePath}`,
+    {
+      kind: "obsidian-wiki-catalog",
+      scope,
+      limit: normalized.limit,
+      cursor: normalized.cursor,
+      offset: normalized.offset
+    }
+  );
+  const nextOffset = bounded.start + bounded.items.length;
   return {
     sourceId: binding.sourceId,
     role: binding.role,
     bindingDigest: binding.bindingDigest,
     pathPrefix: normalized.pathPrefix,
-    entries: page,
-    nextOffset: nextOffset < entries.length ? nextOffset : void 0
+    entries: bounded.items,
+    nextOffset: nextOffset < entries.length ? nextOffset : void 0,
+    page: {
+      ...bounded.page,
+      returnedCount: bounded.items.length
+    }
   };
 }
 
 // src/tools/read.ts
-import { createHash as createHash4 } from "node:crypto";
+import { createHash as createHash6 } from "node:crypto";
 function snapshotHash(notes) {
   const canonical = notes.map((note) => `${note.sourceId}
 ${note.wikiId}
 ${note.contentHash}`).sort().join("\n");
-  return `sha256:${createHash4("sha256").update(canonical, "utf8").digest("hex")}`;
+  return `sha256:${createHash6("sha256").update(canonical, "utf8").digest("hex")}`;
 }
 function checkedNotes(notes, projectDir, bindings, env) {
   for (const note of notes) {
@@ -24340,7 +24662,9 @@ function createServer(env = process.env) {
     inputSchema: object({
       query: string2().min(1),
       sourceId: string2().min(1).optional(),
-      pathPrefix: string2().optional()
+      pathPrefix: string2().optional(),
+      limit: number2().int().min(1).max(50).optional(),
+      cursor: string2().min(1).optional()
     }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(searchTool(input, requestEnv(extra._meta))));
@@ -24350,7 +24674,8 @@ function createServer(env = process.env) {
       sourceId: string2().min(1),
       pathPrefix: string2().optional(),
       offset: number2().int().nonnegative().optional(),
-      limit: number2().int().min(1).max(50).optional()
+      limit: number2().int().min(1).max(50).optional(),
+      cursor: string2().min(1).optional()
     }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(catalogTool(input, requestEnv(extra._meta))));
@@ -24400,18 +24725,18 @@ import { createServer as createServer2 } from "node:http";
 import {
   existsSync as existsSync6,
   linkSync,
-  lstatSync as lstatSync3,
+  lstatSync as lstatSync4,
   mkdirSync as mkdirSync3,
   readFileSync as readFileSync5,
   readdirSync as readdirSync2,
-  realpathSync as realpathSync2,
+  realpathSync as realpathSync3,
   rmSync as rmSync2,
   writeFileSync as writeFileSync3
 } from "node:fs";
 import path7 from "node:path";
 
 // src/atomic-exchange.ts
-import { execFileSync as execFileSync4 } from "node:child_process";
+import { execFileSync as execFileSync5 } from "node:child_process";
 import { existsSync as existsSync5 } from "node:fs";
 import { fileURLToPath } from "node:url";
 var packagedScriptPath = fileURLToPath(new URL("./atomic_swap.py", import.meta.url));
@@ -24420,7 +24745,7 @@ var scriptPath = existsSync5(packagedScriptPath) ? packagedScriptPath : sourceSc
 function atomicExchange(firstPath, secondPath, env = process.env) {
   const python = env.OBSIDIAN_WIKI_PYTHON ?? "python3";
   try {
-    execFileSync4(python, [scriptPath, firstPath, secondPath], {
+    execFileSync5(python, [scriptPath, firstPath, secondPath], {
       encoding: "utf8",
       env: { ...process.env, ...env },
       stdio: ["ignore", "pipe", "pipe"]
@@ -24474,8 +24799,8 @@ function nearestExistingDirectory(directory) {
     if (parent === candidate) throw new BridgeError(403, "Note parent has no existing Vault ancestor");
     candidate = parent;
   }
-  if (!lstatSync3(candidate).isDirectory()) throw new BridgeError(400, "Note parent ancestor is not a directory");
-  return realpathSync2(candidate);
+  if (!lstatSync4(candidate).isDirectory()) throw new BridgeError(400, "Note parent ancestor is not a directory");
+  return realpathSync3(candidate);
 }
 function atomicNoteFiles(root) {
   const files = [];
@@ -24511,7 +24836,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
       `ADR source identity ${proposed.adrSourceId} already exists in an allowed Note; update that projection`
     );
   }
-  if (operation === "update" && (identityMatches.length !== 1 || realpathSync2(identityMatches[0].file) !== realpathSync2(targetPath))) {
+  if (operation === "update" && (identityMatches.length !== 1 || realpathSync3(identityMatches[0].file) !== realpathSync3(targetPath))) {
     throw new BridgeError(409, `Updated wiki_id does not resolve uniquely to its existing Note: ${proposed.wikiId}`);
   }
   const targetNote = operation === "update" ? identityMatches[0].note : void 0;
@@ -24521,7 +24846,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
   if (targetNote?.adrSourceId && targetNote.adrSourceId !== proposed.adrSourceId) {
     throw new BridgeError(409, "ADR source identity must be preserved on update");
   }
-  if (operation === "update" && adrProjectionMatches.some(({ file }) => realpathSync2(file) !== realpathSync2(targetPath))) {
+  if (operation === "update" && adrProjectionMatches.some(({ file }) => realpathSync3(file) !== realpathSync3(targetPath))) {
     throw new BridgeError(
       409,
       `ADR source identity ${proposed.adrSourceId} already exists in another allowed Note`
@@ -24536,7 +24861,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
   if (proposed.skillName) {
     const projectNotes = [...projectRoots.values()].flatMap(atomicNoteFiles).map((file) => ({ file, note: parseAtomicNote(readFileSync5(file, "utf8"), file) }));
     const cardMatches = projectNotes.filter(({ note }) => note.skillName === proposed.skillName);
-    const conflictingCards = operation === "create" ? cardMatches : cardMatches.filter(({ file }) => realpathSync2(file) !== realpathSync2(targetPath));
+    const conflictingCards = operation === "create" ? cardMatches : cardMatches.filter(({ file }) => realpathSync3(file) !== realpathSync3(targetPath));
     if (conflictingCards.length > 0) {
       throw new BridgeError(
         409,
@@ -24551,7 +24876,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
       const vaultPath = normalizeRelativePath(target.endsWith(".md") ? target : `${target}.md`, "Typed edge");
       const resolvedTarget = path7.resolve(vaultRoot, ...vaultPath.split("/"));
       const owningRoot = [...roots.values()].find((root) => inside(resolvedTarget, root.resolvedRoot));
-      if (!owningRoot || !existsSync6(resolvedTarget) || !lstatSync3(resolvedTarget).isFile()) {
+      if (!owningRoot || !existsSync6(resolvedTarget) || !lstatSync4(resolvedTarget).isFile()) {
         throw new BridgeError(400, `Typed edge does not resolve to an allowed atomic Note: ${link}`);
       }
       parseAtomicNote(readFileSync5(resolvedTarget, "utf8"), vaultPath);
@@ -24562,7 +24887,7 @@ function enforceGovernance(change, root, apply, vaultRoot, roots, allowedProject
   const { request } = change;
   let projectDir;
   try {
-    projectDir = realpathSync2(request.projectDir);
+    projectDir = realpathSync3(request.projectDir);
   } catch {
     throw new BridgeError(403, "Project is not allowed by this bridge");
   }
@@ -24668,8 +24993,8 @@ function validateChange(raw, options, vaultRoot, allowedRoots) {
     if (exists) throw new BridgeError(409, `Cannot create an existing Note: ${notePath}`);
   } else {
     if (!request.expectedHash) throw new BridgeError(400, "Update requires expectedHash");
-    if (!exists || !lstatSync3(targetPath).isFile()) throw new BridgeError(409, `Cannot update a missing Note: ${notePath}`);
-    const resolvedTarget = realpathSync2(targetPath);
+    if (!exists || !lstatSync4(targetPath).isFile()) throw new BridgeError(409, `Cannot update a missing Note: ${notePath}`);
+    const resolvedTarget = realpathSync3(targetPath);
     if (!inside(resolvedTarget, resolvedSourceRoot)) throw new BridgeError(403, `Note path escapes its Source root: ${notePath}`);
     beforeContent = readFileSync5(resolvedTarget, "utf8");
     const existing = parseAtomicNote(beforeContent, notePath);
@@ -24723,7 +25048,7 @@ function respond(response, status, body) {
 function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
   if (change.request.operation === "create") {
     mkdirSync3(path7.dirname(change.targetPath), { recursive: true, mode: 448 });
-    if (!inside(realpathSync2(path7.dirname(change.targetPath)), change.resolvedSourceRoot)) {
+    if (!inside(realpathSync3(path7.dirname(change.targetPath)), change.resolvedSourceRoot)) {
       throw new BridgeError(403, "Created Note parent escaped its Source root");
     }
   }
@@ -24781,19 +25106,19 @@ async function startWriteBridge(options) {
   if (!isLoopbackHost(host)) throw new Error("Obsidian Wiki write bridge must bind to a loopback host");
   if (!options.token) throw new Error("Obsidian Wiki write bridge token must not be empty");
   if (!path7.isAbsolute(options.vaultRoot)) throw new Error("Obsidian Wiki write bridge Vault root must be absolute");
-  const vaultRoot = realpathSync2(options.vaultRoot);
+  const vaultRoot = realpathSync3(options.vaultRoot);
   const allowedProjects = new Set(options.projectDirs.map((projectDir) => {
     if (!path7.isAbsolute(projectDir)) throw new Error("Obsidian Wiki write bridge project directories must be absolute");
-    return realpathSync2(projectDir);
+    return realpathSync3(projectDir);
   }));
   if (allowedProjects.size === 0) throw new Error("Obsidian Wiki write bridge requires at least one allowed project directory");
   const allowedRoots = /* @__PURE__ */ new Map();
   for (const rawRoot of options.allowedRoots) {
     const root = normalizeRelativePath(rawRoot, "Allowed Source root");
-    const resolved = realpathSync2(path7.resolve(vaultRoot, ...root.split("/")));
+    const resolved = realpathSync3(path7.resolve(vaultRoot, ...root.split("/")));
     if (!inside(resolved, vaultRoot)) throw new Error(`Allowed Source root escapes the Vault: ${root}`);
     const manifestPath = path7.join(resolved, "_meta", "wiki-source.md");
-    if (!existsSync6(manifestPath) || !lstatSync3(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
+    if (!existsSync6(manifestPath) || !lstatSync4(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
     parseSourceManifest(readFileSync5(manifestPath, "utf8"), manifestPath);
     allowedRoots.set(root, { resolvedRoot: resolved, manifestPath });
   }
@@ -24909,6 +25234,12 @@ function optionalStringField(request, field) {
   const value = request[field];
   if (value === void 0) return void 0;
   if (typeof value !== "string") throw new Error(`${field} must be a string`);
+  return value;
+}
+function optionalNumberField(request, field) {
+  const value = request[field];
+  if (value === void 0) return void 0;
+  if (typeof value !== "number") throw new Error(`${field} must be a number`);
   return value;
 }
 function parseCliArguments(argv) {
@@ -25138,6 +25469,8 @@ async function main() {
         query: request.query,
         sourceId,
         pathPrefix: optionalStringField(request, "pathPrefix"),
+        limit: optionalNumberField(request, "limit"),
+        cursor: optionalStringField(request, "cursor"),
         publishFeatureSlug: typeof request.publishFeatureSlug === "string" ? request.publishFeatureSlug : void 0
       }))}
 `);

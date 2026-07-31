@@ -39,6 +39,24 @@ The MCP server uses the same configuration. Configuration discovery order is:
 4. `~/.config/grill-adapter/obsidian-wiki.jsonc`
 5. the legacy `OBSIDIAN_WIKI_REGISTRY` path and JSON filename
 
+## Bounded retrieval
+
+`obsidian_wiki_search` accepts `limit` (1-50) and an opaque `cursor`. Results
+are ordered by stable bound Source path and include `page.limit`,
+`page.scannedCount`, `page.returnedCount`, `page.truncated`, and, when more
+candidates remain, `page.nextCursor`. A cursor is bound to the original query,
+Source, path prefix, publish mode, and binding identities; malformed or
+integrity-invalid cursors and cursors reused for another scope are rejected.
+
+`obsidian_wiki_catalog` uses the same `limit`/`cursor` response contract while
+retaining `offset`/`nextOffset` for existing callers. Catalog pages are built
+from active, agent-visible atomic Note frontmatter in the validated bound Git
+revision. They never call Obsidian full-body reads and deliberately omit
+`content` and `contentHash`. Selected Notes must still be passed to
+`obsidian_wiki_read_notes` or `obsidian_wiki_read_notes_by_wiki_ids`; those
+stable batch operations reread full Markdown and return authoritative content
+and snapshot hashes.
+
 The bridge remains a separate loopback HTTP process. `bridge start` reads its
 Vault root, allowed Source roots, project allowlist, host, and port from the
 same configuration file. The bearer token remains in the environment variable

@@ -1,14 +1,18 @@
 import { resolveBindings } from '../bindings.js';
 import {
+  assertUniqueBoundSkillCardMetadata,
+  boundNoteMetadata,
+  boundNoteMetadataRevision,
   normalizeSourceRelativePath,
   readableBindingsForScope,
-  searchBoundNotes,
   sourceRelativePath,
 } from '../retrieval.js';
-import { presentNotes } from './search.js';
-
-const CATALOG_QUERY = '[wiki_schema:grill-adapter.obsidian-note/v1]';
-const MAX_CATALOG_LIMIT = 50;
+import { skillCardAvailability } from '../skill-card.js';
+import {
+  boundedPageLimit,
+  cursorScope,
+  pageByKey,
+} from '../pagination.js';
 
 function comparePaths(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -19,6 +23,7 @@ export type CatalogInput = {
   pathPrefix?: string;
   offset?: number;
   limit?: number;
+  cursor?: string;
 };
 
 type CatalogDirectory = {
@@ -40,30 +45,27 @@ function catalogResolution(env: NodeJS.ProcessEnv) {
   return resolution;
 }
 
-function boundedInteger(
+function boundedOffset(
   value: unknown,
-  field: string,
   defaultValue: number,
-  minimum: number,
-  maximum: number,
 ): number {
   if (value === undefined) return defaultValue;
-  if (!Number.isInteger(value) || (value as number) < minimum || (value as number) > maximum) {
-    throw new Error(`${field} must be an integer between ${minimum} and ${maximum}`);
+  if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > Number.MAX_SAFE_INTEGER) {
+    throw new Error(`offset must be an integer between 0 and ${Number.MAX_SAFE_INTEGER}`);
   }
   return value as number;
 }
 
-function catalogInput(input: CatalogInput): Required<CatalogInput> {
+function catalogInput(input: CatalogInput) {
   if (typeof input.sourceId !== 'string' || !input.sourceId.trim()) {
     throw new Error('sourceId must be a non-empty string');
   }
-  const limit = boundedInteger(input.limit, 'limit', MAX_CATALOG_LIMIT, 1, MAX_CATALOG_LIMIT);
   return {
     sourceId: input.sourceId,
     pathPrefix: normalizeSourceRelativePath(input.pathPrefix ?? ''),
-    offset: boundedInteger(input.offset, 'offset', 0, 0, Number.MAX_SAFE_INTEGER),
-    limit,
+    offset: input.offset === undefined ? undefined : boundedOffset(input.offset, 0),
+    limit: boundedPageLimit(input.limit, 50),
+    cursor: input.cursor,
   };
 }
 
@@ -81,14 +83,19 @@ export function catalogTool(input: CatalogInput, env: NodeJS.ProcessEnv = proces
   const normalized = catalogInput(input);
   const resolution = catalogResolution(env);
   const [binding] = readableBindingsForScope(resolution.bindings, { sourceId: normalized.sourceId });
-  const found = searchBoundNotes(
-    CATALOG_QUERY,
-    resolution.bindings,
-    env,
-    true,
-    { sourceId: normalized.sourceId },
-  );
-  const notes = presentNotes(found, resolution, env).notes;
+  const activeNotes = boundNoteMetadata(binding).filter((note) => (
+    note.status === 'active'
+    && note.agentVisible
+  ));
+  for (const note of activeNotes) {
+    assertUniqueBoundSkillCardMetadata(note, resolution.bindings);
+  }
+  const notes = activeNotes.filter((note) => (
+    skillCardAvailability(note, resolution.projectDir, {
+      mode: 'discovery',
+      baseSynchronized: binding.repositoryHealth.baseSynchronized,
+    }).available
+  ));
   const directories = new Map<string, number>();
   const directNotes: CatalogNote[] = [];
 
@@ -103,7 +110,27 @@ export function catalogTool(input: CatalogInput, env: NodeJS.ProcessEnv = proces
     if (entry.directory) {
       directories.set(entry.directory, (directories.get(entry.directory) ?? 0) + 1);
     } else if (entry.direct) {
-      directNotes.push({ kind: 'note', relativePath, ...note });
+      directNotes.push({
+        kind: 'note',
+        relativePath,
+        sourceId: note.sourceId,
+        role: note.role,
+        path: note.path,
+        wikiId: note.wikiId,
+        type: note.type,
+        constraintStrength: note.constraintStrength,
+        skillRoles: note.skillRoles,
+        skillName: note.skillName,
+        skillVersion: note.skillVersion,
+        skillContractHash: note.skillContractHash,
+        skillTriggers: note.skillTriggers,
+        adrSourceId: note.adrSourceId,
+        adrSourcePath: note.adrSourcePath,
+        adrSourceContentHash: note.adrSourceContentHash,
+        discoveryState: note.skillName ? 'discoverable' : undefined,
+        summary: note.summary,
+        bindingDigest: note.bindingDigest,
+      });
     }
   }
 
@@ -113,15 +140,36 @@ export function catalogTool(input: CatalogInput, env: NodeJS.ProcessEnv = proces
       .map(([pathPrefix, noteCount]) => ({ kind: 'directory' as const, pathPrefix, noteCount })),
     ...directNotes.sort((left, right) => comparePaths(left.relativePath, right.relativePath)),
   ];
-  const page = entries.slice(normalized.offset, normalized.offset + normalized.limit);
-  const nextOffset = normalized.offset + page.length;
+  const scope = cursorScope('obsidian-wiki-catalog', [
+    binding.bindingDigest,
+    boundNoteMetadataRevision(binding),
+    normalized.pathPrefix,
+  ]);
+  const bounded = pageByKey(
+    entries,
+    (entry) => entry.kind === 'directory'
+      ? `0:${entry.pathPrefix}`
+      : `1:${entry.relativePath}`,
+    {
+      kind: 'obsidian-wiki-catalog',
+      scope,
+      limit: normalized.limit,
+      cursor: normalized.cursor,
+      offset: normalized.offset,
+    },
+  );
+  const nextOffset = bounded.start + bounded.items.length;
 
   return {
     sourceId: binding.sourceId,
     role: binding.role,
     bindingDigest: binding.bindingDigest,
     pathPrefix: normalized.pathPrefix,
-    entries: page,
+    entries: bounded.items,
     nextOffset: nextOffset < entries.length ? nextOffset : undefined,
+    page: {
+      ...bounded.page,
+      returnedCount: bounded.items.length,
+    },
   };
 }

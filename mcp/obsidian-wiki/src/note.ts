@@ -66,6 +66,8 @@ export type AtomicNote = {
   contentHash: string;
 };
 
+export type AtomicNoteMetadata = Omit<AtomicNote, 'content' | 'contentHash'>;
+
 function parseScalar(raw: string): string | boolean {
   const value = raw.trim();
   if (value === 'true') return true;
@@ -113,7 +115,7 @@ export function contentHash(contents: string): string {
   return `sha256:${createHash('sha256').update(canonicalContent(contents), 'utf8').digest('hex')}`;
 }
 
-export function parseAtomicNote(contents: string, description = 'Note'): AtomicNote {
+export function parseAtomicNoteMetadata(contents: string, description = 'Note'): AtomicNoteMetadata {
   const raw = parseFrontmatter(contents);
   const parsed = NoteSchema.safeParse(raw);
   if (!parsed.success) {
@@ -170,6 +172,12 @@ export function parseAtomicNote(contents: string, description = 'Note'): AtomicN
       supersedes: note.supersedes ?? [],
       contradicts: note.contradicts ?? [],
     },
+  };
+}
+
+export function parseAtomicNote(contents: string, description = 'Note'): AtomicNote {
+  return {
+    ...parseAtomicNoteMetadata(contents, description),
     content: canonicalContent(contents),
     contentHash: contentHash(contents),
   };
