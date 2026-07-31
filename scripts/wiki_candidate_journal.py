@@ -31,6 +31,7 @@ STAGES = {
 CANDIDATE_TYPES = {"wiki_note", "skill_card"}
 CANDIDATE_KINDS = {
     "adr_execution_projection",
+    "correction",
     "decision",
     "gotcha",
     "contract",
@@ -47,6 +48,13 @@ ADR_PROJECTION_FIELDS = {
     "sourceContentHash",
     "targetScope",
 }
+CORRECTION_FIELDS = {
+    "affectedWikiIdentity",
+    "claim",
+    "evidenceRefs",
+    "observedImpact",
+}
+WIKI_IDENTITY_FIELDS = {"sourceId", "wikiId"}
 OUTCOME_STATUSES = {"kept", "skipped", "deferred"}
 FINAL_STATUSES = {"kept", "skipped", "superseded"}
 VOLATILE_EVENT_FIELDS = {"eventId", "recordedAt"}
@@ -262,6 +270,51 @@ def _validate_adr_projection(projection: Any) -> dict[str, Any]:
     return projection
 
 
+def _validate_wiki_identity(identity: Any) -> dict[str, Any]:
+    if not isinstance(identity, dict):
+        raise JournalError("correction.affectedWikiIdentity must be a JSON object")
+    _require_keys(identity, WIKI_IDENTITY_FIELDS, set())
+    _require_text(
+        identity["sourceId"],
+        "correction.affectedWikiIdentity.sourceId",
+        limit=256,
+    )
+    wiki_id = _require_text(
+        identity["wikiId"],
+        "correction.affectedWikiIdentity.wikiId",
+        limit=256,
+    )
+    parsed_id = PurePosixPath(wiki_id)
+    if (
+        "\\" in wiki_id
+        or parsed_id.is_absolute()
+        or not parsed_id.parts
+        or parsed_id.as_posix() != wiki_id
+        or any(part in {"", ".", ".."} for part in parsed_id.parts)
+    ):
+        raise JournalError(
+            "correction.affectedWikiIdentity.wikiId must be a normalized relative POSIX identity"
+        )
+    return identity
+
+
+def _validate_correction(correction: Any) -> dict[str, Any]:
+    if not isinstance(correction, dict):
+        raise JournalError("correction must be a JSON object")
+    _require_keys(correction, CORRECTION_FIELDS, set())
+    _validate_wiki_identity(correction["affectedWikiIdentity"])
+    _require_text(correction["claim"], "correction.claim")
+    refs = correction["evidenceRefs"]
+    if not isinstance(refs, list) or not refs:
+        raise JournalError("correction.evidenceRefs must be a non-empty array")
+    if len(refs) != len(set(refs)):
+        raise JournalError("correction.evidenceRefs must not contain duplicates")
+    for ref in refs:
+        _require_text(ref, "correction.evidenceRefs[]", limit=1000)
+    _require_text(correction["observedImpact"], "correction.observedImpact")
+    return correction
+
+
 def validate_event_shape(event: Any) -> dict[str, Any]:
     if not isinstance(event, dict):
         raise JournalError("event must be a JSON object")
@@ -275,7 +328,7 @@ def validate_event_shape(event: Any) -> dict[str, Any]:
             "candidateId", "stage", "candidateType", "kind", "claim", "why", "sourceRefs",
         }
         optional = {
-            "taskId", "carveOut", "origin", "skillRegistration", "adrProjection",
+            "taskId", "carveOut", "origin", "skillRegistration", "adrProjection", "correction",
         }
     elif event_type == "supersede":
         required = common | {"candidateId", "byCandidateId", "reason"}
@@ -317,6 +370,20 @@ def validate_event_shape(event: Any) -> dict[str, Any]:
             raise JournalError(
                 "adrProjection is only valid for adr_execution_projection candidates"
             )
+        if event["kind"] == "correction":
+            if event["candidateType"] != "wiki_note":
+                raise JournalError("correction must be a wiki_note candidate")
+            if "correction" not in event:
+                raise JournalError("correction candidate requires correction")
+            _validate_correction(event["correction"])
+            if event["correction"]["claim"] != event["claim"]:
+                raise JournalError("correction.claim must match the candidate claim")
+            if event["correction"]["evidenceRefs"] != event["sourceRefs"]:
+                raise JournalError(
+                    "correction.evidenceRefs must match the candidate sourceRefs"
+                )
+        elif "correction" in event:
+            raise JournalError("correction is only valid for correction candidates")
         _require_text(event["claim"], "claim")
         _require_text(event["why"], "why")
         refs = event["sourceRefs"]
@@ -353,6 +420,7 @@ def _new_state(feature_slug: str | None) -> dict[str, Any]:
         "eventCount": 0,
         "counts": {status: 0 for status in ("pending", "superseded", "kept", "skipped", "deferred")},
         "candidates": [],
+        "maintenanceSignals": [],
     }
 
 
@@ -422,6 +490,7 @@ def fold_events(events: list[dict[str, Any]], expected_feature_slug: str | None 
                 next_receipt = event.get("writeReceipt")
                 expected_skill_registration = item.get("skillRegistration")
                 expected_adr_projection = item.get("adrProjection")
+                expected_correction = item.get("correction")
                 if (
                     expected_skill_registration is not None
                     and event["status"] == "kept"
@@ -472,6 +541,22 @@ def fold_events(events: list[dict[str, Any]], expected_feature_slug: str | None 
                         f"candidate {candidate_id!r} is an ADR projection; kept requires an "
                         "applied write receipt bound to its authority identity"
                     )
+                if expected_correction is not None and event["status"] == "kept":
+                    affected_identity = expected_correction["affectedWikiIdentity"]
+                    if (
+                        item["status"] != "deferred"
+                        or not isinstance(previous_receipt, dict)
+                        or previous_receipt.get("state") != "proposed"
+                        or not isinstance(next_receipt, dict)
+                        or next_receipt.get("state") != "applied"
+                        or next_receipt.get("operation") != "update"
+                        or next_receipt.get("sourceId") != affected_identity["sourceId"]
+                        or next_receipt.get("wikiId") != affected_identity["wikiId"]
+                    ):
+                        raise JournalError(
+                            f"candidate {candidate_id!r} is a correction; kept requires an "
+                            "applied update receipt for its affected Wiki identity"
+                        )
                 if (
                     item["status"] == "deferred"
                     and isinstance(previous_receipt, dict)
@@ -514,6 +599,15 @@ def fold_events(events: list[dict[str, Any]], expected_feature_slug: str | None 
     state["candidates"] = [candidates[candidate_id] for candidate_id in order]
     for item in state["candidates"]:
         state["counts"][item["status"]] += 1
+        if item["kind"] == "correction" and item["status"] in {"pending", "deferred"}:
+            correction = item["correction"]
+            state["maintenanceSignals"].append({
+                "type": "unresolved_correction",
+                "candidateId": item["candidateId"],
+                "status": item["status"],
+                "affectedWikiIdentity": correction["affectedWikiIdentity"],
+                "observedImpact": correction["observedImpact"],
+            })
     return state
 
 
@@ -686,6 +780,9 @@ def build_parser() -> argparse.ArgumentParser:
     append_parser.add_argument("--skill-role", action="append", choices=sorted(SKILL_ROLES))
     append_parser.add_argument("--skill-trigger", action="append")
     append_parser.add_argument("--skill-summary")
+    append_parser.add_argument("--affected-source-id")
+    append_parser.add_argument("--affected-wiki-id")
+    append_parser.add_argument("--observed-impact")
 
     supersede_parser = subparsers.add_parser("supersede", help="Supersede a candidate")
     _add_common_event_args(supersede_parser)
@@ -764,6 +861,22 @@ def main() -> int:
                 "summary": args.skill_summary,
                 "discoveryState": "pending",
             }
+        correction_values = (
+            args.affected_source_id,
+            args.affected_wiki_id,
+            args.observed_impact,
+        )
+        correction = None
+        if any(value is not None for value in correction_values):
+            correction = {
+                "affectedWikiIdentity": {
+                    "sourceId": args.affected_source_id,
+                    "wikiId": args.affected_wiki_id,
+                },
+                "claim": args.claim,
+                "evidenceRefs": args.source_ref,
+                "observedImpact": args.observed_impact,
+            }
         event = new_event(
             "candidate",
             args.feature_slug,
@@ -783,6 +896,7 @@ def main() -> int:
                 if skill_registration is not None
                 else {}
             ),
+            **({"correction": correction} if correction is not None else {}),
         )
     elif args.command == "supersede":
         event = new_event(

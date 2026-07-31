@@ -16,6 +16,7 @@ PROJECT="$TMP/project"
 FEATURE="$PROJECT/.grill-adapter/context/resume-feature"
 mkdir -p "$FEATURE"
 ( cd "$PROJECT" && git init -q )
+printf '%s\n' '<!-- grill-adapter:host:grill:start -->' > "$PROJECT/AGENTS.md"
 
 printf '%s\n' \
   '{"featureSlug":"resume-feature","ticketSource":"manual","tickets":[{"taskId":"01","taskTitle":"Resume task","text":"Implement resumable state."}]}' \

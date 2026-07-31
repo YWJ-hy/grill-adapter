@@ -18,7 +18,7 @@ grill stage → grill-adapter touchpoint:
 
 ### Candidate journal — throughout the workflow
 
-Whenever a stage surfaces a possible durable Wiki Note or executable Skill Card registration, run `$grill-adapter:candidate-journal append <feature-slug> <stage>` instead of writing Obsidian or hand-editing JSONL. Every stage targets the same `.grill-adapter/context/<feature-slug>/wiki-candidates.jsonl` append-only journal. Use these stage values: `grill-with-docs`, `specification`, `tickets`, `implementation`, `review`, and `debugging`. Capture liberally; `$grill-adapter:update-wiki` remains the only semantic keep-or-skip gate.
+Whenever a stage surfaces a possible durable Wiki Note, executable Skill Card registration, or evidence-backed correction to a known bound Note, run `$grill-adapter:candidate-journal append <feature-slug> <stage>` instead of writing Obsidian or hand-editing JSONL. A correction records the affected `sourceId` + stable `wikiId`, correction claim, evidence refs, and observed impact. Every stage targets the same `.grill-adapter/context/<feature-slug>/wiki-candidates.jsonl` append-only journal. Use these stage values: `grill-with-docs`, `specification`, `tickets`, `implementation`, `review`, and `debugging`. Capture liberally; `$grill-adapter:update-wiki` remains the only semantic keep-or-skip gate.
 
 ### Disclose — during `$mattpocock-skills:grill-with-docs`
 
@@ -77,6 +77,8 @@ Once the work is reviewed and accepted, run the Capture gate:
 Run `$grill-adapter:update-wiki` to validate/fold the `.grill-adapter/context/<feature-slug>/wiki-candidates.jsonl` journal, reconcile unresolved candidates against final review/code/spec evidence, explicitly consolidate related claims, and record keep/skip/defer for each final candidate. Because this project keeps grill's `CONTEXT.md`/`docs/adr`, the skill first converts that knowledge increment into journal events via its own grill bridge (grill's glossary/ADRs are tier-1; the wiki is tier-2). Do **not** route grill knowledge through `import-wiki`: that is a flat structural copy, not an increment.
 
 For a generated ADR projection candidate, keep the project ADR authoritative: extract only durable execution constraints, skip when none exist, target only the project Source, and update the sole Note with the same `adr_source_id`. Never copy ADR rationale/options/consequences or neutralize the projection into Shared Wiki. Ordinary non-ADR decision candidates are unchanged.
+
+For a correction candidate, stable-read the exact affected `wikiId` and require its returned `sourceId` to match. Missing, duplicate, mismatched, or drifted identities stay `deferred`; never create a Note to make an unknown identity succeed. An unresolved correction is only a maintenance signal and never hides or changes the active Note. Accept it only after final evidence, then use an explicit `update` target, structured diff, policy authorization, and matching apply receipt before recording `kept`; otherwise record an explicit `skipped` or `deferred` outcome.
 
 For each ordinary Obsidian Note candidate, require an explicit target decision before proposal: `update` only for a same-theme refinement; `create` a sibling Note with a new stable `wiki_id` for an independent contract with a different trigger, lifecycle, failure mode, validation path, or task-routing need. Same module or code owner is not enough to share a Note. If the split is ambiguous, defer and ask instead of appending to the nearest Note.
 

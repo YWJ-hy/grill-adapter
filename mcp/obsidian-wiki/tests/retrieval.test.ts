@@ -719,21 +719,38 @@ describe('Obsidian Wiki retrieval', () => {
 
     const output = execFileSync('node', [bundle, 'read-notes-by-wiki-ids'], {
       encoding: 'utf8',
-      input: JSON.stringify({ wikiIds: ['project/example/visible'] }),
+      input: JSON.stringify({
+        sourceId: 'project',
+        wikiIds: ['project/example/visible'],
+      }),
       env: { ...process.env, ...env },
     });
 
     expect(JSON.parse(output)).toMatchObject({
-      notes: [expect.objectContaining({ wikiId: 'project/example/visible', path: 'Projects/example/Visible.md' })],
+      notes: [expect.objectContaining({
+        sourceId: 'project',
+        wikiId: 'project/example/visible',
+        path: 'Projects/example/Visible.md',
+      })],
       snapshotHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     });
   });
 
-  it('fails closed when a stable wiki ID is missing or duplicated', () => {
+  it('fails closed when a source-scoped stable Wiki identity is missing, duplicated, or bound to another Source', () => {
     const { env } = fixture();
 
-    expect(() => readNotesByWikiIdsTool({ wikiIds: ['project/example/missing'] }, env)).toThrow(/resolved 0 readable active Notes/);
-    expect(() => readNotesByWikiIdsTool({ wikiIds: ['project/example/visible', 'project/example/visible'] }, env)).toThrow(/Duplicate wiki_id requested/);
+    expect(() => readNotesByWikiIdsTool({
+      sourceId: 'project',
+      wikiIds: ['project/example/missing'],
+    }, env)).toThrow(/resolved 0 readable active Notes/);
+    expect(() => readNotesByWikiIdsTool({
+      sourceId: 'project',
+      wikiIds: ['project/example/visible', 'project/example/visible'],
+    }, env)).toThrow(/Duplicate wiki_id requested/);
+    expect(() => readNotesByWikiIdsTool({
+      sourceId: 'shared',
+      wikiIds: ['project/example/visible'],
+    }, env)).toThrow(/Unknown readable Obsidian Wiki Source: shared/);
   });
 
   it('fails closed for requests outside bound Sources', () => {

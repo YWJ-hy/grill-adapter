@@ -63,8 +63,11 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(readNotesTool(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_read_notes_by_wiki_ids', {
-    description: 'Batch read atomic Notes by stable wiki_id, resolving exactly one readable active Note per ID.',
-    inputSchema: z.object({ wikiIds: z.array(z.string().min(1)).min(1) }),
+    description: 'Batch read atomic Notes by stable wiki_id, optionally within one readable bound Source, resolving exactly one active Note per ID.',
+    inputSchema: z.object({
+      wikiIds: z.array(z.string().min(1)).min(1),
+      sourceId: z.string().min(1).optional(),
+    }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(readNotesByWikiIdsTool(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_graph_neighbors', {

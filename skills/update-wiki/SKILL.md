@@ -72,6 +72,36 @@ Before targeting Notes, compare the unresolved candidates with each other. If se
 
 For each candidate, invoke `candidate-journal outcome`: record `kept` only after the proposed Note/Card change succeeds, `skipped` with the durable-gate reason, or `deferred` while a conflict or authorization question remains recoverable. Later publishing is not a reason to defer an already applied Note: record it `kept` with an applied write receipt so an explicit Publish can consume the staged state. Never delete or rewrite the journal; retain it as the lifecycle receipt and never commit it. If it is missing, proceed with the normal end-of-flow review.
 
+### Correction candidates
+
+A folded candidate with `kind: correction` is a structured maintenance signal about one stable
+bound Wiki identity. It is not proof that the active Note is wrong, and it never suppresses,
+archives, rewrites, or removes that Note by itself.
+
+1. Require the complete `correction` object: affected `sourceId` + `wikiId`, correction claim,
+   evidence refs, and observed impact. Call `obsidian_wiki_read_notes_by_wiki_ids` with that exact
+   `sourceId` and one-element `wikiIds` list. Require exactly one readable active Note and require
+   its returned `sourceId` and `wikiId` to equal the affected identity. Zero matches, duplicate
+   matches, a different or unreadable Source, binding failure, or identity drift is `deferred`;
+   do not guess from title/path or turn an unknown identity into a create.
+2. Reconcile the correction against final evidence in the normal priority order: accepted review
+   findings and verified code/tests, then final spec/ticket, then the correction wording. If final
+   evidence disproves or makes it non-durable, record an explicit `skipped` reason. If evidence is
+   conflicting or incomplete, keep it `deferred` as an unresolved maintenance signal.
+3. When the correction is accepted, the target decision is fixed to `operation: update` for the
+   exact affected `sourceId` + `wikiId` and its current path/hash. Render the complete corrected
+   atomic Note; do not create a sibling, silently hide the old claim, or repurpose another Note.
+4. Run the normal proposal/apply path: show the structured diff and retain its exact identity in a
+   deferred `proposed` receipt, enforce the returned policy, get explicit authorization when
+   required, and apply with the exact expected hash. Record `kept` only after the matching apply succeeds.
+   The journal independently rejects a correction kept outcome without that prior
+   proposal or unless its applied update receipt carries the same affected `sourceId` and `wikiId`.
+
+Repeated corrections are not mechanically deduplicated. If final evidence shows they express the
+same correction, append one final correction candidate and explicitly supersede the older active
+ones. Contradictory corrections remain separate and deferred until evidence or a user decision
+resolves them.
+
 ### ADR execution projection candidates
 
 A folded candidate with `kind: adr_execution_projection` is not an ordinary decision candidate.

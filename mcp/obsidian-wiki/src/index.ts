@@ -323,11 +323,18 @@ async function main(): Promise<void> {
     if (!Array.isArray(values) || values.length === 0 || values.some((value) => typeof value !== 'string' || !value)) {
       throw new Error(`${field} must be a non-empty array of non-empty strings`);
     }
-    const result = subcommand === 'read-notes'
-      ? readNotesTool({ paths: values })
-      : subcommand === 'read-notes-by-wiki-ids'
-        ? readNotesByWikiIdsTool({ wikiIds: values })
-        : graphNeighborsTool({ wikiIds: values });
+    let result;
+    if (subcommand === 'read-notes') {
+      result = readNotesTool({ paths: values });
+    } else if (subcommand === 'read-notes-by-wiki-ids') {
+      const sourceId = optionalStringField(request, 'sourceId');
+      if (sourceId !== undefined && !sourceId.trim()) {
+        throw new Error('sourceId must be a non-empty string');
+      }
+      result = readNotesByWikiIdsTool({ wikiIds: values, sourceId });
+    } else {
+      result = graphNeighborsTool({ wikiIds: values });
+    }
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
   }

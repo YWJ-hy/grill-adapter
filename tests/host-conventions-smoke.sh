@@ -137,6 +137,9 @@ for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
   need "$f" 'Default Capture ends after all outcomes are recorded'
   need "$f" 'explicitly asks'
   need "$f" 'Open PR content remains unavailable to formal research'
+  need "$f" 'affected `sourceId` + stable `wikiId`'
+  need "$f" 'An unresolved correction is only a maintenance signal'
+  need "$f" 'matching apply receipt before recording `kept`'
   deny "$f" '__GRILL_ADAPTER_ROOT__'
   deny "$f" 'CLAUDE_PLUGIN_ROOT'
   deny "$f" 'PLUGIN_ROOT'
@@ -158,6 +161,8 @@ need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/scripts/grill_co
 need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/mcp/obsidian-wiki/dist/index.js publish'
 need "$ROOT/skills/update-wiki/SKILL.md" '`Capture` is the default mode'
 need "$ROOT/skills/update-wiki/SKILL.md" 'only when the user explicitly asks to publish'
+need "$ROOT/skills/update-wiki/SKILL.md" '### Correction candidates'
+need "$ROOT/skills/update-wiki/SKILL.md" 'applied update receipt carries the same affected'
 
 # no residual Superpowers host references in the host blocks
 if grep -nE 'Superpowers' "$GRILL" "$PLAIN" | grep -vE '\.grill-adapter/'; then

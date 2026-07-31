@@ -143,6 +143,232 @@ assert d["candidates"][1]["skillRegistration"] == {
 }
 ' || fail "fold did not preserve pending Wiki and Skill Card candidates"
 
+# A correction names one bound Wiki identity and remains an explicit maintenance signal
+# until Capture reaches a terminal outcome.
+CORRECTION_JOURNAL="$T/.grill-adapter/context/correction/wiki-candidates.jsonl"
+python3 "$JOURNAL_CLI" append \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction \
+  --event-id correction-event-1 --candidate-id correction-1 \
+  --stage implementation --candidate-type wiki_note --kind correction \
+  --claim 'The receipt rule must also retain the effective binding digest.' \
+  --why 'A recovery test failed after the binding changed.' \
+  --source-ref 'test:receipt-recovery' \
+  --affected-source-id project-wiki \
+  --affected-wiki-id project/capture/receipts \
+  --observed-impact 'Recovery accepted a receipt from the wrong Source binding.' >/dev/null
+CORRECTION_FOLD="$(python3 "$JOURNAL_CLI" fold \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction)"
+printf '%s' "$CORRECTION_FOLD" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+item = d["candidates"][0]
+assert item["kind"] == "correction"
+assert item["status"] == "pending"
+assert item["correction"] == {
+    "affectedWikiIdentity": {
+        "sourceId": "project-wiki",
+        "wikiId": "project/capture/receipts",
+    },
+    "claim": "The receipt rule must also retain the effective binding digest.",
+    "evidenceRefs": ["test:receipt-recovery"],
+    "observedImpact": "Recovery accepted a receipt from the wrong Source binding.",
+}
+assert d["maintenanceSignals"] == [{
+    "type": "unresolved_correction",
+    "candidateId": "correction-1",
+    "status": "pending",
+    "affectedWikiIdentity": {
+        "sourceId": "project-wiki",
+        "wikiId": "project/capture/receipts",
+    },
+    "observedImpact": "Recovery accepted a receipt from the wrong Source binding.",
+}]
+' || fail "fold did not expose the structured correction maintenance signal"
+
+if python3 "$JOURNAL_CLI" outcome \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction \
+  --event-id correction-kept-without-write --candidate-id correction-1 \
+  --status kept --reason 'Accepted without applying a governed Note update.' \
+  >/dev/null 2>&1; then
+  fail "correction reached kept without an applied write receipt"
+fi
+
+for invalid_correction_args in \
+  '--affected-source-id project-wiki --observed-impact impact' \
+  '--affected-source-id project-wiki --affected-wiki-id . --observed-impact impact' \
+  '--affected-source-id project-wiki --affected-wiki-id ../unknown --observed-impact impact' \
+  '--affected-source-id project-wiki --affected-wiki-id project/runtime'; do
+  if python3 "$JOURNAL_CLI" append \
+    --journal "$T/.grill-adapter/context/invalid-correction/wiki-candidates.jsonl" \
+    --feature-slug invalid-correction --event-id invalid-correction-event \
+    --candidate-id invalid-correction --stage implementation \
+    --candidate-type wiki_note --kind correction \
+    --claim 'Invalid correction.' --why 'The identity must fail closed.' \
+    --source-ref 'test:invalid-correction' \
+    $invalid_correction_args >/dev/null 2>&1; then
+    fail "invalid correction identity or impact was accepted: $invalid_correction_args"
+  fi
+done
+
+# Contradictory corrections remain separate unresolved signals until Capture resolves them.
+python3 "$JOURNAL_CLI" append \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction \
+  --event-id correction-event-2 --candidate-id correction-2 \
+  --stage review --candidate-type wiki_note --kind correction \
+  --claim 'The receipt rule must not retain a binding digest after apply.' \
+  --why 'A review finding contradicts the implementation observation.' \
+  --source-ref 'review:receipt-recovery' \
+  --affected-source-id project-wiki \
+  --affected-wiki-id project/capture/receipts \
+  --observed-impact 'The two claims cannot both govern receipt recovery.' >/dev/null
+CORRECTION_FOLD="$(python3 "$JOURNAL_CLI" fold \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction)"
+printf '%s' "$CORRECTION_FOLD" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+assert [signal["candidateId"] for signal in d["maintenanceSignals"]] == [
+    "correction-1",
+    "correction-2",
+]
+' || fail "contradictory corrections were silently collapsed"
+
+python3 "$JOURNAL_CLI" outcome \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction \
+  --event-id correction-deferred --candidate-id correction-1 \
+  --status deferred \
+  --reason 'Final evidence must resolve the contradictory correction first.' >/dev/null
+CORRECTION_FOLD="$(python3 "$JOURNAL_CLI" fold \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction)"
+printf '%s' "$CORRECTION_FOLD" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+signal = next(
+    signal for signal in d["maintenanceSignals"]
+    if signal["candidateId"] == "correction-1"
+)
+assert signal["status"] == "deferred"
+' || fail "deferred correction was not retained as a recoverable maintenance signal"
+
+CORRECTION_BEFORE_HASH="sha256:6666666666666666666666666666666666666666666666666666666666666666"
+CORRECTION_AFTER_HASH="sha256:7777777777777777777777777777777777777777777777777777777777777777"
+CORRECTION_BINDING_DIGEST="8888888888888888888888888888888888888888888888888888888888888888"
+CORRECTION_BEFORE="$(sha256_file "$CORRECTION_JOURNAL")"
+if python3 "$JOURNAL_CLI" outcome \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction \
+  --event-id correction-applied-without-proposal --candidate-id correction-1 \
+  --status kept --reason 'Applied without retaining the proposal identity.' \
+  --write-state applied --operation update \
+  --source-id project-wiki --repository-ref knowledge-repo \
+  --binding-digest "$CORRECTION_BINDING_DIGEST" \
+  --wiki-id project/capture/receipts \
+  --path Projects/demo/capture-receipts.md \
+  --before-hash "$CORRECTION_BEFORE_HASH" \
+  --after-hash "$CORRECTION_AFTER_HASH" >/dev/null 2>&1; then
+  fail "correction reached kept without a prior proposed receipt"
+fi
+CORRECTION_AFTER="$(sha256_file "$CORRECTION_JOURNAL")"
+[[ "$CORRECTION_BEFORE" == "$CORRECTION_AFTER" ]] \
+  || fail "rejected proposal bypass mutated the correction journal"
+
+python3 "$JOURNAL_CLI" outcome \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction \
+  --event-id correction-proposed --candidate-id correction-1 \
+  --status deferred --reason 'The governed proposal is ready for authorization.' \
+  --write-state proposed --operation update \
+  --source-id project-wiki --repository-ref knowledge-repo \
+  --binding-digest "$CORRECTION_BINDING_DIGEST" \
+  --wiki-id project/capture/receipts \
+  --path Projects/demo/capture-receipts.md \
+  --before-hash "$CORRECTION_BEFORE_HASH" \
+  --after-hash "$CORRECTION_AFTER_HASH" >/dev/null
+CORRECTION_FOLD="$(python3 "$JOURNAL_CLI" fold \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction)"
+printf '%s' "$CORRECTION_FOLD" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+item = next(item for item in d["candidates"] if item["candidateId"] == "correction-1")
+assert item["status"] == "deferred"
+assert item["writeReceipt"]["state"] == "proposed"
+' || fail "correction did not retain the governed proposal for recovery"
+
+CORRECTION_BEFORE="$(sha256_file "$CORRECTION_JOURNAL")"
+if python3 "$JOURNAL_CLI" outcome \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction \
+  --event-id correction-applied-mismatch --candidate-id correction-1 \
+  --status kept --reason 'Applied a different Note.' \
+  --write-state applied --operation update \
+  --source-id project-wiki --repository-ref knowledge-repo \
+  --binding-digest "$CORRECTION_BINDING_DIGEST" \
+  --wiki-id project/capture/other --path Projects/demo/other.md \
+  --before-hash "$CORRECTION_BEFORE_HASH" \
+  --after-hash "$CORRECTION_AFTER_HASH" >/dev/null 2>&1; then
+  fail "correction accepted an applied receipt for a different Wiki identity"
+fi
+CORRECTION_AFTER="$(sha256_file "$CORRECTION_JOURNAL")"
+[[ "$CORRECTION_BEFORE" == "$CORRECTION_AFTER" ]] \
+  || fail "rejected correction outcome mutated the journal"
+
+python3 "$JOURNAL_CLI" outcome \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction \
+  --event-id correction-applied --candidate-id correction-1 \
+  --status kept --reason 'Final evidence and the governed apply accepted the correction.' \
+  --write-state applied --operation update \
+  --source-id project-wiki --repository-ref knowledge-repo \
+  --binding-digest "$CORRECTION_BINDING_DIGEST" \
+  --wiki-id project/capture/receipts \
+  --path Projects/demo/capture-receipts.md \
+  --before-hash "$CORRECTION_BEFORE_HASH" \
+  --after-hash "$CORRECTION_AFTER_HASH" >/dev/null
+python3 "$JOURNAL_CLI" outcome \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction \
+  --event-id correction-skipped --candidate-id correction-2 \
+  --status skipped \
+  --reason 'Verified code disproves this correction claim.' >/dev/null
+CORRECTION_FOLD="$(python3 "$JOURNAL_CLI" fold \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction)"
+printf '%s' "$CORRECTION_FOLD" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+by_id = {item["candidateId"]: item for item in d["candidates"]}
+assert by_id["correction-1"]["status"] == "kept"
+assert by_id["correction-1"]["writeReceipt"]["state"] == "applied"
+assert by_id["correction-2"]["status"] == "skipped"
+assert d["maintenanceSignals"] == []
+' || fail "correction did not reach governed kept and explicit skipped outcomes"
+
+# Repeated corrections require explicit supersession; the journal never infers consolidation.
+for suffix in old replacement; do
+  python3 "$JOURNAL_CLI" append \
+    --journal "$CORRECTION_JOURNAL" --feature-slug correction \
+    --event-id "correction-repeat-$suffix-event" \
+    --candidate-id "correction-repeat-$suffix" \
+    --stage debugging --candidate-type wiki_note --kind correction \
+    --claim 'The receipt rule must retain the binding digest.' \
+    --why 'The same recovery failure was observed again.' \
+    --source-ref "debug:receipt-recovery-$suffix" \
+    --affected-source-id project-wiki \
+    --affected-wiki-id project/capture/receipts \
+    --observed-impact 'Recovery can cross Source boundaries.' >/dev/null
+done
+python3 "$JOURNAL_CLI" supersede \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction \
+  --event-id correction-repeat-superseded \
+  --candidate-id correction-repeat-old \
+  --by-candidate-id correction-repeat-replacement \
+  --reason 'The replacement retains the latest supporting evidence.' >/dev/null
+CORRECTION_FOLD="$(python3 "$JOURNAL_CLI" fold \
+  --journal "$CORRECTION_JOURNAL" --feature-slug correction)"
+printf '%s' "$CORRECTION_FOLD" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+by_id = {item["candidateId"]: item for item in d["candidates"]}
+assert by_id["correction-repeat-old"]["status"] == "superseded"
+assert by_id["correction-repeat-old"]["supersededBy"] == "correction-repeat-replacement"
+assert [signal["candidateId"] for signal in d["maintenanceSignals"]] == [
+    "correction-repeat-replacement",
+]
+' || fail "repeated corrections did not preserve explicit supersession"
+
 # Capture records proposal identity before a recoverable pause, then replaces it with the
 # verified post-write identity only after apply succeeds.
 BEFORE_HASH="sha256:1111111111111111111111111111111111111111111111111111111111111111"

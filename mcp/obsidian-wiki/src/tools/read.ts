@@ -4,6 +4,7 @@ import {
   assertUniqueBoundSkillCard,
   readBoundNotes,
   readBoundNotesByWikiIds,
+  readableBindingsForScope,
   type RetrievedNote,
 } from '../retrieval.js';
 import { assertSkillCardAvailable } from '../skill-card.js';
@@ -105,12 +106,17 @@ export function readNotesTool(
 }
 
 export function readNotesByWikiIdsTool(
-  input: { wikiIds: string[] },
+  input: { wikiIds: string[]; sourceId?: string },
   env: NodeJS.ProcessEnv = process.env,
   now: Date = new Date(),
 ) {
   return batchReadResult(
-    (bindings) => readBoundNotesByWikiIds(input.wikiIds, bindings, env, now),
+    (bindings) => readBoundNotesByWikiIds(
+      input.wikiIds,
+      readableBindingsForScope(bindings, { sourceId: input.sourceId }),
+      env,
+      now,
+    ),
     env,
     now,
   );

@@ -20,7 +20,7 @@ installed `<!-- grill-adapter:host:...:start -->` marker in the project-root `AG
 workflow, and do not create `.grill-adapter/`, invoke another adapter skill, or emit adapter noise.
 A globally installed plugin is availability, not project opt-in.
 
-Record candidates mechanically without writing Obsidian or deciding whether knowledge is durable. The journal is append-only working state at `.grill-adapter/context/<feature-slug>/wiki-candidates.jsonl`; never edit, truncate, delete, or commit it.
+Record candidates and corrections mechanically without writing Obsidian or deciding whether knowledge is durable. The journal is append-only working state at `.grill-adapter/context/<feature-slug>/wiki-candidates.jsonl`; never edit, truncate, delete, or commit it.
 
 Use one `feature-slug` for the entire workflow. Choose the stage from `grill-with-docs`, `specification`, `tickets`, `implementation`, `review`, `debugging`, or `capture`.
 
@@ -58,6 +58,33 @@ The candidate always records `discoveryState: pending`. Neither a pending candid
 
 Keep the returned `candidateId`. The helper locks the journal, replays every existing event, and refuses corrupt, truncated, duplicate, or illegal data before appending.
 
+## Record a correction
+
+Use `kind=correction` only when observed evidence says one known bound atomic Note may be wrong or
+incomplete. Name the stable identity as both `sourceId` and `wikiId`; never substitute a Note path,
+title, search phrase, or body excerpt. The correction claim and evidence refs are preserved in a
+structured `correction` object together with the observed impact:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py append \
+  --journal .grill-adapter/context/<feature-slug>/wiki-candidates.jsonl \
+  --feature-slug <feature-slug> --stage <stage> \
+  --candidate-type wiki_note --kind correction \
+  --claim "<specific corrected claim>" \
+  --why "<why the observation may invalidate the current Note>" \
+  --source-ref "<verified-test-path-or-review-finding>" \
+  --affected-source-id <bound-source-id> \
+  --affected-wiki-id <stable-wiki-id> \
+  --observed-impact "<concrete failure or user-visible effect>"
+```
+
+Missing or malformed identities/evidence fail closed. The journal does not access the Vault, so
+`update-wiki` must resolve this exact identity against the current project bindings before any
+target or outcome decision. Pending and deferred corrections appear in folded
+`maintenanceSignals` as metadata-only `unresolved_correction` records. They are warnings for
+Capture and later maintenance; they do not hide, archive, rewrite, or otherwise change the active
+Note.
+
 ## Supersede
 
 Append the replacement candidate first. Then link the old active candidate to it:
@@ -84,7 +111,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_candidate_journal.py fold \
   --feature-slug <feature-slug>
 ```
 
-Only `update-wiki` records outcomes. Append `kept` only after the proposed knowledge change succeeds, `skipped` with the durable-gate reason, or `deferred` when recoverable work remains. A resumed Capture may append another `deferred` outcome to replace stale recoverable state with a newly validated proposal; it can later become kept or skipped. Kept and skipped are terminal.
+Only `update-wiki` records outcomes. Append `kept` only after the proposed knowledge change succeeds, `skipped` with the durable-gate reason, or `deferred` when recoverable work remains. A resumed Capture may append another `deferred` outcome to replace stale recoverable state with a newly validated proposal; it can later become kept or skipped. Kept and skipped are terminal. A correction can reach `kept` only after a deferred outcome retained the latest governed `proposed` receipt, followed by an applied `update` receipt whose complete identity matches that proposal and whose `sourceId` and `wikiId` exactly match the affected Wiki identity. A missing proposal, create, or mismatched receipt is rejected.
 
 When several active candidates express the same final claim, do not write the claim more than once. Append one atomic `capture`-stage candidate with the reconciled final wording, then supersede each related active candidate by that replacement before proposing a change. This keeps the semantic merge explicit and reviewable; the helper does not infer duplicates.
 

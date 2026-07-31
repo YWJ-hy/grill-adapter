@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { contentHash } from '../src/note.js';
 import { skillContractHash } from '../src/skill-card.js';
 import { startWriteBridge, type WriteBridgeHandle } from '../src/write-bridge.js';
+import { readNotesByWikiIdsTool } from '../src/tools/read.js';
 import { applyNoteChangeTool, proposeNoteChangeTool } from '../src/tools/write.js';
 
 const roots: string[] = [];
@@ -125,10 +126,24 @@ afterEach(async () => {
 });
 
 describe('bound Obsidian Note writes', () => {
-  it('returns a validated proposal before an explicitly authorized update', async () => {
+  it('resolves a source-scoped stable identity before a governed update', async () => {
     const { env, vaultRoot, sourceRoot, sourceId, initial } = await fixture();
-    const proposed = note(`${sourceId}/existing`, 'Updated body.', `${sourceRoot}/Dependency`);
-    const input = { sourceId, operation: 'update' as const, path: `${sourceRoot}/Existing.md`, content: proposed, expectedHash: contentHash(initial) };
+    const wikiId = `${sourceId}/existing`;
+    const resolved = readNotesByWikiIdsTool({ sourceId, wikiIds: [wikiId] }, env);
+    expect(resolved.notes).toEqual([expect.objectContaining({
+      sourceId,
+      wikiId,
+      path: `${sourceRoot}/Existing.md`,
+      contentHash: contentHash(initial),
+    })]);
+    const proposed = note(wikiId, 'Updated body.', `${sourceRoot}/Dependency`);
+    const input = {
+      sourceId,
+      operation: 'update' as const,
+      path: resolved.notes[0].path,
+      content: proposed,
+      expectedHash: resolved.notes[0].contentHash,
+    };
 
     const preview = await proposeNoteChangeTool(input, env);
     expect(preview).toMatchObject({ policy: 'confirm', authorizationRequired: true, diff: { beforeHash: contentHash(initial), afterHash: contentHash(proposed) } });
@@ -136,7 +151,7 @@ describe('bound Obsidian Note writes', () => {
     await expect(applyNoteChangeTool(input, env)).rejects.toThrow(/explicit authorization/);
 
     const applied = await applyNoteChangeTool({ ...input, authorized: true }, env);
-    expect(applied.postWrite).toMatchObject({ wikiId: `${sourceId}/existing`, contentHash: contentHash(proposed) });
+    expect(applied.postWrite).toMatchObject({ wikiId, contentHash: contentHash(proposed) });
   });
 
   it('creates a new bound Note with expectedHash null and returns post-write identity', async () => {

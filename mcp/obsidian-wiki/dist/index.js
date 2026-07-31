@@ -24396,7 +24396,12 @@ function readNotesTool(input, env = process.env, now = /* @__PURE__ */ new Date(
 }
 function readNotesByWikiIdsTool(input, env = process.env, now = /* @__PURE__ */ new Date()) {
   return batchReadResult(
-    (bindings) => readBoundNotesByWikiIds(input.wikiIds, bindings, env, now),
+    (bindings) => readBoundNotesByWikiIds(
+      input.wikiIds,
+      readableBindingsForScope(bindings, { sourceId: input.sourceId }),
+      env,
+      now
+    ),
     env,
     now
   );
@@ -24792,8 +24797,11 @@ function createServer(env = process.env) {
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(readNotesTool(input, requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_read_notes_by_wiki_ids", {
-    description: "Batch read atomic Notes by stable wiki_id, resolving exactly one readable active Note per ID.",
-    inputSchema: object({ wikiIds: array(string2().min(1)).min(1) }),
+    description: "Batch read atomic Notes by stable wiki_id, optionally within one readable bound Source, resolving exactly one active Note per ID.",
+    inputSchema: object({
+      wikiIds: array(string2().min(1)).min(1),
+      sourceId: string2().min(1).optional()
+    }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(readNotesByWikiIdsTool(input, requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_graph_neighbors", {
@@ -25598,7 +25606,18 @@ async function main() {
     if (!Array.isArray(values) || values.length === 0 || values.some((value) => typeof value !== "string" || !value)) {
       throw new Error(`${field} must be a non-empty array of non-empty strings`);
     }
-    const result = subcommand === "read-notes" ? readNotesTool({ paths: values }) : subcommand === "read-notes-by-wiki-ids" ? readNotesByWikiIdsTool({ wikiIds: values }) : graphNeighborsTool({ wikiIds: values });
+    let result;
+    if (subcommand === "read-notes") {
+      result = readNotesTool({ paths: values });
+    } else if (subcommand === "read-notes-by-wiki-ids") {
+      const sourceId = optionalStringField(request, "sourceId");
+      if (sourceId !== void 0 && !sourceId.trim()) {
+        throw new Error("sourceId must be a non-empty string");
+      }
+      result = readNotesByWikiIdsTool({ wikiIds: values, sourceId });
+    } else {
+      result = graphNeighborsTool({ wikiIds: values });
+    }
     process.stdout.write(`${JSON.stringify(result)}
 `);
     return;
