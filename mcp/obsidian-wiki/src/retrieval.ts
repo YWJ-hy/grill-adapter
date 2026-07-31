@@ -12,6 +12,7 @@ import type { ResolvedBinding } from './bindings.js';
 import {
   parseAtomicNote,
   parseAtomicNoteMetadata,
+  evaluateKnowledgeFreshness,
   type AtomicNote,
   type AtomicNoteMetadata,
 } from './note.js';
@@ -149,7 +150,13 @@ function retrievedMetadata(
   };
 }
 
-function readBoundNoteFromBinding(notePath: string, binding: ResolvedBinding, env: NodeJS.ProcessEnv, requireActiveAndVisible = true): RetrievedNote {
+function readBoundNoteFromBinding(
+  notePath: string,
+  binding: ResolvedBinding,
+  env: NodeJS.ProcessEnv,
+  requireActiveAndVisible = true,
+  now: Date = new Date(),
+): RetrievedNote {
   const normalizedPath = normalizeVaultPath(notePath);
   if (binding.effectiveReadPolicy !== 'allow') {
     throw new Error(`Obsidian Note is not within a readable bound Source: ${normalizedPath}`);
@@ -162,21 +169,31 @@ function readBoundNoteFromBinding(notePath: string, binding: ResolvedBinding, en
   if (requireActiveAndVisible && (note.status !== 'active' || !note.agentVisible)) {
     throw new Error(`Obsidian Note is not active and agent-visible: ${normalizedPath}`);
   }
+  const freshness = evaluateKnowledgeFreshness(note, now, `Obsidian Note ${normalizedPath}`);
+  if (requireActiveAndVisible && freshness.state === 'expired') {
+    throw new Error(`Obsidian Note is expired: ${normalizedPath}`);
+  }
   return note;
 }
 
-export function readBoundNote(notePath: string, bindings: ResolvedBinding[], env: NodeJS.ProcessEnv, requireActiveAndVisible = true): RetrievedNote {
+export function readBoundNote(
+  notePath: string,
+  bindings: ResolvedBinding[],
+  env: NodeJS.ProcessEnv,
+  requireActiveAndVisible = true,
+  now: Date = new Date(),
+): RetrievedNote {
   const normalizedPath = normalizeVaultPath(notePath);
   const binding = bindingForPath(normalizedPath, bindings);
   if (!binding) throw new Error(`Obsidian Note is not within a readable bound Source: ${normalizedPath}`);
-  return readBoundNoteFromBinding(normalizedPath, binding, env, requireActiveAndVisible);
+  return readBoundNoteFromBinding(normalizedPath, binding, env, requireActiveAndVisible, now);
 }
 
 type BoundPath = { notePath: string; binding: ResolvedBinding };
 
-function stableBatchRead(notePaths: BoundPath[], env: NodeJS.ProcessEnv): RetrievedNote[] {
-  const initial = notePaths.map(({ notePath, binding }) => readBoundNoteFromBinding(notePath, binding, env));
-  const reread = notePaths.map(({ notePath, binding }) => readBoundNoteFromBinding(notePath, binding, env));
+function stableBatchRead(notePaths: BoundPath[], env: NodeJS.ProcessEnv, now: Date): RetrievedNote[] {
+  const initial = notePaths.map(({ notePath, binding }) => readBoundNoteFromBinding(notePath, binding, env, true, now));
+  const reread = notePaths.map(({ notePath, binding }) => readBoundNoteFromBinding(notePath, binding, env, true, now));
   const seenIds = new Set<string>();
   for (let index = 0; index < initial.length; index += 1) {
     const first = initial[index];
@@ -190,40 +207,66 @@ function stableBatchRead(notePaths: BoundPath[], env: NodeJS.ProcessEnv): Retrie
   return initial;
 }
 
-export function readBoundNotes(notePaths: string[], bindings: ResolvedBinding[], env: NodeJS.ProcessEnv): RetrievedNote[] {
+export function readBoundNotes(
+  notePaths: string[],
+  bindings: ResolvedBinding[],
+  env: NodeJS.ProcessEnv,
+  now: Date = new Date(),
+): RetrievedNote[] {
   const uniquePaths = [...new Set(notePaths.map(normalizeVaultPath))];
   return stableBatchRead(uniquePaths.map((notePath) => {
     const binding = bindingForPath(notePath, bindings);
     if (!binding) throw new Error(`Obsidian Note is not within a readable bound Source: ${notePath}`);
     return { notePath, binding };
-  }), env);
+  }), env, now);
 }
 
-export function readBoundNotesByWikiIds(wikiIds: string[], bindings: ResolvedBinding[], env: NodeJS.ProcessEnv): RetrievedNote[] {
+export function readBoundNotesByWikiIds(
+  wikiIds: string[],
+  bindings: ResolvedBinding[],
+  env: NodeJS.ProcessEnv,
+  now: Date = new Date(),
+): RetrievedNote[] {
   const uniqueIds = [...new Set(wikiIds)];
   if (uniqueIds.length !== wikiIds.length) throw new Error('Duplicate wiki_id requested for stable batch read');
   const resolved = uniqueIds.map((wikiId) => {
-    const matches = searchBoundNotes(`[wiki_id:${wikiId}]`, bindings, env).filter((note) => note.wikiId === wikiId);
+    const matches = searchBoundNotes(`[wiki_id:${wikiId}]`, bindings, env, { now })
+      .filter((note) => note.wikiId === wikiId);
     if (matches.length !== 1) throw new Error(`wiki_id ${wikiId} resolved ${matches.length} readable active Notes`);
     return { notePath: matches[0].path, binding: bindings.find((binding) => binding.bindingDigest === matches[0].bindingDigest) };
   });
   if (resolved.some(({ binding }) => !binding)) throw new Error('Obsidian Note resolved without its bound Source');
-  return stableBatchRead(resolved as BoundPath[], env);
+  return stableBatchRead(resolved as BoundPath[], env, now);
 }
 
 export function searchBoundNotes(
   query: string,
   bindings: ResolvedBinding[],
   env: NodeJS.ProcessEnv,
-  requireActiveAndVisible = true,
-  scope: BoundNoteScope = {},
+  options: {
+    requireActiveAndVisible?: boolean;
+    scope?: BoundNoteScope;
+    now?: Date;
+    includeExpired?: boolean;
+  } = {},
 ): RetrievedNote[] {
+  const {
+    requireActiveAndVisible = true,
+    scope = {},
+    now = new Date(),
+    includeExpired = false,
+  } = options;
   const candidates = searchBoundNoteCandidates(query, bindings, env, scope);
   const notes: RetrievedNote[] = [];
   const seenIds = new Set<string>();
   for (const { binding, notePath } of candidates) {
-    const note = readBoundNote(notePath, [binding], env, false);
+    const note = readBoundNote(notePath, [binding], env, false, now);
     if (requireActiveAndVisible && (note.status !== 'active' || !note.agentVisible)) continue;
+    if (
+      requireActiveAndVisible
+      && !includeExpired
+      && evaluateKnowledgeFreshness(note, now).state === 'expired'
+    ) continue;
     if (seenIds.has(note.wikiId)) throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
     seenIds.add(note.wikiId);
     notes.push(note);
@@ -267,6 +310,8 @@ export function searchBoundNoteCandidates(
 
 export function assertUniqueActiveBoundSearchCandidateIds(
   candidates: BoundSearchCandidate[],
+  now: Date = new Date(),
+  includeExpired = false,
 ): void {
   const seenIds = new Set<string>();
   for (const { binding, notePath } of candidates) {
@@ -280,6 +325,10 @@ export function assertUniqueActiveBoundSearchCandidateIds(
     }
     const note = parseAtomicNoteMetadata(frontmatterOnly(resolved), notePath);
     if (note.status !== 'active' || !note.agentVisible) continue;
+    if (
+      !includeExpired
+      && evaluateKnowledgeFreshness(note, now, `Obsidian Note ${notePath}`).state === 'expired'
+    ) continue;
     if (seenIds.has(note.wikiId)) {
       throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
     }
@@ -410,7 +459,7 @@ export function matchingBoundSkillCards(
     `[skill_name:${note.skillName}]`,
     bindings,
     env,
-    requireActiveAndVisible,
+    { requireActiveAndVisible },
   ).filter((candidate) => candidate.skillName === note.skillName);
 }
 
@@ -425,7 +474,7 @@ export function matchingBoundAdrProjections(
     `[adr_source_id:${note.adrSourceId}]`,
     bindings,
     env,
-    requireActiveAndVisible,
+    { requireActiveAndVisible },
   ).filter((candidate) => candidate.adrSourceId === note.adrSourceId);
 }
 

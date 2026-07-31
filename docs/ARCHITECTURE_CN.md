@@ -35,14 +35,16 @@ grill-adapter 是 host 无关的 coding-agent adapter，**同时以 Claude Code 
 
 | 触点 | 机制 | 落到 grill |
 |---|---|---|
-| **Disclose** 选 wiki | 独立 `/grill-adapter:wiki-research` skill（驱动 `grill-adapter:wiki-researcher` agent）：先用硬 limit + scope-bound cursor 读 frontmatter-only bound Source catalog，再在选定分支做稳定有界检索并私下复核少量 Note body，任何 host 都能调 | grill-with-docs 质询期 |
-| **Carry** 带约束 | schema-v6 `.grill-adapter/context/<feature-slug>/wiki-context.json` 保存 binding digest、atomic Note ID/path/hash/summary、已验证 Skill Card 的 name/version/contract hash/triggers/roles 与 ticket roster 指纹，绝不保存 Note body；锚点是 feature，不是 plan 文件；direct task 可由 readiness 在首次代码修改前 late Carry | to-tickets，或无 formal context 的 implement 入口 |
-| **Bind** 角色化 task contract | 规划确认后以一次 roster batch 生成同一批准快照的 `<taskId>.wiki-implement.md` 与 `<taskId>.wiki-review.md`；`wiki-readiness` 校验并消费对应 Markdown、在 receipt 中绑定文件 digest | implement 逐 task + code-review 两轴前 |
+| **Disclose** 选 wiki | 独立 `/grill-adapter:wiki-research` skill（驱动 `grill-adapter:wiki-researcher` agent）：先用硬 limit + scope-bound cursor 读 frontmatter-only bound Source catalog，再在选定分支做稳定有界检索并私下复核少量非 expired Note body；review-due 保留 warning，任何 host 都能调 | grill-with-docs 质询期 |
+| **Carry** 带约束 | schema-v6 `.grill-adapter/context/<feature-slug>/wiki-context.json` 保存 binding digest、atomic Note ID/path/hash/summary/可选 freshness timestamps、已验证 Skill Card 的 name/version/contract hash/triggers/roles 与 ticket roster 指纹，绝不保存 Note body；Carry 重算 freshness 并拒绝 expired；锚点是 feature，不是 plan 文件；direct task 可由 readiness 在首次代码修改前 late Carry | to-tickets，或无 formal context 的 implement 入口 |
+| **Bind** 角色化 task contract | 规划确认后以一次 roster batch 生成同一批准快照的 `<taskId>.wiki-implement.md` 与 `<taskId>.wiki-review.md`，并在 digest 保护的 metadata 中记录直接 Note 与 1 跳闭包 freshness；Bind 重算状态，拒绝期间到期的 Note，把新产生的 review-due warning 包在不变批准正文之外，reviewer 使用派生的 `<taskId>.wiki-review-handoff.md` | implement 逐 task + code-review 两轴前 |
 | **Capture** 回写 | `/grill-adapter:update-wiki`（最终证据 reconciliation + related-claim 显式归并 + 语义门），其可选前置步经 `grill_context_to_candidates.py` 吃 grill CONTEXT.md/ADR 增量；ADR 只生成 project-only metadata projection candidate，Obsidian provider 经 proposal → loopback bridge CAS apply → receipt allowlist；Git/draft-PR publish 仅在用户显式请求时执行 | code-review 后 |
 
 Readiness 不是第五个 Wiki 触点，而是 implement/review 对 Carry + Bind 的编排 seam：implement 入口为 formal ticket 原样复用 finalized context，或为 direct issue/manual 建稳定单任务 roster；规划确认后冻结一对角色化 Markdown task contract，review 只复用既有 receipt 与 reviewer 文件，绝不 late research。每次显式 task 选择会 best-effort 刷新 feature 级 `wiki-session-state.json`，仅投影 task ID、artifact digest、readiness、候选数与恢复命令，供跨会话提示；它不是 task contract，也不参与任何校验。Carry 允许把研究员候选显式标记为 `not-applicable`，保留审计记录但不路由进执行上下文。`no-relevant`/`disabled`/`broken`/`unknown` 与任何 snapshot 失败只生成 caveat。ADR projection 在 Carry 和 freeze 都重新定位项目内权威文件并核对 path-derived source ID 与 content hash；失败同样进入 `broken`。Wiki 内容验证仍 fail-closed，宿主 implement/review 可用性 fail-open；失败路径不允许部分、陈旧或编辑过的 Markdown 进入执行上下文。
 
 `/grill-adapter:wiki-materialize` 复用 `scripts/wiki_materialize_task.py`——规划 freeze 时只从绑定的 Obsidian Source 取数，生成角色化 Markdown，含**有界 1 跳 `depends-on` 闭包**；执行期只验证并消费冻结文件。
+
+知识 freshness 是 Note frontmatter 的可选语义：`verified_at`、`review_after`、`expires_at` 只接受规范化 UTC 秒级时间。状态在每次 catalog/search/read/Carry/finalize/freeze/Bind 时派生，不持久化为权威字段；无 metadata 视为 fresh，review-due 保持可用并给 warning，expired 不得进入正式 selection、sidecar 或角色合同。freeze 把所有角色可见 Note/Card 与 1 跳 `depends_on` 闭包的 freshness 身份写进 schema-v2 批准快照 `freshnessEntries`，Bind 因而能在不访问当前 Source、不修改批准正文的前提下处理跨时钟边界；缺少该清单的 schema-v1 快照必须重新 freeze。它与 Source binding、Git repository/base synchronization freshness 正交，不能互相降级或绕过。受治理写路径可以定位 expired Note，但 proposal/apply 的新内容必须不再 expired 且不得声明未来验证时间。
 
 ### 子系统触点
 

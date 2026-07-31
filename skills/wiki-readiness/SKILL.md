@@ -135,7 +135,9 @@ Non-ready statuses must not receive `--context`; the recorder rejects it mechani
 ## 4. Broken Wiki is a user-selectable host gate
 
 Any configured Wiki status, research, Carry, fingerprint, snapshot generation, or snapshot
-validation failure, including an ADR authority identity/path/content drift, is `broken`.
+validation failure, including an ADR authority identity/path/content drift or a selected Note that
+has expired since planning, is `broken`. Review-due Notes remain valid and their deterministic
+maintenance warning stays in the matching role contract.
 Explain the failed validation and its impact before implementation, then ask whether to stop and
 repair Wiki or continue without Wiki context. The adapter has no mandatory implementation block.
 
@@ -162,7 +164,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py review-handoff \
   --receipt .grill-adapter/context/<feature-slug>/wiki-readiness.json \
   --task-id <taskId> \
   --project-root <project-root> \
-  --handoff .grill-adapter/context/<feature-slug>/<taskId>.wiki-review.md
+  --handoff .grill-adapter/context/<feature-slug>/<taskId>.wiki-review-handoff.md
 ```
 
 For an independent review with no exact task/receipt:
@@ -170,14 +172,19 @@ For an independent review with no exact task/receipt:
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py review-handoff \
   --project-root <project-root> \
-  --handoff .grill-adapter/context/independent.wiki-review.md
+  --handoff .grill-adapter/context/independent.wiki-review-handoff.md
 ```
 
 The command revalidates the receipt, roster, fingerprint, bound context, and the frozen reviewer
-snapshot digest. The handoff is the same read-only Markdown file the user can inspect; it contains
-only the approved current-task hard constraints, direct `depends_on` closure, and reviewer-required
-Skill Cards. Follow every materialized Card's `MUST invoke` directive by invoking the verified
-project skill before reviewing.
+snapshot digest. It never overwrites the approved `<taskId>.wiki-review.md`; instead it derives one
+read-only handoff containing the approved current-task hard constraints, direct `depends_on`
+closure, reviewer-required Skill Cards, and any warnings whose `reviewAfter` boundary passed after
+freeze. Follow every materialized Card's `MUST invoke` directive by invoking the verified project
+skill before reviewing.
+
+Executable task snapshots are schema v2 and require `freshnessEntries` for every role-visible
+Note/Card plus the one-hop closure. A legacy schema-v1 snapshot is invalid and must be deliberately
+re-frozen; never accept it as a no-metadata compatibility case.
 
 Give the **same read-only handoff file** to both subagents and require each to read it. Standards
 continues to report only its standards/code-quality axis; Spec continues to report only its

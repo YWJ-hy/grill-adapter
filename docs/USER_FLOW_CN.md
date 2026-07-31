@@ -116,13 +116,13 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
 
 这是 wiki 正式「入册」的阶段：从披露升级为**正式选择 + 固化进 sidecar**。
 
-1. 正式选择受绑定的 Obsidian atomic Note 和独立 Skill Card：研究员先以 `obsidian_wiki_catalog` 浏览受限目录，每次显式给出硬 `limit`，必要时原样续传不透明 `page.nextCursor`；catalog 从已校验 bound Source 的 Git revision 缓存读取 frontmatter metadata，不调用 Obsidian 全文 read，也不返回 `contentHash`。随后只在选中的 `sourceId` / `pathPrefix` 分支检索，search 同样使用最大 50 的硬 `limit`、稳定 path 顺序、scope-bound cursor 与 `page.truncated`；每轮最多全文复核 8 个候选（规划最多两轮），关键词、目录或一跳图邻居都必须经正文语义判断才可入选。正式选中的 Note 仍通过 stable batch 全文 reread 计算 `contentHash` / `snapshotHash`。Card 只有在 merged/base-synchronized 且本地双运行时 pack 的 name/version/hash 可用时才由 MCP 标记 `discoverable`，选择结果把这组身份与不含正文的一行适用性理由写入 transient metadata-only selection：
+1. 正式选择受绑定的 Obsidian atomic Note 和独立 Skill Card：研究员先以 `obsidian_wiki_catalog` 浏览受限目录，每次显式给出硬 `limit`，必要时原样续传不透明 `page.nextCursor`；catalog 从已校验 bound Source 的 Git revision 缓存读取 frontmatter metadata，不调用 Obsidian 全文 read，也不返回 `contentHash`。Note 可选声明 `verified_at`、`review_after`、`expires_at`，值必须是秒精度 UTC `YYYY-MM-DDTHH:mm:ssZ`；缺失时保持旧行为。运行时独立计算知识 freshness：review-due 仍可检索并产生 maintenance warning，expired 从 catalog/search/formal read 排除。随后只在选中的 `sourceId` / `pathPrefix` 分支检索，search 同样使用最大 50 的硬 `limit`、稳定 path 顺序、scope-bound cursor 与 `page.truncated`；每轮最多全文复核 8 个候选（规划最多两轮），关键词、目录或一跳图邻居都必须经正文语义判断才可入选。正式选中的 Note 仍通过 stable batch 全文 reread 计算 `contentHash` / `snapshotHash`，并把可选 freshness 字段以 `verifiedAt` / `reviewAfter` / `expiresAt` 带入 metadata-only selection。Card 只有在 merged/base-synchronized 且本地双运行时 pack 的 name/version/hash 可用时才由 MCP 标记 `discoverable`；repository/base freshness 与知识 freshness 是两道独立门，任何一方都不能绕过另一方。
 
    ```
    /wiki-research      # phase: plan
    ```
 
-2. 用 render 脚本把选择 scaffold 成 schema-v6 sidecar，先逐项核对候选与确认后的任务；检索命中但实际无关的候选标记为 `destination.kind: not-applicable`（保留审计记录但不进入执行），再编辑其余 Note/Card 的 destination，由真实 ticket 建 roster，最后 finalize：
+2. 用 render 脚本把选择 scaffold 成 schema-v6 sidecar。Carry 会重新校验 timestamp 格式/顺序、未来 `verifiedAt` 和当下 expiry，自动补齐 review-due warning；expired Note 即使由旧 selection 注入也 fail-closed。随后逐项核对候选与确认后的任务；检索命中但实际无关的候选标记为 `destination.kind: not-applicable`（保留审计记录但不进入执行），再编辑其余 Note/Card 的 destination，由真实 ticket 建 roster，最后 finalize：
 
    ```bash
    wiki_context_render.py --scaffold --feature-slug <slug> --ticket-source <source>
@@ -163,7 +163,7 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
    /wiki-readiness <ticket>
    ```
 
-   Freeze 阶段由 `wiki_materialize_task.py` 经绑定 Obsidian MCP 读取权威全文，并做有界、去重 1 跳闭包；生成的 `<taskId>.wiki-implement.md` 与 `<taskId>.wiki-review.md` 在实现和评审阶段固定消费。ADR-backed projection 仍会在 freeze 时重算 `adrSourceId`、路径和 `adrSourceContentHash`；缺失、越界、格式错误或内容漂移都让 freeze fail-closed，不生成可消费快照。binding/Note/Card/base/pack 任一漂移都要求重新审核并 freeze；宿主是否停止实现则由 readiness 的用户选择决定。
+   Freeze 阶段由 `wiki_materialize_task.py` 经绑定 Obsidian MCP 读取权威全文，并做有界、去重 1 跳闭包；生成的 schema-v2 `<taskId>.wiki-implement.md` 与 `<taskId>.wiki-review.md` 在实现和评审阶段固定消费，其 `freshnessEntries` 覆盖所有角色可见 Note/Card 与闭包。缺少清单的 schema-v1 快照不可执行，必须重新 freeze。ADR-backed projection 仍会在 freeze 时重算 `adrSourceId`、路径和 `adrSourceContentHash`；缺失、越界、格式错误或内容漂移都让 freeze fail-closed，不生成可消费快照。binding/Note/Card/base/pack 任一漂移都要求重新审核并 freeze；宿主是否停止实现则由 readiness 的用户选择决定。
 
 6. readiness 结果写入 `.grill-adapter/context/<feature-slug>/wiki-readiness.json`，保存 task identity、fingerprint、状态、context 文件名和两份 role Markdown 的 digest；同时 best-effort 刷新 `wiki-session-state.json`。后者只记录 featureSlug、最后显式选择的 task、roster/context/snapshot digest、readiness 状态、候选数和下一条 readiness 命令，不含 Note body，也不参与执行期校验。Note body 只存在于用户可见的 task Markdown，不复制进 JSON receipt。roster/context/snapshot/receipt 都是本地工作态，不提交。
 
@@ -171,9 +171,9 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
 
 ### 步骤 5 · `/code-review` — Reviewer Bind + Capture
 
-code-review 确定当前任务后、启动 Standards/Spec 两个隔离 reviewer 前，复用 implement 阶段的 readiness receipt 运行 `review-handoff`。`ready` 会重新校验 roster/fingerprint/context 和 `<taskId>.wiki-review.md` digest；两轴读取同一个本地 reviewer Markdown，但各自职责和输出结构不变。Card 到达实际 reviewer 后，其 `MUST invoke` project skill 要求必须执行。
+code-review 确定当前任务后、启动 Standards/Spec 两个隔离 reviewer 前，复用 implement 阶段的 readiness receipt 运行 `review-handoff`。`ready` 会重新校验 roster/fingerprint/context、`<taskId>.wiki-review.md` digest 以及快照中直接/闭包 Note 的 freshness；批准 snapshot 保持不变，运行时 warning 与正文共同派生为 `<taskId>.wiki-review-handoff.md`。两轴读取同一个 handoff，但各自职责和输出结构不变。Card 到达实际 reviewer 后，其 `MUST invoke` project skill 要求必须执行。
 
-   `no-relevant`、`disabled`、`broken`、无法确定 task 的 `unknown`，以及 receipt/context/snapshot 任一失败，都只生成不含 Wiki 正文的非阻塞 caveat。评审继续，不做 late research、不要求先修 Wiki，且失败路径会覆盖旧 reviewer 文件，丢弃所有部分输出。这里是“Wiki 内容验证 fail-closed、宿主 review 可用性 fail-open”。
+   `no-relevant`、`disabled`、`broken`、无法确定 task 的 `unknown`，以及 receipt/context/snapshot 任一失败，都只生成不含 Wiki 正文的非阻塞 caveat。评审继续，不做 late research、不要求先修 Wiki；失败路径只覆盖派生 handoff，永不覆盖批准的 reviewer snapshot，并丢弃所有部分输出。这里是“Wiki 内容验证 fail-closed、宿主 review 可用性 fail-open”。
 
 review 通过后，把本轮新沉淀的知识回写 wiki。约定块只让你调一个 skill：
 

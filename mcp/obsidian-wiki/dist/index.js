@@ -22742,6 +22742,14 @@ var SkillVersionSchema = string2().regex(
   /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 );
 var ContentHashSchema = string2().regex(/^sha256:[a-f0-9]{64}$/);
+var NormalizedTimestampSchema = string2().refine((value) => {
+  if (!/^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$/.test(value)) {
+    return false;
+  }
+  if (value.startsWith("0000-")) return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().replace(".000Z", "Z") === value;
+}, "must be a normalized UTC timestamp (YYYY-MM-DDTHH:mm:ssZ)");
 var AdrSourceIdSchema = string2().regex(/^project-adr:[a-f0-9]{64}$/);
 var AdrSourcePathSchema = string2().refine((value) => {
   if (value.includes("\\") || value.startsWith("/")) return false;
@@ -22757,6 +22765,9 @@ var NoteSchema = object({
   status: _enum(["active", "draft", "archived"]),
   agent_visible: boolean2().optional(),
   summary: string2().min(1),
+  verified_at: NormalizedTimestampSchema.optional(),
+  review_after: NormalizedTimestampSchema.optional(),
+  expires_at: NormalizedTimestampSchema.optional(),
   constraint_strength: _enum(["hard", "soft"]).optional(),
   depends_on: array(string2()).optional(),
   see_also: array(string2()).optional(),
@@ -22817,7 +22828,9 @@ function parseAtomicNoteMetadata(contents, description = "Note") {
   const raw = parseFrontmatter(contents);
   const parsed = NoteSchema.safeParse(raw);
   if (!parsed.success) {
-    throw new Error(`${description} has invalid atomic Note properties: ${parsed.error.issues.map((issue2) => issue2.message).join("; ")}`);
+    throw new Error(
+      `${description} has invalid atomic Note properties: ${parsed.error.issues.map((issue2) => `${issue2.path.join(".") || "frontmatter"} ${issue2.message}`).join("; ")}`
+    );
   }
   const note = parsed.data;
   const skillFields = [
@@ -22846,12 +22859,27 @@ function parseAtomicNoteMetadata(contents, description = "Note") {
   if (isAdrProjection && (note.type !== "constraint" || note.constraint_strength !== "hard")) {
     throw new Error(`${description} ADR execution projection must be a hard constraint`);
   }
+  const verifiedAt = note.verified_at === void 0 ? void 0 : new Date(note.verified_at);
+  const reviewAfter = note.review_after === void 0 ? void 0 : new Date(note.review_after);
+  const expiresAt = note.expires_at === void 0 ? void 0 : new Date(note.expires_at);
+  if (verifiedAt && reviewAfter && reviewAfter < verifiedAt) {
+    throw new Error(`${description} review_after must not be earlier than verified_at`);
+  }
+  if (verifiedAt && expiresAt && expiresAt < verifiedAt) {
+    throw new Error(`${description} expires_at must not be earlier than verified_at`);
+  }
+  if (reviewAfter && expiresAt && expiresAt < reviewAfter) {
+    throw new Error(`${description} expires_at must not be earlier than review_after`);
+  }
   return {
     wikiId: note.wiki_id,
     type: note.type,
     status: note.status,
     agentVisible: note.agent_visible ?? true,
     summary: note.summary,
+    verifiedAt: note.verified_at,
+    reviewAfter: note.review_after,
+    expiresAt: note.expires_at,
     constraintStrength: note.constraint_strength,
     skillRoles: note.skill_roles ?? [],
     skillName: note.skill_name,
@@ -22868,6 +22896,23 @@ function parseAtomicNoteMetadata(contents, description = "Note") {
       contradicts: note.contradicts ?? []
     }
   };
+}
+function evaluateKnowledgeFreshness(note, now = /* @__PURE__ */ new Date(), description = `Wiki Note ${note.wikiId}`) {
+  if (Number.isNaN(now.getTime())) throw new Error("Knowledge freshness clock is invalid");
+  const verifiedAt = note.verifiedAt === void 0 ? void 0 : new Date(note.verifiedAt);
+  if (verifiedAt && verifiedAt > now) {
+    throw new Error(`${description} verified_at cannot be in the future: ${note.verifiedAt}`);
+  }
+  const expiresAt = note.expiresAt === void 0 ? void 0 : new Date(note.expiresAt);
+  if (expiresAt && expiresAt <= now) return { state: "expired" };
+  const reviewAfter = note.reviewAfter === void 0 ? void 0 : new Date(note.reviewAfter);
+  if (reviewAfter && reviewAfter <= now) {
+    return {
+      state: "review-due",
+      warning: `Wiki Note ${note.wikiId} is review-due since ${note.reviewAfter}.`
+    };
+  }
+  return { state: "fresh" };
 }
 function parseAtomicNote(contents, description = "Note") {
   return {
@@ -23005,7 +23050,7 @@ function retrievedMetadata(binding, notePath, note) {
     bindingDigest: binding.bindingDigest
   };
 }
-function readBoundNoteFromBinding(notePath, binding, env, requireActiveAndVisible = true) {
+function readBoundNoteFromBinding(notePath, binding, env, requireActiveAndVisible = true, now = /* @__PURE__ */ new Date()) {
   const normalizedPath = normalizeVaultPath(notePath);
   if (binding.effectiveReadPolicy !== "allow") {
     throw new Error(`Obsidian Note is not within a readable bound Source: ${normalizedPath}`);
@@ -23018,17 +23063,21 @@ function readBoundNoteFromBinding(notePath, binding, env, requireActiveAndVisibl
   if (requireActiveAndVisible && (note.status !== "active" || !note.agentVisible)) {
     throw new Error(`Obsidian Note is not active and agent-visible: ${normalizedPath}`);
   }
+  const freshness = evaluateKnowledgeFreshness(note, now, `Obsidian Note ${normalizedPath}`);
+  if (requireActiveAndVisible && freshness.state === "expired") {
+    throw new Error(`Obsidian Note is expired: ${normalizedPath}`);
+  }
   return note;
 }
-function readBoundNote(notePath, bindings, env, requireActiveAndVisible = true) {
+function readBoundNote(notePath, bindings, env, requireActiveAndVisible = true, now = /* @__PURE__ */ new Date()) {
   const normalizedPath = normalizeVaultPath(notePath);
   const binding = bindingForPath(normalizedPath, bindings);
   if (!binding) throw new Error(`Obsidian Note is not within a readable bound Source: ${normalizedPath}`);
-  return readBoundNoteFromBinding(normalizedPath, binding, env, requireActiveAndVisible);
+  return readBoundNoteFromBinding(normalizedPath, binding, env, requireActiveAndVisible, now);
 }
-function stableBatchRead(notePaths, env) {
-  const initial = notePaths.map(({ notePath, binding }) => readBoundNoteFromBinding(notePath, binding, env));
-  const reread = notePaths.map(({ notePath, binding }) => readBoundNoteFromBinding(notePath, binding, env));
+function stableBatchRead(notePaths, env, now) {
+  const initial = notePaths.map(({ notePath, binding }) => readBoundNoteFromBinding(notePath, binding, env, true, now));
+  const reread = notePaths.map(({ notePath, binding }) => readBoundNoteFromBinding(notePath, binding, env, true, now));
   const seenIds = /* @__PURE__ */ new Set();
   for (let index = 0; index < initial.length; index += 1) {
     const first = initial[index];
@@ -23041,32 +23090,39 @@ function stableBatchRead(notePaths, env) {
   }
   return initial;
 }
-function readBoundNotes(notePaths, bindings, env) {
+function readBoundNotes(notePaths, bindings, env, now = /* @__PURE__ */ new Date()) {
   const uniquePaths = [...new Set(notePaths.map(normalizeVaultPath))];
   return stableBatchRead(uniquePaths.map((notePath) => {
     const binding = bindingForPath(notePath, bindings);
     if (!binding) throw new Error(`Obsidian Note is not within a readable bound Source: ${notePath}`);
     return { notePath, binding };
-  }), env);
+  }), env, now);
 }
-function readBoundNotesByWikiIds(wikiIds, bindings, env) {
+function readBoundNotesByWikiIds(wikiIds, bindings, env, now = /* @__PURE__ */ new Date()) {
   const uniqueIds = [...new Set(wikiIds)];
   if (uniqueIds.length !== wikiIds.length) throw new Error("Duplicate wiki_id requested for stable batch read");
   const resolved = uniqueIds.map((wikiId) => {
-    const matches = searchBoundNotes(`[wiki_id:${wikiId}]`, bindings, env).filter((note) => note.wikiId === wikiId);
+    const matches = searchBoundNotes(`[wiki_id:${wikiId}]`, bindings, env, { now }).filter((note) => note.wikiId === wikiId);
     if (matches.length !== 1) throw new Error(`wiki_id ${wikiId} resolved ${matches.length} readable active Notes`);
     return { notePath: matches[0].path, binding: bindings.find((binding) => binding.bindingDigest === matches[0].bindingDigest) };
   });
   if (resolved.some(({ binding }) => !binding)) throw new Error("Obsidian Note resolved without its bound Source");
-  return stableBatchRead(resolved, env);
+  return stableBatchRead(resolved, env, now);
 }
-function searchBoundNotes(query, bindings, env, requireActiveAndVisible = true, scope = {}) {
+function searchBoundNotes(query, bindings, env, options = {}) {
+  const {
+    requireActiveAndVisible = true,
+    scope = {},
+    now = /* @__PURE__ */ new Date(),
+    includeExpired = false
+  } = options;
   const candidates = searchBoundNoteCandidates(query, bindings, env, scope);
   const notes = [];
   const seenIds = /* @__PURE__ */ new Set();
   for (const { binding, notePath } of candidates) {
-    const note = readBoundNote(notePath, [binding], env, false);
+    const note = readBoundNote(notePath, [binding], env, false, now);
     if (requireActiveAndVisible && (note.status !== "active" || !note.agentVisible)) continue;
+    if (requireActiveAndVisible && !includeExpired && evaluateKnowledgeFreshness(note, now).state === "expired") continue;
     if (seenIds.has(note.wikiId)) throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
     seenIds.add(note.wikiId);
     notes.push(note);
@@ -23100,7 +23156,7 @@ ${notePath}`;
   }
   return candidates.sort((left, right) => left.sortKey < right.sortKey ? -1 : left.sortKey > right.sortKey ? 1 : 0);
 }
-function assertUniqueActiveBoundSearchCandidateIds(candidates) {
+function assertUniqueActiveBoundSearchCandidateIds(candidates, now = /* @__PURE__ */ new Date(), includeExpired = false) {
   const seenIds = /* @__PURE__ */ new Set();
   for (const { binding, notePath } of candidates) {
     const absolute = path4.resolve(binding.repository.worktreeRoot, ...notePath.split("/"));
@@ -23113,6 +23169,7 @@ function assertUniqueActiveBoundSearchCandidateIds(candidates) {
     }
     const note = parseAtomicNoteMetadata(frontmatterOnly(resolved), notePath);
     if (note.status !== "active" || !note.agentVisible) continue;
+    if (!includeExpired && evaluateKnowledgeFreshness(note, now, `Obsidian Note ${notePath}`).state === "expired") continue;
     if (seenIds.has(note.wikiId)) {
       throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
     }
@@ -23215,7 +23272,7 @@ function matchingBoundSkillCards(note, bindings, env, requireActiveAndVisible = 
     `[skill_name:${note.skillName}]`,
     bindings,
     env,
-    requireActiveAndVisible
+    { requireActiveAndVisible }
   ).filter((candidate) => candidate.skillName === note.skillName);
 }
 function matchingBoundAdrProjections(note, bindings, env, requireActiveAndVisible = false) {
@@ -23224,7 +23281,7 @@ function matchingBoundAdrProjections(note, bindings, env, requireActiveAndVisibl
     `[adr_source_id:${note.adrSourceId}]`,
     bindings,
     env,
-    requireActiveAndVisible
+    { requireActiveAndVisible }
   ).filter((candidate) => candidate.adrSourceId === note.adrSourceId);
 }
 function assertUniqueBoundSkillCard(note, bindings, env) {
@@ -24016,25 +24073,31 @@ function searchResolution(input, env) {
   }
   return resolution;
 }
-function presentNotes(found, resolution, env, publishFeatureSlug) {
+function presentNotes(found, resolution, env, publishFeatureSlug, now = /* @__PURE__ */ new Date()) {
   for (const note of found) {
     if (publishFeatureSlug) assertUniqueBoundSkillCard(note, resolution.bindings, env);
     else assertUniqueBoundSkillCardMetadata(note, resolution.bindings);
   }
-  return {
-    notes: found.filter((note) => {
-      const binding = resolution.bindings.find(
-        (candidate) => candidate.bindingDigest === note.bindingDigest
-      );
-      return skillCardAvailability(
-        note,
-        resolution.projectDir,
-        {
-          mode: publishFeatureSlug ? "write" : "discovery",
-          baseSynchronized: binding?.repositoryHealth.baseSynchronized === true
-        }
-      ).available;
-    }).map((note) => ({
+  const notes = found.filter((note) => {
+    const binding = resolution.bindings.find(
+      (candidate) => candidate.bindingDigest === note.bindingDigest
+    );
+    return skillCardAvailability(
+      note,
+      resolution.projectDir,
+      {
+        mode: publishFeatureSlug ? "write" : "discovery",
+        baseSynchronized: binding?.repositoryHealth.baseSynchronized === true
+      }
+    ).available;
+  }).map((note) => {
+    const freshness = evaluateKnowledgeFreshness(note, now);
+    return {
+      verifiedAt: note.verifiedAt,
+      reviewAfter: note.reviewAfter,
+      expiresAt: note.expiresAt,
+      freshnessState: freshness.state,
+      maintenanceWarning: freshness.warning,
       sourceId: note.sourceId,
       role: note.role,
       path: note.path,
@@ -24053,10 +24116,15 @@ function presentNotes(found, resolution, env, publishFeatureSlug) {
       summary: note.summary,
       contentHash: note.contentHash,
       bindingDigest: note.bindingDigest
-    }))
+    };
+  });
+  const maintenanceWarnings = notes.map((note) => note.maintenanceWarning).filter((warning) => warning !== void 0);
+  return {
+    notes,
+    ...maintenanceWarnings.length > 0 ? { maintenanceWarnings } : {}
   };
 }
-function searchTool(input, env = process.env) {
+function searchTool(input, env = process.env, now = /* @__PURE__ */ new Date()) {
   if (typeof input.query !== "string" || !input.query.trim()) {
     throw new Error("query must be a non-empty string");
   }
@@ -24082,7 +24150,7 @@ function searchTool(input, env = process.env) {
     env,
     { sourceId: input.sourceId, pathPrefix: normalizedPathPrefix }
   );
-  assertUniqueActiveBoundSearchCandidateIds(candidates);
+  assertUniqueActiveBoundSearchCandidateIds(candidates, now, input.publishFeatureSlug !== void 0);
   const bounded = pageByKey(candidates, (candidate) => candidate.sortKey, {
     kind: "obsidian-wiki-search",
     scope,
@@ -24091,8 +24159,9 @@ function searchTool(input, env = process.env) {
   });
   const seenIds = /* @__PURE__ */ new Set();
   const found = bounded.items.flatMap(({ binding, notePath }) => {
-    const note = readBoundNote(notePath, [binding], env, false);
+    const note = readBoundNote(notePath, [binding], env, false, now);
     if (note.status !== "active" || !note.agentVisible) return [];
+    if (input.publishFeatureSlug === void 0 && evaluateKnowledgeFreshness(note, now).state === "expired") return [];
     if (seenIds.has(note.wikiId)) {
       throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
     }
@@ -24103,7 +24172,8 @@ function searchTool(input, env = process.env) {
     found,
     resolution,
     env,
-    input.publishFeatureSlug
+    input.publishFeatureSlug,
+    now
   );
   return {
     ...presented,
@@ -24113,10 +24183,18 @@ function searchTool(input, env = process.env) {
     }
   };
 }
-function searchWikiIdsTool(input, env = process.env) {
+function searchWikiIdsTool(input, env = process.env, now = /* @__PURE__ */ new Date()) {
   const resolution = searchResolution(input, env);
-  const found = input.wikiIds.flatMap((wikiId) => searchBoundNotes(`[wiki_id:${wikiId}]`, resolution.bindings, env).filter((note) => note.wikiId === wikiId));
-  return presentNotes(found, resolution, env, input.publishFeatureSlug);
+  const found = input.wikiIds.flatMap((wikiId) => searchBoundNotes(
+    `[wiki_id:${wikiId}]`,
+    resolution.bindings,
+    env,
+    {
+      now,
+      includeExpired: input.publishFeatureSlug !== void 0
+    }
+  ).filter((note) => note.wikiId === wikiId));
+  return presentNotes(found, resolution, env, input.publishFeatureSlug, now);
 }
 
 // src/tools/catalog.ts
@@ -24156,21 +24234,21 @@ function immediateEntry(relativePath, pathPrefix) {
   const firstSegment = suffix.slice(0, separator);
   return { directory: pathPrefix ? `${pathPrefix}/${firstSegment}` : firstSegment, direct: false };
 }
-function catalogTool(input, env = process.env) {
+function catalogTool(input, env = process.env, now = /* @__PURE__ */ new Date()) {
   const normalized = catalogInput(input);
   const resolution = catalogResolution(env);
   const [binding] = readableBindingsForScope(resolution.bindings, { sourceId: normalized.sourceId });
-  const activeNotes = boundNoteMetadata(binding).filter((note) => note.status === "active" && note.agentVisible);
-  for (const note of activeNotes) {
+  const activeNotes = boundNoteMetadata(binding).filter((note) => note.status === "active" && note.agentVisible).map((note) => ({ note, freshness: evaluateKnowledgeFreshness(note, now) })).filter(({ freshness }) => freshness.state !== "expired");
+  for (const { note } of activeNotes) {
     assertUniqueBoundSkillCardMetadata(note, resolution.bindings);
   }
-  const notes = activeNotes.filter((note) => skillCardAvailability(note, resolution.projectDir, {
+  const notes = activeNotes.filter(({ note }) => skillCardAvailability(note, resolution.projectDir, {
     mode: "discovery",
     baseSynchronized: binding.repositoryHealth.baseSynchronized
   }).available);
   const directories = /* @__PURE__ */ new Map();
   const directNotes = [];
-  for (const note of notes) {
+  for (const { note, freshness } of notes) {
     const relativePath = sourceRelativePath(note.path, binding);
     if (normalized.pathPrefix && relativePath !== normalized.pathPrefix && !relativePath.startsWith(`${normalized.pathPrefix}/`)) continue;
     const entry = immediateEntry(relativePath, normalized.pathPrefix);
@@ -24196,7 +24274,12 @@ function catalogTool(input, env = process.env) {
         adrSourceContentHash: note.adrSourceContentHash,
         discoveryState: note.skillName ? "discoverable" : void 0,
         summary: note.summary,
-        bindingDigest: note.bindingDigest
+        bindingDigest: note.bindingDigest,
+        verifiedAt: note.verifiedAt,
+        reviewAfter: note.reviewAfter,
+        expiresAt: note.expiresAt,
+        freshnessState: freshness.state,
+        maintenanceWarning: freshness.warning
       });
     }
   }
@@ -24254,7 +24337,8 @@ function checkedNotes(notes, projectDir, bindings, env) {
   }
   return notes;
 }
-function serializedNote(note) {
+function serializedNote(note, now) {
+  const freshness = evaluateKnowledgeFreshness(note, now);
   return {
     sourceId: note.sourceId,
     role: note.role,
@@ -24264,6 +24348,11 @@ function serializedNote(note) {
     status: note.status,
     agentVisible: note.agentVisible,
     summary: note.summary,
+    verifiedAt: note.verifiedAt,
+    reviewAfter: note.reviewAfter,
+    expiresAt: note.expiresAt,
+    freshnessState: freshness.state,
+    maintenanceWarning: freshness.warning,
     constraintStrength: note.constraintStrength,
     skillRoles: note.skillRoles,
     skillName: note.skillName,
@@ -24279,41 +24368,46 @@ function serializedNote(note) {
     bindingDigest: note.bindingDigest
   };
 }
-function readNotesTool(input, env = process.env) {
+function batchReadResult(read, env = process.env, now = /* @__PURE__ */ new Date()) {
   const resolution = resolveBindings(env);
   if (resolution.errors.length > 0) {
     throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
   }
   const notes = checkedNotes(
-    readBoundNotes(input.paths, resolution.bindings, env),
+    read(resolution.bindings),
     resolution.projectDir,
     resolution.bindings,
     env
   );
+  const serialized = notes.map((note) => serializedNote(note, now));
+  const maintenanceWarnings = serialized.map((note) => note.maintenanceWarning).filter((warning) => warning !== void 0);
   return {
-    notes: notes.map(serializedNote),
-    snapshotHash: snapshotHash(notes)
+    notes: serialized,
+    snapshotHash: snapshotHash(notes),
+    ...maintenanceWarnings.length > 0 ? { maintenanceWarnings } : {}
   };
 }
-function readNotesByWikiIdsTool(input, env = process.env) {
-  const resolution = resolveBindings(env);
-  if (resolution.errors.length > 0) {
-    throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
-  }
-  const notes = checkedNotes(
-    readBoundNotesByWikiIds(input.wikiIds, resolution.bindings, env),
-    resolution.projectDir,
-    resolution.bindings,
-    env
+function readNotesTool(input, env = process.env, now = /* @__PURE__ */ new Date()) {
+  return batchReadResult(
+    (bindings) => readBoundNotes(input.paths, bindings, env, now),
+    env,
+    now
   );
-  return {
-    notes: notes.map(serializedNote),
-    snapshotHash: snapshotHash(notes)
-  };
 }
-function readNoteTool(input, env = process.env) {
-  const result = readNotesTool({ paths: [input.path] }, env);
-  return { note: result.notes[0], snapshotHash: result.snapshotHash };
+function readNotesByWikiIdsTool(input, env = process.env, now = /* @__PURE__ */ new Date()) {
+  return batchReadResult(
+    (bindings) => readBoundNotesByWikiIds(input.wikiIds, bindings, env, now),
+    env,
+    now
+  );
+}
+function readNoteTool(input, env = process.env, now = /* @__PURE__ */ new Date()) {
+  const result = readNotesTool({ paths: [input.path] }, env, now);
+  return {
+    note: result.notes[0],
+    snapshotHash: result.snapshotHash,
+    ..."maintenanceWarnings" in result ? { maintenanceWarnings: result.maintenanceWarnings } : {}
+  };
 }
 
 // src/tools/graph.ts
@@ -24499,7 +24593,12 @@ function validateTypedLinks(note, bindings, env) {
   }
 }
 function validateIdentity(input, binding, bindings, env, proposed) {
-  const matches = searchBoundNotes(`[wiki_id:${proposed.wikiId}]`, bindings, env, false).filter((note) => note.wikiId === proposed.wikiId);
+  const matches = searchBoundNotes(
+    `[wiki_id:${proposed.wikiId}]`,
+    bindings,
+    env,
+    { requireActiveAndVisible: false }
+  ).filter((note) => note.wikiId === proposed.wikiId);
   if (proposed.adrSourceId && binding.role !== "project") {
     throw new Error("ADR execution projections may only be written to a project Source");
   }
@@ -24568,6 +24667,9 @@ function prepareChange(input, env) {
   }
   const notePath = assertPathWithinBinding(input.path, binding);
   const proposed = parseAtomicNote(input.content, notePath);
+  if (evaluateKnowledgeFreshness(proposed).state === "expired") {
+    throw new Error(`Proposed Note is already expired: ${notePath}`);
+  }
   assertSkillCardAvailable(proposed, resolution.projectDir, { mode: "write" });
   validateIdentity(input, binding, bindings, env, proposed);
   validateTypedLinks(proposed, bindings, env);
@@ -24658,7 +24760,7 @@ function createServer(env = process.env) {
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (_input, extra) => toResult(sourcesTool(requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_search", {
-    description: "Search active, agent-visible atomic Notes within readable bound Sources, optionally scoped to one Source-relative directory.",
+    description: "Search active, agent-visible, non-expired atomic Notes within readable bound Sources, optionally scoped to one Source-relative directory; review-due Notes remain eligible with maintenance warnings.",
     inputSchema: object({
       query: string2().min(1),
       sourceId: string2().min(1).optional(),
@@ -24669,7 +24771,7 @@ function createServer(env = process.env) {
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(searchTool(input, requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_catalog", {
-    description: "List a bounded metadata-only directory view for one readable bound Obsidian Wiki Source; it never returns Note bodies.",
+    description: "List a bounded metadata-only directory view of active, non-expired Notes for one readable bound Obsidian Wiki Source; it never returns Note bodies.",
     inputSchema: object({
       sourceId: string2().min(1),
       pathPrefix: string2().optional(),
@@ -24680,12 +24782,12 @@ function createServer(env = process.env) {
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(catalogTool(input, requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_read_note", {
-    description: "Read one atomic Note only when its Vault-relative path is under a readable bound Source.",
+    description: "Read one active, agent-visible, non-expired atomic Note only when its Vault-relative path is under a readable bound Source.",
     inputSchema: object({ path: string2().min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(readNoteTool(input, requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_read_notes", {
-    description: "Batch read atomic Notes with stable content hashes and a snapshot hash, failing closed on inconsistency.",
+    description: "Batch read active, non-expired atomic Notes with stable content hashes and a snapshot hash, failing closed on inconsistency and surfacing review-due warnings.",
     inputSchema: object({ paths: array(string2().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(readNotesTool(input, requestEnv(extra._meta))));
@@ -24985,6 +25087,9 @@ function validateChange(raw, options, vaultRoot, allowedRoots) {
   const resolvedParent = nearestExistingDirectory(parent);
   if (!inside(resolvedParent, resolvedSourceRoot)) throw new BridgeError(403, `Note parent escapes its Source root: ${notePath}`);
   const proposed = parseAtomicNote(request.content, notePath);
+  if (evaluateKnowledgeFreshness(proposed).state === "expired") {
+    throw new BridgeError(400, `Proposed Note is already expired: ${notePath}`);
+  }
   if (proposed.wikiId !== request.expectedWikiId) throw new BridgeError(409, "Proposed Note wiki_id does not match expectedWikiId");
   const exists = existsSync6(targetPath);
   let beforeContent = null;

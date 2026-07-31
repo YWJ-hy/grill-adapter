@@ -1,7 +1,7 @@
 import type { ResolvedBinding } from '../bindings.js';
 import { randomUUID } from 'node:crypto';
 import { resolveBindings } from '../bindings.js';
-import { parseAtomicNote } from '../note.js';
+import { evaluateKnowledgeFreshness, parseAtomicNote } from '../note.js';
 import {
   assertPathWithinBinding,
   matchingBoundAdrProjections,
@@ -83,7 +83,12 @@ function validateIdentity(
   env: NodeJS.ProcessEnv,
   proposed: ReturnType<typeof parseAtomicNote>,
 ): void {
-  const matches = searchBoundNotes(`[wiki_id:${proposed.wikiId}]`, bindings, env, false)
+  const matches = searchBoundNotes(
+    `[wiki_id:${proposed.wikiId}]`,
+    bindings,
+    env,
+    { requireActiveAndVisible: false },
+  )
     .filter((note) => note.wikiId === proposed.wikiId);
   if (proposed.adrSourceId && binding.role !== 'project') {
     throw new Error('ADR execution projections may only be written to a project Source');
@@ -176,6 +181,9 @@ function prepareChange(input: NoteChangeInput, env: NodeJS.ProcessEnv): Prepared
   }
   const notePath = assertPathWithinBinding(input.path, binding);
   const proposed = parseAtomicNote(input.content, notePath);
+  if (evaluateKnowledgeFreshness(proposed).state === 'expired') {
+    throw new Error(`Proposed Note is already expired: ${notePath}`);
+  }
   assertSkillCardAvailable(proposed, resolution.projectDir, { mode: 'write' });
   validateIdentity(input, binding, bindings, env, proposed);
   validateTypedLinks(proposed, bindings, env);

@@ -18,6 +18,7 @@ from adr_identity import AdrIdentityError, validate_identity  # noqa: E402
 from wiki_common import repo_root  # noqa: E402
 from wiki_context_render import (  # noqa: E402
     ValidationError,
+    _knowledge_freshness,
     _load_context,
     _v6_task_notes,
     _validate_context,
@@ -25,6 +26,7 @@ from wiki_context_render import (  # noqa: E402
 from wiki_task_snapshot import (  # noqa: E402
     SnapshotError,
     approval_path,
+    evaluate_snapshot_freshness,
     snapshot_path,
     validate_approval,
     validate_snapshot,
@@ -150,6 +152,9 @@ def _assert_note_matches(
     )
     if any(value is not None for value in expected_adr + actual_adr) and actual_adr != expected_adr:
         raise MaterializeError(f"ADR projection identity drift for {identity}")
+    for key in ("verifiedAt", "reviewAfter", "expiresAt"):
+        if actual.get(key) != expected.get(key):
+            raise MaterializeError(f"knowledge freshness {key} drift for {identity}")
     if is_skill:
         for key in (
             "skillName",
@@ -235,6 +240,9 @@ def _materialize(
                 "displayPath": actual["path"],
                 "sectionId": actual["wikiId"],
                 "content": actual["content"],
+                "verifiedAt": actual.get("verifiedAt"),
+                "reviewAfter": actual.get("reviewAfter"),
+                "expiresAt": actual.get("expiresAt"),
                 "closedVia": None,
                 "caveats": [],
                 "requiredSkill": {"name": actual["skillName"], "role": role} if is_skill else None,
@@ -287,14 +295,26 @@ def _materialize(
             actual = closure_by_id.get(wiki_id)
             if actual is None or not isinstance(actual.get("content"), str) or not actual["content"].strip():
                 raise MaterializeError(f"depends_on Note policy violation for {wiki_id}")
+            try:
+                freshness, warning = _knowledge_freshness(
+                    actual,
+                    f"depends_on Wiki Note {wiki_id}",
+                )
+            except ValidationError as exc:
+                raise MaterializeError(str(exc)) from exc
+            if freshness == "expired":
+                raise MaterializeError(f"depends_on Wiki Note {wiki_id} is expired")
             _validate_adr_authority(project_root, actual, wiki_id)
             materialized.append(
                 {
                     "displayPath": actual["path"],
                     "sectionId": actual["wikiId"],
                     "content": actual["content"],
+                    "verifiedAt": actual.get("verifiedAt"),
+                    "reviewAfter": actual.get("reviewAfter"),
+                    "expiresAt": actual.get("expiresAt"),
                     "closedVia": closed_via[wiki_id],
-                    "caveats": [],
+                    "caveats": [warning] if warning else [],
                 }
             )
 
@@ -365,6 +385,11 @@ def main() -> int:
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("--execution-ready", action="store_true")
     parser.add_argument("--obsidian-wiki-cmd", default=None)
+    parser.add_argument(
+        "--freshness-manifest",
+        default=None,
+        help="Write materialized Note freshness identity for task snapshot generation",
+    )
     args = parser.parse_args()
 
     project_root = Path(args.project_root).resolve() if args.project_root else repo_root(Path.cwd())
@@ -404,7 +429,7 @@ def main() -> int:
                 task_id=args.task_id,
             )
             approved_digest = approved_implement if args.role == "implementer" else approved_review
-            _, snapshot_body = validate_snapshot(
+            snapshot_metadata, snapshot_body = validate_snapshot(
                 snapshot,
                 context_path=Path(args.context_path),
                 feature_slug=str(data.get("featureSlug", "")),
@@ -415,6 +440,26 @@ def main() -> int:
                 role=args.role,
                 expected_digest=approved_digest,
             )
+            warnings = evaluate_snapshot_freshness(snapshot_metadata)
+            if warnings:
+                snapshot_body = (
+                    "## Knowledge Freshness Warnings\n\n"
+                    + "\n".join(f"- {warning}" for warning in warnings)
+                    + "\n\n"
+                    + snapshot_body
+                )
+            if args.freshness_manifest:
+                Path(args.freshness_manifest).write_text(
+                    json.dumps(
+                        snapshot_metadata.get("freshnessEntries", []),
+                        ensure_ascii=False,
+                        indent=2,
+                        sort_keys=True,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                    newline="\n",
+                )
             if args.append_to:
                 _append(Path(args.append_to), snapshot_body)
                 print(f"reused frozen task Wiki snapshot -> {args.append_to}", file=sys.stderr)
@@ -432,6 +477,22 @@ def main() -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
+    if args.freshness_manifest:
+        entries = [
+            {
+                "wikiId": note["sectionId"],
+                "path": note["displayPath"],
+                "verifiedAt": note.get("verifiedAt"),
+                "reviewAfter": note.get("reviewAfter"),
+                "expiresAt": note.get("expiresAt"),
+            }
+            for note in materialized
+        ]
+        Path(args.freshness_manifest).write_text(
+            json.dumps(entries, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
     if not materialized:
         scope = f"task `{args.task_id}`" if args.task_id else "selected wiki context"
         print(f"no hard-constraint rereads for {scope}", file=sys.stderr)

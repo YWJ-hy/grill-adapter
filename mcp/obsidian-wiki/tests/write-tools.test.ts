@@ -224,6 +224,30 @@ describe('bound Obsidian Note writes', () => {
     }
   });
 
+  it('rejects proposed Notes that are already expired or claim future verification', async () => {
+    const { env, sourceRoot, sourceId } = await fixture({ update: 'direct' });
+    const base = note(`${sourceId}/freshness`, 'Freshness contract.');
+    const create = {
+      sourceId,
+      operation: 'create' as const,
+      path: `${sourceRoot}/Freshness.md`,
+      expectedHash: null,
+    };
+    const expired = base.replace(
+      'constraint_strength: hard\n',
+      'constraint_strength: hard\nexpires_at: 2000-01-01T00:00:00Z\n',
+    );
+    await expect(proposeNoteChangeTool({ ...create, content: expired }, env))
+      .rejects.toThrow(/already expired/);
+
+    const futureVerified = base.replace(
+      'constraint_strength: hard\n',
+      'constraint_strength: hard\nverified_at: 2999-01-01T00:00:00Z\n',
+    );
+    await expect(proposeNoteChangeTool({ ...create, content: futureVerified }, env))
+      .rejects.toThrow(/verified_at.*future/);
+  });
+
   it('continues proposing and applying bound Notes after earlier bridge writes stage the worktree', async () => {
     const { env, sourceRoot, sourceId, initial, dependency } = await fixture({ update: 'direct' });
     const first = note(`${sourceId}/existing`, 'First staged update.', `${sourceRoot}/Dependency`);

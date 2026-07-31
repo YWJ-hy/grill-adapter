@@ -57,6 +57,15 @@ revision. They never call Obsidian full-body reads and deliberately omit
 stable batch operations reread full Markdown and return authoritative content
 and snapshot hashes.
 
+Atomic Notes may optionally declare `verified_at`, `review_after`, and
+`expires_at` as normalized UTC timestamps (`YYYY-MM-DDTHH:mm:ssZ`). Runtime
+tools derive freshness at call time: review-due Notes remain searchable and
+readable with a maintenance warning, while expired Notes are excluded from
+catalog/search and rejected by formal reads until a governed update refreshes
+or removes the expiry metadata. Missing freshness fields preserve legacy
+behavior. Knowledge freshness never bypasses Source binding or repository/base
+health checks.
+
 The bridge remains a separate loopback HTTP process. `bridge start` reads its
 Vault root, allowed Source roots, project allowlist, host, and port from the
 same configuration file. The bearer token remains in the environment variable

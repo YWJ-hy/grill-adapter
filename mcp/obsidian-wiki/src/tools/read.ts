@@ -7,6 +7,7 @@ import {
   type RetrievedNote,
 } from '../retrieval.js';
 import { assertSkillCardAvailable } from '../skill-card.js';
+import { evaluateKnowledgeFreshness } from '../note.js';
 
 function snapshotHash(notes: Array<{ sourceId: string; wikiId: string; contentHash: string }>): string {
   const canonical = notes
@@ -33,7 +34,8 @@ function checkedNotes<T extends RetrievedNote>(
   return notes;
 }
 
-function serializedNote(note: ReturnType<typeof readBoundNotes>[number]) {
+function serializedNote(note: ReturnType<typeof readBoundNotes>[number], now: Date) {
+  const freshness = evaluateKnowledgeFreshness(note, now);
   return {
     sourceId: note.sourceId,
     role: note.role,
@@ -43,6 +45,11 @@ function serializedNote(note: ReturnType<typeof readBoundNotes>[number]) {
     status: note.status,
     agentVisible: note.agentVisible,
     summary: note.summary,
+    verifiedAt: note.verifiedAt,
+    reviewAfter: note.reviewAfter,
+    expiresAt: note.expiresAt,
+    freshnessState: freshness.state,
+    maintenanceWarning: freshness.warning,
     constraintStrength: note.constraintStrength,
     skillRoles: note.skillRoles,
     skillName: note.skillName,
@@ -59,41 +66,65 @@ function serializedNote(note: ReturnType<typeof readBoundNotes>[number]) {
   };
 }
 
-export function readNotesTool(input: { paths: string[] }, env: NodeJS.ProcessEnv = process.env) {
+function batchReadResult(
+  read: (bindings: ResolvedBinding[]) => RetrievedNote[],
+  env: NodeJS.ProcessEnv = process.env,
+  now: Date = new Date(),
+) {
   const resolution = resolveBindings(env);
   if (resolution.errors.length > 0) {
     throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join('; ')}`);
   }
   const notes = checkedNotes(
-    readBoundNotes(input.paths, resolution.bindings, env),
+    read(resolution.bindings),
     resolution.projectDir,
     resolution.bindings,
     env,
   );
+  const serialized = notes.map((note) => serializedNote(note, now));
+  const maintenanceWarnings = serialized
+    .map((note) => note.maintenanceWarning)
+    .filter((warning): warning is string => warning !== undefined);
   return {
-    notes: notes.map(serializedNote),
+    notes: serialized,
     snapshotHash: snapshotHash(notes),
+    ...(maintenanceWarnings.length > 0 ? { maintenanceWarnings } : {}),
   };
 }
 
-export function readNotesByWikiIdsTool(input: { wikiIds: string[] }, env: NodeJS.ProcessEnv = process.env) {
-  const resolution = resolveBindings(env);
-  if (resolution.errors.length > 0) {
-    throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join('; ')}`);
-  }
-  const notes = checkedNotes(
-    readBoundNotesByWikiIds(input.wikiIds, resolution.bindings, env),
-    resolution.projectDir,
-    resolution.bindings,
+export function readNotesTool(
+  input: { paths: string[] },
+  env: NodeJS.ProcessEnv = process.env,
+  now: Date = new Date(),
+) {
+  return batchReadResult(
+    (bindings) => readBoundNotes(input.paths, bindings, env, now),
     env,
+    now,
   );
-  return {
-    notes: notes.map(serializedNote),
-    snapshotHash: snapshotHash(notes),
-  };
 }
 
-export function readNoteTool(input: { path: string }, env: NodeJS.ProcessEnv = process.env) {
-  const result = readNotesTool({ paths: [input.path] }, env);
-  return { note: result.notes[0], snapshotHash: result.snapshotHash };
+export function readNotesByWikiIdsTool(
+  input: { wikiIds: string[] },
+  env: NodeJS.ProcessEnv = process.env,
+  now: Date = new Date(),
+) {
+  return batchReadResult(
+    (bindings) => readBoundNotesByWikiIds(input.wikiIds, bindings, env, now),
+    env,
+    now,
+  );
+}
+
+export function readNoteTool(
+  input: { path: string },
+  env: NodeJS.ProcessEnv = process.env,
+  now: Date = new Date(),
+) {
+  const result = readNotesTool({ paths: [input.path] }, env, now);
+  return {
+    note: result.notes[0],
+    snapshotHash: result.snapshotHash,
+    ...('maintenanceWarnings' in result ? { maintenanceWarnings: result.maintenanceWarnings } : {}),
+  };
 }

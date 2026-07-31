@@ -65,9 +65,16 @@ Wiki roots at execution time.
 
 The planning-time freeze fails closed on binding changes, missing or duplicate IDs, content or
 metadata drift, Skill Card policy violations, unreadable Notes, partial results, unavailable
-required MCP tools, and shared-wiki rebinding/revision drift. Execution additionally fails closed
+required MCP tools, knowledge-freshness expiry/future verification, and shared-wiki rebinding/revision drift. Optional
+`verifiedAt` / `reviewAfter` / `expiresAt` metadata for every role-visible Note/Card and one-hop
+closure Note is captured in required schema-v2 `freshnessEntries` and re-evaluated during freeze and
+Bind. Review-due Notes
+remain usable with a runtime warning wrapped around the unchanged approved body, while expired Notes
+never enter an implementer Bind or derived reviewer handoff. Execution additionally fails closed
 on snapshot marker, task identity, context digest, body digest, or receipt digest drift. Do not
 hand-fetch Notes or sections, call MCP read tools yourself, or paste body text instead.
+
+Legacy schema-v1 task snapshots have no complete closure freshness identity and must be re-frozen.
 
 When called by `wiki-readiness`, preserve this fail-closed behavior. A failure becomes a host-level
 `broken` readiness result: explain it and let the user stop or continue without Wiki context. Never

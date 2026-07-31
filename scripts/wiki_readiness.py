@@ -9,14 +9,21 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from feature_context import context_root, infer_project_root, is_feature_context_dir
-from wiki_context_render import FingerprintError, ValidationError, load_ticket_roster
+from wiki_context_render import (
+    FingerprintError,
+    ValidationError,
+    _v6_task_notes,
+    load_ticket_roster,
+)
 from wiki_task_snapshot import (
     SnapshotError,
     approval_path,
+    evaluate_snapshot_freshness,
     file_digest,
     render_snapshot,
     snapshot_path,
@@ -266,7 +273,7 @@ def _render_and_materialize_context(
     project_root: Path,
     obsidian_wiki_cmd: str | None = None,
     ignore_snapshot: bool = False,
-) -> tuple[str, str]:
+) -> tuple[str, str, list[dict[str, Any]]]:
     renderer = Path(__file__).with_name("wiki_context_render.py")
     materializer = Path(__file__).with_name("wiki_materialize_task.py")
     common_args = [
@@ -278,28 +285,50 @@ def _render_and_materialize_context(
         "--strict",
         "--execution-ready",
     ]
-    materialize_command = [
-        sys.executable,
-        str(materializer),
-        *common_args,
-        "--project-root",
-        str(project_root),
-    ]
-    if obsidian_wiki_cmd:
-        materialize_command.extend(["--obsidian-wiki-cmd", obsidian_wiki_cmd])
-    if ignore_snapshot:
-        materialize_command.append("--ignore-snapshot")
     renderer_args = [*common_args, "--project-root", str(project_root)]
 
     rendered = _run_context_command(
         [sys.executable, str(renderer), *renderer_args],
         f"{role.capitalize()} Wiki task rendering",
     )
-    materialized = _run_context_command(
-        materialize_command,
-        f"{role.capitalize()} Wiki materialization",
-    )
-    return rendered, materialized
+    manifest_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=context_path.parent,
+            prefix=f".{task_id}.{role}.freshness.",
+            suffix=".json",
+            delete=False,
+        ) as handle:
+            manifest_path = Path(handle.name)
+        materialize_command = [
+            sys.executable,
+            str(materializer),
+            *common_args,
+            "--project-root",
+            str(project_root),
+            "--freshness-manifest",
+            str(manifest_path),
+        ]
+        if obsidian_wiki_cmd:
+            materialize_command.extend(["--obsidian-wiki-cmd", obsidian_wiki_cmd])
+        if ignore_snapshot:
+            materialize_command.append("--ignore-snapshot")
+        materialized = _run_context_command(
+            materialize_command,
+            f"{role.capitalize()} Wiki materialization",
+        )
+        try:
+            freshness_entries = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ReadinessError(
+                f"could not read {role} Wiki freshness manifest: {exc}"
+            ) from exc
+        if not isinstance(freshness_entries, list):
+            raise ReadinessError(f"{role} Wiki freshness manifest must be a list")
+        return rendered, materialized, freshness_entries
+    finally:
+        if manifest_path is not None:
+            manifest_path.unlink(missing_ok=True)
 
 
 def _snapshot_paths(context_path: Path, task_id: str) -> tuple[Path, Path]:
@@ -319,7 +348,8 @@ def _load_role_snapshots(
     task: dict[str, str],
     implement_digest: str | None = None,
     review_digest: str | None = None,
-) -> tuple[tuple[Path, str], tuple[Path, str]]:
+    now: datetime | None = None,
+) -> tuple[tuple[Path, str, list[str]], tuple[Path, str, list[str]]]:
     implement_path, review_path = _snapshot_paths(context_path, task_id)
     if not implement_path.is_file() or not review_path.is_file():
         raise ReadinessError(
@@ -340,7 +370,7 @@ def _load_role_snapshots(
             raise SnapshotError("receipt implementer snapshot digest differs from the approval manifest")
         if review_digest is not None and approved_review != review_digest:
             raise SnapshotError("receipt reviewer snapshot digest differs from the approval manifest")
-        _, implement_body = validate_snapshot(
+        implement_metadata, implement_body = validate_snapshot(
             implement_path,
             context_path=context_path,
             feature_slug=feature_slug,
@@ -351,7 +381,7 @@ def _load_role_snapshots(
             role="implementer",
             expected_digest=approved_implement,
         )
-        _, review_body = validate_snapshot(
+        review_metadata, review_body = validate_snapshot(
             review_path,
             context_path=context_path,
             feature_slug=feature_slug,
@@ -362,9 +392,40 @@ def _load_role_snapshots(
             role="reviewer",
             expected_digest=approved_review,
         )
+        implement_warnings = evaluate_snapshot_freshness(implement_metadata, now)
+        review_warnings = evaluate_snapshot_freshness(review_metadata, now)
     except SnapshotError as exc:
         raise ReadinessError(f"task Wiki snapshot validation failed: {exc}") from exc
-    return (implement_path, implement_body), (review_path, review_body)
+    return (
+        (implement_path, implement_body, implement_warnings),
+        (review_path, review_body, review_warnings),
+    )
+
+
+def _role_freshness_entries(
+    context: dict[str, Any],
+    task_id: str,
+    role: str,
+    materialized_entries: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    notes, skills = _v6_task_notes(context, task_id, role)
+    entries: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for note in [*notes, *skills, *materialized_entries]:
+        wiki_id = note.get("wikiId")
+        if not isinstance(wiki_id, str) or wiki_id in seen:
+            continue
+        seen.add(wiki_id)
+        entries.append(
+            {
+                "wikiId": wiki_id,
+                "path": note.get("path"),
+                "verifiedAt": note.get("verifiedAt"),
+                "reviewAfter": note.get("reviewAfter"),
+                "expiresAt": note.get("expiresAt"),
+            }
+        )
+    return entries
 
 
 def _prepare_role_snapshot_texts(
@@ -381,7 +442,11 @@ def _prepare_role_snapshot_texts(
 ) -> tuple[str, str]:
     _validate_context_identity(context, feature_slug, ticket_source, task_id)
 
-    rendered_implement, materialized_implement = _render_and_materialize_context(
+    (
+        rendered_implement,
+        materialized_implement,
+        implement_freshness,
+    ) = _render_and_materialize_context(
         context_path=context_path,
         task_id=task_id,
         role="implementer",
@@ -389,7 +454,11 @@ def _prepare_role_snapshot_texts(
         obsidian_wiki_cmd=obsidian_wiki_cmd,
         ignore_snapshot=True,
     )
-    rendered_review, materialized_review = _render_and_materialize_context(
+    (
+        rendered_review,
+        materialized_review,
+        review_freshness,
+    ) = _render_and_materialize_context(
         context_path=context_path,
         task_id=task_id,
         role="reviewer",
@@ -405,6 +474,12 @@ def _prepare_role_snapshot_texts(
         role="implementer",
         rendered=rendered_implement,
         materialized=materialized_implement,
+        freshness_entries=_role_freshness_entries(
+            context,
+            task_id,
+            "implementer",
+            implement_freshness,
+        ),
         origin=origin,
     )
     review_text = render_snapshot(
@@ -415,6 +490,12 @@ def _prepare_role_snapshot_texts(
         role="reviewer",
         rendered=rendered_review,
         materialized=materialized_review,
+        freshness_entries=_role_freshness_entries(
+            context,
+            task_id,
+            "reviewer",
+            review_freshness,
+        ),
         origin=origin,
     )
     return implement_text, review_text
@@ -677,6 +758,7 @@ def bind_readiness(
     project_root: Path,
     reason: str,
     obsidian_wiki_cmd: str | None = None,
+    now: datetime | None = None,
 ) -> str:
     _same_context_directory(receipt_path, roster_path, "ticket roster")
     _same_context_directory(receipt_path, context_path, "Wiki context")
@@ -709,6 +791,7 @@ def bind_readiness(
             task=tasks[task_id],
             implement_digest=implement_info[1],
             review_digest=review_info[1],
+            now=now,
         )
     else:
         implement_info, review_info = _freeze_role_snapshots(
@@ -731,6 +814,7 @@ def bind_readiness(
             task=tasks[task_id],
             implement_digest=implement_info[1],
             review_digest=review_info[1],
+            now=now,
         )
 
     record_readiness(
@@ -745,7 +829,16 @@ def bind_readiness(
         implement_wiki=implement_info,
         review_wiki=review_info,
     )
-    return snapshots[0][1]
+    body = snapshots[0][1]
+    warnings = snapshots[0][2]
+    if warnings:
+        return (
+            "## Knowledge Freshness Warnings\n\n"
+            + "\n".join(f"- {warning}" for warning in warnings)
+            + "\n\n"
+            + body
+        )
+    return body
 
 
 def freeze_task_snapshots(
@@ -957,6 +1050,7 @@ def review_handoff(
     project_root: Path,
     handoff_path: Path,
     obsidian_wiki_cmd: str | None,
+    now: datetime | None = None,
 ) -> str:
     if not project_root.is_dir():
         raise ReadinessError(f"project root is not a directory: {project_root}")
@@ -967,6 +1061,12 @@ def review_handoff(
         )
 
     normalized_task_id = task_id.strip() if isinstance(task_id, str) and task_id.strip() else None
+    if (
+        normalized_task_id is not None
+        and handoff_path.name
+        == snapshot_path(handoff_path.parent / "wiki-context.json", normalized_task_id, "reviewer").name
+    ):
+        raise ReadinessError("review handoff must not overwrite the approved reviewer snapshot")
     if receipt_path is None or normalized_task_id is None or not receipt_path.is_file():
         _write_text(
             handoff_path,
@@ -1018,7 +1118,7 @@ def review_handoff(
     if "reviewWikiFile" in entry:
         try:
             _, feature_slug, ticket_source, tasks = _roster_metadata(roster_path)
-            _, materialized = _load_role_snapshots(
+            _, review_snapshot = _load_role_snapshots(
                 context_path=context_path,
                 context=_load_json(context_path, "wiki context"),
                 feature_slug=feature_slug,
@@ -1027,14 +1127,13 @@ def review_handoff(
                 task=tasks[normalized_task_id],
                 implement_digest=entry["implementWikiDigest"],
                 review_digest=entry["reviewWikiDigest"],
+                now=now,
             )
+            materialized = review_snapshot[1]
+            warnings = review_snapshot[2]
             review_path = context_path.parent / _safe_context_filename(entry["reviewWikiFile"], "reviewWikiFile")
             if review_path.name != snapshot_path(context_path, normalized_task_id, "reviewer").name:
                 raise ReadinessError("reviewWikiFile does not match the task-specific reviewer snapshot name")
-            if handoff_path.resolve() != review_path.resolve():
-                raise ReadinessError(
-                    f"review handoff must use the role-specific snapshot path {review_path.name}"
-                )
         except (ReadinessError, SnapshotError, KeyError) as exc:
             _write_text(
                 handoff_path,
@@ -1045,10 +1144,16 @@ def review_handoff(
                 ),
             )
             return f"wrote fail-open materialize-failed reviewer handoff -> {handoff_path}"
-        return f"reused ready reviewer Wiki snapshot -> {handoff_path}"
+        if warnings:
+            materialized = (
+                "## Knowledge Freshness Warnings\n\n"
+                + "\n".join(f"- {warning}" for warning in warnings)
+                + "\n\n"
+                + materialized
+            )
     else:
         try:
-            _, materialized = _render_and_materialize_context(
+            _, materialized, _ = _render_and_materialize_context(
                 context_path=context_path,
                 task_id=normalized_task_id,
                 role="reviewer",

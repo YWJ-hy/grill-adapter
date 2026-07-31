@@ -16,7 +16,7 @@ It does not patch any host skill. A host wires it in by convention:
 - **Codex**: use `$grill-adapter:wiki-research` at the same two points.
 - **direct implementation entry**: `wiki-readiness` may call phase `plan` once, before the first code edit, when no formal finalized context matches its stable single-task roster. It never reselects when a formal context exists.
 
-Formal planning uses only the bound Obsidian Sources exposed by `obsidian_wiki_*`. The researcher first navigates their bounded, frontmatter-derived metadata catalog, then searches only selected Source-relative branches with a hard result limit and opaque continuation cursor, reads a small candidate set privately to verify semantic applicability, and selects the smallest relevant Notes/Cards. Catalog pages contain neither Note bodies nor content hashes; selected Notes still pass through the stable full-body batch read that computes the authoritative content and snapshot hashes. A Card is eligible only when MCP search/read returns `discoveryState: discoverable` after proving its Source is synchronized to the remote base and verifying its project pack name, version, and contract hash. No Note body crosses into a selection or sidecar.
+Formal planning uses only the bound Obsidian Sources exposed by `obsidian_wiki_*`. The researcher first navigates their bounded, frontmatter-derived metadata catalog, then searches only selected Source-relative branches with a hard result limit and opaque continuation cursor, reads a small candidate set privately to verify semantic applicability, and selects the smallest relevant Notes/Cards. Catalog pages contain neither Note bodies nor content hashes; selected Notes still pass through the stable full-body batch read that computes the authoritative content and snapshot hashes. Optional `verified_at`, `review_after`, and `expires_at` frontmatter is exposed as normalized camelCase metadata: review-due Notes remain eligible with deterministic maintenance warnings, while expired Notes are excluded from formal reads. This knowledge freshness is independent of binding/repository health. A Card is eligible only when MCP search/read returns `discoveryState: discoverable` after proving its Source is synchronized to the remote base and verifying its project pack name, version, and contract hash. No Note body crosses into a selection or sidecar.
 
 ### Researcher dispatch compatibility
 
@@ -71,7 +71,8 @@ For every new feature, keep all local workflow artifacts together in
 `obsidian-wiki-selection.json`, `wiki-context.json`, `ticket-roster.json`,
 `wiki-candidates.jsonl`, `wiki-readiness.json`, `wiki-session-state.json`, and `wiki-publish.json`; use
 `issue.json` or `task-brief.md` only for the matching direct-task entry form.
-Reviewer handoffs live in the same directory as `<taskId>.wiki-review.md`.
+Derived reviewer handoffs live in the same directory as `<taskId>.wiki-review.md` and use
+`<taskId>.wiki-review-handoff.md` so runtime warnings or caveats never overwrite the approved snapshot.
 The journal lock is local recovery state and must never be moved by hand while a workflow is active.
 `wiki-session-state.json` is generated from explicit task selection/readiness and candidate activity;
 it is non-authoritative, must not contain Wiki body text, and must not be hand-authored as a substitute
@@ -87,7 +88,7 @@ focus: <feature goal and likely task areas>
 selectionOutputPath: .grill-adapter/context/<feature-slug>/obsidian-wiki-selection.json
 ```
 
-At `plan` phase the agent writes the JSON **selection** object (shape in `${CLAUDE_PLUGIN_ROOT}/contracts/obsidian-wiki-selection-v1.example.jsonc`) to `selectionOutputPath` itself and returns only a compact summary. It must contain bounded `wikiBindings`, metadata-only `wikiNotes`, independent `requiredSkills`, the stable `snapshotHash` returned by the final `obsidian_wiki_read_notes` batch, and optional one-line `selectionRationales`. An ADR execution projection may additionally carry the MCP-returned `adrSourceId`, normalized project-relative `adrSourcePath`, and `adrSourceContentHash`; these identify the authority only and never include ADR body text. Carry validates but deliberately drops `selectionRationales`; the selection must not emit Note bodies, body excerpts, `destination`, `taskRouting`, `taskWikiRefs`, `taskFingerprint`, or future task ids.
+At `plan` phase the agent writes the JSON **selection** object (shape in `${CLAUDE_PLUGIN_ROOT}/contracts/obsidian-wiki-selection-v1.example.jsonc`) to `selectionOutputPath` itself and returns only a compact summary. It must contain bounded `wikiBindings`, metadata-only `wikiNotes`, independent `requiredSkills`, the stable `snapshotHash` returned by the final `obsidian_wiki_read_notes` batch, and optional one-line `selectionRationales`. Copy any MCP-returned `verifiedAt`, `reviewAfter`, and `expiresAt` fields and review-due warnings unchanged; never invent or normalize them in the agent. An ADR execution projection may additionally carry the MCP-returned `adrSourceId`, normalized project-relative `adrSourcePath`, and `adrSourceContentHash`; these identify the authority only and never include ADR body text. Carry validates but deliberately drops `selectionRationales`; the selection must not emit Note bodies, body excerpts, `destination`, `taskRouting`, `taskWikiRefs`, `taskFingerprint`, or future task ids.
 
 ### Author the sidecar (Carry) — do not hand-write it
 
@@ -104,7 +105,7 @@ Generate the sidecar mechanically from the selection, then edit only the semanti
    an absent provider to `disabled`, and any configured health/research/Carry failure to `broken`.
    Non-ready implementation paths must not create or reference a sidecar.
 
-2. Generate the schemaVersion 6 sidecar skeleton. This copies only bound Source identity, Note ID/path/hash/summary metadata, the independent Skill Card selection, and the stable batch `snapshotHash`; it adds the `taskRouting` block and default `destination.kind` for every Note/Card. It never embeds a Note body:
+2. Generate the schemaVersion 6 sidecar skeleton. This copies only bound Source identity, Note ID/path/hash/summary/freshness metadata, the independent Skill Card selection, and the stable batch `snapshotHash`; it adds the `taskRouting` block and default `destination.kind` for every Note/Card. Carry independently validates normalized timestamps, rejects future verification and expired Notes, and derives missing review-due warnings. It never embeds a Note body:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .grill-adapter/context/<feature-slug>/wiki-context.json --scaffold .grill-adapter/context/<feature-slug>/obsidian-wiki-selection.json --strict --project-root <project-root> --feature-slug <feature-slug> --ticket-source <source>
