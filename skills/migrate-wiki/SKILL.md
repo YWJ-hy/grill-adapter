@@ -287,6 +287,12 @@ not a legacy import and does not read an unbound Vault or use legacy runtime fal
 
 ### Scope and inventory
 
+Start with one `obsidian_wiki_maintenance_summary` call using an explicit normalized UTC `asOf`
+timestamp and bounded global-per-category `identityLimit`. Reuse that same `asOf` if the inventory
+must be repeated. Use its versioned metadata-only envelope to choose an audit batch; do not treat it
+as task identity, readiness, Bind input, a write proposal, or authorization. A malformed canonical
+journal or unhealthy binding stops the inventory instead of being downgraded to an empty summary.
+
 Require an explicit bound Source scope: one `sourceId`, a source-relative directory, a bounded
 list of `wiki_id` values, or an explicit full-Source audit. Resolve current project bindings and
 read Note metadata through the Obsidian MCP. Read summaries and indexes first, then read full Note

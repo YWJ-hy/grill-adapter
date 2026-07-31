@@ -25,6 +25,7 @@ printf '%s' '<vault-json>' | obsidian-wiki config upsert-vault
 printf '%s' '<repository-json>' | obsidian-wiki config upsert-repository
 obsidian-wiki config validate
 obsidian-wiki doctor
+printf '{"asOf":"2026-07-31T12:00:00Z"}' | obsidian-wiki maintenance-summary
 obsidian-wiki bridge start
 obsidian-wiki bridge status
 obsidian-wiki bridge stop
@@ -65,6 +66,16 @@ catalog/search and rejected by formal reads until a governed update refreshes
 or removes the expiry metadata. Missing freshness fields preserve legacy
 behavior. Knowledge freshness never bypasses Source binding or repository/base
 health checks.
+
+`obsidian_wiki_maintenance_summary` (or the `maintenance-summary` CLI command) folds only
+frontmatter metadata from readable bound Sources and canonical
+`.grill-adapter/context/*/wiki-candidates.jsonl` journals. It returns the versioned
+`grill-adapter.wiki-maintenance-summary` envelope with bounded stable identities and separate
+knowledge-freshness, repository/base-health, and candidate-lifecycle groups. The required
+normalized `asOf` timestamp is the deterministic freshness clock; `identityLimit` is a global
+budget for each identity category, not a per-Source allowance. Note bodies,
+summaries, correction claims, evidence, outcome reasons, arbitrary paths, and journal transcripts
+are never returned. The envelope is non-authoritative and cannot replace task readiness or Bind.
 
 The bridge remains a separate loopback HTTP process. `bridge start` reads its
 Vault root, allowed Source roots, project allowlist, host, and port from the

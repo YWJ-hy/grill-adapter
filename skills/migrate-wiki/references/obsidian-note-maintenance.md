@@ -6,6 +6,12 @@ This reference defines mode 7: a post-migration, proposal-driven audit and repar
 bound Obsidian atomic Notes. It reuses the normal Obsidian binding, write bridge, candidate
 journal, publisher, and verify contracts. It never edits a Vault worktree directly.
 
+Begin from `obsidian_wiki_maintenance_summary` with a normalized UTC `asOf` timestamp and bounded
+global-per-category identity limit; reuse the timestamp for a repeated inventory. The summary is a
+non-authoritative inventory projection: use its stable IDs and separate freshness/repository/
+candidate-lifecycle groups for navigation, then independently perform the bounded Note reads below.
+Never copy it into a task contract or infer write/publish authorization from it.
+
 ## Atomicity decision
 
 Treat one Note as one execution-time retrieval unit. Propose a sibling Note when a candidate

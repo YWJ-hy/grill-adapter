@@ -7,6 +7,7 @@ import { catalogTool } from './tools/catalog.js';
 import { readNoteTool, readNotesByWikiIdsTool, readNotesTool } from './tools/read.js';
 import { graphNeighborsTool } from './tools/graph.js';
 import { applyNoteChangeTool, proposeNoteChangeTool } from './tools/write.js';
+import { maintenanceSummaryTool } from './tools/maintenance-summary.js';
 import { environmentForMcpRequest } from './bindings.js';
 
 function toResult(value: unknown) {
@@ -52,6 +53,14 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(catalogTool(input, requestEnv(extra._meta))));
+  server.registerTool('obsidian_wiki_maintenance_summary', {
+    description: 'Return a bounded, metadata-only, non-authoritative summary of bound Note freshness, contradiction edges, repository health, and canonical candidate lifecycle; it never returns Note bodies or journal prose.',
+    inputSchema: z.object({
+      asOf: z.string().min(1),
+      identityLimit: z.number().int().min(1).max(200).optional(),
+    }),
+    annotations: { readOnlyHint: true, idempotentHint: true },
+  }, async (input, extra) => toResult(maintenanceSummaryTool(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_read_note', {
     description: 'Read one active, agent-visible, non-expired atomic Note only when its Vault-relative path is under a readable bound Source.',
     inputSchema: z.object({ path: z.string().min(1) }),

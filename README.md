@@ -21,6 +21,13 @@ A code assistant forgets your project's durable rules between sessions and acros
 
 Plus **source-of-truth** verify (`/grill-adapter:source-truth-check`) + lint hook and **break-loop** debugging retrospective (`/grill-adapter:break-loop`).
 
+The read-only `obsidian_wiki_maintenance_summary` MCP operation provides a bounded,
+metadata-only view of active/review-due/expired/contradictory Note identities, repository/base
+health, unresolved corrections, and unfinished Capture work across canonical feature journals. Its
+versioned envelope requires an explicit normalized `asOf` clock and applies `identityLimit`
+globally to each identity category. It is advisory maintenance/navigation input only: it contains
+no Note body or journal prose and never participates in task identity, Wiki readiness, or Bind.
+
 ## Local feature workspace
 
 Each feature's local, uncommitted workflow state is grouped under
@@ -28,7 +35,8 @@ Each feature's local, uncommitted workflow state is grouped under
 `wiki-context.json`, `ticket-roster.json`, `<taskId>.wiki-approval.json`,
 `<taskId>.wiki-implement.md`, `<taskId>.wiki-review.md`, `wiki-candidates.jsonl`,
 `wiki-readiness.json`, `wiki-session-state.json`, and `wiki-publish.json`.
-The session state is a non-authoritative cross-session hint containing the last explicitly
+The session state and Wiki maintenance summary are non-authoritative navigation projections. The
+session state contains the last explicitly
 selected task plus local artifact digests; it never substitutes for `wiki-readiness` validation.
 This keeps selection, task identity, review handoffs, and recovery state together in the file explorer.
 Existing legacy flat artifacts remain resumable through their explicit paths;
@@ -72,7 +80,7 @@ health check passes. Use
 `obsidian-wiki bridge restart` to stop the old process and start a detached
 background instance.
 
-Both runtimes discover **12 skills, 3 hook events, and 1 MCP server**. Claude Code also registers `agents/wiki-researcher.md` directly; Codex keeps that prompt as plugin payload and `wiki-research` dispatches a general sub-agent with the same role instructions. The returned agent path is only a handle: waiting on that exact path is the only permitted next operation, and the main session must repeat bounded waits until terminal before messaging the user, asking questions, calling MCP, or continuing. Dispatch/capacity/lifecycle failures are classified as `broken` rather than `no-relevant`. The `obsidian-wiki` server starts with the plugin and exposes bound Source reads, governed Note proposal/apply tools, and a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server. Use `$grill-adapter:setup-init-obsidian` (or `/grill-adapter:setup-init-obsidian`) to check both npm packages and initialize a project (setup details: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
+Both runtimes discover **12 skills, 3 hook events, and 1 MCP server**. Claude Code also registers `agents/wiki-researcher.md` directly; Codex keeps that prompt as plugin payload and `wiki-research` dispatches a general sub-agent with the same role instructions. The returned agent path is only a handle: waiting on that exact path is the only permitted next operation, and the main session must repeat bounded waits until terminal before messaging the user, asking questions, calling MCP, or continuing. Dispatch/capacity/lifecycle failures are classified as `broken` rather than `no-relevant`. The `obsidian-wiki` server starts with the plugin and exposes bound Source reads, the read-only maintenance summary, governed Note proposal/apply tools, and a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server. Use `$grill-adapter:setup-init-obsidian` (or `/grill-adapter:setup-init-obsidian`) to check both npm packages and initialize a project (setup details: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
 
 > **Plugin installation is availability, not project opt-in.** Skills, agents, hooks, and bundled
 > MCP servers take the plugin's scope, and Codex's current `plugin add` command has no project/user

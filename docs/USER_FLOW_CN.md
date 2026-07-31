@@ -45,6 +45,8 @@ grill-adapter 把「wiki 如何进入并回流到工作流」抽象成四个触�
 
 Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specification、tickets、implementation、review、debugging 发现的 Wiki Note / Skill Card 候选与 evidence-backed correction 都进入同一个 `.grill-adapter/context/<feature-slug>/wiki-candidates.jsonl`。correction 必须记录受影响的 bound `sourceId` + stable `wikiId`、修正主张、证据引用和 observed impact；pending/deferred correction 在 fold 中只投影为 metadata-only `unresolved_correction` maintenance signal，不自动隐藏、归档或改写 active Note。Skill Card 候选由 `scaffold-practice-skill stage-card` 在双运行时 pack 校验后追加，包含 name/version/contract hash/roles/triggers，并明确为 `pending`；中间阶段不写 Obsidian、不写 legacy discovery index。journal 只追加、不手改、不删除、不提交。
 
+`obsidian_wiki_maintenance_summary` 是只读、metadata-only 的维护/导航投影：它只从当前可读 bound Source 的 frontmatter 和 canonical feature journal fold 聚合 active、review-due、expired、带 `contradicts` 边的 stable `wikiId`、repository/base health、pending correction 与未完成 Capture。调用者必须提供规范 UTC 秒级 `asOf`，重复 inventory 复用同一值；输出使用 `grill-adapter.wiki-maintenance-summary` schema v1，`identityLimit` 对每类 identity 全局生效，而不是每 Source 各一份额度。不返回 Note body/summary、correction claim/evidence/impact、outcome reason、任意路径、unbound correction identity 或 journal transcript。它不是 task identity、readiness、Bind、写 proposal 或授权输入；malformed journal、unhealthy binding 与 correction identity drift 都 fail-closed，不能伪装成空摘要。
+
 ### Feature 工作目录
 
 每个 feature 都使用一个本地工作目录，而不是把同一任务的文件平铺在 `context/` 下：
@@ -259,7 +261,7 @@ grill-adapter 明确承认自己不是无缝的，并把降级点讲清楚：
 
 迁移前若旧页面已经有 section marker，先在 `migrate-wiki` 的 section-repartition pass 中做 bounded 语义审查：已有 marker 不是 atomicity 证明。agent 先提出 section 边界、ID、body span 和 backlink 变更，用户确认后才移动/新增 marker；不改写正文，不静默重组。这样 migration plan 才能把每个独立 section 映射为最小 atomic Note。
 
-迁移完成后若需要批量整理已绑定 Obsidian Note，使用 `migrate-wiki` 的 Obsidian Note maintenance/repartition 模式。它按明确 Source 范围分批读取 Note，输出 `keep/update/split` plan；split 保留旧 `wiki_id`，通常落成旧 Note `update` + sibling Note `create`，经 proposal/apply、maintenance journal、publisher 和 merge/base-sync 后 verify。它不重开 cutover legacy roots，也不提供直接改 Vault 的快捷路径。
+迁移完成后若需要批量整理已绑定 Obsidian Note，使用 `migrate-wiki` 的 Obsidian Note maintenance/repartition 模式。它先读取有界的 `obsidian_wiki_maintenance_summary` 选择 audit batch，再按明确 Source 范围分批读取 Note，输出 `keep/update/split` plan；split 保留旧 `wiki_id`，通常落成旧 Note `update` + sibling Note `create`，经 proposal/apply、maintenance journal、publisher 和 merge/base-sync 后 verify。摘要始终非权威，不进入 task contract。该模式不重开 cutover legacy roots，也不提供直接改 Vault 的快捷路径。
 
 运维上，配置 Obsidian provider 且 legacy roots 尚在时称为 `shadow-validation`：正式四触点只走 Obsidian，legacy 只供 migration plan/coverage/verify，绝不作为 runtime fallback。`manage.sh doctor` 只有在 active Obsidian bindings 全部健康时成功；verify + 单独 cutover 后状态才是 `cutover-complete`。真实 Desktop 与 installed Claude Code/Codex 验收见 `OBSIDIAN_ACCEPTANCE_CN.md`。
 

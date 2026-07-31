@@ -23,6 +23,8 @@ tar -tf "$PACKAGE" | grep '^package/bin/grill-adapter.mjs$' >/dev/null
 tar -tf "$PACKAGE" | grep '^package/.codex-plugin/plugin.json$' >/dev/null
 tar -tf "$PACKAGE" | grep '^package/mcp/obsidian-wiki/dist/index.js$' >/dev/null
 tar -tf "$PACKAGE" | grep '^package/mcp/obsidian-wiki/dist/atomic_swap.py$' >/dev/null
+tar -tf "$PACKAGE" | grep '^package/mcp/obsidian-wiki/dist/wiki_candidate_journal.py$' >/dev/null
+tar -tf "$PACKAGE" | grep '^package/mcp/obsidian-wiki/dist/wiki_session_state.py$' >/dev/null
 if tar -tf "$PACKAGE" | grep '^package/tests/' >/dev/null; then
   echo "published package unexpectedly contains tests/" >&2
   exit 1
@@ -40,6 +42,8 @@ OBSIDIAN_PACKAGE="$OBSIDIAN_TMP/$OBSIDIAN_TARBALL"
 test -f "$OBSIDIAN_PACKAGE"
 tar -tf "$OBSIDIAN_PACKAGE" | grep '^package/dist/index.js$' >/dev/null
 tar -tf "$OBSIDIAN_PACKAGE" | grep '^package/dist/atomic_swap.py$' >/dev/null
+tar -tf "$OBSIDIAN_PACKAGE" | grep '^package/dist/wiki_candidate_journal.py$' >/dev/null
+tar -tf "$OBSIDIAN_PACKAGE" | grep '^package/dist/wiki_session_state.py$' >/dev/null
 
 npm install --prefix "$TMP/install" "$PACKAGE" >/dev/null
 CLI="$TMP/install/node_modules/.bin/grill-adapter"

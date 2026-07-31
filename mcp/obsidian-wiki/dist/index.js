@@ -3229,8 +3229,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path8) {
-      let input = path8;
+    function removeDotSegments(path9) {
+      let input = path9;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3482,8 +3482,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path8, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path8 && path8 !== "/" ? path8 : void 0;
+        const [path9, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path9 && path9 !== "/" ? path9 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -7132,10 +7132,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path8) {
-  if (!path8)
+function getElementAtPath(obj, path9) {
+  if (!path9)
     return obj;
-  return path8.reduce((acc, key) => acc?.[key], obj);
+  return path9.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7544,11 +7544,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path8, issues) {
+function prefixIssues(path9, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path8);
+    iss.path.unshift(path9);
     return iss;
   });
 }
@@ -7695,16 +7695,16 @@ function flattenError(error2, mapper = (issue2) => issue2.message) {
 }
 function formatError(error2, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error3, path8 = []) => {
+  const processError = (error3, path9 = []) => {
     for (const issue2 of error3.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path8, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path9, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path8, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path9, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path8, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path9, ...issue2.path]);
       } else {
-        const fullpath = [...path8, ...issue2.path];
+        const fullpath = [...path9, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -14294,8 +14294,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path8, errorMaps, issueData } = params;
-  const fullPath = [...path8, ...issueData.path || []];
+  const { data, path: path9, errorMaps, issueData } = params;
+  const fullPath = [...path9, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -14410,11 +14410,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path8, key) {
+  constructor(parent, value, path9, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path8;
+    this._path = path9;
     this._key = key;
   }
   get path() {
@@ -24744,6 +24744,331 @@ async function applyNoteChangeTool(input, env = process.env) {
   return result;
 }
 
+// src/journal-fold.ts
+import { execFileSync as execFileSync5 } from "node:child_process";
+import {
+  existsSync as existsSync5,
+  lstatSync as lstatSync4,
+  readdirSync as readdirSync2,
+  realpathSync as realpathSync3
+} from "node:fs";
+import path7 from "node:path";
+import { fileURLToPath } from "node:url";
+var packagedScriptPath = fileURLToPath(new URL("../dist/wiki_candidate_journal.py", import.meta.url));
+var sourceScriptPath = fileURLToPath(new URL("../../../scripts/wiki_candidate_journal.py", import.meta.url));
+var scriptPath = existsSync5(packagedScriptPath) ? packagedScriptPath : sourceScriptPath;
+var FoldedCandidateSchema = object({
+  candidateId: string2().min(1),
+  kind: string2().min(1),
+  status: _enum(["pending", "deferred", "kept", "skipped", "superseded"]),
+  correction: object({
+    affectedWikiIdentity: object({
+      sourceId: string2().min(1),
+      wikiId: string2().min(1)
+    }).strict()
+  }).passthrough().optional()
+}).passthrough();
+var FoldedJournalSchema2 = object({
+  featureSlug: string2().min(1),
+  candidates: array(FoldedCandidateSchema)
+}).passthrough();
+function lstatIfPresent(targetPath) {
+  try {
+    return lstatSync4(targetPath);
+  } catch (error2) {
+    if (error2 && typeof error2 === "object" && "code" in error2 && error2.code === "ENOENT") {
+      return void 0;
+    }
+    throw error2;
+  }
+}
+function canonicalJournalPaths(projectDir) {
+  const contextRoot = path7.join(projectDir, ".grill-adapter", "context");
+  const rootStat = lstatIfPresent(contextRoot);
+  if (!rootStat) return [];
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new Error("Canonical Wiki context root must be a real directory");
+  }
+  const realProjectDir = realpathSync3(projectDir);
+  const realContextRoot = realpathSync3(contextRoot);
+  if (realContextRoot !== path7.join(realProjectDir, ".grill-adapter", "context")) {
+    throw new Error("Canonical Wiki context root must remain inside the current project");
+  }
+  const journals = [];
+  for (const entry of readdirSync2(contextRoot, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name, "en"))) {
+    if (entry.isSymbolicLink()) {
+      throw new Error(`Canonical Wiki feature context ${entry.name} must not be a symbolic link`);
+    }
+    if (!entry.isDirectory()) continue;
+    const journalPath = path7.join(contextRoot, entry.name, "wiki-candidates.jsonl");
+    const journalStat = lstatIfPresent(journalPath);
+    if (!journalStat) continue;
+    if (!journalStat.isFile() || journalStat.isSymbolicLink()) {
+      throw new Error(`Canonical Wiki candidate journal for ${entry.name} must be a real file`);
+    }
+    journals.push({ featureSlug: entry.name, journalPath });
+  }
+  return journals;
+}
+function commandErrorDetail(error2) {
+  if (error2 && typeof error2 === "object" && "stderr" in error2) {
+    const stderr = error2.stderr;
+    const text = Buffer.isBuffer(stderr) ? stderr.toString("utf8") : stderr;
+    if (typeof text === "string" && text.trim()) return text.trim();
+  }
+  return error2 instanceof Error ? error2.message : String(error2);
+}
+function foldCanonicalFeatureJournals(projectDir, env = process.env) {
+  const python = env.OBSIDIAN_WIKI_PYTHON ?? "python3";
+  return canonicalJournalPaths(projectDir).map(({ featureSlug, journalPath }) => {
+    let output;
+    try {
+      output = String(execFileSync5(python, [
+        scriptPath,
+        "fold",
+        "--journal",
+        journalPath,
+        "--feature-slug",
+        featureSlug
+      ], {
+        encoding: "utf8",
+        env: { ...process.env, ...env },
+        stdio: ["ignore", "pipe", "pipe"]
+      }));
+    } catch (error2) {
+      throw new Error(
+        `Canonical Wiki candidate journal for ${featureSlug} is invalid: ${commandErrorDetail(error2)}`
+      );
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(output);
+    } catch (error2) {
+      throw new Error(
+        `Canonical Wiki candidate journal for ${featureSlug} returned invalid JSON: ${error2 instanceof Error ? error2.message : String(error2)}`
+      );
+    }
+    const result = FoldedJournalSchema2.safeParse(parsed);
+    if (!result.success || result.data.featureSlug !== featureSlug) {
+      const detail = result.success ? `feature identity ${result.data.featureSlug} does not match` : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ");
+      throw new Error(`Canonical Wiki candidate journal for ${featureSlug} has an invalid fold: ${detail}`);
+    }
+    return result.data;
+  });
+}
+
+// src/tools/maintenance-summary.ts
+var DEFAULT_IDENTITY_LIMIT = 100;
+var MAX_IDENTITY_LIMIT = 200;
+var MAX_BINDINGS = 200;
+var SUMMARY_IDENTITY_CATEGORIES = [
+  "active",
+  "reviewDue",
+  "expired",
+  "contradictory"
+];
+function identityLimit(value) {
+  if (value === void 0) return DEFAULT_IDENTITY_LIMIT;
+  if (!Number.isInteger(value) || value < 1 || value > MAX_IDENTITY_LIMIT) {
+    throw new Error(`identityLimit must be an integer between 1 and ${MAX_IDENTITY_LIMIT}`);
+  }
+  return value;
+}
+function emptyKnowledgeCounts() {
+  return { active: 0, fresh: 0, reviewDue: 0, expired: 0, contradictory: 0 };
+}
+function compareText(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+function summaryClock(value) {
+  if (typeof value !== "string" || !/^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$/.test(value) || value.startsWith("0000-")) {
+    throw new Error("asOf must be a normalized UTC timestamp (YYYY-MM-DDTHH:mm:ssZ)");
+  }
+  const now = new Date(value);
+  if (Number.isNaN(now.getTime()) || now.toISOString().replace(".000Z", "Z") !== value) {
+    throw new Error("asOf must be a normalized UTC timestamp (YYYY-MM-DDTHH:mm:ssZ)");
+  }
+  return { asOf: value, now };
+}
+function maintenanceSummaryTool(input, env = process.env) {
+  const limit = identityLimit(input.identityLimit);
+  const { asOf, now } = summaryClock(input.asOf);
+  const resolution = resolveBindings(env);
+  if (resolution.errors.length > 0) {
+    throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
+  }
+  const readableBindings = readableBindingsForScope(resolution.bindings).sort((left, right) => compareText(left.sourceId, right.sourceId));
+  if (readableBindings.length > MAX_BINDINGS) {
+    throw new Error(`Wiki maintenance summary supports at most ${MAX_BINDINGS} readable bindings`);
+  }
+  const seenWikiIds = /* @__PURE__ */ new Set();
+  const readableWikiIdentities = /* @__PURE__ */ new Map();
+  const knowledgeCounts = emptyKnowledgeCounts();
+  const sourceRows = readableBindings.map((binding) => {
+    const counts = emptyKnowledgeCounts();
+    const active = [];
+    const reviewDue = [];
+    const expired = [];
+    const contradictory = [];
+    for (const note of boundNoteMetadata(binding)) {
+      if (note.status !== "active" || !note.agentVisible) continue;
+      if (seenWikiIds.has(note.wikiId)) {
+        throw new Error(`Duplicate active wiki_id in readable bound Sources: ${note.wikiId}`);
+      }
+      seenWikiIds.add(note.wikiId);
+      const sourceIdentities = readableWikiIdentities.get(binding.sourceId) ?? /* @__PURE__ */ new Set();
+      sourceIdentities.add(note.wikiId);
+      readableWikiIdentities.set(binding.sourceId, sourceIdentities);
+      counts.active += 1;
+      active.push(note.wikiId);
+      const freshness = evaluateKnowledgeFreshness(note, now, `Obsidian Note ${note.wikiId}`);
+      if (freshness.state === "fresh") counts.fresh += 1;
+      if (freshness.state === "review-due") {
+        counts.reviewDue += 1;
+        reviewDue.push(note.wikiId);
+      }
+      if (freshness.state === "expired") {
+        counts.expired += 1;
+        expired.push(note.wikiId);
+      }
+      if (note.edges.contradicts.length > 0) {
+        counts.contradictory += 1;
+        contradictory.push(note.wikiId);
+      }
+    }
+    for (const key of Object.keys(knowledgeCounts)) {
+      knowledgeCounts[key] += counts[key];
+    }
+    for (const values of [active, reviewDue, expired, contradictory]) values.sort(compareText);
+    return {
+      sourceId: binding.sourceId,
+      role: binding.role,
+      bindingDigest: binding.bindingDigest,
+      counts,
+      identityValues: { active, reviewDue, expired, contradictory }
+    };
+  });
+  const remainingIdentities = Object.fromEntries(
+    SUMMARY_IDENTITY_CATEGORIES.map((category) => [category, limit])
+  );
+  const sources = sourceRows.map(({ identityValues, ...source }) => {
+    const identities = Object.fromEntries(SUMMARY_IDENTITY_CATEGORIES.map((category) => {
+      const values = identityValues[category];
+      const visible = values.slice(0, remainingIdentities[category]);
+      remainingIdentities[category] -= visible.length;
+      return [category, visible];
+    }));
+    return {
+      ...source,
+      identities,
+      truncated: Object.fromEntries(SUMMARY_IDENTITY_CATEGORIES.map((category) => [
+        category,
+        identities[category].length < identityValues[category].length
+      ]))
+    };
+  });
+  const repositoryMap = /* @__PURE__ */ new Map();
+  for (const binding of readableBindings) {
+    const existing = repositoryMap.get(binding.repositoryRef);
+    const candidate = {
+      repositoryRef: binding.repositoryRef,
+      baseBranch: binding.repositoryHealth.baseBranch,
+      currentBranch: binding.repositoryHealth.currentBranch,
+      baseStatus: binding.repositoryHealth.baseSynchronized ? "synchronized" : "unverified",
+      sourceIds: [binding.sourceId]
+    };
+    if (!existing) {
+      repositoryMap.set(binding.repositoryRef, candidate);
+      continue;
+    }
+    if (existing.baseBranch !== candidate.baseBranch || existing.currentBranch !== candidate.currentBranch || existing.baseStatus !== candidate.baseStatus) {
+      throw new Error(`Bound Sources disagree on repository health for ${binding.repositoryRef}`);
+    }
+    existing.sourceIds.push(binding.sourceId);
+  }
+  const repositories = [...repositoryMap.values()].map((repository) => ({
+    ...repository,
+    sourceIds: repository.sourceIds.sort(compareText)
+  })).sort((left, right) => compareText(left.repositoryRef, right.repositoryRef));
+  const folded = foldCanonicalFeatureJournals(resolution.projectDir, env);
+  const lifecycleCounts = {
+    pending: 0,
+    deferred: 0,
+    kept: 0,
+    skipped: 0,
+    superseded: 0,
+    capturePending: 0,
+    correctionPending: 0
+  };
+  const capturePending = [];
+  const correctionPending = [];
+  for (const journal of folded) {
+    for (const candidate of journal.candidates) {
+      lifecycleCounts[candidate.status] += 1;
+      if (candidate.status !== "pending" && candidate.status !== "deferred") continue;
+      lifecycleCounts.capturePending += 1;
+      capturePending.push({
+        featureSlug: journal.featureSlug,
+        candidateId: candidate.candidateId,
+        kind: candidate.kind,
+        status: candidate.status
+      });
+      if (candidate.kind === "correction") {
+        if (!candidate.correction) {
+          throw new Error(
+            `Canonical Wiki candidate journal for ${journal.featureSlug} has a correction without identity metadata`
+          );
+        }
+        const affected = candidate.correction.affectedWikiIdentity;
+        if (!readableWikiIdentities.get(affected.sourceId)?.has(affected.wikiId)) {
+          throw new Error(
+            `Canonical Wiki candidate journal for ${journal.featureSlug} has an unresolved correction outside readable active bound Wiki identities`
+          );
+        }
+        lifecycleCounts.correctionPending += 1;
+        correctionPending.push({
+          featureSlug: journal.featureSlug,
+          candidateId: candidate.candidateId,
+          status: candidate.status,
+          affectedWikiIdentity: candidate.correction.affectedWikiIdentity
+        });
+      }
+    }
+  }
+  const compareCandidate = (left, right) => compareText(
+    `${left.featureSlug}
+${left.candidateId}`,
+    `${right.featureSlug}
+${right.candidateId}`
+  );
+  capturePending.sort(compareCandidate);
+  correctionPending.sort(compareCandidate);
+  return {
+    schemaVersion: 1,
+    kind: "grill-adapter.wiki-maintenance-summary",
+    authoritative: false,
+    status: "ok",
+    asOf,
+    identityLimit: limit,
+    identityLimitScope: "per-category-global",
+    knowledge: {
+      counts: knowledgeCounts,
+      sources
+    },
+    repositories,
+    candidateLifecycle: {
+      counts: lifecycleCounts,
+      capturePending: capturePending.slice(0, limit),
+      correctionPending: correctionPending.slice(0, limit),
+      truncated: {
+        capturePending: capturePending.length > limit,
+        correctionPending: correctionPending.length > limit
+      }
+    },
+    caveats: [...resolution.warnings].sort(compareText)
+  };
+}
+
 // src/server.ts
 function toResult(value) {
   return {
@@ -24786,6 +25111,14 @@ function createServer(env = process.env) {
     }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(catalogTool(input, requestEnv(extra._meta))));
+  server.registerTool("obsidian_wiki_maintenance_summary", {
+    description: "Return a bounded, metadata-only, non-authoritative summary of bound Note freshness, contradiction edges, repository health, and canonical candidate lifecycle; it never returns Note bodies or journal prose.",
+    inputSchema: object({
+      asOf: string2().min(1),
+      identityLimit: number2().int().min(1).max(200).optional()
+    }),
+    annotations: { readOnlyHint: true, idempotentHint: true }
+  }, async (input, extra) => toResult(maintenanceSummaryTool(input, requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_read_note", {
     description: "Read one active, agent-visible, non-expired atomic Note only when its Vault-relative path is under a readable bound Source.",
     inputSchema: object({ path: string2().min(1) }),
@@ -24833,29 +25166,29 @@ function createServer(env = process.env) {
 import { timingSafeEqual, randomUUID as randomUUID3 } from "node:crypto";
 import { createServer as createServer2 } from "node:http";
 import {
-  existsSync as existsSync6,
+  existsSync as existsSync7,
   linkSync,
-  lstatSync as lstatSync4,
+  lstatSync as lstatSync5,
   mkdirSync as mkdirSync3,
   readFileSync as readFileSync5,
-  readdirSync as readdirSync2,
-  realpathSync as realpathSync3,
+  readdirSync as readdirSync3,
+  realpathSync as realpathSync4,
   rmSync as rmSync2,
   writeFileSync as writeFileSync3
 } from "node:fs";
-import path7 from "node:path";
+import path8 from "node:path";
 
 // src/atomic-exchange.ts
-import { execFileSync as execFileSync5 } from "node:child_process";
-import { existsSync as existsSync5 } from "node:fs";
-import { fileURLToPath } from "node:url";
-var packagedScriptPath = fileURLToPath(new URL("./atomic_swap.py", import.meta.url));
-var sourceScriptPath = fileURLToPath(new URL("../scripts/atomic_swap.py", import.meta.url));
-var scriptPath = existsSync5(packagedScriptPath) ? packagedScriptPath : sourceScriptPath;
+import { execFileSync as execFileSync6 } from "node:child_process";
+import { existsSync as existsSync6 } from "node:fs";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+var packagedScriptPath2 = fileURLToPath2(new URL("./atomic_swap.py", import.meta.url));
+var sourceScriptPath2 = fileURLToPath2(new URL("../scripts/atomic_swap.py", import.meta.url));
+var scriptPath2 = existsSync6(packagedScriptPath2) ? packagedScriptPath2 : sourceScriptPath2;
 function atomicExchange(firstPath, secondPath, env = process.env) {
   const python = env.OBSIDIAN_WIKI_PYTHON ?? "python3";
   try {
-    execFileSync5(python, [scriptPath, firstPath, secondPath], {
+    execFileSync6(python, [scriptPath2, firstPath, secondPath], {
       encoding: "utf8",
       env: { ...process.env, ...env },
       stdio: ["ignore", "pipe", "pipe"]
@@ -24890,34 +25223,34 @@ var BridgeError = class extends Error {
   status;
 };
 function normalizeRelativePath(value, description) {
-  if (path7.posix.isAbsolute(value) || path7.win32.isAbsolute(value)) {
+  if (path8.posix.isAbsolute(value) || path8.win32.isAbsolute(value)) {
     throw new BridgeError(403, `${description} must be Vault-relative`);
   }
-  const normalized = path7.posix.normalize(value.replaceAll("\\", "/")).replace(/^\.\//, "");
+  const normalized = path8.posix.normalize(value.replaceAll("\\", "/")).replace(/^\.\//, "");
   if (!normalized || normalized === "." || normalized === ".." || normalized.startsWith("../")) {
     throw new BridgeError(403, `${description} escapes the Vault`);
   }
   return normalized;
 }
 function inside(candidate, root) {
-  return candidate === root || candidate.startsWith(`${root}${path7.sep}`);
+  return candidate === root || candidate.startsWith(`${root}${path8.sep}`);
 }
 function nearestExistingDirectory(directory) {
   let candidate = directory;
-  while (!existsSync6(candidate)) {
-    const parent = path7.dirname(candidate);
+  while (!existsSync7(candidate)) {
+    const parent = path8.dirname(candidate);
     if (parent === candidate) throw new BridgeError(403, "Note parent has no existing Vault ancestor");
     candidate = parent;
   }
-  if (!lstatSync4(candidate).isDirectory()) throw new BridgeError(400, "Note parent ancestor is not a directory");
-  return realpathSync3(candidate);
+  if (!lstatSync5(candidate).isDirectory()) throw new BridgeError(400, "Note parent ancestor is not a directory");
+  return realpathSync4(candidate);
 }
 function atomicNoteFiles(root) {
   const files = [];
   const visit = (directory) => {
-    for (const entry of readdirSync2(directory, { withFileTypes: true })) {
+    for (const entry of readdirSync3(directory, { withFileTypes: true })) {
       if (entry.name === "_meta") continue;
-      const target = path7.join(directory, entry.name);
+      const target = path8.join(directory, entry.name);
       if (entry.isSymbolicLink()) throw new BridgeError(403, `Symbolic links are not allowed in writable Source content: ${target}`);
       if (entry.isDirectory()) visit(target);
       else if (entry.isFile() && entry.name.endsWith(".md")) files.push(target);
@@ -24946,7 +25279,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
       `ADR source identity ${proposed.adrSourceId} already exists in an allowed Note; update that projection`
     );
   }
-  if (operation === "update" && (identityMatches.length !== 1 || realpathSync3(identityMatches[0].file) !== realpathSync3(targetPath))) {
+  if (operation === "update" && (identityMatches.length !== 1 || realpathSync4(identityMatches[0].file) !== realpathSync4(targetPath))) {
     throw new BridgeError(409, `Updated wiki_id does not resolve uniquely to its existing Note: ${proposed.wikiId}`);
   }
   const targetNote = operation === "update" ? identityMatches[0].note : void 0;
@@ -24956,7 +25289,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
   if (targetNote?.adrSourceId && targetNote.adrSourceId !== proposed.adrSourceId) {
     throw new BridgeError(409, "ADR source identity must be preserved on update");
   }
-  if (operation === "update" && adrProjectionMatches.some(({ file }) => realpathSync3(file) !== realpathSync3(targetPath))) {
+  if (operation === "update" && adrProjectionMatches.some(({ file }) => realpathSync4(file) !== realpathSync4(targetPath))) {
     throw new BridgeError(
       409,
       `ADR source identity ${proposed.adrSourceId} already exists in another allowed Note`
@@ -24971,7 +25304,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
   if (proposed.skillName) {
     const projectNotes = [...projectRoots.values()].flatMap(atomicNoteFiles).map((file) => ({ file, note: parseAtomicNote(readFileSync5(file, "utf8"), file) }));
     const cardMatches = projectNotes.filter(({ note }) => note.skillName === proposed.skillName);
-    const conflictingCards = operation === "create" ? cardMatches : cardMatches.filter(({ file }) => realpathSync3(file) !== realpathSync3(targetPath));
+    const conflictingCards = operation === "create" ? cardMatches : cardMatches.filter(({ file }) => realpathSync4(file) !== realpathSync4(targetPath));
     if (conflictingCards.length > 0) {
       throw new BridgeError(
         409,
@@ -24984,9 +25317,9 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
       const target = /^\[\[([^#|\]]+)/.exec(link)?.[1]?.trim();
       if (!target) throw new BridgeError(400, `Typed edge must use an Obsidian link: ${link}`);
       const vaultPath = normalizeRelativePath(target.endsWith(".md") ? target : `${target}.md`, "Typed edge");
-      const resolvedTarget = path7.resolve(vaultRoot, ...vaultPath.split("/"));
+      const resolvedTarget = path8.resolve(vaultRoot, ...vaultPath.split("/"));
       const owningRoot = [...roots.values()].find((root) => inside(resolvedTarget, root.resolvedRoot));
-      if (!owningRoot || !existsSync6(resolvedTarget) || !lstatSync4(resolvedTarget).isFile()) {
+      if (!owningRoot || !existsSync7(resolvedTarget) || !lstatSync5(resolvedTarget).isFile()) {
         throw new BridgeError(400, `Typed edge does not resolve to an allowed atomic Note: ${link}`);
       }
       parseAtomicNote(readFileSync5(resolvedTarget, "utf8"), vaultPath);
@@ -24997,22 +25330,22 @@ function enforceGovernance(change, root, apply, vaultRoot, roots, allowedProject
   const { request } = change;
   let projectDir;
   try {
-    projectDir = realpathSync3(request.projectDir);
+    projectDir = realpathSync4(request.projectDir);
   } catch {
     throw new BridgeError(403, "Project is not allowed by this bridge");
   }
   if (!allowedProjects.has(projectDir)) throw new BridgeError(403, "Project is not allowed by this bridge");
-  const settingsPath = path7.join(projectDir, ".grill-adapter", "settings.json");
+  const settingsPath = path8.join(projectDir, ".grill-adapter", "settings.json");
   let settings;
   try {
     settings = ProjectSettingsSchema.parse(JSON.parse(readFileSync5(settingsPath, "utf8")));
   } catch (error2) {
     throw new BridgeError(403, `Project binding cannot be validated: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
-  const binding = settings.wiki.obsidian.bindings.find((candidate) => candidate.sourceId === request.sourceId && candidate.vaultRef === request.vaultRef && path7.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, "") === request.sourceRoot);
+  const binding = settings.wiki.obsidian.bindings.find((candidate) => candidate.sourceId === request.sourceId && candidate.vaultRef === request.vaultRef && path8.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, "") === request.sourceRoot);
   if (!binding || !binding.access.read) throw new BridgeError(403, "Source is not a readable binding of the allowed project");
   const projectRootNames = new Set(
-    settings.wiki.obsidian.bindings.filter((candidate) => candidate.access.read).map((candidate) => path7.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, ""))
+    settings.wiki.obsidian.bindings.filter((candidate) => candidate.access.read).map((candidate) => path8.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, ""))
   );
   const projectRoots = new Map(
     [...roots].filter(([rootName]) => projectRootNames.has(rootName))
@@ -25089,9 +25422,9 @@ function validateChange(raw, options, vaultRoot, allowedRoots) {
     throw new BridgeError(403, `Note path is metadata and cannot be written: ${notePath}`);
   }
   if (!notePath.endsWith(".md")) throw new BridgeError(400, "Atomic Note path must end in .md");
-  const targetPath = path7.resolve(vaultRoot, ...notePath.split("/"));
+  const targetPath = path8.resolve(vaultRoot, ...notePath.split("/"));
   if (!inside(targetPath, resolvedSourceRoot)) throw new BridgeError(403, `Note path escapes its Source root: ${notePath}`);
-  const parent = path7.dirname(targetPath);
+  const parent = path8.dirname(targetPath);
   const resolvedParent = nearestExistingDirectory(parent);
   if (!inside(resolvedParent, resolvedSourceRoot)) throw new BridgeError(403, `Note parent escapes its Source root: ${notePath}`);
   const proposed = parseAtomicNote(request.content, notePath);
@@ -25099,15 +25432,15 @@ function validateChange(raw, options, vaultRoot, allowedRoots) {
     throw new BridgeError(400, `Proposed Note is already expired: ${notePath}`);
   }
   if (proposed.wikiId !== request.expectedWikiId) throw new BridgeError(409, "Proposed Note wiki_id does not match expectedWikiId");
-  const exists = existsSync6(targetPath);
+  const exists = existsSync7(targetPath);
   let beforeContent = null;
   if (request.operation === "create") {
     if (request.expectedHash !== null) throw new BridgeError(400, "Create requires expectedHash: null");
     if (exists) throw new BridgeError(409, `Cannot create an existing Note: ${notePath}`);
   } else {
     if (!request.expectedHash) throw new BridgeError(400, "Update requires expectedHash");
-    if (!exists || !lstatSync4(targetPath).isFile()) throw new BridgeError(409, `Cannot update a missing Note: ${notePath}`);
-    const resolvedTarget = realpathSync3(targetPath);
+    if (!exists || !lstatSync5(targetPath).isFile()) throw new BridgeError(409, `Cannot update a missing Note: ${notePath}`);
+    const resolvedTarget = realpathSync4(targetPath);
     if (!inside(resolvedTarget, resolvedSourceRoot)) throw new BridgeError(403, `Note path escapes its Source root: ${notePath}`);
     beforeContent = readFileSync5(resolvedTarget, "utf8");
     const existing = parseAtomicNote(beforeContent, notePath);
@@ -25160,12 +25493,12 @@ function respond(response, status, body) {
 }
 function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
   if (change.request.operation === "create") {
-    mkdirSync3(path7.dirname(change.targetPath), { recursive: true, mode: 448 });
-    if (!inside(realpathSync3(path7.dirname(change.targetPath)), change.resolvedSourceRoot)) {
+    mkdirSync3(path8.dirname(change.targetPath), { recursive: true, mode: 448 });
+    if (!inside(realpathSync4(path8.dirname(change.targetPath)), change.resolvedSourceRoot)) {
       throw new BridgeError(403, "Created Note parent escaped its Source root");
     }
   }
-  const temporaryPath = path7.join(path7.dirname(change.targetPath), `.${path7.basename(change.targetPath)}.${randomUUID3()}.tmp`);
+  const temporaryPath = path8.join(path8.dirname(change.targetPath), `.${path8.basename(change.targetPath)}.${randomUUID3()}.tmp`);
   const lockPath = `${change.targetPath}.grill-adapter-write.lock`;
   let ownsLock = false;
   try {
@@ -25184,7 +25517,7 @@ function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
         throw new BridgeError(409, `Expected hash conflict: Note was created concurrently: ${error2 instanceof Error ? error2.message : String(error2)}`);
       }
     } else {
-      if (!existsSync6(change.targetPath) || contentHash(readFileSync5(change.targetPath, "utf8")) !== change.request.expectedHash) {
+      if (!existsSync7(change.targetPath) || contentHash(readFileSync5(change.targetPath, "utf8")) !== change.request.expectedHash) {
         throw new BridgeError(409, "Expected hash conflict: Note changed concurrently");
       }
       beforeAtomicExchange?.(change.targetPath);
@@ -25218,20 +25551,20 @@ async function startWriteBridge(options) {
   const host = options.host ?? "127.0.0.1";
   if (!isLoopbackHost(host)) throw new Error("Obsidian Wiki write bridge must bind to a loopback host");
   if (!options.token) throw new Error("Obsidian Wiki write bridge token must not be empty");
-  if (!path7.isAbsolute(options.vaultRoot)) throw new Error("Obsidian Wiki write bridge Vault root must be absolute");
-  const vaultRoot = realpathSync3(options.vaultRoot);
+  if (!path8.isAbsolute(options.vaultRoot)) throw new Error("Obsidian Wiki write bridge Vault root must be absolute");
+  const vaultRoot = realpathSync4(options.vaultRoot);
   const allowedProjects = new Set(options.projectDirs.map((projectDir) => {
-    if (!path7.isAbsolute(projectDir)) throw new Error("Obsidian Wiki write bridge project directories must be absolute");
-    return realpathSync3(projectDir);
+    if (!path8.isAbsolute(projectDir)) throw new Error("Obsidian Wiki write bridge project directories must be absolute");
+    return realpathSync4(projectDir);
   }));
   if (allowedProjects.size === 0) throw new Error("Obsidian Wiki write bridge requires at least one allowed project directory");
   const allowedRoots = /* @__PURE__ */ new Map();
   for (const rawRoot of options.allowedRoots) {
     const root = normalizeRelativePath(rawRoot, "Allowed Source root");
-    const resolved = realpathSync3(path7.resolve(vaultRoot, ...root.split("/")));
+    const resolved = realpathSync4(path8.resolve(vaultRoot, ...root.split("/")));
     if (!inside(resolved, vaultRoot)) throw new Error(`Allowed Source root escapes the Vault: ${root}`);
-    const manifestPath = path7.join(resolved, "_meta", "wiki-source.md");
-    if (!existsSync6(manifestPath) || !lstatSync4(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
+    const manifestPath = path8.join(resolved, "_meta", "wiki-source.md");
+    if (!existsSync7(manifestPath) || !lstatSync5(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
     parseSourceManifest(readFileSync5(manifestPath, "utf8"), manifestPath);
     allowedRoots.set(root, { resolvedRoot: resolved, manifestPath });
   }
@@ -25435,9 +25768,9 @@ async function startDetachedBridge(resolved, configPath, endpoint = bridgeEndpoi
   if (await bridgeHealth(endpoint)) {
     return { pid: void 0, endpoint };
   }
-  const scriptPath2 = process.argv[1];
-  if (!scriptPath2) throw new Error("Cannot start Obsidian Wiki bridge without the CLI entrypoint path");
-  const childArgs = [scriptPath2, "serve-write-bridge"];
+  const scriptPath3 = process.argv[1];
+  if (!scriptPath3) throw new Error("Cannot start Obsidian Wiki bridge without the CLI entrypoint path");
+  const childArgs = [scriptPath3, "serve-write-bridge"];
   if (configPath) childArgs.push("--config", configPath);
   const child = spawn(process.execPath, childArgs, {
     detached: true,
@@ -25472,6 +25805,7 @@ Usage:
   obsidian-wiki config validate [--config <path>]
   obsidian-wiki doctor [--config <path>]           Validate project bindings and runtime health
   printf '<json>' | obsidian-wiki catalog
+  printf '<json>' | obsidian-wiki maintenance-summary
   printf '<json>' | obsidian-wiki search-by-wiki-ids
   obsidian-wiki bridge start [--config <path>]    Start a detached background write bridge
   obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
@@ -25565,6 +25899,17 @@ async function main() {
   if (subcommand === "catalog") {
     const request = await readJsonRequest();
     process.stdout.write(`${JSON.stringify(catalogTool(request))}
+`);
+    return;
+  }
+  if (subcommand === "maintenance-summary") {
+    const request = await readJsonRequest();
+    const asOf = optionalStringField(request, "asOf");
+    if (asOf === void 0) throw new Error("asOf is required");
+    process.stdout.write(`${JSON.stringify(maintenanceSummaryTool({
+      asOf,
+      identityLimit: optionalNumberField(request, "identityLimit")
+    }))}
 `);
     return;
   }

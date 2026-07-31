@@ -5,6 +5,7 @@ import { createServer } from './server.js';
 import { statusTool } from './tools/status.js';
 import { searchTool, searchWikiIdsTool } from './tools/search.js';
 import { catalogTool } from './tools/catalog.js';
+import { maintenanceSummaryTool } from './tools/maintenance-summary.js';
 import { readNotesByWikiIdsTool, readNotesTool } from './tools/read.js';
 import { graphNeighborsTool } from './tools/graph.js';
 import { applyNoteChangeTool, proposeNoteChangeTool, type NoteChangeInput } from './tools/write.js';
@@ -187,6 +188,7 @@ Usage:
   obsidian-wiki config validate [--config <path>]
   obsidian-wiki doctor [--config <path>]           Validate project bindings and runtime health
   printf '<json>' | obsidian-wiki catalog
+  printf '<json>' | obsidian-wiki maintenance-summary
   printf '<json>' | obsidian-wiki search-by-wiki-ids
   obsidian-wiki bridge start [--config <path>]    Start a detached background write bridge
   obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
@@ -281,6 +283,16 @@ async function main(): Promise<void> {
   if (subcommand === 'catalog') {
     const request = await readJsonRequest();
     process.stdout.write(`${JSON.stringify(catalogTool(request as never))}\n`);
+    return;
+  }
+  if (subcommand === 'maintenance-summary') {
+    const request = await readJsonRequest();
+    const asOf = optionalStringField(request, 'asOf');
+    if (asOf === undefined) throw new Error('asOf is required');
+    process.stdout.write(`${JSON.stringify(maintenanceSummaryTool({
+      asOf,
+      identityLimit: optionalNumberField(request, 'identityLimit'),
+    }))}\n`);
     return;
   }
   if (subcommand === 'search' || subcommand === 'search-by-wiki-ids') {
