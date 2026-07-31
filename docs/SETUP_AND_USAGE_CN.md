@@ -140,7 +140,7 @@ grill-adapter doctor /path/to/your/project
 ## 6. 验证你的安装
 
 ```bash
-claude --plugin-dir "$PWD" plugin details grill-adapter   # 不安装即加载：应报 12 skills / 1 agent / 3 hooks / 1 MCP server
+claude --plugin-dir "$PWD" plugin details grill-adapter   # 不安装即加载：应报 13 skills / 2 agents / 3 hooks / 1 MCP server
 ./manage.sh self-test                # 跑全套 smoke/regression（别传仓库根，见 DEVELOPMENT_CN.md）
 ./manage.sh release-check <project>  # 发布前总门（plugin 加载 + 沙盒接线 + verify + 全套 + doctor，非破坏）
 ```

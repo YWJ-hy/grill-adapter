@@ -57,7 +57,7 @@ grill host 约定块默认保持静默，只有当前任务明确调用对应的
 | `/code-review`（启动 sub-agents 前） | **Reviewer Bind**：复用当前 task 的 readiness receipt；`ready` 校验同一批准快照的 `<taskId>.wiki-review.md`，重算直接/闭包 Note freshness，再派生 `<taskId>.wiki-review-handoff.md` 给 Standards/Spec 两轴；其他状态、无法确定 task 或任何验证失败只产生非阻塞 caveat，不 late research、不阻止 review |
 | `/code-review` 后 | **Capture**：`/grill-adapter:update-wiki` 校验/折叠 journal，以最终证据 reconcile、显式归并 related claims、展示并应用 policy-compliant diff；correction 以 affected `sourceId` + stable `wikiId` 保持 unresolved maintenance signal，只有 exact bound identity、最终证据、显式 update target、授权与 matching apply 都成立才 kept；grill ADR 只生成 project-only metadata projection candidate，Capture 只保留可执行约束并按 authority identity 更新；skill pack 先由 `scaffold-practice-skill stage-card` 产生内容寻址候选，再与普通 Note 一样经 reviewed proposal/apply。默认停在 applied receipt；只有用户显式请求 publish 才确认精确发布 scope、按 repository 建可恢复 draft PR 并恢复 base worktree。开放 PR 仍 pending，merge + base 同步后才可发现 |
 
-Wiki maintenance/navigation 可先调用只读 `obsidian_wiki_maintenance_summary`：传入规范 UTC 秒级 `asOf`（重复 inventory 复用同一值）与对每个 identity 类别全局生效的硬 `identityLimit`；它把 bound frontmatter freshness/typed contradiction、repository/base health 与 canonical journal lifecycle 分组进 versioned metadata-only envelope。该摘要不返回正文、journal prose 或 unbound correction identity，非权威且不能替代 task identity、Wiki readiness、Bind、proposal 或授权；journal/binding/identity drift 错误 fail-closed。
+Wiki maintenance/navigation 通过 `/grill-adapter:wiki-maintenance audit <feature-slug>` 进入：skill 只派生一个 maintenance agent，agent 以规范 UTC 秒级 `asOf`（重复 inventory 复用同一值）和硬 `identityLimit` 调用只读 `obsidian_wiki_maintenance_summary`，再从返回的 bound stable identities 中私下全文复核最多 24 个 Note。主 session 只得到校验后的 schema-v1 metadata report path 与 compact summary；report 不含正文、journal prose、agent reasoning 或 unbound correction identity，非权威且不能替代 task identity、Wiki readiness、Bind、proposal 或授权。dispatch 后只能等待同一 agent path；dispatch/容量/transport/lifecycle、journal/binding/identity drift 或 report validation 错误全部走 `broken`，不得 inline fallback 或伪装成空维护结果。
 | `/diagnosing-bugs` | 根因收窄后可 `/grill-adapter:wiki-research`（phase debug，≤2 节）；修复验证后 `/grill-adapter:break-loop` → `/grill-adapter:update-wiki` |
 
 grill 自己的 skill（`/grill-with-docs`、`/to-spec` 等）按宿主原样引用，不加我们的命名空间。
@@ -68,7 +68,7 @@ grill 自己的 skill（`/grill-with-docs`、`/to-spec` 等）按宿主原样引
 
 ### Agent 角色在两种运行时的差异
 
-Claude Code 会直接注册 `agents/wiki-researcher.md`。Codex 插件当前不注册该目录，因此 `wiki-research` skill 会读取同一份自包含 agent prompt，并派生通用 sub-agent 执行。Codex dispatch 返回的是句柄；必须把等待同一路径作为 dispatch 后唯一的下一步，在任何用户消息、提问、MCP 调用或后续流程前重复有界等待直到终态。dispatch/容量/生命周期失败不得被当作 `no-relevant`。职责边界、输入与输出契约不变，只改变 dispatch 机制。
+Claude Code 会直接注册 `agents/wiki-researcher.md` 与 `agents/wiki-maintenance.md`。Codex 插件当前不注册该目录，因此 `wiki-research` / `wiki-maintenance` skill 会读取各自完整的自包含 agent prompt，并派生一个通用 sub-agent 执行。Codex dispatch 返回的是句柄；必须把等待同一路径作为 dispatch 后唯一的下一步，在任何用户消息、提问、MCP 调用或后续流程前重复有界等待直到终态。dispatch/容量/生命周期失败分别进入 researcher 或 maintenance 的 `broken` 路径，不得伪装成 `no-relevant` 或空维护结果。职责边界、输入与输出契约不变，只改变 dispatch 机制。
 
 ## hook 配置（`hooks/hooks.json`）
 
@@ -101,7 +101,7 @@ Codex 当前没有 `--scope project|user`；插件安装是用户级的。项目
 先阻止未接线项目进入 adapter workflow，Wiki Source 读取再由目标项目 binding
 fail-closed。两层边界分别防止意外本地状态和跨项目 Source 暴露。
 
-一次装齐 12 skills + 1 agent + 3 hooks + 1 MCP server（Source-binding `obsidian-wiki`）。开发期不必安装：
+一次装齐 13 skills + 2 agents + 3 hooks + 1 MCP server（Source-binding `obsidian-wiki`）。开发期不必安装：
 
 ```bash
 claude --plugin-dir "$PWD" plugin details grill-adapter   # 直接从磁盘加载 + 打印组件清单

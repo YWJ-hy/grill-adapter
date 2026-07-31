@@ -17,6 +17,7 @@ SHORT_MODEL_NAMES = AGENT_STANDARD_MODEL_NAMES
 
 ADAPTER_AGENT_IDS = frozenset(
     {
+        'wiki-maintenance',
         'wiki-researcher',
     }
 )

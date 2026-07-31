@@ -47,6 +47,8 @@ Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specif
 
 `obsidian_wiki_maintenance_summary` 是只读、metadata-only 的维护/导航投影：它只从当前可读 bound Source 的 frontmatter 和 canonical feature journal fold 聚合 active、review-due、expired、带 `contradicts` 边的 stable `wikiId`、repository/base health、pending correction 与未完成 Capture。调用者必须提供规范 UTC 秒级 `asOf`，重复 inventory 复用同一值；输出使用 `grill-adapter.wiki-maintenance-summary` schema v1，`identityLimit` 对每类 identity 全局生效，而不是每 Source 各一份额度。不返回 Note body/summary、correction claim/evidence/impact、outcome reason、任意路径、unbound correction identity 或 journal transcript。它不是 task identity、readiness、Bind、写 proposal 或授权输入；malformed journal、unhealthy binding 与 correction identity drift 都 fail-closed，不能伪装成空摘要。
 
+显式调用 `/grill-adapter:wiki-maintenance audit <feature-slug>`（Codex 使用 `$` 前缀）时，coordinator 只派生一个 `wiki-maintenance` role 并立即等待同一路径到终态。agent 以 summary 提供的 bound stable identities 选择有界 batch，私下全文读取最多 24 个 Note，审计 freshness、contradiction 与 overloaded Note；coordinator 只接收 metadata-only JSON，用 `wiki_maintenance_report.py` 校验后原子写入 `wiki-maintenance-audit.json`，再把 report path 与 compact counts/caveats 交回主 session。agent 禁止 write/apply/publish、journal、Git 与 task-context 修改；报告 proposal-only，不自动生成 candidate。dispatch/transport/capacity/lifecycle failure、binding drift、stable read failure、partial shape 或正文/路径字段泄漏都走 `broken`，不得 inline fallback 或复用旧报告伪装成功。
+
 ### Feature 工作目录
 
 每个 feature 都使用一个本地工作目录，而不是把同一任务的文件平铺在 `context/` 下：
@@ -62,6 +64,7 @@ Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specif
   wiki-candidates.jsonl.lock
   wiki-readiness.json
   wiki-session-state.json      # 非权威续接摘要，不含 Wiki 正文
+  wiki-maintenance-audit.json  # 非权威 proposal-only audit report，不含 Note 正文
   <taskId>.wiki-approval.json
   <taskId>.wiki-implement.md
   <taskId>.wiki-review.md
@@ -273,13 +276,13 @@ grill-adapter 同时以 **Claude Code plugin** 与 **Codex plugin** 形式发布
 
 唯一不由 plugin 承载的是目标项目的 host 约定块：Claude 写 `CLAUDE.md`，Codex 写 `AGENTS.md`。由 `./manage.sh install <project> --host grill|plain --runtime claude|codex|both` 写入；块里只点名 skill，不含任何安装路径，同时作为该项目的 workflow opt-in marker。
 
-**Skills（12）**：`wiki-readiness`、`wiki-research`、`wiki-materialize`、`candidate-journal`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`setup-init-obsidian`、`scaffold-practice-skill`、`break-loop`、`source-truth-check`。
+**Skills（13）**：`wiki-readiness`、`wiki-research`、`wiki-materialize`、`wiki-maintenance`、`candidate-journal`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`setup-init-obsidian`、`scaffold-practice-skill`、`break-loop`、`source-truth-check`。
 
-> 其中 `wiki-readiness` / `wiki-research` / `wiki-materialize` / `candidate-journal` / `update-wiki` / `source-truth-check` / `break-loop` 直接出现在上面的端到端流程；`setup-init-obsidian` 负责检查并复用两个 npm 包初始化 Obsidian、在必要时等待用户处理外部环境，并在获准后把旧 Wiki 路由给 `migrate-wiki`；`init-wiki` / `import-wiki` / `migrate-wiki` 是建库与 wiki 生命周期 skill，`migrate-wiki` 也承载 legacy → Obsidian 的 plan/apply/verify/cutover，并可从用户显式提供的 GitHub legacy 仓库读取迁移源；`scaffold-practice-skill` 负责把可复用实践固化成技能包。
+> 其中 `wiki-readiness` / `wiki-research` / `wiki-materialize` / `candidate-journal` / `update-wiki` / `source-truth-check` / `break-loop` 直接出现在上面的端到端流程；`wiki-maintenance` 是显式只读维护入口，只产出本地 proposal-only report；`setup-init-obsidian` 负责检查并复用两个 npm 包初始化 Obsidian、在必要时等待用户处理外部环境，并在获准后把旧 Wiki 路由给 `migrate-wiki`；`init-wiki` / `import-wiki` / `migrate-wiki` 是建库与 wiki 生命周期 skill，`migrate-wiki` 也承载 legacy → Obsidian 的 plan/apply/verify/cutover，并可从用户显式提供的 GitHub legacy 仓库读取迁移源；`scaffold-practice-skill` 负责把可复用实践固化成技能包。
 >
 > 约定块里对 grill-adapter 自己的 skill 一律带命名空间调用（`/grill-adapter:wiki-research` 等）；grill 自带的 `/grill-with-docs`、`/to-spec`、`/implement` 等不加。
 
-**Agent roles（1）**：`wiki-researcher`。Claude Code 直接注册；Codex 由入口 skill 读取同一 prompt 并派生通用 sub-agent。dispatch 返回句柄后，等待同一 agent path 是唯一允许的下一步；在终态前不得发送用户消息、提问、调用 MCP 或继续主流程，且有界等待超时要继续等待。dispatch/容量/生命周期失败走 `broken`，不能降级为 `no-relevant`。
+**Agent roles（2）**：`wiki-researcher`、`wiki-maintenance`。Claude Code 直接注册；Codex 由对应入口 skill 读取同一 prompt 并各派生一个通用 sub-agent。dispatch 返回句柄后，等待同一 agent path 是唯一允许的下一步；在终态前不得发送用户消息、提问、调用 MCP 或继续主流程，且有界等待超时要继续等待。dispatch/容量/transport/生命周期失败走对应 `broken` 路径，不能降级为 `no-relevant` 或空维护结果。
 
 **MCP server（1）**：`obsidian-wiki` 解析受约束的 Obsidian Source binding，并提供状态、Source、读取、proposal 与 apply 工具。它随 plugin 自动启动，无需手工注册；只操作当前项目 `.grill-adapter/settings.json` 声明的 binding，未绑定、Vault/仓库不健康或 policy 不兼容时 fail-closed。实际写入由另行启动、只监听 loopback 的 write bridge 完成，MCP 自身不开放 HTTP 端口。
 

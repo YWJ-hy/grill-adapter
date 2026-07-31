@@ -21,6 +21,7 @@ WORKFLOW_SKILLS=(
   source-truth-check
   update-wiki
   wiki-materialize
+  wiki-maintenance
   wiki-readiness
   wiki-research
 )

@@ -41,7 +41,7 @@ grill-with-docs → to-spec / to-tickets → implement → code-review → updat
 
 - **wiki 引擎 / readiness / section 图**：`test-wiki-section.sh`、`wiki-section-{e2e,graph,index}-smoke.sh`、`wiki-context-scaffold-smoke.sh`、`obsidian-wiki-context-v6-smoke.sh`（metadata-only Obsidian Carry、freshness 校验 + freeze 时 materialize fail-closed）、`adr-projection-identity-smoke.sh`（ADR Carry/freeze authority identity、drift 与 implement/review fail-open）、`ticket-roster-smoke.sh`（host 无关 ticket roster 边界 + fail-closed）、`wiki-readiness-smoke.sh`（direct issue/manual 单任务 roster、formal reuse、hard/soft/1 跳闭包 freshness 跨双角色 schema-v2 Markdown freeze/消费、v1 快照拒绝、receipt/body digest、fingerprint drift）、`wiki-session-state-smoke.sh`（非权威 feature 续接摘要、digest/candidate 投影与 SessionStart 回退边界）、`wiki-review-context-smoke.sh`（reviewer-only Card、双轴共享 handoff、unknown/non-ready/legacy materialize failure fail-open）、`wiki-graph-neighbors-smoke.sh`、`wiki-index-graph-smoke.sh`、`wiki-update-check-smoke.sh`、`update-wiki-atomic-note-targeting-smoke.sh`（Obsidian atomic Note 的 update/create/defer target 契约）、`wiki-page-type-smoke.sh`、`wiki-summary-backfill-smoke.sh`。
 - **wiki 初始化 / 授权 / 导入 / 导出 / 模板 / scaffold / 迁移**：`setup-init-obsidian-skill-smoke.sh`（双 npm 包检查、等待/恢复边界、legacy 授权路由）、`wiki-authorization-policy-smoke.sh`（含 cutover archive 的 update/import/migration 写保护）、`wiki-import-skill-path-smoke.sh`、`export-wiki-skills-smoke.sh`、`bootstrap-wiki-template-import.sh`（含 archive bootstrap 写保护）、`init-wiki-inventory-smoke.sh`、`scaffold-practice-skill-smoke.sh`、`obsidian-wiki-migration-plan-smoke.sh`（source/target 快照、update 审核 hash、逐项决策、确认门、确定性与零写入）、`obsidian-wiki-migration-apply-smoke.sh`（首写前专用 branch、持久 intent、崩溃恢复、CAS seed/finalize、publisher 对账恢复、typed edge/Card、幂等 PR、immutable-plan coverage、source/binding drift、merged-base verify、schema-v5 与 scoped cutover 门、legacy archive 不改写）、`migrate-wiki-repartition-smoke.sh`（legacy section 重组与 Obsidian Note maintenance/repartition 契约）。
-- **Obsidian runtime（绑定 / 中性化 / MCP）**：`mcp/obsidian-wiki/tests/` 与 `obsidian-runtime-operations-smoke.sh` 覆盖 Source bindings、policy、读取和写桥 contract；`retrieval.test.ts` 还以大型 synthetic Source 验证 search 硬 limit / scope-bound cursor、稳定顺序、catalog revision cache、零 catalog 全文 read、正式 stable batch reread，以及 deterministic clock 下 fresh/review-due/expired 与 base synchronization 的正交组合；`maintenance-summary.test.ts` 覆盖空/多 binding、freshness/contradiction、correction/Capture lifecycle、deterministic ordering、identity 上限、正文/prose 排除与 malformed journal fail-closed。
+- **Obsidian runtime（绑定 / 中性化 / MCP）**：`mcp/obsidian-wiki/tests/` 与 `obsidian-runtime-operations-smoke.sh` 覆盖 Source bindings、policy、读取和写桥 contract；`retrieval.test.ts` 还以大型 synthetic Source 验证 search 硬 limit / scope-bound cursor、稳定顺序、catalog revision cache、零 catalog 全文 read、正式 stable batch reread，以及 deterministic clock 下 fresh/review-due/expired 与 base synchronization 的正交组合；`maintenance-summary.test.ts` 覆盖空/多 binding、freshness/contradiction、correction/Capture lifecycle、deterministic ordering、identity 上限、正文/prose 排除与 malformed journal fail-closed；`wiki-maintenance-agent-contract-smoke.sh` 覆盖单一 audit role、dispatch/wait、report schema/compaction、正文/路径字段拒绝、calendar timestamp、read budget 与 symlink 边界。真实 installed Codex audit 由 `GRILL_ADAPTER_RUN_CODEX_ACCEPTANCE=1 bash acceptance/codex-maintenance-installed.sh "$PWD"` 显式运行，不计作普通 smoke。
 - **Obsidian rollout 运维面**：`obsidian-runtime-operations-smoke.sh` 覆盖 provider-aware bootstrap、doctor adoption state/health exit、release gate、host recovery 约定、plugin metadata 与最终验收文档。
 - **npm 自动发布**：`npm-release-plan-smoke.sh` 覆盖 root-only、Obsidian 双包、test-only 与手动强制发布的变更分类；GitHub Actions 只对 package payload 自动递增 patch 并发布。
 - **source-of-truth**：`source-truth-settings-smoke.sh`。
@@ -57,7 +57,7 @@ grill-adapter 同时提供 Claude Code 与 Codex plugin manifest。共享 skills
 开发期不必安装即可加载 plugin 并核对组件清单：
 
 ```bash
-claude --plugin-dir "$PWD" plugin details grill-adapter   # 应报 12 skills / 1 agent / 3 hooks / 1 MCP server
+claude --plugin-dir "$PWD" plugin details grill-adapter   # 应报 13 skills / 2 agents / 3 hooks / 1 MCP server
 codex plugin marketplace add "$PWD"                       # 开发期本地 marketplace
 codex plugin add grill-adapter@grill-adapter
 ```
@@ -128,7 +128,7 @@ bash tests/host-conventions-smoke.sh "$PWD"
   3. **占位符残留检查**：机械 `grep` `__SUPERPOWER_ADAPTER` 残留，以及 `skills/`、`agents/`、`host-adapters/` 里已作废的 `__GRILL_ADAPTER_ROOT__`。
   4. **所有 MCP typecheck + build + test**：每个 `mcp/*` 包运行 `npm install && npm run typecheck && npm run build && npm test`（无 npm 则 SKIP）。`build` 是 esbuild 打包、**不做类型检查**，所以 `typecheck` 必须单独跑。
   5. **MCP bundle 已提交且与 src 一致**：每个插件注册 MCP 的 `dist/index.js` 必须存在且在步骤 4 重新构建后无 git 漂移。
-  6. **plugin 组件清单**：Claude 必须报满 12 skills / 1 agent / 3 hooks / 1 MCP；`tests/codex-plugin-smoke.sh` 必须通过 manifest 校验、隔离 marketplace 安装，并从 `codex debug prompt-input` 验证安装后模型可见的 12 个 skills。
+  6. **plugin 组件清单**：Claude 必须报满 13 skills / 2 agents / 3 hooks / 1 MCP；`tests/codex-plugin-smoke.sh` 必须通过 manifest 校验、隔离 marketplace 安装，并从 `codex debug prompt-input` 验证安装后模型可见的 13 个 skills。
   7. **沙盒项目接线 + verify**：对临时项目 `install --host grill` 后 `verify`。
   8. **全套 smoke**：跑 `self-test.sh`。
   9. **doctor**：对传入项目只读诊断；若 active provider 是 Obsidian，bundle/status/health 任一失败都会卡 release-check。

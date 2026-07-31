@@ -27,6 +27,11 @@ health, unresolved corrections, and unfinished Capture work across canonical fea
 versioned envelope requires an explicit normalized `asOf` clock and applies `identityLimit`
 globally to each identity category. It is advisory maintenance/navigation input only: it contains
 no Note body or journal prose and never participates in task identity, Wiki readiness, or Bind.
+`/grill-adapter:wiki-maintenance audit <feature-slug>` (or the Codex `$` form) delegates bounded
+freshness, contradiction, and overloaded-Note judgment to the single read-only
+`wiki-maintenance` role. The coordinator persists only a validated schema-v1 metadata report and
+returns its path plus a compact summary; the role cannot write Notes, journals, Git, or publishing
+state, and failures are `broken` rather than empty audit success.
 
 ## Local feature workspace
 
@@ -80,7 +85,7 @@ health check passes. Use
 `obsidian-wiki bridge restart` to stop the old process and start a detached
 background instance.
 
-Both runtimes discover **12 skills, 3 hook events, and 1 MCP server**. Claude Code also registers `agents/wiki-researcher.md` directly; Codex keeps that prompt as plugin payload and `wiki-research` dispatches a general sub-agent with the same role instructions. The returned agent path is only a handle: waiting on that exact path is the only permitted next operation, and the main session must repeat bounded waits until terminal before messaging the user, asking questions, calling MCP, or continuing. Dispatch/capacity/lifecycle failures are classified as `broken` rather than `no-relevant`. The `obsidian-wiki` server starts with the plugin and exposes bound Source reads, the read-only maintenance summary, governed Note proposal/apply tools, and a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server. Use `$grill-adapter:setup-init-obsidian` (or `/grill-adapter:setup-init-obsidian`) to check both npm packages and initialize a project (setup details: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
+Both runtimes discover **13 skills, 3 hook events, and 1 MCP server**. Claude Code also registers `agents/wiki-researcher.md` and `agents/wiki-maintenance.md` directly; Codex keeps those prompts as plugin payload and their entry skills dispatch one general sub-agent with the same role instructions. The returned agent path is only a handle: waiting on that exact path is the only permitted next operation, and the main session must repeat bounded waits until terminal before messaging the user, asking questions, calling MCP, or continuing. Dispatch/capacity/lifecycle failures are classified as `broken` rather than `no-relevant` or an empty audit. The `obsidian-wiki` server starts with the plugin and exposes bound Source reads, the read-only maintenance summary, governed Note proposal/apply tools, and a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server. Use `$grill-adapter:setup-init-obsidian` (or `/grill-adapter:setup-init-obsidian`) to check both npm packages and initialize a project (setup details: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
 
 > **Plugin installation is availability, not project opt-in.** Skills, agents, hooks, and bundled
 > MCP servers take the plugin's scope, and Codex's current `plugin add` command has no project/user
