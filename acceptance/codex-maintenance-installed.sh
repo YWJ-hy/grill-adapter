@@ -245,6 +245,7 @@ export ACCEPTANCE_SESSIONS="$CODEX_SANDBOX_HOME/sessions"
 run_codex_acceptance() {
 expect <<'EXPECT'
 log_file -noappend $env(ACCEPTANCE_TERMINAL_LOG)
+set env(TERM) xterm-256color
 set mcp_args [format {mcp_servers.obsidian-wiki.args=["%s"]} $env(ACCEPTANCE_MCP_BUNDLE)]
 set mcp_env "mcp_servers.obsidian-wiki.env={OBSIDIAN_WIKI_CONFIG=\"$env(ACCEPTANCE_REGISTRY)\",OBSIDIAN_WIKI_OBSIDIAN_CLI=\"$env(ACCEPTANCE_OBSIDIAN_CLI)\",FAKE_OBSIDIAN_VAULT_ROOT=\"$env(ACCEPTANCE_VAULT)\"}"
 set project_trust [format {projects."%s".trust_level="trusted"} $env(ACCEPTANCE_PROJECT)]
