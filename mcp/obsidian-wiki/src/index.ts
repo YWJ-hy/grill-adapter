@@ -6,6 +6,7 @@ import { statusTool } from './tools/status.js';
 import { searchTool, searchWikiIdsTool } from './tools/search.js';
 import { catalogTool } from './tools/catalog.js';
 import { maintenanceSummaryTool } from './tools/maintenance-summary.js';
+import { consolidationCandidatesTool } from './tools/consolidation-candidates.js';
 import { readNotesByWikiIdsTool, readNotesTool } from './tools/read.js';
 import { graphNeighborsTool } from './tools/graph.js';
 import { applyNoteChangeTool, proposeNoteChangeTool, type NoteChangeInput } from './tools/write.js';
@@ -189,6 +190,7 @@ Usage:
   obsidian-wiki doctor [--config <path>]           Validate project bindings and runtime health
   printf '<json>' | obsidian-wiki catalog
   printf '<json>' | obsidian-wiki maintenance-summary
+  printf '<json>' | obsidian-wiki consolidation-candidates
   printf '<json>' | obsidian-wiki search-by-wiki-ids
   obsidian-wiki bridge start [--config <path>]    Start a detached background write bridge
   obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
@@ -292,6 +294,13 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify(maintenanceSummaryTool({
       asOf,
       identityLimit: optionalNumberField(request, 'identityLimit'),
+    }))}\n`);
+    return;
+  }
+  if (subcommand === 'consolidation-candidates') {
+    const request = await readJsonRequest();
+    process.stdout.write(`${JSON.stringify(consolidationCandidatesTool({
+      candidateLimit: optionalNumberField(request, 'candidateLimit'),
     }))}\n`);
     return;
   }

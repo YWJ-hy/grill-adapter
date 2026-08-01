@@ -29,9 +29,16 @@ globally to each identity category. It is advisory maintenance/navigation input 
 no Note body or journal prose and never participates in task identity, Wiki readiness, or Bind.
 `/grill-adapter:wiki-maintenance audit <feature-slug>` (or the Codex `$` form) delegates bounded
 freshness, contradiction, and overloaded-Note judgment to the single read-only
-`wiki-maintenance` role. The coordinator persists only a validated schema-v1 metadata report and
-returns its path plus a compact summary; the role cannot write Notes, journals, Git, or publishing
-state, and failures are `broken` rather than empty audit success.
+`wiki-maintenance` role. The same role also supports `wiki-maintenance consolidation
+<feature-slug>`: a dedicated read-only MCP operation deterministically replays unresolved
+canonical feature candidates, exposes their prose only inside the child, and binds the result to
+journal/candidate digests. Equivalent durable claims become one replacement proposal group,
+contradictory claims require a user decision, and contracts with different triggers, lifecycles,
+failure modes, or validation paths stay separate. The coordinator persists only a validated
+schema-v1 metadata report and returns its path plus a compact summary; candidate claims, evidence,
+Note bodies, and agent reasoning never enter the main session. The role cannot write Notes,
+journals, Git, or publishing state, and failures or journal drift are `broken` rather than empty
+success.
 
 ## Local feature workspace
 
@@ -39,7 +46,8 @@ Each feature's local, uncommitted workflow state is grouped under
 `.grill-adapter/context/<feature-slug>/`, with fixed names such as
 `wiki-context.json`, `ticket-roster.json`, `<taskId>.wiki-approval.json`,
 `<taskId>.wiki-implement.md`, `<taskId>.wiki-review.md`, `wiki-candidates.jsonl`,
-`wiki-readiness.json`, `wiki-session-state.json`, and `wiki-publish.json`.
+`wiki-readiness.json`, `wiki-session-state.json`, `wiki-maintenance-audit.json`,
+`wiki-maintenance-consolidation.json`, and `wiki-publish.json`.
 The session state and Wiki maintenance summary are non-authoritative navigation projections. The
 session state contains the last explicitly
 selected task plus local artifact digests; it never substitutes for `wiki-readiness` validation.
@@ -85,7 +93,7 @@ health check passes. Use
 `obsidian-wiki bridge restart` to stop the old process and start a detached
 background instance.
 
-Both runtimes discover **13 skills, 3 hook events, and 1 MCP server**. Claude Code also registers `agents/wiki-researcher.md` and `agents/wiki-maintenance.md` directly; Codex keeps those prompts as plugin payload and their entry skills dispatch one general sub-agent with the same role instructions. The returned agent path is only a handle: waiting on that exact path is the only permitted next operation, and the main session must repeat bounded waits until terminal before messaging the user, asking questions, calling MCP, or continuing. Dispatch/capacity/lifecycle failures are classified as `broken` rather than `no-relevant` or an empty audit. The `obsidian-wiki` server starts with the plugin and exposes bound Source reads, the read-only maintenance summary, governed Note proposal/apply tools, and a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server. Use `$grill-adapter:setup-init-obsidian` (or `/grill-adapter:setup-init-obsidian`) to check both npm packages and initialize a project (setup details: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
+Both runtimes discover **13 skills, 3 hook events, and 1 MCP server**. Claude Code also registers `agents/wiki-researcher.md` and `agents/wiki-maintenance.md` directly; Codex keeps those prompts as plugin payload and their entry skills dispatch one general sub-agent with the same role instructions. The returned agent path is only a handle: waiting on that exact path is the only permitted next operation, and the main session must repeat bounded waits until terminal before messaging the user, asking questions, calling MCP, or continuing. Dispatch/capacity/lifecycle failures are classified as `broken` rather than `no-relevant` or an empty audit. The `obsidian-wiki` server starts with the plugin and exposes bound Source reads, the metadata-only maintenance summary, the bounded private consolidation-candidate input, governed Note proposal/apply tools, and a resumable GitHub draft-PR publishing CLI; the authenticated HTTP write bridge is an explicit loopback-only companion process and never auto-listens with the MCP server. Use `$grill-adapter:setup-init-obsidian` (or `/grill-adapter:setup-init-obsidian`) to check both npm packages and initialize a project (setup details: [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md)).
 
 > **Plugin installation is availability, not project opt-in.** Skills, agents, hooks, and bundled
 > MCP servers take the plugin's scope, and Codex's current `plugin add` command has no project/user

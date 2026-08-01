@@ -24746,9 +24746,11 @@ async function applyNoteChangeTool(input, env = process.env) {
 
 // src/journal-fold.ts
 import { execFileSync as execFileSync5 } from "node:child_process";
+import { createHash as createHash7 } from "node:crypto";
 import {
   existsSync as existsSync5,
   lstatSync as lstatSync4,
+  readFileSync as readFileSync5,
   readdirSync as readdirSync2,
   realpathSync as realpathSync3
 } from "node:fs";
@@ -24853,7 +24855,8 @@ function foldCanonicalFeatureJournals(projectDir, env = process.env) {
       const detail = result.success ? `feature identity ${result.data.featureSlug} does not match` : result.error.issues.map((issue2) => `${issue2.path.join(".")}: ${issue2.message}`).join("; ");
       throw new Error(`Canonical Wiki candidate journal for ${featureSlug} has an invalid fold: ${detail}`);
     }
-    return result.data;
+    const journalDigest = `sha256:${createHash7("sha256").update(readFileSync5(journalPath)).digest("hex")}`;
+    return { ...result.data, journalDigest };
   });
 }
 
@@ -25069,6 +25072,133 @@ ${right.candidateId}`
   };
 }
 
+// src/tools/consolidation-candidates.ts
+import { createHash as createHash8 } from "node:crypto";
+var DEFAULT_CANDIDATE_LIMIT = 50;
+var MAX_CANDIDATE_LIMIT = 200;
+var MAX_BINDINGS2 = 200;
+function compareText2(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+function candidateLimit(value) {
+  if (value === void 0) return DEFAULT_CANDIDATE_LIMIT;
+  if (!Number.isInteger(value) || value < 1 || value > MAX_CANDIDATE_LIMIT) {
+    throw new Error(`candidateLimit must be an integer between 1 and ${MAX_CANDIDATE_LIMIT}`);
+  }
+  return value;
+}
+function requiredText(value, field) {
+  if (typeof value !== "string" || !value) throw new Error(`Canonical candidate ${field} is invalid`);
+  return value;
+}
+function requiredTextArray(value, field) {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item)) {
+    throw new Error(`Canonical candidate ${field} is invalid`);
+  }
+  return value;
+}
+function candidateDigest(journalDigest, featureSlug, candidate) {
+  const lastEventId = requiredText(candidate.lastEventId, "lastEventId");
+  const identity = [
+    journalDigest,
+    featureSlug,
+    candidate.candidateId,
+    candidate.status,
+    lastEventId
+  ].join("\0");
+  return `sha256:${createHash8("sha256").update(identity, "utf8").digest("hex")}`;
+}
+function consolidationCandidatesTool(input, env = process.env) {
+  const limit = candidateLimit(input.candidateLimit);
+  const resolution = resolveBindings(env);
+  if (resolution.errors.length > 0) {
+    throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
+  }
+  const readableBindings = readableBindingsForScope(resolution.bindings).sort((left, right) => compareText2(left.sourceId, right.sourceId));
+  if (readableBindings.length > MAX_BINDINGS2) {
+    throw new Error(`Wiki consolidation supports at most ${MAX_BINDINGS2} readable bindings`);
+  }
+  const readableWikiIdentities = /* @__PURE__ */ new Map();
+  const seenWikiIds = /* @__PURE__ */ new Set();
+  for (const binding of readableBindings) {
+    const identities = /* @__PURE__ */ new Set();
+    for (const note of boundNoteMetadata(binding)) {
+      if (note.status !== "active" || !note.agentVisible) continue;
+      if (seenWikiIds.has(note.wikiId)) {
+        throw new Error(`Duplicate active wiki_id in readable bound Sources: ${note.wikiId}`);
+      }
+      seenWikiIds.add(note.wikiId);
+      identities.add(note.wikiId);
+    }
+    readableWikiIdentities.set(binding.sourceId, identities);
+  }
+  const folded = foldCanonicalFeatureJournals(resolution.projectDir, env);
+  const candidates = [];
+  for (const journal of folded) {
+    for (const candidate of journal.candidates) {
+      if (candidate.status !== "pending" && candidate.status !== "deferred") continue;
+      if (candidate.kind === "correction") {
+        const affected = candidate.correction?.affectedWikiIdentity;
+        if (!affected || !readableWikiIdentities.get(affected.sourceId)?.has(affected.wikiId)) {
+          throw new Error(
+            `Canonical Wiki candidate journal for ${journal.featureSlug} has an unresolved correction outside readable active bound Wiki identities`
+          );
+        }
+      }
+      candidates.push(normalizeCandidate(journal.featureSlug, journal.journalDigest, candidate));
+    }
+  }
+  candidates.sort((left, right) => compareText2(
+    `${left.featureSlug}
+${left.candidateId}`,
+    `${right.featureSlug}
+${right.candidateId}`
+  ));
+  return {
+    schemaVersion: 1,
+    kind: "grill-adapter.wiki-maintenance-consolidation-input",
+    authoritative: false,
+    status: "ok",
+    candidateLimit: limit,
+    scanned: {
+      sources: readableBindings.length,
+      featureJournals: folded.length,
+      candidates: candidates.length
+    },
+    bindings: readableBindings.map((binding) => ({
+      sourceId: binding.sourceId,
+      role: binding.role,
+      bindingDigest: binding.bindingDigest
+    })),
+    journalSnapshots: folded.map((journal) => ({
+      featureSlug: journal.featureSlug,
+      journalDigest: journal.journalDigest
+    })),
+    candidates: candidates.slice(0, limit),
+    truncated: candidates.length > limit
+  };
+}
+function normalizeCandidate(featureSlug, journalDigest, candidate) {
+  return {
+    featureSlug,
+    candidateId: candidate.candidateId,
+    status: candidate.status,
+    stage: requiredText(candidate.stage, "stage"),
+    candidateType: requiredText(candidate.candidateType, "candidateType"),
+    kind: candidate.kind,
+    claim: requiredText(candidate.claim, "claim"),
+    why: requiredText(candidate.why, "why"),
+    sourceRefs: requiredTextArray(candidate.sourceRefs, "sourceRefs"),
+    taskId: typeof candidate.taskId === "string" ? candidate.taskId : null,
+    carveOut: typeof candidate.carveOut === "boolean" ? candidate.carveOut : null,
+    origin: typeof candidate.origin === "string" ? candidate.origin : null,
+    skillRegistration: candidate.skillRegistration ?? null,
+    adrProjection: candidate.adrProjection ?? null,
+    correction: candidate.correction ?? null,
+    candidateDigest: candidateDigest(journalDigest, featureSlug, candidate)
+  };
+}
+
 // src/server.ts
 function toResult(value) {
   return {
@@ -25119,6 +25249,13 @@ function createServer(env = process.env) {
     }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(maintenanceSummaryTool(input, requestEnv(extra._meta))));
+  server.registerTool("obsidian_wiki_consolidation_candidates", {
+    description: "Return a bounded, read-only snapshot of unresolved canonical cross-feature candidates for private maintenance-agent consolidation; candidate prose must not be returned to the coordinator.",
+    inputSchema: object({
+      candidateLimit: number2().int().min(1).max(200).optional()
+    }),
+    annotations: { readOnlyHint: true, idempotentHint: true }
+  }, async (input, extra) => toResult(consolidationCandidatesTool(input, requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_read_note", {
     description: "Read one active, agent-visible, non-expired atomic Note only when its Vault-relative path is under a readable bound Source.",
     inputSchema: object({ path: string2().min(1) }),
@@ -25170,7 +25307,7 @@ import {
   linkSync,
   lstatSync as lstatSync5,
   mkdirSync as mkdirSync3,
-  readFileSync as readFileSync5,
+  readFileSync as readFileSync6,
   readdirSync as readdirSync3,
   realpathSync as realpathSync4,
   rmSync as rmSync2,
@@ -25263,7 +25400,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
   const noteFiles = [...roots.values()].flatMap(atomicNoteFiles);
   const existingNotes = noteFiles.map((file) => ({
     file,
-    note: parseAtomicNote(readFileSync5(file, "utf8"), file)
+    note: parseAtomicNote(readFileSync6(file, "utf8"), file)
   }));
   const identityMatches = existingNotes.filter(({ note }) => note.wikiId === proposed.wikiId);
   if (proposed.adrSourceId && targetScope !== "project") {
@@ -25302,7 +25439,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
     throw new BridgeError(409, "Skill Card name identity must be preserved on update");
   }
   if (proposed.skillName) {
-    const projectNotes = [...projectRoots.values()].flatMap(atomicNoteFiles).map((file) => ({ file, note: parseAtomicNote(readFileSync5(file, "utf8"), file) }));
+    const projectNotes = [...projectRoots.values()].flatMap(atomicNoteFiles).map((file) => ({ file, note: parseAtomicNote(readFileSync6(file, "utf8"), file) }));
     const cardMatches = projectNotes.filter(({ note }) => note.skillName === proposed.skillName);
     const conflictingCards = operation === "create" ? cardMatches : cardMatches.filter(({ file }) => realpathSync4(file) !== realpathSync4(targetPath));
     if (conflictingCards.length > 0) {
@@ -25322,7 +25459,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
       if (!owningRoot || !existsSync7(resolvedTarget) || !lstatSync5(resolvedTarget).isFile()) {
         throw new BridgeError(400, `Typed edge does not resolve to an allowed atomic Note: ${link}`);
       }
-      parseAtomicNote(readFileSync5(resolvedTarget, "utf8"), vaultPath);
+      parseAtomicNote(readFileSync6(resolvedTarget, "utf8"), vaultPath);
     }
   }
 }
@@ -25338,7 +25475,7 @@ function enforceGovernance(change, root, apply, vaultRoot, roots, allowedProject
   const settingsPath = path8.join(projectDir, ".grill-adapter", "settings.json");
   let settings;
   try {
-    settings = ProjectSettingsSchema.parse(JSON.parse(readFileSync5(settingsPath, "utf8")));
+    settings = ProjectSettingsSchema.parse(JSON.parse(readFileSync6(settingsPath, "utf8")));
   } catch (error2) {
     throw new BridgeError(403, `Project binding cannot be validated: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
@@ -25352,7 +25489,7 @@ function enforceGovernance(change, root, apply, vaultRoot, roots, allowedProject
   );
   let manifest;
   try {
-    manifest = parseSourceManifest(readFileSync5(root.manifestPath, "utf8"), root.manifestPath);
+    manifest = parseSourceManifest(readFileSync6(root.manifestPath, "utf8"), root.manifestPath);
   } catch (error2) {
     throw new BridgeError(403, `Source manifest cannot be validated: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
@@ -25442,7 +25579,7 @@ function validateChange(raw, options, vaultRoot, allowedRoots) {
     if (!exists || !lstatSync5(targetPath).isFile()) throw new BridgeError(409, `Cannot update a missing Note: ${notePath}`);
     const resolvedTarget = realpathSync4(targetPath);
     if (!inside(resolvedTarget, resolvedSourceRoot)) throw new BridgeError(403, `Note path escapes its Source root: ${notePath}`);
-    beforeContent = readFileSync5(resolvedTarget, "utf8");
+    beforeContent = readFileSync6(resolvedTarget, "utf8");
     const existing = parseAtomicNote(beforeContent, notePath);
     if (existing.wikiId !== request.expectedWikiId || existing.wikiId !== proposed.wikiId) {
       throw new BridgeError(409, "Existing and proposed Note wiki_id must preserve identity");
@@ -25517,21 +25654,21 @@ function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
         throw new BridgeError(409, `Expected hash conflict: Note was created concurrently: ${error2 instanceof Error ? error2.message : String(error2)}`);
       }
     } else {
-      if (!existsSync7(change.targetPath) || contentHash(readFileSync5(change.targetPath, "utf8")) !== change.request.expectedHash) {
+      if (!existsSync7(change.targetPath) || contentHash(readFileSync6(change.targetPath, "utf8")) !== change.request.expectedHash) {
         throw new BridgeError(409, "Expected hash conflict: Note changed concurrently");
       }
       beforeAtomicExchange?.(change.targetPath);
       atomicExchange(change.targetPath, temporaryPath);
       afterAtomicExchange?.(change.targetPath);
-      const swappedOutHash = contentHash(readFileSync5(temporaryPath, "utf8"));
-      const writtenHash = contentHash(readFileSync5(change.targetPath, "utf8"));
+      const swappedOutHash = contentHash(readFileSync6(temporaryPath, "utf8"));
+      const writtenHash = contentHash(readFileSync6(change.targetPath, "utf8"));
       if (swappedOutHash !== change.request.expectedHash || writtenHash !== change.diff.afterHash) {
         let expectedTargetHash = change.diff.afterHash;
-        while (contentHash(readFileSync5(change.targetPath, "utf8")) === expectedTargetHash) {
+        while (contentHash(readFileSync6(change.targetPath, "utf8")) === expectedTargetHash) {
           atomicExchange(change.targetPath, temporaryPath);
-          const displacedHash = contentHash(readFileSync5(temporaryPath, "utf8"));
+          const displacedHash = contentHash(readFileSync6(temporaryPath, "utf8"));
           if (displacedHash === expectedTargetHash) break;
-          expectedTargetHash = contentHash(readFileSync5(change.targetPath, "utf8"));
+          expectedTargetHash = contentHash(readFileSync6(change.targetPath, "utf8"));
         }
         throw new BridgeError(409, "Expected hash conflict: Note changed during atomic exchange");
       }
@@ -25540,7 +25677,7 @@ function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
     rmSync2(temporaryPath, { force: true });
     if (ownsLock) rmSync2(lockPath, { force: true });
   }
-  const written = readFileSync5(change.targetPath, "utf8");
+  const written = readFileSync6(change.targetPath, "utf8");
   const note = parseAtomicNote(written, change.request.path);
   if (note.wikiId !== change.proposedWikiId || note.contentHash !== change.diff.afterHash) {
     throw new BridgeError(500, "Post-write Note identity verification failed");
@@ -25565,7 +25702,7 @@ async function startWriteBridge(options) {
     if (!inside(resolved, vaultRoot)) throw new Error(`Allowed Source root escapes the Vault: ${root}`);
     const manifestPath = path8.join(resolved, "_meta", "wiki-source.md");
     if (!existsSync7(manifestPath) || !lstatSync5(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
-    parseSourceManifest(readFileSync5(manifestPath, "utf8"), manifestPath);
+    parseSourceManifest(readFileSync6(manifestPath, "utf8"), manifestPath);
     allowedRoots.set(root, { resolvedRoot: resolved, manifestPath });
   }
   if (allowedRoots.size === 0) throw new Error("Obsidian Wiki write bridge requires at least one allowed Source root");
@@ -25806,6 +25943,7 @@ Usage:
   obsidian-wiki doctor [--config <path>]           Validate project bindings and runtime health
   printf '<json>' | obsidian-wiki catalog
   printf '<json>' | obsidian-wiki maintenance-summary
+  printf '<json>' | obsidian-wiki consolidation-candidates
   printf '<json>' | obsidian-wiki search-by-wiki-ids
   obsidian-wiki bridge start [--config <path>]    Start a detached background write bridge
   obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
@@ -25909,6 +26047,14 @@ async function main() {
     process.stdout.write(`${JSON.stringify(maintenanceSummaryTool({
       asOf,
       identityLimit: optionalNumberField(request, "identityLimit")
+    }))}
+`);
+    return;
+  }
+  if (subcommand === "consolidation-candidates") {
+    const request = await readJsonRequest();
+    process.stdout.write(`${JSON.stringify(consolidationCandidatesTool({
+      candidateLimit: optionalNumberField(request, "candidateLimit")
     }))}
 `);
     return;

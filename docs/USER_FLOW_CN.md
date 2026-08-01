@@ -49,6 +49,8 @@ Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specif
 
 显式调用 `/grill-adapter:wiki-maintenance audit <feature-slug>`（Codex 使用 `$` 前缀）时，coordinator 只派生一个 `wiki-maintenance` role 并立即等待同一路径到终态。agent 以 summary 提供的 bound stable identities 选择有界 batch，私下全文读取最多 24 个 Note，审计 freshness、contradiction 与 overloaded Note；coordinator 只接收 metadata-only JSON，用 `wiki_maintenance_report.py` 校验后原子写入 `wiki-maintenance-audit.json`，再把 report path 与 compact counts/caveats 交回主 session。agent 禁止 write/apply/publish、journal、Git 与 task-context 修改；报告 proposal-only，不自动生成 candidate。dispatch/transport/capacity/lifecycle failure、binding drift、stable read failure、partial shape 或正文/路径字段泄漏都走 `broken`，不得 inline fallback 或复用旧报告伪装成功。
 
+显式调用 `/grill-adapter:wiki-maintenance consolidation <feature-slug>` 时复用同一个 role 和同一 dispatch/wait transaction。agent 只通过 `obsidian_wiki_consolidation_candidates` 读取确定性 fold 后、全局 `candidateLimit` 有界的 unresolved cross-feature candidates；claim/why/evidence/impact 只在 child 内用于语义判断。相同 durable claim 形成一个 `capture-replacement` proposal group 并保留全部 `featureSlug` + `candidateId`；互相冲突的 claim 单独形成 `request-user-decision` group；trigger、lifecycle、failure mode、validation path、task routing、Skill Card contract 或 ADR authority 不同的候选明确保持独立，不能因模块/路径/关键词相近而合并。coordinator 只收到 candidate/journal digest、identity 分类、controlled reason/action 与 compact counts，不收到 claim/evidence；`wiki_maintenance_consolidation_report.py` 在原子写入 `wiki-maintenance-consolidation.json` 前重放当前 journals，journal drift、截断未标 caveat、证据不足伪装成功、分类遗漏/重叠或单成员 group 全部 `broken`，且不覆盖上次有效报告。报告只建议后续单独进入 `update-wiki` Capture，不自动 append replacement、supersede、写 Note 或发布。
+
 ### Feature 工作目录
 
 每个 feature 都使用一个本地工作目录，而不是把同一任务的文件平铺在 `context/` 下：
@@ -65,6 +67,7 @@ Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specif
   wiki-readiness.json
   wiki-session-state.json      # 非权威续接摘要，不含 Wiki 正文
   wiki-maintenance-audit.json  # 非权威 proposal-only audit report，不含 Note 正文
+  wiki-maintenance-consolidation.json # 非权威 candidate grouping report，不含 claim/evidence
   <taskId>.wiki-approval.json
   <taskId>.wiki-implement.md
   <taskId>.wiki-review.md

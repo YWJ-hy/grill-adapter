@@ -1,7 +1,9 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   lstatSync,
+  readFileSync,
   readdirSync,
   realpathSync,
 } from 'node:fs';
@@ -31,7 +33,9 @@ const FoldedJournalSchema = z.object({
 }).passthrough();
 
 export type FoldedCandidate = z.infer<typeof FoldedCandidateSchema>;
-export type FoldedJournal = z.infer<typeof FoldedJournalSchema>;
+export type FoldedJournal = z.infer<typeof FoldedJournalSchema> & {
+  journalDigest: string;
+};
 
 function lstatIfPresent(targetPath: string): ReturnType<typeof lstatSync> | undefined {
   try {
@@ -125,6 +129,7 @@ export function foldCanonicalFeatureJournals(
         : result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');
       throw new Error(`Canonical Wiki candidate journal for ${featureSlug} has an invalid fold: ${detail}`);
     }
-    return result.data;
+    const journalDigest = `sha256:${createHash('sha256').update(readFileSync(journalPath)).digest('hex')}`;
+    return { ...result.data, journalDigest };
   });
 }

@@ -8,6 +8,7 @@ import { readNoteTool, readNotesByWikiIdsTool, readNotesTool } from './tools/rea
 import { graphNeighborsTool } from './tools/graph.js';
 import { applyNoteChangeTool, proposeNoteChangeTool } from './tools/write.js';
 import { maintenanceSummaryTool } from './tools/maintenance-summary.js';
+import { consolidationCandidatesTool } from './tools/consolidation-candidates.js';
 import { environmentForMcpRequest } from './bindings.js';
 
 function toResult(value: unknown) {
@@ -61,6 +62,13 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(maintenanceSummaryTool(input, requestEnv(extra._meta))));
+  server.registerTool('obsidian_wiki_consolidation_candidates', {
+    description: 'Return a bounded, read-only snapshot of unresolved canonical cross-feature candidates for private maintenance-agent consolidation; candidate prose must not be returned to the coordinator.',
+    inputSchema: z.object({
+      candidateLimit: z.number().int().min(1).max(200).optional(),
+    }),
+    annotations: { readOnlyHint: true, idempotentHint: true },
+  }, async (input, extra) => toResult(consolidationCandidatesTool(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_read_note', {
     description: 'Read one active, agent-visible, non-expired atomic Note only when its Vault-relative path is under a readable bound Source.',
     inputSchema: z.object({ path: z.string().min(1) }),

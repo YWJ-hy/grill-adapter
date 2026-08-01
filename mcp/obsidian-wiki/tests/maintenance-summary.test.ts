@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { consolidationCandidatesTool } from '../src/tools/consolidation-candidates.js';
 import { maintenanceSummaryTool } from '../src/tools/maintenance-summary.js';
 
 const createdDirectories: string[] = [];
@@ -436,5 +437,143 @@ describe('read-only Wiki maintenance summary', () => {
     const input = fixture({ seedNotes: false });
     expect(() => maintenanceSummaryTool({} as never, input.env)).toThrow(/asOf.*required|normalized/i);
     expect(() => maintenanceSummaryTool({ asOf: '2026-07-31' }, input.env)).toThrow(/normalized/i);
+  });
+});
+
+describe('read-only consolidation candidate input', () => {
+  it('returns a bounded deterministic cross-feature snapshot for private semantic grouping', () => {
+    const input = fixture();
+    writeJournal(input.projectDir, 'feature-b', [event({
+      eventId: 'feature-b-correction-event',
+      featureSlug: 'feature-b',
+      candidateId: 'feature-b-correction',
+      kind: 'correction',
+      claim: 'Use one retry budget for outbound requests.',
+      why: 'Repeated retries amplify a downstream outage.',
+      sourceRefs: ['tests/feature-b-evidence'],
+      correction: {
+        affectedWikiIdentity: { sourceId: 'project', wikiId: 'project/fresh' },
+        claim: 'Use one retry budget for outbound requests.',
+        evidenceRefs: ['tests/feature-b-evidence'],
+        observedImpact: 'The old rule retried at two independent layers.',
+      },
+    })]);
+    writeJournal(input.projectDir, 'feature-a', [
+      event({
+        eventId: 'feature-a-decision-event',
+        candidateId: 'feature-a-decision',
+        claim: 'Share one outbound retry budget across transport layers.',
+        why: 'Nested retry loops multiply attempts.',
+        sourceRefs: ['tests/feature-a-evidence'],
+      }),
+      event({
+        eventId: 'feature-a-independent-event',
+        candidateId: 'feature-a-independent',
+        claim: 'Validate cache entries before deserialization.',
+        why: 'Cache corruption follows a separate recovery path.',
+        sourceRefs: ['tests/feature-a-cache-evidence'],
+      }),
+    ]);
+
+    const first = consolidationCandidatesTool({ candidateLimit: 20 }, input.env);
+    const second = consolidationCandidatesTool({ candidateLimit: 20 }, input.env);
+
+    expect(second).toEqual(first);
+    expect(first).toMatchObject({
+      schemaVersion: 1,
+      kind: 'grill-adapter.wiki-maintenance-consolidation-input',
+      authoritative: false,
+      status: 'ok',
+      candidateLimit: 20,
+      scanned: { sources: 2, featureJournals: 2, candidates: 3 },
+      truncated: false,
+    });
+    expect(first.bindings).toHaveLength(2);
+    expect(first.journalSnapshots.map((entry) => entry.featureSlug)).toEqual([
+      'feature-a',
+      'feature-b',
+    ]);
+    expect(first.journalSnapshots.every((entry) => /^sha256:[0-9a-f]{64}$/.test(entry.journalDigest)))
+      .toBe(true);
+    expect(first.candidates.map((candidate) => [candidate.featureSlug, candidate.candidateId]))
+      .toEqual([
+        ['feature-a', 'feature-a-decision'],
+        ['feature-a', 'feature-a-independent'],
+        ['feature-b', 'feature-b-correction'],
+      ]);
+    expect(first.candidates[0]).toMatchObject({
+      status: 'pending',
+      stage: 'implementation',
+      candidateType: 'wiki_note',
+      kind: 'decision',
+      claim: 'Share one outbound retry budget across transport layers.',
+      why: 'Nested retry loops multiply attempts.',
+      sourceRefs: ['tests/feature-a-evidence'],
+      correction: null,
+    });
+    expect(first.candidates[2].correction).toMatchObject({
+      affectedWikiIdentity: { sourceId: 'project', wikiId: 'project/fresh' },
+      observedImpact: 'The old rule retried at two independent layers.',
+    });
+    expect(first.candidates.every((candidate) => /^sha256:[0-9a-f]{64}$/.test(candidate.candidateDigest)))
+      .toBe(true);
+
+    const serialized = JSON.stringify(first);
+    expect(serialized).not.toContain('NOTE_BODY_SECRET');
+    expect(serialized).not.toContain('candidateEventId');
+    expect(serialized).not.toContain('lastEventId');
+    expect(serialized).not.toContain('outcomeReason');
+    expect(serialized).not.toContain(input.projectDir);
+  });
+
+  it('applies one global limit while preserving total counts and journal snapshots', () => {
+    const input = fixture();
+    writeJournal(input.projectDir, 'feature-a', [
+      event({ candidateId: 'candidate-1', eventId: 'event-1' }),
+      event({ candidateId: 'candidate-2', eventId: 'event-2' }),
+    ]);
+    writeJournal(input.projectDir, 'feature-b', [event({
+      featureSlug: 'feature-b', candidateId: 'candidate-3', eventId: 'event-3',
+    })]);
+
+    const result = consolidationCandidatesTool({ candidateLimit: 2 }, input.env);
+
+    expect(result.scanned).toMatchObject({ featureJournals: 2, candidates: 3 });
+    expect(result.candidates).toHaveLength(2);
+    expect(result.journalSnapshots).toHaveLength(2);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('fails closed on malformed journals and unbound correction identities', () => {
+    const malformed = fixture();
+    const malformedJournal = path.join(
+      malformed.projectDir,
+      '.grill-adapter',
+      'context',
+      'broken-feature',
+      'wiki-candidates.jsonl',
+    );
+    mkdirSync(path.dirname(malformedJournal), { recursive: true });
+    writeFileSync(malformedJournal, '{"truncated":true}', 'utf8');
+    expect(() => consolidationCandidatesTool({ candidateLimit: 20 }, malformed.env))
+      .toThrow(/broken-feature.*truncated JSONL record/i);
+
+    const unbound = fixture();
+    writeJournal(unbound.projectDir, 'unbound-correction', [event({
+      eventId: 'unbound-event',
+      featureSlug: 'unbound-correction',
+      candidateId: 'unbound-candidate',
+      kind: 'correction',
+      claim: 'A private unbound correction.',
+      sourceRefs: ['tests/unbound'],
+      correction: {
+        affectedWikiIdentity: { sourceId: 'missing', wikiId: 'missing/note' },
+        claim: 'A private unbound correction.',
+        evidenceRefs: ['tests/unbound'],
+        observedImpact: 'A private impact.',
+      },
+    })]);
+    expect(() => consolidationCandidatesTool({ candidateLimit: 20 }, unbound.env))
+      .toThrow(/unbound-correction.*outside readable active bound Wiki identities/i);
   });
 });

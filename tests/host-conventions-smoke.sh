@@ -36,10 +36,12 @@ need "$CODEX_GRILL" '$mattpocock-skills:implement'
 need "$CODEX_GRILL" 'Activation gate:'
 need "$CODEX_GRILL" 'ordinary user request'
 need "$CODEX_GRILL" 'A direct request that does not enter'
+need "$CODEX_GRILL" '$grill-adapter:wiki-maintenance consolidation'
 need "$CODEX_PLAIN" '$grill-adapter:wiki-research'
 need "$CODEX_PLAIN" '$grill-adapter:wiki-readiness'
 need "$CODEX_PLAIN" '$grill-adapter:wiki-materialize'
 need "$CODEX_PLAIN" '$grill-adapter:wiki-maintenance'
+need "$CODEX_PLAIN" '$grill-adapter:wiki-maintenance consolidation'
 need "$CODEX_PLAIN" 'plain Codex host'
 
 # grill block: markers + zero-patch invariant + all four wiki touchpoints + subsystems.
@@ -54,6 +56,7 @@ need "$GRILL" '/grill-adapter:wiki-research'       # Disclose
 need "$GRILL" '/grill-adapter:wiki-readiness'      # implementation-entry readiness
 need "$GRILL" '/grill-adapter:wiki-materialize'    # Bind
 need "$GRILL" '/grill-adapter:wiki-maintenance'    # read-only maintenance audit
+need "$GRILL" '/grill-adapter:wiki-maintenance consolidation'
 need "$GRILL" '/grill-adapter:update-wiki'         # Capture
 need "$GRILL" '/grill-adapter:candidate-journal'   # feature journal
 need "$GRILL" '/grill-adapter:source-truth-check'  # source-of-truth Verify
@@ -68,6 +71,7 @@ need "$PLAIN" '/grill-adapter:wiki-research'
 need "$PLAIN" '/grill-adapter:wiki-readiness'
 need "$PLAIN" '/grill-adapter:wiki-materialize'
 need "$PLAIN" '/grill-adapter:wiki-maintenance'
+need "$PLAIN" '/grill-adapter:wiki-maintenance consolidation'
 need "$PLAIN" '/grill-adapter:update-wiki'
 need "$PLAIN" '/grill-adapter:candidate-journal'
 need "$PLAIN" '/grill-adapter:source-truth-check'
