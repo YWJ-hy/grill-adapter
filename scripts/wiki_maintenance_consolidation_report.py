@@ -4,12 +4,12 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import io
 import json
 import os
 import re
 import stat
+import subprocess
 import sys
 import tempfile
 from collections import Counter
@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from wiki_candidate_journal import JournalError, fold_events, read_events
 from wiki_maintenance_report import (
     DIGEST,
     IDENTITY,
@@ -67,111 +66,110 @@ def candidate_identity(value: Any, field: str) -> dict[str, str]:
     return row
 
 
-def _sha256(value: bytes) -> str:
-    return 'sha256:' + hashlib.sha256(value).hexdigest()
-
-
-def _candidate_digest(
-    journal_digest: str,
-    feature_slug: str,
-    candidate: dict[str, Any],
-) -> str:
-    identity = '\0'.join(
-        (
-            journal_digest,
-            feature_slug,
-            candidate['candidateId'],
-            candidate['status'],
-            candidate['lastEventId'],
-        )
-    )
-    return _sha256(identity.encode('utf-8'))
-
-
-def canonical_snapshot(project_root: Path, candidate_limit: int) -> dict[str, Any]:
+def trusted_snapshot(project_root: Path, candidate_limit: int) -> dict[str, Any]:
     try:
         root = project_root.resolve(strict=True)
     except (OSError, RuntimeError) as exc:
         raise ReportError('project root is unavailable') from exc
     if not root.is_dir():
         fail('project root')
-    context_root = root / '.grill-adapter' / 'context'
-    if not context_root.exists():
-        journals: list[dict[str, str]] = []
-        candidates: list[dict[str, Any]] = []
-        return {'journals': journals, 'candidates': candidates, 'candidateCount': 0}
+    bundle = Path(__file__).resolve().parent.parent / 'mcp' / 'obsidian-wiki' / 'dist' / 'index.js'
+    if not bundle.is_file():
+        raise ReportError('Obsidian Wiki MCP bundle is unavailable')
+    environment = dict(os.environ)
+    environment['CLAUDE_PROJECT_DIR'] = str(root)
     try:
-        context_metadata = context_root.lstat()
-    except OSError as exc:
-        raise ReportError('context root is unavailable') from exc
-    if stat.S_ISLNK(context_metadata.st_mode) or not stat.S_ISDIR(context_metadata.st_mode):
-        fail('context root boundary')
-    if context_root.resolve(strict=True) != root / '.grill-adapter' / 'context':
-        fail('context root boundary')
-
-    journals = []
-    candidates = []
-    try:
-        entries = sorted(context_root.iterdir(), key=lambda path: path.name)
-    except OSError as exc:
-        raise ReportError('context root could not be scanned') from exc
-    for feature_root in entries:
-        metadata = feature_root.lstat()
-        if stat.S_ISLNK(metadata.st_mode):
-            fail(f'feature context boundary for {feature_root.name}')
-        if not stat.S_ISDIR(metadata.st_mode):
-            continue
-        if not FEATURE_SLUG.fullmatch(feature_root.name):
-            fail('feature context identity')
-        journal_path = feature_root / 'wiki-candidates.jsonl'
-        try:
-            journal_metadata = journal_path.lstat()
-        except FileNotFoundError:
-            continue
-        except OSError as exc:
-            raise ReportError('candidate journal is unavailable') from exc
-        if stat.S_ISLNK(journal_metadata.st_mode) or not stat.S_ISREG(journal_metadata.st_mode):
-            fail(f'candidate journal boundary for {feature_root.name}')
-        try:
-            raw = journal_path.read_bytes()
-            folded = fold_events(
-                read_events(journal_path, require_nonempty=True),
-                feature_root.name,
-            )
-        except (OSError, JournalError) as exc:
-            raise ReportError(
-                f'canonical candidate journal for {feature_root.name} is invalid'
-            ) from exc
-        journal_digest = _sha256(raw)
-        journals.append(
-            {'featureSlug': feature_root.name, 'journalDigest': journal_digest}
+        completed = subprocess.run(
+            [
+                environment.get('OBSIDIAN_WIKI_NODE', 'node'),
+                str(bundle),
+                'consolidation-candidates',
+            ],
+            input=dump({'candidateLimit': candidate_limit}),
+            cwd=root,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
         )
-        for candidate in folded['candidates']:
-            if candidate['status'] not in {'pending', 'deferred'}:
-                continue
-            correction = candidate.get('correction')
-            affected = (
-                correction.get('affectedWikiIdentity')
-                if isinstance(correction, dict)
-                else None
-            )
-            candidates.append(
-                {
-                    'featureSlug': feature_root.name,
-                    'candidateId': candidate['candidateId'],
-                    'status': candidate['status'],
-                    'kind': candidate['kind'],
-                    'candidateDigest': _candidate_digest(
-                        journal_digest, feature_root.name, candidate
-                    ),
-                    'affectedWikiIdentity': affected,
-                }
-            )
-    candidates.sort(key=lambda row: (row['featureSlug'], row['candidateId']))
+    except OSError as exc:
+        raise ReportError('trusted consolidation snapshot could not start') from exc
+    if completed.returncode != 0:
+        raise ReportError('trusted consolidation snapshot failed')
+    try:
+        value = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise ReportError('trusted consolidation snapshot returned invalid JSON') from exc
+    trusted = exact_keys(
+        value,
+        {
+            'schemaVersion',
+            'kind',
+            'authoritative',
+            'status',
+            'candidateLimit',
+            'scanned',
+            'bindings',
+            'journalSnapshots',
+            'candidates',
+            'truncated',
+        },
+        'trusted consolidation snapshot',
+    )
+    if (
+        trusted['schemaVersion'] != 1
+        or trusted['kind'] != 'grill-adapter.wiki-maintenance-consolidation-input'
+        or trusted['authoritative'] is not False
+        or trusted['status'] != 'ok'
+        or trusted['candidateLimit'] != candidate_limit
+    ):
+        fail('trusted consolidation snapshot identity')
+    scanned = exact_keys(
+        trusted['scanned'], {'sources', 'featureJournals', 'candidates'}, 'trusted scanned'
+    )
+    source_count = integer(scanned['sources'], 'trusted scanned.sources', 0, 200)
+    journal_count = integer(
+        scanned['featureJournals'], 'trusted scanned.featureJournals', 0, 1_000_000
+    )
+    candidate_count = integer(
+        scanned['candidates'], 'trusted scanned.candidates', 0, 1_000_000
+    )
+    bindings = trusted['bindings']
+    journals = trusted['journalSnapshots']
+    raw_candidates = trusted['candidates']
+    if not isinstance(bindings, list) or len(bindings) != source_count:
+        fail('trusted bindings')
+    if not isinstance(journals, list) or len(journals) != journal_count:
+        fail('trusted journal snapshots')
+    if not isinstance(raw_candidates, list) or len(raw_candidates) != min(candidate_count, candidate_limit):
+        fail('trusted candidate snapshots')
+    if trusted['truncated'] is not (candidate_count > candidate_limit):
+        fail('trusted snapshot truncation')
+    candidates = []
+    for index, raw_candidate in enumerate(raw_candidates):
+        if not isinstance(raw_candidate, dict):
+            fail(f'trusted candidates[{index}]')
+        correction = raw_candidate.get('correction')
+        affected = (
+            correction.get('affectedWikiIdentity') if isinstance(correction, dict) else None
+        )
+        candidates.append(
+            {
+                'featureSlug': raw_candidate.get('featureSlug'),
+                'candidateId': raw_candidate.get('candidateId'),
+                'status': raw_candidate.get('status'),
+                'kind': raw_candidate.get('kind'),
+                'candidateDigest': raw_candidate.get('candidateDigest'),
+                'affectedWikiIdentity': affected,
+            }
+        )
     return {
+        'bindings': bindings,
         'journals': journals,
-        'candidates': candidates[:candidate_limit],
-        'candidateCount': len(candidates),
+        'candidates': candidates,
+        'sourceCount': source_count,
+        'journalCount': journal_count,
+        'candidateCount': candidate_count,
     }
 
 
@@ -206,12 +204,14 @@ def validate_report(value: Any, expected: ConsolidationRequest) -> dict[str, Any
     if as_of != expected.as_of or limit != expected.candidate_limit:
         fail('consolidation request identity')
 
-    current = canonical_snapshot(expected.project_root, limit)
+    current = trusted_snapshot(expected.project_root, limit)
     scanned = exact_keys(
         report['scanned'], {'sources', 'featureJournals', 'candidates'}, 'scanned'
     )
     sources = integer(scanned['sources'], 'scanned.sources', 0, 200)
-    if integer(scanned['featureJournals'], 'scanned.featureJournals', 0, 1_000_000) != len(current['journals']):
+    if sources != current['sourceCount']:
+        fail('scanned.sources or binding drift')
+    if integer(scanned['featureJournals'], 'scanned.featureJournals', 0, 1_000_000) != current['journalCount']:
         fail('scanned.featureJournals')
     candidate_count = integer(scanned['candidates'], 'scanned.candidates', 0, 1_000_000)
     if candidate_count != current['candidateCount']:
@@ -236,6 +236,8 @@ def validate_report(value: Any, expected: ConsolidationRequest) -> dict[str, Any
         enum(binding['role'], frozenset({'project', 'shared'}), f'{field}.role')
         if not DIGEST.fullmatch(text(binding['bindingDigest'], f'{field}.bindingDigest', 64)):
             fail(f'{field}.bindingDigest')
+    if bindings != current['bindings']:
+        fail('snapshotIdentity.bindings or binding drift')
 
     journal_snapshots = snapshot['journalSnapshots']
     if journal_snapshots != current['journals']:
@@ -247,7 +249,7 @@ def validate_report(value: Any, expected: ConsolidationRequest) -> dict[str, Any
         (row['featureSlug'], row['candidateId']): row for row in current['candidates']
     }
 
-    classified: set[tuple[str, str]] = set()
+    memberships: dict[tuple[str, str], set[str]] = {}
     group_ids: set[str] = set()
     proposal_groups = report['proposalGroups']
     if not isinstance(proposal_groups, list) or len(proposal_groups) > limit:
@@ -280,14 +282,21 @@ def validate_report(value: Any, expected: ConsolidationRequest) -> dict[str, Any
         if not isinstance(identities, list) or len(identities) < 2:
             fail(f'{field}.candidateIdentities')
         group_candidates: list[dict[str, Any]] = []
+        group_keys: set[tuple[str, str]] = set()
         for identity_index, raw_identity in enumerate(identities):
             identity_value = candidate_identity(
                 raw_identity, f'{field}.candidateIdentities[{identity_index}]'
             )
             key = (identity_value['featureSlug'], identity_value['candidateId'])
-            if key not in visible_candidates or key in classified:
+            relationships = memberships.setdefault(key, set())
+            if (
+                key not in visible_candidates
+                or key in group_keys
+                or relationship in relationships
+            ):
                 fail(f'{field}.candidateIdentities')
-            classified.add(key)
+            group_keys.add(key)
+            relationships.add(relationship)
             group_candidates.append(visible_candidates[key])
         affected_values = group['affectedWikiIdentities']
         if not isinstance(affected_values, list):
@@ -317,15 +326,16 @@ def validate_report(value: Any, expected: ConsolidationRequest) -> dict[str, Any
         for index, raw_identity in enumerate(values):
             identity_value = candidate_identity(raw_identity, f'{name}[{index}]')
             key = (identity_value['featureSlug'], identity_value['candidateId'])
-            if key not in visible_candidates or key in classified or key in result:
+            if key not in visible_candidates or key in memberships or key in result:
                 fail(name)
             result.add(key)
-        classified.update(result)
+        for key in result:
+            memberships[key] = {name}
         return result
 
     classify_list('independentCandidateIdentities')
     unresolved = classify_list('unresolvedCandidateIdentities')
-    if classified != set(visible_candidates):
+    if set(memberships) != set(visible_candidates):
         fail('candidate classification coverage')
 
     caveats = report['caveats']

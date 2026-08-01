@@ -8,8 +8,8 @@ trap 'rm -rf "$SANDBOX"' EXIT
 
 python3 - "$ROOT" "$SANDBOX" <<'PY'
 import copy
-import hashlib
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -18,7 +18,11 @@ root = pathlib.Path(sys.argv[1])
 sandbox = pathlib.Path(sys.argv[2])
 project = sandbox / "project"
 context = project / ".grill-adapter" / "context"
+vault = sandbox / "vault"
+registry = sandbox / "registry.json"
+obsidian_cli = sandbox / "obsidian"
 validator = root / "scripts" / "wiki_maintenance_consolidation_report.py"
+bundle = root / "mcp" / "obsidian-wiki" / "dist" / "index.js"
 agent = (root / "agents" / "wiki-maintenance.md").read_text(encoding="utf-8")
 skill = (root / "skills" / "wiki-maintenance" / "SKILL.md").read_text(encoding="utf-8")
 contract = (root / "contracts" / "wiki-maintenance-consolidation-report-v1.example.jsonc").read_text(
@@ -61,6 +65,91 @@ for required in (
     '"journalSnapshots"',
 ):
     assert required in contract, required
+
+source_root = vault / "Projects" / "example"
+(source_root / "_meta").mkdir(parents=True)
+(source_root / "_meta" / "wiki-source.md").write_text(
+    """---
+wiki_schema: grill-adapter.obsidian-source/v1
+wiki_source_id: project
+scope: project
+update_existing: confirm
+create_note: confirm
+---
+
+# Project
+""",
+    encoding="utf-8",
+)
+(source_root / "Retries.md").write_text(
+    """---
+wiki_schema: grill-adapter.obsidian-note/v1
+wiki_id: project/retries
+type: constraint
+status: active
+agent_visible: true
+summary: Retry policy
+constraint_strength: hard
+---
+
+# Retries
+
+One retry budget is shared across transport layers.
+""",
+    encoding="utf-8",
+)
+subprocess.run(["git", "init", "--initial-branch=main", str(vault)], check=True, capture_output=True)
+subprocess.run(["git", "-C", str(vault), "config", "user.name", "Test User"], check=True)
+subprocess.run(["git", "-C", str(vault), "config", "user.email", "test@example.invalid"], check=True)
+subprocess.run(["git", "-C", str(vault), "remote", "add", "origin", "https://github.com/acme/knowledge.git"], check=True)
+subprocess.run(["git", "-C", str(vault), "add", "."], check=True)
+subprocess.run(["git", "-C", str(vault), "commit", "-m", "fixture"], check=True, capture_output=True)
+project_settings = {
+    "wiki": {
+        "provider": "obsidian",
+        "publishing": {"mode": "git-pr"},
+        "obsidian": {
+            "bindings": [
+                {
+                    "sourceId": "project",
+                    "role": "project",
+                    "vaultRef": "knowledge",
+                    "repositoryRef": "wiki",
+                    "root": "Projects/example",
+                    "access": {"read": True, "update": "confirm"},
+                }
+            ]
+        },
+    }
+}
+(project / ".grill-adapter").mkdir(parents=True, exist_ok=True)
+(project / ".grill-adapter" / "settings.json").write_text(
+    json.dumps(project_settings), encoding="utf-8"
+)
+registry.write_text(
+    json.dumps(
+        {
+            "vaults": {"knowledge": {"selector": "Knowledge"}},
+            "repositories": {
+                "wiki": {
+                    "worktreeRoot": str(vault),
+                    "remote": "origin",
+                    "expectedRemote": "github.com/acme/knowledge",
+                    "baseBranch": "main",
+                    "syncBeforeResearch": False,
+                }
+            },
+        }
+    ),
+    encoding="utf-8",
+)
+obsidian_cli.write_text(
+    "#!/usr/bin/env sh\n[ \"${1:-}\" = vaults ] && printf 'Knowledge\\n'\n",
+    encoding="utf-8",
+)
+obsidian_cli.chmod(0o755)
+os.environ["OBSIDIAN_WIKI_REGISTRY"] = str(registry)
+os.environ["OBSIDIAN_WIKI_OBSIDIAN_CLI"] = str(obsidian_cli)
 
 
 def candidate(feature, event_id, candidate_id, claim, *, kind="decision", correction=None):
@@ -118,46 +207,37 @@ for feature, rows in events.items():
     )
 
 
-def digest_bytes(value):
-    return "sha256:" + hashlib.sha256(value).hexdigest()
-
-
 def snapshots(limit=20):
-    journals = []
-    candidates = []
-    for feature in sorted(events):
-        journal_path = context / feature / "wiki-candidates.jsonl"
-        journal_digest = digest_bytes(journal_path.read_bytes())
-        journals.append({"featureSlug": feature, "journalDigest": journal_digest})
-        for row in sorted(events[feature], key=lambda item: item["candidateId"]):
-            candidate_digest = digest_bytes(
-                (
-                    journal_digest
-                    + "\0"
-                    + feature
-                    + "\0"
-                    + row["candidateId"]
-                    + "\0pending\0"
-                    + row["eventId"]
-                ).encode("utf-8")
-            )
-            candidates.append(
-                {
-                    "featureSlug": feature,
-                    "candidateId": row["candidateId"],
-                    "status": "pending",
-                    "kind": row["kind"],
-                    "candidateDigest": candidate_digest,
-                    "affectedWikiIdentity": (
-                        row.get("correction", {}).get("affectedWikiIdentity")
-                    ),
-                }
-            )
-    candidates.sort(key=lambda item: (item["featureSlug"], item["candidateId"]))
-    return journals, candidates[:limit]
+    completed = subprocess.run(
+        ["node", str(bundle), "consolidation-candidates"],
+        cwd=project,
+        input=json.dumps({"candidateLimit": limit}),
+        text=True,
+        capture_output=True,
+        check=True,
+        env={**os.environ, "CLAUDE_PROJECT_DIR": str(project)},
+    )
+    trusted = json.loads(completed.stdout)
+    candidates = [
+        {
+            "featureSlug": row["featureSlug"],
+            "candidateId": row["candidateId"],
+            "status": row["status"],
+            "kind": row["kind"],
+            "candidateDigest": row["candidateDigest"],
+            "affectedWikiIdentity": (
+                row["correction"]["affectedWikiIdentity"]
+                if row["correction"] is not None
+                else None
+            ),
+        }
+        for row in trusted["candidates"]
+    ]
+    return trusted, candidates
 
 
-journal_snapshots, candidate_snapshots = snapshots()
+trusted, candidate_snapshots = snapshots()
+journal_snapshots = trusted["journalSnapshots"]
 identity = lambda feature, candidate_id: {
     "featureSlug": feature,
     "candidateId": candidate_id,
@@ -171,7 +251,7 @@ valid = {
     "status": "ok",
     "asOf": "2026-08-01T12:00:00Z",
     "limits": {"candidateLimit": 20},
-    "scanned": {"sources": 1, "featureJournals": 3, "candidates": 5},
+    "scanned": trusted["scanned"],
     "proposalGroups": [
         {
             "groupId": "group-001",
@@ -201,13 +281,7 @@ valid = {
     "independentCandidateIdentities": [identity("feature-a", "independent")],
     "unresolvedCandidateIdentities": [],
     "snapshotIdentity": {
-        "bindings": [
-            {
-                "sourceId": "project",
-                "role": "project",
-                "bindingDigest": "a" * 64,
-            }
-        ],
+        "bindings": trusted["bindings"],
         "journalSnapshots": journal_snapshots,
         "candidateSnapshots": candidate_snapshots,
     },
@@ -223,6 +297,27 @@ checked = subprocess.run(
     capture_output=True,
 )
 assert json.loads(checked.stdout) == valid
+
+overlapping_relationships = copy.deepcopy(valid)
+overlapping_relationships["proposalGroups"][1]["candidateIdentities"] = [
+    identity("feature-a", "duplicate-a"),
+    identity("feature-b", "duplicate-b"),
+    identity("feature-c", "conflict-c"),
+]
+overlapping_relationships["proposalGroups"][1]["affectedWikiIdentities"] = [
+    {"sourceId": "project", "wikiId": "project/retries"}
+]
+overlapping_relationships["independentCandidateIdentities"].append(
+    identity("feature-a", "conflict-a")
+)
+overlapping_path = sandbox / "overlapping.json"
+overlapping_path.write_text(json.dumps(overlapping_relationships), encoding="utf-8")
+subprocess.run(
+    [sys.executable, str(validator), "validate", str(overlapping_path), "--project-root", str(project)],
+    check=True,
+    text=True,
+    capture_output=True,
+)
 
 compact = subprocess.run(
     [
@@ -342,8 +437,37 @@ assert json.loads(write.stdout)["counts"]["proposalGroups"] == 2
 persisted = project / output_rel
 before = persisted.read_bytes()
 
+# Binding changes after the child snapshot must fail and preserve the last report.
+settings_path = project / ".grill-adapter" / "settings.json"
+settings_before = settings_path.read_text(encoding="utf-8")
+settings_path.write_text(settings_before.replace('"sourceId": "project"', '"sourceId": "changed"'), encoding="utf-8")
+binding_drift = subprocess.run(
+    [
+        sys.executable,
+        str(validator),
+        "write",
+        "--output",
+        output_rel,
+        "--expected-as-of",
+        valid["asOf"],
+        "--expected-candidate-limit",
+        "20",
+        "--project-root",
+        str(project),
+    ],
+    cwd=project,
+    input=json.dumps(valid),
+    text=True,
+    capture_output=True,
+)
+assert binding_drift.returncode != 0
+assert persisted.read_bytes() == before
+settings_path.write_text(settings_before, encoding="utf-8")
+
 # A journal change after the child snapshot must fail validation and preserve the last report.
-with (context / "feature-c" / "wiki-candidates.jsonl").open("a", encoding="utf-8") as handle:
+drifting_journal = context / "feature-c" / "wiki-candidates.jsonl"
+journal_before = drifting_journal.read_bytes()
+with drifting_journal.open("a", encoding="utf-8") as handle:
     handle.write("\n")
 drifted = subprocess.run(
     [
@@ -365,6 +489,31 @@ drifted = subprocess.run(
     capture_output=True,
 )
 assert drifted.returncode != 0
+assert persisted.read_bytes() == before
+
+# Restoring the exact snapshot resumes the interrupted write without replacing the report first.
+drifting_journal.write_bytes(journal_before)
+resumed = subprocess.run(
+    [
+        sys.executable,
+        str(validator),
+        "write",
+        "--output",
+        output_rel,
+        "--expected-as-of",
+        valid["asOf"],
+        "--expected-candidate-limit",
+        "20",
+        "--project-root",
+        str(project),
+    ],
+    cwd=project,
+    input=json.dumps(valid),
+    text=True,
+    capture_output=True,
+    check=True,
+)
+assert json.loads(resumed.stdout)["counts"]["proposalGroups"] == 2
 assert persisted.read_bytes() == before
 
 print("wiki maintenance consolidation smoke OK")

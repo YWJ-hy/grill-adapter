@@ -576,4 +576,31 @@ describe('read-only consolidation candidate input', () => {
     expect(() => consolidationCandidatesTool({ candidateLimit: 20 }, unbound.env))
       .toThrow(/unbound-correction.*outside readable active bound Wiki identities/i);
   });
+
+  it.skipIf(process.platform === 'win32')('fails closed when a journal changes during its fold', () => {
+    const input = fixture();
+    writeJournal(input.projectDir, 'racing-feature', [event({
+      eventId: 'racing-event',
+      featureSlug: 'racing-feature',
+      candidateId: 'racing-candidate',
+    })]);
+    const pythonWrapper = path.join(path.dirname(input.projectDir), 'fold-and-mutate');
+    writeFileSync(pythonWrapper, `#!/usr/bin/env sh
+set -eu
+journal=''
+previous=''
+for argument in "$@"; do
+  if [ "$previous" = '--journal' ]; then journal="$argument"; fi
+  previous="$argument"
+done
+python3 "$@"
+printf '\n' >> "$journal"
+`, 'utf8');
+    chmodSync(pythonWrapper, 0o755);
+
+    expect(() => consolidationCandidatesTool(
+      { candidateLimit: 20 },
+      { ...input.env, OBSIDIAN_WIKI_PYTHON: pythonWrapper },
+    )).toThrow(/racing-feature.*changed while it was being folded/i);
+  });
 });

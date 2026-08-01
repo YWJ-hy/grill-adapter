@@ -93,6 +93,7 @@ export function foldCanonicalFeatureJournals(
 ): FoldedJournal[] {
   const python = env.OBSIDIAN_WIKI_PYTHON ?? 'python3';
   return canonicalJournalPaths(projectDir).map(({ featureSlug, journalPath }) => {
+    const snapshot = readFileSync(journalPath);
     let output: string;
     try {
       output = String(execFileSync(python, [
@@ -129,7 +130,10 @@ export function foldCanonicalFeatureJournals(
         : result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');
       throw new Error(`Canonical Wiki candidate journal for ${featureSlug} has an invalid fold: ${detail}`);
     }
-    const journalDigest = `sha256:${createHash('sha256').update(readFileSync(journalPath)).digest('hex')}`;
+    if (!snapshot.equals(readFileSync(journalPath))) {
+      throw new Error(`Canonical Wiki candidate journal for ${featureSlug} changed while it was being folded`);
+    }
+    const journalDigest = `sha256:${createHash('sha256').update(snapshot).digest('hex')}`;
     return { ...result.data, journalDigest };
   });
 }

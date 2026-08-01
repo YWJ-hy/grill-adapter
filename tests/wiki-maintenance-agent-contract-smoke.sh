@@ -23,6 +23,73 @@ contract = (root / "contracts" / "wiki-maintenance-report-v1.example.jsonc").rea
 )
 validator = root / "scripts" / "wiki_maintenance_report.py"
 
+
+def replay_dispatch(events):
+    agent_path = None
+    terminal_result = None
+    waiting = False
+    for event in events:
+        operation = event["operation"]
+        if operation == "spawn":
+            assert agent_path is None
+            agent_path = event["agentPath"]
+            assert agent_path
+            waiting = True
+            continue
+        if operation == "wait":
+            assert waiting and event["agentPath"] == agent_path
+            status = event["status"]
+            if status in {"timeout", "queued", "running", "started", "unknown", "interrupted"}:
+                continue
+            assert status == "terminal" and event["author"] == agent_path
+            terminal_result = event["result"]
+            waiting = False
+            continue
+        assert not waiting
+    assert agent_path is not None and not waiting and terminal_result is not None
+    return terminal_result
+
+
+# A timeout/interruption is recoverable only by continuing the same child transaction.
+recovered = replay_dispatch(
+    [
+        {"operation": "spawn", "agentPath": "/root/wiki-maintenance"},
+        {"operation": "wait", "agentPath": "/root/wiki-maintenance", "status": "timeout"},
+        {"operation": "wait", "agentPath": "/root/wiki-maintenance", "status": "interrupted"},
+        {
+            "operation": "wait",
+            "agentPath": "/root/wiki-maintenance",
+            "status": "terminal",
+            "author": "/root/wiki-maintenance",
+            "result": {"status": "ok"},
+        },
+    ]
+)
+assert recovered == {"status": "ok"}
+for invalid_trace in (
+    [
+        {"operation": "spawn", "agentPath": "/root/wiki-maintenance"},
+        {"operation": "wait", "agentPath": "/root/wiki-maintenance", "status": "timeout"},
+        {"operation": "spawn", "agentPath": "/root/replacement"},
+    ],
+    [
+        {"operation": "spawn", "agentPath": "/root/wiki-maintenance"},
+        {
+            "operation": "wait",
+            "agentPath": "/root/wiki-maintenance",
+            "status": "terminal",
+            "author": "/root/other",
+            "result": {"status": "ok"},
+        },
+    ],
+):
+    try:
+        replay_dispatch(invalid_trace)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("dispatch recovery accepted a replacement or wrong child")
+
 for required in (
     "name: wiki-maintenance",
     "mode: audit",
@@ -84,7 +151,10 @@ for required in (
     "verify the terminal message author",
     "Never call the generic `functions.wait`",
     "`collaboration.wait_agent`",
-    "wait timeout of at least 10 seconds",
+    "use `300000` milliseconds (five minutes)",
+    "message` literally contains the complete role file",
+    "Do not rely on inherited tool output",
+    "set it to `\"none\"`",
     "Do not perform inline Wiki maintenance",
     "dispatch, transport, capacity, or lifecycle failure",
     "`broken`",
