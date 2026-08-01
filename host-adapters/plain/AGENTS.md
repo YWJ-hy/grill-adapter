@@ -28,7 +28,7 @@ The sidecar is the record of which wiki constrains this feature. Nothing under `
 
 ### Cross-session continuation
 
-`wiki-readiness` and candidate-journal writes refresh a feature-local `wiki-session-state.json` best-effort. On SessionStart, the hook may show its last explicitly selected task, artifact digests, readiness status, candidate count, and next command. Treat it only as a navigation hint: it does not establish that the current prompt is for that ticket and it never supplies Wiki constraints. Resume through `$grill-adapter:wiki-readiness <task-id>`, which remains the authority and revalidates the current roster/context/snapshots.
+`wiki-readiness`, candidate-journal writes, and validated maintenance audit reports refresh a feature-local schema-v2 `wiki-session-state.json` best-effort. On SessionStart, the hook revalidates artifact/report digests and lifecycle counts, then mechanically shows at most three recovery, maintenance, incomplete Capture, or continuation actions. Each names a feature, status, and authoritative `$grill-adapter:*` re-entry command; malformed, stale, or mismatched state is ignored, while schema-v1 remains continuation-only. Treat every action only as a navigation hint: it does not establish the current ticket and never supplies Wiki constraints, Note bodies, candidate transcripts, or maintenance reasoning. `$grill-adapter:wiki-readiness <task-id>` remains the authority for task context.
 
 ### Wiki readiness + Bind — before implementing each task
 

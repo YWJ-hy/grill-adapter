@@ -89,9 +89,11 @@ For every new feature, keep all local workflow artifacts together in
 Derived reviewer handoffs live in the same directory as `<taskId>.wiki-review.md` and use
 `<taskId>.wiki-review-handoff.md` so runtime warnings or caveats never overwrite the approved snapshot.
 The journal lock is local recovery state and must never be moved by hand while a workflow is active.
-`wiki-session-state.json` is generated from explicit task selection/readiness and candidate activity;
-it is non-authoritative, must not contain Wiki body text, and must not be hand-authored as a substitute
-for a finalized context.
+`wiki-session-state.json` is generated from explicit task selection/readiness, candidate activity,
+and successfully validated maintenance audit reports. Its schema-v2 lifecycle/report counts and
+digests only support bounded SessionStart navigation; it is non-authoritative, must not contain Wiki
+body text, candidate transcript, or maintenance reasoning, and must not be hand-authored as a
+substitute for a finalized context.
 
 When writing the implementation plan, or when `wiki-readiness` performs single-task late Carry before implementation, invoke the `grill-adapter:wiki-researcher` agent to formally select the Notes/Cards that constrain the work:
 

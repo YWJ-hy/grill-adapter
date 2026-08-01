@@ -49,8 +49,10 @@ Each feature's local, uncommitted workflow state is grouped under
 `wiki-readiness.json`, `wiki-session-state.json`, `wiki-maintenance-audit.json`,
 `wiki-maintenance-consolidation.json`, and `wiki-publish.json`.
 The session state and Wiki maintenance summary are non-authoritative navigation projections. The
-session state contains the last explicitly
-selected task plus local artifact digests; it never substitutes for `wiki-readiness` validation.
+schema-v2 session state contains the last explicitly selected task, local artifact digests,
+canonical candidate lifecycle counts, and validated maintenance-report counts. At SessionStart the
+hook rejects drifted/malformed projections and deterministically emits at most three recovery,
+maintenance, Capture, or continuation actions. It never substitutes for `wiki-readiness` validation.
 This keeps selection, task identity, review handoffs, and recovery state together in the file explorer.
 Existing legacy flat artifacts remain resumable through their explicit paths;
 new work uses the directory layout.

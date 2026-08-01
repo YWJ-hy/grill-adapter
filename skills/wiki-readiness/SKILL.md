@@ -38,9 +38,11 @@ read, inject, or execute any unverified Wiki content.
 Use `.grill-adapter/context/<feature-slug>/ticket-roster.json` and
 `.grill-adapter/context/<feature-slug>/wiki-readiness.json`. Nothing under `.grill-adapter/context/` is committed.
 Each explicit task selection also best-effort refreshes `wiki-session-state.json`, a compact
-cross-session hint containing only the selected task ID, artifact digests, readiness status,
-candidate count, and a next command. It is never a readiness input: do not infer the current task
-or inject Wiki context from it; always run this normal readiness flow again.
+schema-v2 cross-session hint containing only the selected task ID, artifact/report digests,
+readiness status, canonical candidate lifecycle counts, validated maintenance counts, and re-entry
+commands. Candidate-journal changes and successful audit-report writes refresh the same projection.
+It is never a readiness input: do not infer the current task or inject Wiki context from it; always
+run this normal readiness flow again.
 
 1. **Existing formal ticket:** find the formal finalized context and its ticket roster. Match the
    current task to one exact `taskId`. Keep the roster, finalized context, routing, and fingerprints
@@ -73,11 +75,15 @@ Wiki constraint.
 
 ### Cross-session continuation
 
-At SessionStart, `wiki-reread` may show the latest valid feature summary and its last explicitly
-selected task. Treat that output as navigation only. Resume through the displayed
-`grill-adapter:wiki-readiness` command, which revalidates the current roster, finalized context,
-fingerprint, and frozen role snapshots before any Wiki content can be used. A missing, stale, or
-malformed summary is not a reason to repair it manually or bypass normal readiness.
+At SessionStart, `wiki-reread` revalidates current artifact/report digests and canonical lifecycle
+counts, then may show at most three actions ordered by recovery, maintenance, incomplete Capture,
+ordinary continuation, and recent activity. Every action names its feature, status, and the
+authoritative re-entry command. Treat all output as navigation only. A readiness action revalidates
+the current roster, finalized context, fingerprint, and frozen role snapshots before any Wiki
+content can be used; maintenance and Capture actions re-enter their named skills. A missing, stale,
+mismatched, or malformed summary is ignored and is not a reason to repair it manually or bypass
+normal readiness. Schema-v1 state remains continuation-only for compatibility. No action may carry
+Note body, candidate transcript, or maintenance reasoning.
 
 ## 2. Reuse a formal finalized context
 

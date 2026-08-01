@@ -17,6 +17,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from wiki_session_state import SessionStateError, update_session_state
+
 
 REPORT_KIND = 'grill-adapter.wiki-maintenance-report'
 REPORT_PATH = re.compile(
@@ -498,6 +500,10 @@ def main(argv: list[str] | None = None) -> int:
             stream = io.StringIO(sys.stdin.readline()) if args.stdin_line else sys.stdin
             report = load_json_stream(stream, expected)
             write_report(report, args.output)
+            try:
+                update_session_state(Path(args.output).parent)
+            except (OSError, SessionStateError, ValueError):
+                pass
             print(dump(compact(report, args.output)))
             return 0
         report = load_path(Path(args.report))

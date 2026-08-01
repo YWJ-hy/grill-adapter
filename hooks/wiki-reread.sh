@@ -49,91 +49,14 @@ print(json.dumps({"hookSpecificOutput": {
 PY
 }
 
-# Prefer the canonical feature-level continuation projection when it records an explicit task.
-# It is intentionally not validated against live artifacts here: a stale or tampered summary is
-# merely ignored by the authoritative readiness command invoked after this hint.
-SESSION_STATE=""
-SESSION_STATE_VALUES=""
-for f in "$PROJECT_ROOT"/.grill-adapter/context/*/wiki-session-state.json; do
-  [ -f "$f" ] || continue
-  state_values="$(python3 - "$f" <<'PY' 2>/dev/null || true
-import json
-import re
-import shlex
-import sys
-from pathlib import Path
-
-
-def emit(name, value):
-    print(f"{name}=" + shlex.quote(value))
-
-
-path = Path(sys.argv[1])
-try:
-    state = json.loads(path.read_text(encoding="utf-8"))
-except (OSError, json.JSONDecodeError):
-    raise SystemExit(0)
-if not isinstance(state, dict):
-    raise SystemExit(0)
-if (
-    state.get("schemaVersion") != 1
-    or state.get("kind") != "grill-adapter.wiki-session-state"
-    or state.get("generatedBy") != "grill-adapter"
-):
-    raise SystemExit(0)
-feature = state.get("featureSlug")
-task = state.get("lastSelectedTask")
-next_command = state.get("nextCommand")
-if (
-    not isinstance(feature, str)
-    or not feature.strip()
-    or feature != path.parent.name
-    or any(marker in feature for marker in ("/", "\\"))
-    or feature in {".", ".."}
-    or not isinstance(task, str)
-    or not task.strip()
-    or any(marker in task for marker in ("/", "\\"))
-    or task in {".", ".."}
-    or not isinstance(next_command, str)
-    or not next_command.strip()
-    or len(next_command) > 500
-):
-    raise SystemExit(0)
-if state.get("readinessStatus") not in {"ready", "no-relevant", "disabled", "broken", "unknown", "unrecorded"}:
-    raise SystemExit(0)
-candidate_count = state.get("candidateCount")
-if isinstance(candidate_count, bool) or not isinstance(candidate_count, int) or candidate_count < 0:
-    raise SystemExit(0)
-for field in ("rosterDigest", "contextDigest", "snapshotDigest"):
-    digest = state.get(field)
-    if digest is not None and (not isinstance(digest, str) or not re.fullmatch(r"sha256:[a-f0-9]{64}", digest)):
-        raise SystemExit(0)
-
-emit("SESSION_FEATURE", feature.strip())
-emit("SESSION_TASK", task.strip())
-emit("SESSION_READINESS", state["readinessStatus"])
-emit("SESSION_CANDIDATES", str(candidate_count))
-emit("SESSION_NEXT_COMMAND", next_command.strip())
-PY
-)"
-  [ -n "$state_values" ] || continue
-  if [ -z "$SESSION_STATE" ] || [ "$f" -nt "$SESSION_STATE" ]; then
-    SESSION_STATE="$f"
-    SESSION_STATE_VALUES="$state_values"
-  fi
-done
-if [ -n "$SESSION_STATE" ]; then
-  SESSION_FEATURE=""
-  SESSION_TASK=""
-  SESSION_READINESS=""
-  SESSION_CANDIDATES=""
-  SESSION_NEXT_COMMAND=""
-  eval "$SESSION_STATE_VALUES"
-  if [ -n "${SESSION_TASK:-}" ]; then
-    REL_SESSION_STATE="${SESSION_STATE#$PROJECT_ROOT/}"
-    emit "Continuation hint for feature \`$SESSION_FEATURE\`: last explicitly selected task \`$SESSION_TASK\` (readiness: \`$SESSION_READINESS\`; candidates: \`$SESSION_CANDIDATES\`). Resume with \`$SESSION_NEXT_COMMAND\`. This summary in \`$REL_SESSION_STATE\` is non-authoritative: run wiki-readiness before using any Wiki constraints so it validates the current roster, context, and task snapshots."
-    exit 0
-  fi
+# The execution layer validates current artifact digests, folds lifecycle state, ranks globally,
+# and returns only the bounded metadata envelope. Legacy schema-v1 continuation states remain
+# navigation-compatible but cannot produce maintenance or Capture actions.
+SESSION_ACTIONS="$(python3 "$SCRIPT_DIR/../scripts/wiki_session_state.py" actions \
+  --project-root "$PROJECT_ROOT" 2>/dev/null || true)"
+if [ -n "$SESSION_ACTIONS" ]; then
+  emit "$SESSION_ACTIONS"
+  exit 0
 fi
 
 # Find the active sidecar in the canonical feature-directory layout. A project may carry

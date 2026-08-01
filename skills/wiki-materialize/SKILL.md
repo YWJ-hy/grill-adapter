@@ -35,7 +35,7 @@ an explicit standalone Bind is needed outside that readiness seam:
 
 - **grill/plain implementation entry**: run `wiki-readiness` before the first code edit. It runs this Bind step after it has reused or late-finalized the current task's context, and records `ready` only after both role files validate.
 - **standalone Bind**: `/grill-adapter:wiki-materialize <ticket>` (or the Codex `$` form) remains available when an explicit host path requires it.
-- The session-level `wiki-reread` hook may first report a feature continuation hint naming the last explicitly selected task, then falls back to approved snapshots that have no readiness result yet. The hint is not a task contract and does not require a second direct materialization after `wiki-readiness` has run.
+- The session-level `wiki-reread` hook may first report up to three digest-validated recovery, maintenance, incomplete Capture, or continuation actions, then falls back to approved snapshots that have no readiness result yet. These metadata-only actions are not task contracts and do not require a second direct materialization after `wiki-readiness` has run.
 
 The ticket id is the `taskId` from the feature's ticket roster — the same id the sidecar's `destination.tasks` routes to. Your host's convention block says how its tickets are identified (grill local-markdown: the `NN` filename prefix; a real tracker: the issue number). Resolve the sidecar and roster from the working tree (inside the final worktree if one is used).
 

@@ -12,20 +12,48 @@ import argparse
 import hashlib
 import json
 import os
+import shlex
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+LEGACY_SCHEMA_VERSION = 1
 KIND = "grill-adapter.wiki-session-state"
 GENERATED_BY = "grill-adapter"
 READINESS_STATUSES = {"ready", "no-relevant", "disabled", "broken", "unknown", "unrecorded"}
 SESSION_FILENAME = "wiki-session-state.json"
+CANDIDATE_STATUSES = ("pending", "deferred", "kept", "skipped", "superseded")
+MAINTENANCE_CATEGORIES = ("active", "reviewDue", "expired", "contradictory")
+MAX_FEATURE_STATES = 200
+MAX_ACTIONS = 3
+DIGEST_PATTERN = "sha256:"
+RECOVERY_PRIORITIES = {"broken": 0, "unknown": 1, "unrecorded": 2}
+MAINTENANCE_URGENT_PRIORITY = 10
+MAINTENANCE_REVIEW_PRIORITY = 11
+CAPTURE_DEFERRED_PRIORITY = 20
+CAPTURE_PENDING_PRIORITY = 21
+CONTINUATION_PRIORITY = 40
 
 
 class SessionStateError(ValueError):
     """Raised when a continuation state cannot be safely written."""
+
+
+@dataclass(frozen=True)
+class NavigationAction:
+    priority: int
+    modified_ns: int
+    action_type: str
+    feature_slug: str
+    status: str
+    command: str
+
+    @property
+    def sort_key(self) -> tuple[int, int, str, str]:
+        return (self.priority, -self.modified_ns, self.feature_slug, self.action_type)
 
 
 def _digest_bytes(value: bytes) -> str:
@@ -59,6 +87,10 @@ def _safe_text(value: Any, field: str, *, allow_empty: bool = False) -> str | No
         raise SessionStateError(f"{field} must not contain path separators")
     if text in {".", ".."}:
         raise SessionStateError(f"{field} must not be a relative path marker")
+    if field in {"featureSlug", "taskId"} and (
+        "`" in text or any(ord(char) < 32 or ord(char) == 127 for char in text)
+    ):
+        raise SessionStateError(f"{field} contains unsafe display characters")
     return text
 
 
@@ -95,7 +127,7 @@ def _usable_previous_state(
     if not isinstance(state, dict):
         return {}
     if (
-        state.get("schemaVersion") != SCHEMA_VERSION
+        state.get("schemaVersion") not in {LEGACY_SCHEMA_VERSION, SCHEMA_VERSION}
         or state.get("kind") != KIND
         or state.get("generatedBy") != GENERATED_BY
         or state.get("featureSlug") != feature_slug
@@ -135,32 +167,43 @@ def _ensure_feature_directory(feature_directory: Path) -> Path:
     return directory
 
 
-def _candidate_count(journal_path: Path) -> int:
-    """Return a best-effort count of candidate identities.
-
-    This value is intentionally advisory. A malformed or concurrently written journal leaves the
-    authoritative Capture path responsible for reporting the real error; the continuation hint
-    simply omits the damaged records from its count.
-    """
+def _candidate_lifecycle(
+    journal_path: Path,
+    feature_slug: str,
+) -> tuple[int, dict[str, int], str | None]:
+    """Project canonical journal lifecycle counts without copying candidate content."""
 
     try:
-        text = journal_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return 0
-    candidate_ids: set[str] = set()
-    for line in text.splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if (
-            isinstance(event, dict)
-            and event.get("eventType") == "candidate"
-            and isinstance(event.get("candidateId"), str)
-            and event["candidateId"].strip()
-        ):
-            candidate_ids.add(event["candidateId"])
-    return len(candidate_ids)
+        from wiki_candidate_journal import JournalError, fold_events, read_events
+
+        folded = fold_events(read_events(journal_path), feature_slug)
+    except (OSError, UnicodeDecodeError, ValueError, JournalError) as exc:
+        raise SessionStateError(f"candidate journal is not valid: {exc}") from exc
+
+    counts = {status: folded["counts"][status] for status in CANDIDATE_STATUSES}
+    counts["capturePending"] = counts["pending"] + counts["deferred"]
+    counts["correctionPending"] = len(folded["maintenanceSignals"])
+    return sum(counts[status] for status in CANDIDATE_STATUSES), counts, _digest_file(journal_path)
+
+
+def _maintenance_counts(report_path: Path) -> tuple[dict[str, int], str | None]:
+    counts = {category: 0 for category in MAINTENANCE_CATEGORIES}
+    if not report_path.exists():
+        return counts, None
+    try:
+        from wiki_maintenance_report import ReportError, load_path
+
+        report = load_path(report_path)
+    except (OSError, UnicodeDecodeError, ValueError, ReportError) as exc:
+        raise SessionStateError(f"maintenance report is not valid: {exc}") from exc
+    scanned = report["scanned"]
+    counts.update({
+        "active": scanned["activeNotes"],
+        "reviewDue": scanned["reviewDueNotes"],
+        "expired": scanned["expiredNotes"],
+        "contradictory": scanned["contradictoryNotes"],
+    })
+    return counts, _digest_file(report_path)
 
 
 def _snapshot_digest(feature_directory: Path, task_id: str | None) -> str | None:
@@ -216,7 +259,7 @@ def _default_next_command(task_id: str | None) -> str:
         else "$grill-adapter:wiki-readiness"
     )
     if task_id:
-        return f"{command} {task_id}"
+        return f"{command} {shlex.quote(task_id)}"
     return command
 
 
@@ -264,6 +307,7 @@ def update_session_state(
     context_path = directory / "wiki-context.json"
     readiness_path = directory / "wiki-readiness.json"
     journal_path = directory / "wiki-candidates.jsonl"
+    maintenance_report_path = directory / "wiki-maintenance-audit.json"
 
     roster = _read_json(roster_path)
     context = _read_json(context_path)
@@ -292,7 +336,7 @@ def update_session_state(
 
     if readiness_status is None:
         readiness_status = _selected_readiness(readiness, task_id)
-    if readiness_status is None and task_id is None:
+    if readiness_status is None and not task_was_explicit:
         prior_status = previous.get("readinessStatus")
         readiness_status = prior_status if prior_status in READINESS_STATUSES else "unrecorded"
     if readiness_status is None:
@@ -319,6 +363,11 @@ def update_session_state(
     if len(next_command) > 500:
         raise SessionStateError("nextCommand must not exceed 500 characters")
 
+    candidate_count, candidate_lifecycle_counts, journal_digest = _candidate_lifecycle(
+        journal_path, feature_slug
+    )
+    maintenance_counts, maintenance_report_digest = _maintenance_counts(maintenance_report_path)
+
     state = {
         "schemaVersion": SCHEMA_VERSION,
         "kind": KIND,
@@ -328,12 +377,205 @@ def update_session_state(
         "rosterDigest": _digest_file(roster_path),
         "contextDigest": _digest_file(context_path),
         "snapshotDigest": _snapshot_digest(directory, task_id),
+        "readinessDigest": _digest_file(readiness_path),
         "readinessStatus": readiness_status,
-        "candidateCount": _candidate_count(journal_path),
+        "candidateCount": candidate_count,
+        "candidateLifecycleCounts": candidate_lifecycle_counts,
+        "journalDigest": journal_digest,
+        "maintenanceCounts": maintenance_counts,
+        "maintenanceReportDigest": maintenance_report_digest,
         "nextCommand": next_command,
     }
     _write_json(state_path, state)
     return state_path
+
+
+def _is_digest(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and value.startswith(DIGEST_PATTERN)
+        and len(value) == 71
+        and all(char in "0123456789abcdef" for char in value[len(DIGEST_PATTERN):])
+    )
+
+
+def _valid_count_map(value: Any, keys: tuple[str, ...]) -> bool:
+    return (
+        isinstance(value, dict)
+        and set(value) == set(keys)
+        and all(isinstance(value[key], int) and not isinstance(value[key], bool) and value[key] >= 0 for key in keys)
+    )
+
+
+def _current_skill_command(skill: str) -> str:
+    prefix = "/" if os.environ.get("CLAUDE_PROJECT_DIR") else "$"
+    return f"{prefix}grill-adapter:{skill}"
+
+
+def _validate_projection(path: Path) -> tuple[dict[str, Any], int] | None:
+    directory = path.parent
+    state = _read_json(path)
+    roster = _read_json(directory / "ticket-roster.json")
+    context = _read_json(directory / "wiki-context.json")
+    readiness = _read_json(directory / "wiki-readiness.json")
+    if not isinstance(state, dict):
+        return None
+    try:
+        feature_slug = _feature_slug_from(directory, roster, context, readiness)
+    except SessionStateError:
+        return None
+    state = _usable_previous_state(state, feature_slug=feature_slug, roster=roster)
+    if not state:
+        return None
+
+    candidate_count = state.get("candidateCount")
+    if isinstance(candidate_count, bool) or not isinstance(candidate_count, int) or candidate_count < 0:
+        return None
+    for field in ("rosterDigest", "contextDigest", "snapshotDigest", "readinessDigest"):
+        digest = state.get(field)
+        if digest is not None and not _is_digest(digest):
+            return None
+
+    task_id = state.get("lastSelectedTask")
+    task_id = task_id.strip() if isinstance(task_id, str) and task_id.strip() else None
+    if state["schemaVersion"] == LEGACY_SCHEMA_VERSION:
+        legacy_digests = {
+            "rosterDigest": _digest_file(directory / "ticket-roster.json"),
+            "contextDigest": _digest_file(directory / "wiki-context.json"),
+            "snapshotDigest": _snapshot_digest(directory, task_id),
+        }
+        if any(
+            state.get(field) is not None and state.get(field) != digest
+            for field, digest in legacy_digests.items()
+        ):
+            return None
+        command = state["nextCommand"].strip()
+        if "`" in command or any(ord(char) < 32 or ord(char) == 127 for char in command):
+            return None
+        return state, path.stat().st_mtime_ns
+
+    expected_digests = {
+        "rosterDigest": _digest_file(directory / "ticket-roster.json"),
+        "contextDigest": _digest_file(directory / "wiki-context.json"),
+        "snapshotDigest": _snapshot_digest(directory, task_id),
+        "readinessDigest": _digest_file(directory / "wiki-readiness.json"),
+    }
+    if any(state.get(field) != digest for field, digest in expected_digests.items()):
+        return None
+    try:
+        expected_count, lifecycle, journal_digest = _candidate_lifecycle(
+            directory / "wiki-candidates.jsonl", feature_slug
+        )
+        maintenance, report_digest = _maintenance_counts(
+            directory / "wiki-maintenance-audit.json"
+        )
+    except SessionStateError:
+        return None
+    lifecycle_keys = (*CANDIDATE_STATUSES, "capturePending", "correctionPending")
+    if (
+        candidate_count != expected_count
+        or not _valid_count_map(state.get("candidateLifecycleCounts"), lifecycle_keys)
+        or state["candidateLifecycleCounts"] != lifecycle
+        or state.get("journalDigest") != journal_digest
+        or not _valid_count_map(state.get("maintenanceCounts"), MAINTENANCE_CATEGORIES)
+        or state["maintenanceCounts"] != maintenance
+        or state.get("maintenanceReportDigest") != report_digest
+    ):
+        return None
+    return state, path.stat().st_mtime_ns
+
+
+def build_actions(project_root: Path) -> list[NavigationAction]:
+    """Return at most three deterministic, metadata-only navigation actions."""
+
+    context_root = project_root.expanduser().resolve() / ".grill-adapter" / "context"
+    if not context_root.is_dir():
+        return []
+    action_candidates: list[NavigationAction] = []
+    state_paths = sorted(context_root.glob(f"*/{SESSION_FILENAME}"))[:MAX_FEATURE_STATES]
+    for state_path in state_paths:
+        validated = _validate_projection(state_path)
+        if validated is None:
+            continue
+        state, modified_ns = validated
+        feature = state["featureSlug"]
+        task = state.get("lastSelectedTask")
+        readiness = state["readinessStatus"]
+
+        if isinstance(task, str) and task.strip():
+            task = task.strip()
+            action_type = "recovery" if readiness in {"broken", "unknown", "unrecorded"} else "continuation"
+            command = (
+                state["nextCommand"].strip()
+                if state["schemaVersion"] == LEGACY_SCHEMA_VERSION
+                else f"{_current_skill_command('wiki-readiness')} {shlex.quote(task)}"
+            )
+            action_candidates.append(NavigationAction(
+                priority=RECOVERY_PRIORITIES.get(readiness, CONTINUATION_PRIORITY),
+                modified_ns=modified_ns,
+                action_type=action_type,
+                feature_slug=feature,
+                status=readiness,
+                command=command,
+            ))
+
+        if state["schemaVersion"] != SCHEMA_VERSION:
+            continue
+        lifecycle = state["candidateLifecycleCounts"]
+        maintenance = state["maintenanceCounts"]
+        maintenance_parts = []
+        for key, label in (
+            ("reviewDue", "review-due"),
+            ("expired", "expired"),
+            ("contradictory", "contradictory"),
+        ):
+            if maintenance[key]:
+                maintenance_parts.append(f"{label}={maintenance[key]}")
+        if lifecycle["correctionPending"]:
+            maintenance_parts.append(f"correction-pending={lifecycle['correctionPending']}")
+        if maintenance_parts:
+            urgent = maintenance["expired"] + maintenance["contradictory"] + lifecycle["correctionPending"]
+            action_candidates.append(NavigationAction(
+                priority=(
+                    MAINTENANCE_URGENT_PRIORITY if urgent else MAINTENANCE_REVIEW_PRIORITY
+                ),
+                modified_ns=modified_ns,
+                action_type="maintenance",
+                feature_slug=feature,
+                status=", ".join(maintenance_parts),
+                command=(
+                    f"{_current_skill_command('wiki-maintenance')} audit {shlex.quote(feature)}"
+                ),
+            ))
+
+        if lifecycle["capturePending"]:
+            action_candidates.append(NavigationAction(
+                priority=(
+                    CAPTURE_DEFERRED_PRIORITY
+                    if lifecycle["deferred"]
+                    else CAPTURE_PENDING_PRIORITY
+                ),
+                modified_ns=modified_ns,
+                action_type="capture",
+                feature_slug=feature,
+                status=f"pending={lifecycle['pending']}, deferred={lifecycle['deferred']}",
+                command=f"{_current_skill_command('update-wiki')} {shlex.quote(feature)}",
+            ))
+
+    action_candidates.sort(key=lambda action: action.sort_key)
+    return action_candidates[:MAX_ACTIONS]
+
+
+def render_actions(actions: list[NavigationAction]) -> str:
+    if not actions:
+        return ""
+    lines = ["Project memory actions (non-authoritative navigation; readiness remains the task authority):"]
+    for index, action in enumerate(actions, start=1):
+        lines.append(
+            f"{index}. [{action.action_type}] feature `{action.feature_slug}`; "
+            f"status `{action.status}`; run `{action.command}`."
+        )
+    return "\n".join(lines)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -348,11 +590,21 @@ def build_parser() -> argparse.ArgumentParser:
     update.add_argument("--task-id")
     update.add_argument("--next-command")
     update.add_argument("--readiness-status", choices=sorted(READINESS_STATUSES))
+    actions = subparsers.add_parser(
+        "actions",
+        help="Render at most three validated SessionStart navigation actions",
+    )
+    actions.add_argument("--project-root", required=True)
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
+    if args.command == "actions":
+        rendered = render_actions(build_actions(Path(args.project_root)))
+        if rendered:
+            print(rendered)
+        return 0
     if args.command not in {"update", "refresh", "select"}:
         raise SessionStateError(f"unknown command {args.command}")
     path = update_session_state(
