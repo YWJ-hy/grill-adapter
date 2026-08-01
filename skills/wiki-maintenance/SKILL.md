@@ -42,9 +42,9 @@ The role file's `disallowedTools` and “do not invoke another agent” boundary
 Codex sub-agent dispatch is asynchronous. Treat the returned agent path as a handle, not a result:
 
 1. Spawn exactly one maintenance agent. If Codex exposes one unified collaboration tool, call its `spawn` operation first; do not call its `wait` operation yet. If Codex exposes separate tools, call `spawn_agent`. In either form, supply a unique task name, the complete role prompt, and the audit input, then keep the non-empty returned agent path. Do not call any wait operation before spawn returns a path; a targetless wait is a dispatch failure.
-2. **The wait is the only legal next operation after dispatch.** After spawn succeeds, call the unified collaboration tool's `wait` operation or the separate `wait_agent` tool with that exact path. Do not send a user message, ask a question, call an MCP tool, inspect a file, or begin another workflow step.
-3. Keep waiting for the same agent path until it reaches a terminal result, using a wait timeout of at least 10 seconds when the host accepts a timeout. A timeout or `queued`/`running`/`started`/`unknown`/`interrupted` status is not a maintenance report.
-4. If capacity or duplicate-path handling exposes the existing path, wait on it rather than spawning again. If the exact path cannot be recovered, classify the invocation as `broken`.
+2. **The wait is the only legal next operation after dispatch.** After spawn succeeds, call the unified collaboration tool's `wait` operation with that exact path. For a separate `wait_agent` tool, call `collaboration.wait_agent`, not a similarly named process/session tool. Inspect its declared schema: when it accepts a target, pass the exact stored path; when it does not accept a target and exposes only a timeout, call it without inventing a target field. The targetless form is valid only because this transaction has exactly one live child. Never call the generic `functions.wait`, an exec-cell wait, or `write_stdin` to wait for the maintenance agent. Do not send a user message, ask a question, call an MCP tool, inspect a file, or begin another workflow step.
+3. Keep waiting for the same agent path until it reaches a terminal result, using a wait timeout of at least 10 seconds when the host accepts a timeout. When the wait schema does not accept a target, verify the terminal message author or agent path equals the stored spawn handle before accepting its result. A timeout or `queued`/`running`/`started`/`unknown`/`interrupted` status is not a maintenance report.
+4. If capacity or duplicate-path handling exposes the existing path, wait on it rather than spawning again. If the exact path cannot be recovered, or a targetless wait returns a terminal message from any other author, classify the invocation as `broken`.
 5. Do not perform inline Wiki maintenance, call `obsidian_wiki_*`, inspect a candidate journal, or dispatch a replacement while that agent is non-terminal.
 6. Any dispatch, transport, capacity, or lifecycle failure is `broken`. It must never become `ok`, `partial`, or “no relevant maintenance.”
 
@@ -65,6 +65,7 @@ After the exact agent reaches a terminal result:
 
 1. A compact `status: broken` result is a caveat, not a report. Return it without creating or replacing the report artifact.
 2. For any claimed `ok` or `partial` result, validate before persistence with `${CLAUDE_PLUGIN_ROOT}/scripts/wiki_maintenance_report.py`. Pipe only the returned JSON object to its `write` command, target the canonical relative report path, and pass the original `asOf`, `identityLimit`, and `noteReadLimit` as the required `--expected-*` arguments. The validator rejects request drift, partial shape, unknown/body/prose/path fields, unbounded reads, findings outside the bound summary identity sets, overloaded identities outside the audited stable batch, and malformed snapshot identity before writing atomically.
+   - In Codex runtimes where `exec_command` cannot carry initial stdin, add `--stdin-line` and start this validator command with `tty: true` and a short yield. Require its live session ID, then immediately call `write_stdin` on that exact session with the report JSON plus one newline. `--stdin-line` makes the validator consume that single line and exit without terminal EOF. Keep polling the same session only if needed until it exits. Do not start this stdin-consuming command with `tty: false`, and do not interpret the absence of a session ID as permission to retry with an empty stdin.
 3. Return only the compact summary emitted by the successful `write` command. Do not run a second compaction pass, quote or restate findings in prose, expose the agent's private analysis, or load an older report.
 4. If validation, persistence, or compact rendering fails, classify the invocation as `broken`; do not treat the agent's object or an older report file as valid.
 
@@ -75,7 +76,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_maintenance_report.py write \
   --output .grill-adapter/context/<feature-slug>/wiki-maintenance-audit.json \
   --expected-as-of <asOf> \
   --expected-identity-limit <identityLimit> \
-  --expected-note-read-limit <noteReadLimit>
+  --expected-note-read-limit <noteReadLimit> \
+  --stdin-line
 ```
 
 The report is uncommitted, proposal-only, and non-authoritative. It cannot supply task identity, enter Carry/Bind, authorize a Note write, append a candidate, or start Git publishing. A user-approved durable follow-up must enter the existing `candidate-journal` and `update-wiki` Capture gates as a separate action.

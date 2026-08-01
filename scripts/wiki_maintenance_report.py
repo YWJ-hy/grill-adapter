@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import re
@@ -259,6 +260,7 @@ def validate_report(value: Any, expected: AuditRequest | None = None) -> dict[st
         'contradictory': 'contradictoryNotes',
     }
     summary_identities: dict[str, set[tuple[str, str]]] = {}
+    summary_identity_order: dict[str, list[tuple[str, str]]] = {}
     summary_truncated = False
     for category, count_field in summary_count_fields.items():
         field = f'snapshotIdentity.summaryIdentities.{category}'
@@ -275,6 +277,18 @@ def validate_report(value: Any, expected: AuditRequest | None = None) -> dict[st
                 fail(f'{field}[{identity_index}]')
             identities.add(key)
         summary_identities[category] = identities
+        summary_identity_order[category] = [
+            (identity['sourceId'], identity['wikiId']) for identity in values
+        ]
+
+    eligible_active = summary_identities['active'] - summary_identities['expired']
+    expected_audit_order: list[tuple[str, str]] = []
+    for category in ('contradictory', 'reviewDue', 'active'):
+        for identity in summary_identity_order[category]:
+            if identity in eligible_active and identity not in expected_audit_order:
+                expected_audit_order.append(identity)
+    expected_audited_identities = set(expected_audit_order[:note_read_limit])
+    note_reads_truncated = len(expected_audit_order) > note_read_limit
 
     audited_snapshots = snapshot['auditedNoteSnapshots']
     if not isinstance(audited_snapshots, list) or len(audited_snapshots) > len(bindings):
@@ -315,6 +329,8 @@ def validate_report(value: Any, expected: AuditRequest | None = None) -> dict[st
         fail('audited active identity')
     if audited_identities & summary_identities['expired']:
         fail('audited expired identity')
+    if audited_identities != expected_audited_identities:
+        fail('deterministic audited identity batch')
     for category, reason, identities in finding_identities:
         if any(source_id not in seen_sources for source_id, _ in identities):
             fail('finding binding identity')
@@ -338,10 +354,15 @@ def validate_report(value: Any, expected: AuditRequest | None = None) -> dict[st
         if code in seen_caveats:
             fail('caveats')
         seen_caveats.add(code)
-    if report['status'] == 'partial' and not caveats:
-        fail('partial caveats')
-    if summary_truncated and 'identity-limit-reached' not in seen_caveats:
+    has_identity_limit_caveat = 'identity-limit-reached' in seen_caveats
+    has_note_read_limit_caveat = 'note-read-limit-reached' in seen_caveats
+    if has_identity_limit_caveat != summary_truncated:
         fail('summary identity limit caveat')
+    if has_note_read_limit_caveat != note_reads_truncated:
+        fail('Note read limit caveat')
+    expected_status = 'partial' if summary_truncated or note_reads_truncated else 'ok'
+    if report['status'] != expected_status:
+        fail('audit completion status')
     return report
 
 
@@ -446,6 +467,11 @@ def parser() -> argparse.ArgumentParser:
     write.add_argument('--expected-as-of', required=True)
     write.add_argument('--expected-identity-limit', required=True, type=int)
     write.add_argument('--expected-note-read-limit', required=True, type=int)
+    write.add_argument(
+        '--stdin-line',
+        action='store_true',
+        help='read exactly one JSON line without waiting for stdin EOF',
+    )
     compact_command = commands.add_parser('compact')
     compact_command.add_argument('report')
     compact_command.add_argument('--report-path', required=True)
@@ -465,7 +491,12 @@ def main(argv: list[str] | None = None) -> int:
                     args.expected_note_read_limit, 'expected noteReadLimit', 1, 24
                 ),
             )
-            report = load_json_stream(sys.stdin, expected)
+            if args.stdin_line and sys.stdin.isatty():
+                import tty
+
+                tty.setraw(sys.stdin.fileno())
+            stream = io.StringIO(sys.stdin.readline()) if args.stdin_line else sys.stdin
+            report = load_json_stream(stream, expected)
             write_report(report, args.output)
             print(dump(compact(report, args.output)))
             return 0

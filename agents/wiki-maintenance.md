@@ -38,7 +38,7 @@ Only `mode: audit` is supported. Treat malformed input, unhealthy bindings, main
 
 1. Call `obsidian_wiki_status` and `obsidian_wiki_sources`. Stop as `broken` if either is unhealthy. Keep only `sourceId`, role, and binding digest as report identity.
 2. Call `obsidian_wiki_maintenance_summary` exactly once with the supplied `asOf` and `identityLimit`. It is the only allowed view of canonical workflow artifacts. Copy its deterministic counts and caveats, but never reconstruct or read candidate journals directly.
-3. Build one stable, de-duplicated audit batch from the summary's bound active identities. Prioritize contradictory and review-due identities, then fill from active identities in stable Source/identity order. Read no more than `noteReadLimit`, which is at most 24. For each Source represented in that batch, call `obsidian_wiki_read_notes_by_wiki_ids` once with that exact `sourceId` and only its selected IDs. Never widen the scan with catalog/search or arbitrary paths.
+3. Build one stable, de-duplicated audit batch from the summary's bound active identities after excluding every identity present in the summary's `expired` set. Among the remaining non-expired identities, prioritize contradictory and review-due identities, then fill from active identities in stable Source/identity order. Never attempt a stable body read for an expired identity, even when it is contradictory or review-due. Read no more than `noteReadLimit`, which is at most 24. For each Source represented in that batch, call `obsidian_wiki_read_notes_by_wiki_ids` once with that exact `sourceId` and only its selected IDs. Pass each selected `wikiId` byte-for-byte exactly as it appears in the summary identity array; `sourceId` scopes the lookup but is not a prefix to remove. Do not strip, shorten, relativize, or otherwise rewrite a `wikiId` (for example, pass `project/runtime`, never `runtime`). Never widen the scan with catalog/search or arbitrary paths.
 4. Use full bodies only for private semantic judgment. An `overloaded-note` finding requires multiple independent contracts with different triggers, lifecycles, failure modes, validation paths, or task-routing needs. Topic breadth, length, common ownership, or same-module content alone is insufficient.
 5. Create bounded findings for `freshness`, `contradiction`, and `overloaded-note`. Each finding carries only stable affected identities, severity, and these controlled reason/action pairs: freshness uses `review-date-reached` or `expiry-date-reached` with `review-note`; contradiction uses `typed-contradiction-present` with `resolve-contradiction`; overloaded-note uses `independent-contracts-share-one-note` with `split-note`. Do not create a candidate or proposal and do not recommend automatic application.
 6. Caveats may contain only `identity-limit-reached`, `note-read-limit-reached`, `repository-base-unverified`, or `maintenance-summary-warning`. Set `status: partial` and add the matching code when summary identities are truncated or not all active Notes fit the read budget. A transport error, malformed result, or snapshot/binding drift is `broken`, not `partial`.
@@ -46,16 +46,57 @@ Only `mode: audit` is supported. Treat malformed input, unhealthy bindings, main
 
 ## Output
 
-Use `${CLAUDE_PLUGIN_ROOT}/contracts/wiki-maintenance-report-v1.example.jsonc` as the report contract. Return exactly one JSON object and no prose.
+Return exactly one JSON object and no prose. The following schema is self-contained and exact; `${CLAUDE_PLUGIN_ROOT}/contracts/wiki-maintenance-report-v1.example.jsonc` is supplementary documentation and does not need to be read. Replace angle-bracket placeholders with values and populate the arrays. Do not invent, rename, flatten, or omit any report field. In particular, do not return alternatives such as top-level `summaryClock`, `identityLimit`, or `activeIdentities`.
 
-For a valid audit the object has:
+```json
+{
+  "schemaVersion": 1,
+  "kind": "grill-adapter.wiki-maintenance-report",
+  "authoritative": false,
+  "mode": "audit",
+  "status": <"ok" or "partial">,
+  "asOf": <exact supplied asOf>,
+  "limits": {
+    "identityLimit": <supplied identityLimit>,
+    "noteReadLimit": <supplied noteReadLimit>
+  },
+  "scanned": {
+    "sources": <summary source count>,
+    "activeNotes": <summary active count>,
+    "reviewDueNotes": <summary review-due count>,
+    "expiredNotes": <summary expired count>,
+    "contradictoryNotes": <summary contradictory count>,
+    "noteBodiesRead": <stable-read Note count>
+  },
+  "findings": [
+    {
+      "findingId": <unique audit ID>,
+      "category": <"freshness", "contradiction", or "overloaded-note">,
+      "severity": <"info", "warning", or "critical">,
+      "affectedWikiIdentities": [
+        {"sourceId": <bound source ID>, "wikiId": <stable Wiki ID>}
+      ],
+      "reason": <controlled reason code>,
+      "recommendedAction": <matching controlled action code>
+    }
+  ],
+  "snapshotIdentity": {
+    "summarySchemaVersion": 1,
+    "asOf": <summary asOf>,
+    "bindings": [],
+    "summaryIdentities": {
+      "active": [],
+      "reviewDue": [],
+      "expired": [],
+      "contradictory": []
+    },
+    "auditedNoteSnapshots": []
+  },
+  "caveats": []
+}
+```
 
-- `schemaVersion: 1`, `kind: "grill-adapter.wiki-maintenance-report"`, `authoritative: false`, and `mode: "audit"`.
-- `status: "ok" | "partial"`, the exact `asOf`, and the supplied limits.
-- bounded `scanned` counts.
-- bounded `findings` containing `findingId`, category, severity, `affectedWikiIdentities`, a controlled short reason code, and its matching `recommendedAction`.
-- `snapshotIdentity` containing the summary schema/clock, bound Source identities, and bounded per-Source stable read snapshots.
-- controlled caveat codes only.
+Each `bindings` item must have exactly `sourceId`, `role`, and `bindingDigest`. Each `auditedNoteSnapshots` item must have exactly `sourceId`, `noteCount`, ordered `wikiIds`, and `snapshotHash`. An empty `findings`, `bindings`, identity category, or `auditedNoteSnapshots` value remains an array, never an object or omitted field.
 
 Never emit Note body, `content`, excerpt, quote, claim, evidence, path, transcript, reasoning, destination, task routing, write receipt, proposal, or authorization fields.
 

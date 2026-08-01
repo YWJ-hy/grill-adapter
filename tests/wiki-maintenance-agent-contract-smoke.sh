@@ -39,8 +39,33 @@ for required in (
     "grill-adapter.wiki-maintenance-report",
     "snapshotIdentity",
     "auditedNoteSnapshots.wikiIds",
+    "byte-for-byte",
+    "Do not strip, shorten, relativize, or otherwise rewrite a `wikiId`",
     "affectedWikiIdentities",
     "recommendedAction",
+    '"critical"',
+    '"limits": {',
+    '"identityLimit": <supplied identityLimit>',
+    '"noteReadLimit": <supplied noteReadLimit>',
+    '"scanned": {',
+    '"sources": <summary source count>',
+    '"activeNotes": <summary active count>',
+    '"reviewDueNotes": <summary review-due count>',
+    '"expiredNotes": <summary expired count>',
+    '"contradictoryNotes": <summary contradictory count>',
+    '"noteBodiesRead": <stable-read Note count>',
+    '"snapshotIdentity": {',
+    '"summarySchemaVersion": 1',
+    '"asOf": <summary asOf>',
+    '"bindings": []',
+    '"summaryIdentities": {',
+    '"active": []',
+    '"reviewDue": []',
+    '"expired": []',
+    '"contradictory": []',
+    '"auditedNoteSnapshots": []',
+    "Do not invent, rename, flatten, or omit any report field",
+    "`summaryClock`, `identityLimit`, or `activeIdentities`",
 ):
     assert required in agent, required
 
@@ -55,6 +80,10 @@ for required in (
     "separate `wait_agent` tool",
     "The wait is the only legal next operation after dispatch",
     "same agent path",
+    "does not accept a target",
+    "verify the terminal message author",
+    "Never call the generic `functions.wait`",
+    "`collaboration.wait_agent`",
     "wait timeout of at least 10 seconds",
     "Do not perform inline Wiki maintenance",
     "dispatch, transport, capacity, or lifecycle failure",
@@ -63,6 +92,11 @@ for required in (
     "--expected-as-of",
     "--expected-identity-limit",
     "--expected-note-read-limit",
+    "--stdin-line",
+    "`tty: true`",
+    "`write_stdin`",
+    "report JSON plus one newline",
+    "Do not start this stdin-consuming command with `tty: false`",
     "wiki-maintenance-audit.json",
     "compact summary",
     "non-authoritative",
@@ -174,8 +208,10 @@ valid = {
         "auditedNoteSnapshots": [
             {
                 "sourceId": "project",
-                "noteCount": 5,
+                "noteCount": 7,
                 "wikiIds": [
+                    "project/contradiction",
+                    "project/review-due",
                     "project/runtime",
                     "project/build",
                     "project/deploy",
@@ -186,8 +222,8 @@ valid = {
             },
             {
                 "sourceId": "shared",
-                "noteCount": 3,
-                "wikiIds": ["shared/api", "shared/review", "shared/security"],
+                "noteCount": 1,
+                "wikiIds": ["shared/runtime"],
                 "snapshotHash": "sha256:" + "d" * 64,
             },
         ],
@@ -204,6 +240,18 @@ checked = subprocess.run(
     capture_output=True,
 )
 assert json.loads(checked.stdout) == valid
+
+for severity in ("info", "warning", "critical"):
+    severity_report = copy.deepcopy(valid)
+    severity_report["findings"][0]["severity"] = severity
+    severity_path = sandbox / f"severity-{severity}.json"
+    severity_path.write_text(json.dumps(severity_report), encoding="utf-8")
+    subprocess.run(
+        [sys.executable, str(validator), "validate", str(severity_path)],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
 
 compact = subprocess.run(
     [
@@ -302,6 +350,18 @@ incomplete_summary_identities = copy.deepcopy(valid)
 incomplete_summary_identities["snapshotIdentity"]["summaryIdentities"]["active"].pop()
 invalid_reports.append(incomplete_summary_identities)
 
+missing_expected_audit = copy.deepcopy(valid)
+missing_expected_audit["status"] = "ok"
+missing_expected_audit["scanned"]["noteBodiesRead"] = 0
+missing_expected_audit["findings"] = missing_expected_audit["findings"][1:]
+missing_expected_audit["snapshotIdentity"]["auditedNoteSnapshots"] = []
+missing_expected_audit["caveats"] = ["repository-base-unverified"]
+invalid_reports.append(missing_expected_audit)
+
+ok_with_read_limit_caveat = copy.deepcopy(valid)
+ok_with_read_limit_caveat["status"] = "ok"
+invalid_reports.append(ok_with_read_limit_caveat)
+
 for index, report in enumerate(invalid_reports):
     path = sandbox / f"invalid-{index}.json"
     path.write_text(json.dumps(report), encoding="utf-8")
@@ -353,6 +413,16 @@ written_summary = json.loads(written.stdout)
 expected_written_summary = json.loads(compact.stdout)
 expected_written_summary["reportPath"] = write_output
 assert written_summary == expected_written_summary
+
+line_written = subprocess.run(
+    write_command() + ["--stdin-line"],
+    cwd=write_project,
+    input=json.dumps(valid) + "\nignored trailing input",
+    check=True,
+    text=True,
+    capture_output=True,
+)
+assert json.loads(line_written.stdout) == expected_written_summary
 
 for mismatch in (
     (("as_of", "2026-07-31T12:00:01Z"),),
