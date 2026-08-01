@@ -38,6 +38,27 @@ grill-with-docs -> to-spec -> to-tickets
 
 以 marketplace 安装 plugin、执行 `manage.sh install ... --runtime codex`，在 Codex 中走同一条完整路径。记录实际 `model` 和 `provider`，确认一个 Obsidian MCP server、13 skills 和 host `AGENTS.md` 约定都来自安装后的 plugin。确认 `setup-init-obsidian` 先检查并使用 `grill-adapter` 与 `@grill-adapter/obsidian-wiki` 两个 npm 包；code-review 在两个 sub-agent 前复用 receipt，两个轴读取同一 reviewer Markdown；Wiki freeze/snapshot 故障只报告 caveat 且 review 仍完成。至少另跑一次跳过 formal to-tickets、从 direct issue/manual 进入 `$grill-adapter:wiki-readiness` 的单任务路径，并确认 `disabled`/`no-relevant` 可继续、`broken` 不注入部分内容。再分别运行 `$grill-adapter:wiki-maintenance audit <feature-slug>` 与 `consolidation <feature-slug>`：前者确认唯一 maintenance agent 私下读取有界 Note body；后者以包含等价、矛盾、独立 contract 的多个 feature journals 确认同一 agent 私下读取 bounded candidate prose、只返回 identity/digest proposal groups，journal drift 时不覆盖旧报告。主 session 两次都只能收到 schema-v1 report path 与 compact summary。本仓提供 `GRILL_ADAPTER_RUN_CODEX_ACCEPTANCE=1 bash acceptance/codex-maintenance-installed.sh "$PWD"`，通过 PTY 顺序真跑 audit 与 consolidation 两次交互式 Codex CLI（禁止改回 `codex exec`），生成隔离 plugin cache、Source/Vault、`search`/`read` fake Obsidian CLI、私密正文/candidate marker 与 canonical journals，并机械验证每次唯一 spawn、合法 wait/terminal author、请求参数绑定、等价/矛盾/独立语义分类、report/final response、事件流正文隔离、drift 失败保留旧报告及 Project/Vault/Git 不变性。该 fixture 不使用本机两个 npm 包，也不启动或要求 write bridge；该命令必须实际输出 `OK`，默认不纳入 smoke。隔离 `CODEX_HOME` 时只带入认证及 effective model/provider 最小配置；只验证 manifest 安装不算模型驱动集成验收。
 
+Issue #35 的完整上下文隔离验收运行：
+
+```bash
+GRILL_ADAPTER_RUN_CODEX_ACCEPTANCE=1 \
+  bash acceptance/codex-context-isolation-installed.sh "$PWD"
+```
+
+它从本地 marketplace 安装当前工作树，依次真跑 discovery/planning、installed parent 内的
+Carry/freeze/readiness、主 session 直接实现、独立 implementer、共享 handoff 的 Standards/Spec
+reviewer、Capture、research/maintenance dispatch failure 和 binding-broken 后用户继续，再复用
+maintenance audit/consolidation installed gate。脚本对 malformed researcher output、binding drift、
+stale maintenance report 和 proposal side effect 做机械断言；malformed/stale 两条路径也由安装后的
+Codex coordinator 调用对应 validator，并核对正式 `broken` caveat 与旧报告保留，而不是只直跑脚本。
+随后输出包含
+hard-constraint miss、irrelevant selection、expired injection、correction recurrence、Note body
+read 与端到端延迟的 JSON evaluation report；后两项 injection/recurrence 也从正式产物和实际
+formatter 输出计算，不允许常量冒充。默认关闭且不属于普通 smoke；只有命令实际输出
+`codex context isolation installed acceptance OK` 才算通过。未指定
+`GRILL_ADAPTER_CODEX_ACCEPTANCE_REPORT` 时，report 保存在 `$TMPDIR` 下的固定 evaluation 路径，
+不会随成功 sandbox 删除。
+
 ## 5. shadow-validation 与 cutover
 
 已有 legacy Wiki 的项目先配置 `wiki.provider: obsidian` 和 Source bindings，但原字节保留 legacy roots。doctor 此时必须报告 `shadow-validation`。在这个阶段，正式 research/Carry/Bind/Capture 只走 Obsidian runtime；legacy 内容只作为 migration inventory/coverage 证据，**no legacy runtime fallback**。
@@ -80,3 +101,23 @@ grill-with-docs -> to-spec -> to-tickets
 
 结论：**PASS**。安装后的 Codex 能在 direct manual 入口建立稳定单任务身份，并在
 Wiki 未启用时记录可继续且不携带伪造约束的 `disabled` readiness。
+
+## 8. Issue #35 installed Codex 上下文隔离记录（2026-08-01）
+
+- 环境：`model: gpt-5.6-sol`，`provider: custom`；隔离 `CODEX_HOME` 只复制认证和
+  effective model/provider 配置，并从当前工作树安装 `grill-adapter@grill-adapter`。
+- 实际路径：discovery/planning、Carry/freeze/readiness、主 session 直接实现、隔离
+  implementer、Standards/Spec reviewer、Capture、maintenance audit/consolidation 全部通过；
+  最终输出 `codex context isolation installed acceptance OK`。
+- 故障路径：researcher/maintenance dispatch failure 均返回 `broken` caveat，malformed
+  researcher output 未留下部分 context，stale maintenance report 保留旧报告，binding drift
+  记录 `broken` 后仅按显式用户决定继续且不注入 Wiki 内容。
+- 隔离结果：coordinator 只收到 metadata/envelope、批准的 role contract 或 receipt；researcher、
+  maintenance、implementer 与 reviewer 的私有 reasoning/未选正文未进入 parent transcript；
+  maintenance proposal 未修改 Note、journal、Git 或 PR。
+- evaluation report：`/tmp/grill-adapter-issue35-evaluation.json`，`status: pass`；
+  `hardConstraintMisses: 0`、`irrelevantSelections: 0`、`expiredInjections: 0`、
+  `correctionRecurrences: 0`、`noteBodyReads: 44`、`endToEndLatencyMs: 664313`。
+
+结论：**PASS**。Issue #35 的安装后 Codex 全路径、上下文隔离、角色 contract 绑定、proposal-only
+维护和 fail-closed/fail-open 边界均由真实 rollout、child tool-call input 与正式产物机械验证。
