@@ -54,6 +54,28 @@ PY
 # navigation-compatible but cannot produce maintenance or Capture actions.
 SESSION_ACTIONS="$(python3 "$SCRIPT_DIR/../scripts/wiki_session_state.py" actions \
   --project-root "$PROJECT_ROOT" 2>/dev/null || true)"
+
+# Remind at most once per session that machine-local drafts still need review. The Outbox command
+# returns current-project counts only; failures stay silent so a local Wiki outage never blocks a
+# session start.
+NODE_BIN="${OBSIDIAN_WIKI_NODE:-node}"
+OUTBOX_STATUS="$(CLAUDE_PROJECT_DIR="$PROJECT_ROOT" "$NODE_BIN" \
+  "$SCRIPT_DIR/../mcp/obsidian-wiki/dist/index.js" outbox status 2>/dev/null || true)"
+OUTBOX_REMINDER="$(printf '%s' "$OUTBOX_STATUS" | python3 -c '
+import json, sys
+try:
+    counts = json.load(sys.stdin).get("counts", {})
+    queued = int(counts.get("queued", 0))
+    conflicted = int(counts.get("conflicted", 0))
+except Exception:
+    raise SystemExit(0)
+if queued or conflicted:
+    print(f"Wiki Outbox reminder: {queued} queued draft(s), {conflicted} needing a decision. Use update-wiki status or review when convenient.")
+' 2>/dev/null || true)"
+if [ -n "$OUTBOX_REMINDER" ]; then
+  SESSION_ACTIONS="${SESSION_ACTIONS:+$SESSION_ACTIONS
+}$OUTBOX_REMINDER"
+fi
 if [ -n "$SESSION_ACTIONS" ]; then
   emit "$SESSION_ACTIONS"
   exit 0

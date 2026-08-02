@@ -3229,8 +3229,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path9) {
-      let input = path9;
+    function removeDotSegments(path10) {
+      let input = path10;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3482,8 +3482,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path9, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path9 && path9 !== "/" ? path9 : void 0;
+        const [path10, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path10 && path10 !== "/" ? path10 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -7132,10 +7132,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path9) {
-  if (!path9)
+function getElementAtPath(obj, path10) {
+  if (!path10)
     return obj;
-  return path9.reduce((acc, key) => acc?.[key], obj);
+  return path10.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7544,11 +7544,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path9, issues) {
+function prefixIssues(path10, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path9);
+    iss.path.unshift(path10);
     return iss;
   });
 }
@@ -7695,16 +7695,16 @@ function flattenError(error2, mapper = (issue2) => issue2.message) {
 }
 function formatError(error2, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error3, path9 = []) => {
+  const processError = (error3, path10 = []) => {
     for (const issue2 of error3.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path9, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path10, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path9, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path9, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
       } else {
-        const fullpath = [...path9, ...issue2.path];
+        const fullpath = [...path10, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -14294,8 +14294,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path9, errorMaps, issueData } = params;
-  const fullPath = [...path9, ...issueData.path || []];
+  const { data, path: path10, errorMaps, issueData } = params;
+  const fullPath = [...path10, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -14410,11 +14410,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path9, key) {
+  constructor(parent, value, path10, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path9;
+    this._path = path10;
     this._key = key;
   }
   get path() {
@@ -22421,6 +22421,8 @@ function bindingDigest(binding) {
     binding.effectiveReadPolicy,
     binding.effectiveUpdatePolicy,
     binding.effectiveCreatePolicy,
+    binding.rootUpdateAuthorization,
+    binding.rootCreateAuthorization,
     binding.manifest.wikiSchema,
     binding.manifest.sourceId,
     binding.manifest.scope,
@@ -22570,6 +22572,7 @@ function resolveBindings(env = process.env, workingDirectory = process.cwd(), op
   const sourceIds = /* @__PURE__ */ new Set();
   const roots = /* @__PURE__ */ new Set();
   let projectBindings = 0;
+  const rootsConfig = settings.wiki.roots;
   for (const candidate of settings.wiki.obsidian.bindings) {
     try {
       if (sourceIds.has(candidate.sourceId)) throw new Error(`duplicate sourceId: ${candidate.sourceId}`);
@@ -22624,6 +22627,16 @@ ${root}`;
         );
         return "deny";
       })() : normalizeWritePolicy(candidate.access.update, `binding ${candidate.sourceId} access.update`);
+      const rootAuthorization = rootsConfig?.[candidate.role].updateAuthorization ?? {
+        updateExistingPage: "skip",
+        createNewDocument: "ask"
+      };
+      const rootNeutrality = candidate.role === "shared" ? rootsConfig?.shared.sharedNeutrality : void 0;
+      const effectiveManifest = rootNeutrality ? {
+        ...manifest,
+        blockedTerms: [.../* @__PURE__ */ new Set([...manifest.blockedTerms, ...rootNeutrality.blockedTerms])],
+        blockedPatterns: [.../* @__PURE__ */ new Set([...manifest.blockedPatterns, ...rootNeutrality.blockedPatterns])]
+      } : manifest;
       const resolved = {
         sourceId: candidate.sourceId,
         role: candidate.role,
@@ -22641,14 +22654,15 @@ ${root}`;
         effectiveReadPolicy: candidate.access.read ? "allow" : "deny",
         effectiveUpdatePolicy: stricterPolicy(bindingUpdate, manifest.updateExisting),
         effectiveCreatePolicy: stricterPolicy(bindingUpdate, manifest.createNote),
-        manifest
+        rootUpdateAuthorization: rootAuthorization.updateExistingPage,
+        rootCreateAuthorization: rootAuthorization.createNewDocument,
+        manifest: effectiveManifest
       };
       bindings.push({ ...resolved, bindingDigest: bindingDigest(resolved) });
     } catch (error2) {
       errors.push(`${candidate.sourceId}: ${error2 instanceof Error ? error2.message : String(error2)}`);
     }
   }
-  const rootsConfig = settings.wiki.roots;
   if (!rootsConfig) {
     warnings.push(
       "Project settings do not declare wiki.roots.project/shared canonical policy; run setup-init-obsidian to write root authorization and shared neutrality explicitly."
@@ -23324,15 +23338,15 @@ function packFiles(packRoot, current = packRoot) {
   return files.sort((left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")));
 }
 function skillContractHash(packRoot) {
-  const digest = createHash4("sha256");
-  digest.update("grill-adapter.skill-pack-contract/v1\0", "utf8");
+  const digest2 = createHash4("sha256");
+  digest2.update("grill-adapter.skill-pack-contract/v1\0", "utf8");
   for (const relative of packFiles(packRoot)) {
-    digest.update(relative, "utf8");
-    digest.update("\0", "utf8");
-    digest.update(createHash4("sha256").update(readFileSync3(path5.join(packRoot, relative))).digest());
-    digest.update("\0", "utf8");
+    digest2.update(relative, "utf8");
+    digest2.update("\0", "utf8");
+    digest2.update(createHash4("sha256").update(readFileSync3(path5.join(packRoot, relative))).digest());
+    digest2.update("\0", "utf8");
   }
-  return `sha256:${digest.digest("hex")}`;
+  return `sha256:${digest2.digest("hex")}`;
 }
 function skillFrontmatter(skillPath) {
   const text = readFileSync3(skillPath, "utf8").replaceAll("\r\n", "\n");
@@ -23436,6 +23450,7 @@ var ReceiptIdentitySchema = object({
 var AppliedReceiptSchema = ReceiptIdentitySchema.extend({ state: literal("applied") });
 var WriteReceiptSchema = discriminatedUnion("state", [
   ReceiptIdentitySchema.extend({ state: literal("proposed") }),
+  ReceiptIdentitySchema.extend({ state: literal("queued") }),
   AppliedReceiptSchema
 ]);
 var FoldedJournalSchema = object({
@@ -25203,6 +25218,1251 @@ function normalizeCandidate(featureSlug, journalDigest, candidate) {
   };
 }
 
+// src/outbox.ts
+import { execFileSync as execFileSync6 } from "node:child_process";
+import { createHash as createHash9 } from "node:crypto";
+import {
+  existsSync as existsSync6,
+  mkdirSync as mkdirSync3,
+  mkdtempSync,
+  readFileSync as readFileSync6,
+  realpathSync as realpathSync4,
+  renameSync as renameSync3,
+  rmSync as rmSync2,
+  writeFileSync as writeFileSync3
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path8 from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+var packagedJournalScript = fileURLToPath2(new URL("../dist/wiki_candidate_journal.py", import.meta.url));
+var sourceJournalScript = fileURLToPath2(new URL("../../../scripts/wiki_candidate_journal.py", import.meta.url));
+function journalScriptPath() {
+  return existsSync6(packagedJournalScript) ? packagedJournalScript : sourceJournalScript;
+}
+var HashSchema2 = string2().regex(/^sha256:[a-f0-9]{64}$/);
+var FeatureSlugSchema = string2().regex(/^[a-z0-9][a-z0-9._-]*$/);
+var JournalSnapshotSchema = object({
+  featureSlug: FeatureSlugSchema,
+  journalDigest: HashSchema2
+}).strict();
+var QueueDecisionSchema = object({
+  candidateIds: array(string2().min(1)).min(1),
+  candidateDigests: array(HashSchema2).min(1),
+  outcome: literal("queue"),
+  reason: string2().min(1).max(1e3),
+  sourceId: string2().min(1),
+  operation: _enum(["create", "update"]),
+  path: string2().min(1),
+  expectedHash: HashSchema2.nullable(),
+  content: string2().min(1)
+}).strict().superRefine((decision, context) => {
+  if (decision.candidateIds.length !== decision.candidateDigests.length) {
+    context.addIssue({ code: "custom", message: "candidateIds and candidateDigests must have equal length" });
+  }
+});
+var TerminalDecisionSchema = object({
+  candidateIds: array(string2().min(1)).min(1),
+  candidateDigests: array(HashSchema2).min(1),
+  outcome: _enum(["skip", "defer"]),
+  reason: string2().min(1).max(1e3)
+}).strict().superRefine((decision, context) => {
+  if (decision.candidateIds.length !== decision.candidateDigests.length) {
+    context.addIssue({ code: "custom", message: "candidateIds and candidateDigests must have equal length" });
+  }
+});
+var CapturePlanSchema = object({
+  schemaVersion: literal(1),
+  kind: literal("grill-adapter.wiki-capture-plan"),
+  featureSlug: FeatureSlugSchema,
+  journalSnapshots: array(JournalSnapshotSchema),
+  decisions: array(discriminatedUnion("outcome", [QueueDecisionSchema, TerminalDecisionSchema])).max(200)
+}).strict();
+var EntrySchema = object({
+  entryId: HashSchema2,
+  planId: HashSchema2,
+  featureSlug: FeatureSlugSchema,
+  contributingFeatureSlugs: array(FeatureSlugSchema).optional(),
+  candidateIds: array(string2().min(1)).min(1),
+  candidateDigests: array(HashSchema2).min(1),
+  repositoryRef: string2().min(1),
+  sourceId: string2().min(1),
+  bindingDigest: string2().regex(/^[a-f0-9]{64}$/),
+  path: string2().min(1),
+  operation: _enum(["create", "update"]),
+  wikiId: string2().min(1),
+  beforeHash: HashSchema2.nullable(),
+  afterHash: HashSchema2,
+  baseCommit: string2().regex(/^[a-f0-9]{40,64}$/),
+  objectCommit: string2().regex(/^[a-f0-9]{40,64}$/),
+  authorizationRequired: boolean2(),
+  state: _enum(["queued", "pr-open", "active", "excluded", "deferred", "rejected"]),
+  supersedes: array(HashSchema2).optional(),
+  correction: _enum(["exclude", "defer", "delete", "revise", "merge"]).optional(),
+  correctionReason: string2().min(1).max(1e3).optional(),
+  createdAt: string2().min(1),
+  prUrl: string2().url().optional()
+}).strict();
+var PlanRecordSchema = object({
+  planId: HashSchema2,
+  featureSlug: FeatureSlugSchema,
+  journalSnapshots: array(JournalSnapshotSchema),
+  candidateIds: array(string2().min(1)),
+  counts: object({
+    queued: number2().int().nonnegative(),
+    skipped: number2().int().nonnegative(),
+    needsDecision: number2().int().nonnegative()
+  }).strict(),
+  createdAt: string2().min(1)
+}).strict();
+var PublishRepositorySchema = object({
+  repositoryRef: string2().min(1),
+  baseCommit: string2().regex(/^[a-f0-9]{40,64}$/),
+  branch: string2().min(1),
+  commit: string2().regex(/^[a-f0-9]{40,64}$/).nullable(),
+  paths: array(string2().min(1)),
+  prUrl: string2().url().nullable(),
+  state: _enum(["pending", "pr-open", "deferred"]),
+  conflicts: array(object({
+    path: string2().min(1),
+    reason: _enum(["same-path-base-drift", "base-identity-drift"])
+  }).strict()).optional()
+}).strict();
+var PublishRunSchema = object({
+  runId: HashSchema2,
+  planDigest: HashSchema2,
+  createdAt: string2().min(1),
+  repositories: array(PublishRepositorySchema).min(1)
+}).strict();
+var ManifestSchema = object({
+  schemaVersion: literal(1),
+  kind: literal("grill-adapter.obsidian-wiki-outbox"),
+  projectId: string2().regex(/^[a-f0-9]{64}$/),
+  entries: array(EntrySchema),
+  plans: array(PlanRecordSchema),
+  publishRuns: array(PublishRunSchema).default([])
+}).strict();
+var TerminalCorrectionSchema = object({
+  action: _enum(["exclude", "defer", "delete"]),
+  entryIds: array(HashSchema2).min(1),
+  reason: string2().min(1).max(1e3)
+}).strict();
+var ReviseCorrectionSchema = object({
+  action: literal("revise"),
+  entryId: HashSchema2,
+  content: string2().min(1),
+  reason: string2().min(1).max(1e3)
+}).strict();
+var MergeCorrectionSchema = object({
+  action: literal("merge"),
+  entryIds: array(HashSchema2).min(2),
+  targetEntryId: HashSchema2,
+  content: string2().min(1),
+  reason: string2().min(1).max(1e3)
+}).strict();
+var OutboxCorrectionSchema = discriminatedUnion("action", [
+  TerminalCorrectionSchema,
+  ReviseCorrectionSchema,
+  MergeCorrectionSchema
+]);
+function runCommand2(executable, args, env, workingDirectory) {
+  try {
+    return String(execFileSync6(executable, args, {
+      cwd: workingDirectory,
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    })).trim();
+  } catch (error2) {
+    const detail = error2 && typeof error2 === "object" && "stderr" in error2 ? String(error2.stderr ?? "").trim() : "";
+    throw new Error(`${executable} ${args.join(" ")} failed${detail ? `: ${detail}` : ""}`);
+  }
+}
+function git2(args, env, workingDirectory) {
+  return runCommand2("git", args, env, workingDirectory);
+}
+function digest(value) {
+  return `sha256:${createHash9("sha256").update(value).digest("hex")}`;
+}
+function projectId(projectDir) {
+  return createHash9("sha256").update(realpathSync4(projectDir), "utf8").digest("hex");
+}
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const record2 = value;
+    return `{${Object.keys(record2).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record2[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+function statePaths(resolution) {
+  const id = projectId(resolution.projectDir);
+  const root = path8.join(path8.dirname(resolution.registryPath), "outbox", "v1", id);
+  return { id, root, manifest: path8.join(root, "manifest.json") };
+}
+function emptyManifest(id) {
+  return {
+    schemaVersion: 1,
+    kind: "grill-adapter.obsidian-wiki-outbox",
+    projectId: id,
+    entries: [],
+    plans: [],
+    publishRuns: []
+  };
+}
+function readManifest(resolution) {
+  const state = statePaths(resolution);
+  if (!existsSync6(state.manifest)) return emptyManifest(state.id);
+  const manifest = ManifestSchema.parse(JSON.parse(readFileSync6(state.manifest, "utf8")));
+  if (manifest.projectId !== state.id) throw new Error("Outbox project identity drift");
+  return manifest;
+}
+function writeManifest2(resolution, manifest) {
+  const state = statePaths(resolution);
+  mkdirSync3(state.root, { recursive: true });
+  const temporary = `${state.manifest}.tmp-${process.pid}`;
+  writeFileSync3(temporary, `${JSON.stringify(manifest, null, 2)}
+`, { encoding: "utf8", flag: "wx" });
+  renameSync3(temporary, state.manifest);
+}
+function safeRefSegment(value) {
+  const segment = value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!segment) throw new Error(`repositoryRef cannot form an Outbox ref segment: ${value}`);
+  return segment;
+}
+function hiddenRef(id, repositoryRef) {
+  return `refs/grill-adapter/outbox/${id}/${safeRefSegment(repositoryRef)}`;
+}
+function gitFile2(revision, notePath, env, workingDirectory) {
+  try {
+    return String(execFileSync6("git", ["show", `${revision}:${notePath}`], {
+      cwd: workingDirectory,
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    }));
+  } catch {
+    return void 0;
+  }
+}
+function boundRevisionNotes(bindings, overlayBinding, overlayCommit, env) {
+  const notes = [];
+  for (const binding of bindings) {
+    if (binding.effectiveReadPolicy !== "allow") continue;
+    const sameRepository = realpathSync4(binding.repository.worktreeRoot) === realpathSync4(overlayBinding.repository.worktreeRoot);
+    const revision = sameRepository ? overlayCommit : binding.repository.baseBranch;
+    const tracked = git2(
+      ["ls-tree", "-r", "--name-only", "-z", revision, "--", `:(literal)${binding.root}`],
+      env,
+      binding.repository.worktreeRoot
+    ).split("\0").filter(Boolean);
+    for (const trackedPath of tracked) {
+      const notePath = normalizeVaultPath(trackedPath);
+      if (!notePath.endsWith(".md")) continue;
+      if (notePath === `${binding.root}/_meta` || notePath.startsWith(`${binding.root}/_meta/`)) continue;
+      const contents = gitFile2(revision, notePath, env, binding.repository.worktreeRoot);
+      if (!contents || !/^wiki_schema:\s*grill-adapter\.obsidian-note\/v1\s*$/m.test(contents)) continue;
+      notes.push({ binding, path: notePath, note: parseAtomicNote(contents, notePath) });
+    }
+  }
+  return notes;
+}
+function enforceNeutrality2(binding, notePath, content) {
+  if (binding.role !== "shared") return;
+  const candidate = `${notePath}
+${content}`;
+  const violations = [];
+  for (const term of binding.manifest.blockedTerms) {
+    if (term && candidate.includes(term)) violations.push(`blocked term ${JSON.stringify(term)}`);
+  }
+  for (const source of binding.manifest.blockedPatterns) {
+    if (source && new RegExp(source).test(candidate)) violations.push(`blocked pattern ${JSON.stringify(source)}`);
+  }
+  if (violations.length > 0) throw new Error(`Shared Source neutrality validation failed: ${violations.join("; ")}`);
+}
+function validateSnapshot(plan, env) {
+  const input = consolidationCandidatesTool({ candidateLimit: 200 }, env);
+  if (input.truncated) throw new Error("Capture input exceeds the bounded 200-candidate staging limit");
+  const expectedSnapshots = [...input.journalSnapshots].sort((left, right) => left.featureSlug.localeCompare(right.featureSlug, "en"));
+  const actualSnapshots = [...plan.journalSnapshots].sort((left, right) => left.featureSlug.localeCompare(right.featureSlug, "en"));
+  if (stableJson(actualSnapshots) !== stableJson(expectedSnapshots)) {
+    throw new Error("Capture Plan journal snapshot drift");
+  }
+  const candidates = new Map(input.candidates.map((candidate) => [`${candidate.featureSlug}
+${candidate.candidateId}`, candidate]));
+  const used = /* @__PURE__ */ new Set();
+  for (const decision of plan.decisions) {
+    for (let index = 0; index < decision.candidateIds.length; index += 1) {
+      const candidateId = decision.candidateIds[index];
+      const key = `${plan.featureSlug}
+${candidateId}`;
+      const candidate = candidates.get(key);
+      if (!candidate || candidate.candidateDigest !== decision.candidateDigests[index]) {
+        throw new Error(`Capture Plan candidate snapshot drift: ${candidateId}`);
+      }
+      if (used.has(key)) throw new Error(`Capture Plan candidate appears in more than one decision: ${candidateId}`);
+      used.add(key);
+    }
+  }
+  const expected = input.candidates.filter((candidate) => candidate.featureSlug === plan.featureSlug).map((candidate) => `${candidate.featureSlug}
+${candidate.candidateId}`).sort();
+  const actual = [...used].sort();
+  if (stableJson(actual) !== stableJson(expected)) {
+    throw new Error(`Capture Plan must cover every unresolved candidate for ${plan.featureSlug} exactly once`);
+  }
+}
+function withFileLock(lockPath, callback) {
+  mkdirSync3(path8.dirname(lockPath), { recursive: true });
+  try {
+    writeFileSync3(lockPath, `${process.pid}
+`, { encoding: "utf8", flag: "wx" });
+  } catch (error2) {
+    let ownerIsActive = true;
+    try {
+      const owner = Number.parseInt(readFileSync6(lockPath, "utf8").trim(), 10);
+      if (!Number.isSafeInteger(owner) || owner <= 0) {
+        ownerIsActive = false;
+      } else {
+        process.kill(owner, 0);
+      }
+    } catch (ownerError) {
+      ownerIsActive = Boolean(
+        ownerError && typeof ownerError === "object" && "code" in ownerError && ownerError.code === "EPERM"
+      );
+    }
+    if (ownerIsActive) throw error2;
+    rmSync2(lockPath, { force: true });
+    writeFileSync3(lockPath, `${process.pid}
+`, { encoding: "utf8", flag: "wx" });
+  }
+  try {
+    return callback();
+  } finally {
+    rmSync2(lockPath, { force: true });
+  }
+}
+function withOutboxLock(resolution, callback) {
+  return withFileLock(path8.join(statePaths(resolution).root, "outbox.lock"), callback);
+}
+function withRepositoryLock(resolution, binding, callback) {
+  const lockRoot = path8.join(path8.dirname(resolution.registryPath), "outbox", "locks");
+  const lockId = createHash9("sha256").update(realpathSync4(binding.repository.worktreeRoot), "utf8").digest("hex");
+  const lockPath = path8.join(lockRoot, `${lockId}.lock`);
+  return withFileLock(lockPath, callback);
+}
+function validateQueuedChange(decision, binding, parentCommit, projectDir, allBindings, overlayEntries, env) {
+  const notePath = assertPathWithinBinding(decision.path, binding);
+  const proposed = parseAtomicNote(decision.content, notePath);
+  if (evaluateKnowledgeFreshness(proposed).state === "expired") {
+    throw new Error(`Queued Note is already expired: ${notePath}`);
+  }
+  assertSkillCardAvailable(proposed, projectDir, { mode: "write" });
+  enforceNeutrality2(binding, notePath, proposed.content);
+  const overlayIdentityMatches = overlayEntries.filter((entry) => entry.wikiId === proposed.wikiId && (entry.path !== notePath || entry.sourceId !== binding.sourceId));
+  const revisionNotes = boundRevisionNotes(allBindings, binding, parentCommit, env);
+  const identityMatches = revisionNotes.filter(({ note }) => note.wikiId === proposed.wikiId);
+  if (overlayIdentityMatches.length > 0) {
+    throw new Error(`Queued wiki_id already exists at another Outbox target: ${proposed.wikiId}`);
+  }
+  const existing = gitFile2(parentCommit, notePath, env, binding.repository.worktreeRoot);
+  if (decision.operation === "create") {
+    if (decision.expectedHash !== null) throw new Error("Creating a queued Note requires expectedHash: null");
+    if (existing !== void 0) throw new Error(`Queued create path already exists in the project Outbox overlay: ${notePath}`);
+    if (identityMatches.length > 0) throw new Error(`Queued wiki_id already exists in formal base or project overlay: ${proposed.wikiId}`);
+  } else {
+    if (!existing) throw new Error(`Queued update path does not exist in the project Outbox overlay: ${notePath}`);
+    const parsedExisting = parseAtomicNote(existing, notePath);
+    if (parsedExisting.contentHash !== decision.expectedHash) {
+      throw new Error(`Expected hash conflict for queued Note ${notePath}`);
+    }
+    if (parsedExisting.wikiId !== proposed.wikiId) {
+      throw new Error(`Queued Note wiki_id must preserve existing identity ${parsedExisting.wikiId}`);
+    }
+    if (identityMatches.length !== 1 || identityMatches[0].path !== notePath || identityMatches[0].binding.sourceId !== binding.sourceId) {
+      throw new Error(`Queued wiki_id does not resolve uniquely to its project overlay target: ${proposed.wikiId}`);
+    }
+    if (parsedExisting.adrSourceId && parsedExisting.adrSourceId !== proposed.adrSourceId) {
+      throw new Error(`Queued ADR projection must preserve authority identity for ${notePath}`);
+    }
+    if (parsedExisting.skillName && parsedExisting.skillName !== proposed.skillName) {
+      throw new Error(`Queued Skill Card must preserve skill identity for ${notePath}`);
+    }
+  }
+  if (proposed.adrSourceId && binding.role !== "project") {
+    throw new Error("Queued ADR execution projections may only target a project Source");
+  }
+  const conflictingAdr = revisionNotes.filter(({ note, path: candidatePath, binding: candidateBinding }) => proposed.adrSourceId && note.adrSourceId === proposed.adrSourceId && (candidatePath !== notePath || candidateBinding.sourceId !== binding.sourceId));
+  if (conflictingAdr.length > 0) {
+    throw new Error(`Queued ADR source identity already exists in another bound Note: ${proposed.adrSourceId}`);
+  }
+  const conflictingSkillCards = revisionNotes.filter(({ note, path: candidatePath, binding: candidateBinding }) => proposed.skillName && note.skillName === proposed.skillName && (candidatePath !== notePath || candidateBinding.sourceId !== binding.sourceId));
+  if (conflictingSkillCards.length > 0) {
+    throw new Error(`Queued Skill Card identity already exists in another bound Note: ${proposed.skillName}`);
+  }
+  const overlayPaths = new Set(overlayEntries.map((entry) => entry.path));
+  for (const links of Object.values(proposed.edges)) {
+    for (const link of links) {
+      const target = linkPath(link);
+      if (overlayPaths.has(target)) continue;
+      const targets = revisionNotes.filter((candidate) => candidate.path === target);
+      if (targets.length !== 1) {
+        throw new Error(`Queued Note typed edge ${link} is invalid: target resolved ${targets.length} bound Notes`);
+      }
+    }
+  }
+  const policy = decision.operation === "create" ? binding.effectiveCreatePolicy : binding.effectiveUpdatePolicy;
+  const rootAuthorization = decision.operation === "create" ? binding.rootCreateAuthorization : binding.rootUpdateAuthorization;
+  if (policy === "deny" || rootAuthorization === "refuse") {
+    throw new Error(`Obsidian Wiki policy refuses ${decision.operation} operations`);
+  }
+  return {
+    notePath,
+    proposed,
+    beforeHash: existing ? parseAtomicNote(existing, notePath).contentHash : null,
+    authorizationRequired: policy === "confirm" || rootAuthorization === "ask"
+  };
+}
+function stageRepository(plan, planId, decisions, binding, resolution, manifest, env) {
+  return withRepositoryLock(resolution, binding, () => {
+    const ref = hiddenRef(manifest.projectId, binding.repositoryRef);
+    const recordedHead = [...manifest.entries].reverse().find((entry) => entry.repositoryRef === binding.repositoryRef)?.objectCommit;
+    const refHead = git2(["for-each-ref", "--format=%(objectname)", ref], env, binding.repository.worktreeRoot);
+    const baseCommit = git2(["rev-parse", binding.repository.baseBranch], env, binding.repository.worktreeRoot);
+    const expectedParent = recordedHead || baseCommit;
+    if ((recordedHead ?? "") !== refHead) {
+      const subject = git2(["show", "-s", "--format=%s", refHead], env, binding.repository.worktreeRoot);
+      const actualParent = git2(["rev-parse", `${refHead}^`], env, binding.repository.worktreeRoot);
+      if (subject !== `grill-adapter outbox ${planId}` || actualParent !== expectedParent) {
+        throw new Error(`Outbox hidden ref drift for ${binding.repositoryRef}`);
+      }
+      const priorEntries2 = effectiveEntries(manifest);
+      const entries2 = decisions.map((decision) => {
+        const validated = validateQueuedChange(
+          decision,
+          binding,
+          expectedParent,
+          resolution.projectDir,
+          resolution.bindings,
+          priorEntries2,
+          env
+        );
+        const recovered = gitFile2(refHead, validated.notePath, env, binding.repository.worktreeRoot);
+        if (!recovered || parseAtomicNote(recovered, validated.notePath).contentHash !== validated.proposed.contentHash) {
+          throw new Error(`Interrupted Outbox object does not match Capture Plan for ${validated.notePath}`);
+        }
+        return {
+          entryId: digest(`${planId}\0${binding.repositoryRef}\0${validated.notePath}\0${validated.proposed.contentHash}`),
+          planId,
+          featureSlug: plan.featureSlug,
+          candidateIds: decision.candidateIds,
+          candidateDigests: decision.candidateDigests,
+          repositoryRef: binding.repositoryRef,
+          sourceId: binding.sourceId,
+          bindingDigest: binding.bindingDigest,
+          path: validated.notePath,
+          operation: decision.operation,
+          wikiId: validated.proposed.wikiId,
+          beforeHash: validated.beforeHash,
+          afterHash: validated.proposed.contentHash,
+          baseCommit,
+          objectCommit: refHead,
+          authorizationRequired: validated.authorizationRequired,
+          state: "queued",
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+      });
+      const expectedPaths = entries2.map((entry) => entry.path).sort();
+      if (!samePaths2(revisionPaths(expectedParent, refHead, env, binding.repository.worktreeRoot), expectedPaths)) {
+        throw new Error(`Interrupted Outbox object path scope does not match Capture Plan for ${binding.repositoryRef}`);
+      }
+      return { entries: entries2, binding, ref, previousHead: expectedParent === baseCommit ? "" : expectedParent, commit: refHead };
+    }
+    const parentCommit = refHead || baseCommit;
+    const temporaryRoot = mkdtempSync(path8.join(tmpdir(), "grill-adapter-outbox-"));
+    const entries = [];
+    const priorEntries = effectiveEntries(manifest);
+    const decisionPaths = decisions.map((decision) => normalizeVaultPath(decision.path));
+    if (new Set(decisionPaths).size !== decisionPaths.length) {
+      throw new Error(`Capture Plan has duplicate final paths for ${binding.repositoryRef}`);
+    }
+    try {
+      git2(["worktree", "add", "--quiet", "--detach", temporaryRoot, parentCommit], env, binding.repository.worktreeRoot);
+      for (const decision of decisions) {
+        const validated = validateQueuedChange(
+          decision,
+          binding,
+          parentCommit,
+          resolution.projectDir,
+          resolution.bindings,
+          [...priorEntries, ...entries],
+          env
+        );
+        const target = path8.join(temporaryRoot, ...validated.notePath.split("/"));
+        mkdirSync3(path8.dirname(target), { recursive: true });
+        writeFileSync3(target, validated.proposed.content, "utf8");
+        entries.push({
+          entryId: digest(`${planId}\0${binding.repositoryRef}\0${validated.notePath}\0${validated.proposed.contentHash}`),
+          planId,
+          featureSlug: plan.featureSlug,
+          candidateIds: decision.candidateIds,
+          candidateDigests: decision.candidateDigests,
+          repositoryRef: binding.repositoryRef,
+          sourceId: binding.sourceId,
+          bindingDigest: binding.bindingDigest,
+          path: validated.notePath,
+          operation: decision.operation,
+          wikiId: validated.proposed.wikiId,
+          beforeHash: validated.beforeHash,
+          afterHash: validated.proposed.contentHash,
+          baseCommit,
+          objectCommit: parentCommit,
+          authorizationRequired: validated.authorizationRequired,
+          state: "queued",
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+      git2(["add", "--", ...entries.map((entry) => entry.path)], env, temporaryRoot);
+      const tree = git2(["write-tree"], env, temporaryRoot);
+      const commit = git2(["commit-tree", tree, "-p", parentCommit, "-m", `grill-adapter outbox ${planId}`], env, temporaryRoot);
+      git2(["update-ref", ref, commit, refHead || "0".repeat(commit.length)], env, binding.repository.worktreeRoot);
+      for (const entry of entries) entry.objectCommit = commit;
+      return { entries, binding, ref, previousHead: refHead, commit };
+    } finally {
+      try {
+        git2(["worktree", "remove", "--force", temporaryRoot], env, binding.repository.worktreeRoot);
+      } catch {
+        rmSync2(temporaryRoot, { recursive: true, force: true });
+      }
+    }
+  });
+}
+function rollbackStagedRepository(staged, resolution, env) {
+  withRepositoryLock(resolution, staged.binding, () => {
+    if (staged.previousHead) {
+      git2(
+        ["update-ref", staged.ref, staged.previousHead, staged.commit],
+        env,
+        staged.binding.repository.worktreeRoot
+      );
+    } else {
+      git2(
+        ["update-ref", "-d", staged.ref, staged.commit],
+        env,
+        staged.binding.repository.worktreeRoot
+      );
+    }
+  });
+}
+function healthyResolution(env) {
+  const resolution = resolveBindings(env);
+  if (resolution.errors.length > 0) {
+    throw new Error(`Obsidian Wiki Source bindings are unhealthy: ${resolution.errors.join("; ")}`);
+  }
+  return resolution;
+}
+function recordPlanOutcomes(plan, planId, manifest, resolution, env) {
+  const journal = foldCanonicalFeatureJournals(resolution.projectDir, env).find((candidate) => candidate.featureSlug === plan.featureSlug);
+  if (!journal) {
+    if (plan.decisions.length === 0) return;
+    throw new Error(`Capture Plan feature journal is unavailable: ${plan.featureSlug}`);
+  }
+  const candidates = new Map(journal.candidates.map((candidate) => [candidate.candidateId, candidate]));
+  const journalPath = path8.join(
+    resolution.projectDir,
+    ".grill-adapter",
+    "context",
+    plan.featureSlug,
+    "wiki-candidates.jsonl"
+  );
+  const python = env.OBSIDIAN_WIKI_PYTHON ?? "python3";
+  for (const decision of plan.decisions) {
+    for (const candidateId of decision.candidateIds) {
+      const candidate = candidates.get(candidateId);
+      if (!candidate) throw new Error(`Capture Plan candidate disappeared before outcome recording: ${candidateId}`);
+      const eventId = `outbox-${planId.slice(7, 23)}-${createHash9("sha256").update(candidateId).digest("hex").slice(0, 16)}`;
+      if (candidate.lastEventId === eventId) continue;
+      if (candidate.status === "kept" || candidate.status === "skipped" || candidate.status === "superseded") {
+        continue;
+      }
+      const args = [
+        journalScriptPath(),
+        "outcome",
+        "--journal",
+        journalPath,
+        "--feature-slug",
+        plan.featureSlug,
+        "--event-id",
+        eventId,
+        "--candidate-id",
+        candidateId,
+        "--status",
+        decision.outcome === "queue" ? "kept" : decision.outcome === "skip" ? "skipped" : "deferred",
+        "--reason",
+        decision.reason
+      ];
+      if (decision.outcome === "queue") {
+        const entry = manifest.entries.find((item) => item.planId === planId && item.candidateIds.includes(candidateId));
+        if (!entry) throw new Error(`Queued Capture candidate has no immutable Outbox entry: ${candidateId}`);
+        const binding = resolution.bindings.find((item) => item.repositoryRef === entry.repositoryRef && item.sourceId === entry.sourceId);
+        if (!binding) throw new Error(`Queued Capture candidate references an unbound Source: ${candidateId}`);
+        const contents = gitFile2(entry.objectCommit, entry.path, env, binding.repository.worktreeRoot);
+        if (!contents) throw new Error(`Queued Capture object is missing ${entry.path}`);
+        const note = parseAtomicNote(contents, entry.path);
+        args.push(
+          "--write-state",
+          "queued",
+          "--operation",
+          entry.operation,
+          "--source-id",
+          entry.sourceId,
+          "--repository-ref",
+          entry.repositoryRef,
+          "--binding-digest",
+          entry.bindingDigest,
+          "--wiki-id",
+          entry.wikiId,
+          "--path",
+          entry.path,
+          "--after-hash",
+          entry.afterHash
+        );
+        if (entry.beforeHash !== null) args.push("--before-hash", entry.beforeHash);
+        const registration = pendingSkillRegistration(note);
+        if (registration) {
+          args.push(
+            "--skill-name",
+            registration.name,
+            "--skill-version",
+            registration.version,
+            "--skill-contract-hash",
+            registration.contractHash,
+            "--skill-summary",
+            registration.summary
+          );
+          for (const role of registration.roles) args.push("--skill-role", role);
+          for (const trigger of registration.triggers) args.push("--skill-trigger", trigger);
+        }
+        if (note.adrSourceId) {
+          args.push(
+            "--adr-authority-type",
+            "project-adr",
+            "--adr-projection-type",
+            "execution-constraints",
+            "--adr-source-id",
+            note.adrSourceId,
+            "--adr-source-path",
+            note.adrSourcePath,
+            "--adr-source-content-hash",
+            note.adrSourceContentHash,
+            "--adr-target-scope",
+            "project"
+          );
+        }
+      }
+      runCommand2(python, args, env, resolution.projectDir);
+      candidate.status = decision.outcome === "queue" ? "kept" : decision.outcome === "skip" ? "skipped" : "deferred";
+      candidate.lastEventId = eventId;
+    }
+  }
+}
+function stageCapturePlanLocked(input, resolution, env) {
+  const plan = CapturePlanSchema.parse(input);
+  const manifest = readManifest(resolution);
+  const planId = digest(stableJson(plan));
+  const existing = manifest.plans.find((candidate) => candidate.planId === planId);
+  if (existing) {
+    recordPlanOutcomes(plan, planId, manifest, resolution, env);
+    return { status: "ok", planId, counts: existing.counts, caveats: [] };
+  }
+  validateSnapshot(plan, env);
+  const alreadyHandled = new Set(manifest.plans.flatMap((record2) => record2.candidateIds.map((candidateId) => `${record2.featureSlug}
+${candidateId}`)));
+  for (const candidateId of plan.decisions.flatMap((decision) => decision.candidateIds)) {
+    if (alreadyHandled.has(`${plan.featureSlug}
+${candidateId}`)) {
+      throw new Error(`Capture candidate is already represented by an Outbox plan: ${candidateId}`);
+    }
+  }
+  const queued = plan.decisions.filter((decision) => decision.outcome === "queue");
+  const byRepository = /* @__PURE__ */ new Map();
+  for (const decision of queued) {
+    const binding = resolution.bindings.find((candidate) => candidate.sourceId === decision.sourceId);
+    if (!binding) throw new Error(`Capture Plan references an unbound Source: ${decision.sourceId}`);
+    const group = byRepository.get(binding.repositoryRef) ?? { binding, decisions: [] };
+    group.decisions.push(decision);
+    byRepository.set(binding.repositoryRef, group);
+  }
+  const counts = {
+    queued: queued.length,
+    skipped: plan.decisions.filter((decision) => decision.outcome === "skip").length,
+    needsDecision: plan.decisions.filter((decision) => decision.outcome === "defer").length
+  };
+  const stagedRepositories = [];
+  try {
+    for (const group of byRepository.values()) {
+      const staged = stageRepository(plan, planId, group.decisions, group.binding, resolution, manifest, env);
+      stagedRepositories.push(staged);
+      manifest.entries.push(...staged.entries);
+    }
+    manifest.plans.push({
+      planId,
+      featureSlug: plan.featureSlug,
+      journalSnapshots: plan.journalSnapshots,
+      candidateIds: plan.decisions.flatMap((decision) => decision.candidateIds),
+      counts,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    writeManifest2(resolution, manifest);
+  } catch (error2) {
+    const rollbackErrors = [];
+    for (const staged of [...stagedRepositories].reverse()) {
+      try {
+        rollbackStagedRepository(staged, resolution, env);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError));
+      }
+    }
+    if (rollbackErrors.length > 0) {
+      throw new Error(
+        `Outbox staging failed and hidden-ref rollback was incomplete: ${rollbackErrors.join("; ")}`,
+        { cause: error2 }
+      );
+    }
+    throw error2;
+  }
+  recordPlanOutcomes(plan, planId, manifest, resolution, env);
+  return { status: "ok", planId, counts, caveats: [] };
+}
+function stageCapturePlan(input, env = process.env) {
+  const resolution = healthyResolution(env);
+  return withOutboxLock(resolution, () => stageCapturePlanLocked(input, resolution, env));
+}
+function effectiveEntries(manifest) {
+  const superseded = new Set(manifest.entries.flatMap((entry) => entry.supersedes ?? []));
+  const latest = /* @__PURE__ */ new Map();
+  for (const entry of manifest.entries) {
+    if (!superseded.has(entry.entryId)) latest.set(`${entry.repositoryRef}
+${entry.path}`, entry);
+  }
+  return [...latest.values()].sort((left, right) => `${left.repositoryRef}
+${left.path}`.localeCompare(`${right.repositoryRef}
+${right.path}`, "en"));
+}
+function currentCorrectionTargets(manifest, entryIds) {
+  if (new Set(entryIds).size !== entryIds.length) throw new Error("Outbox correction entryIds must be unique");
+  const current = new Map(effectiveEntries(manifest).map((entry) => [entry.entryId, entry]));
+  return entryIds.map((entryId) => {
+    const entry = current.get(entryId);
+    if (!entry) throw new Error(`Outbox correction target is not a current entry: ${entryId}`);
+    if (entry.state === "pr-open" || entry.state === "active") {
+      throw new Error(`Outbox correction cannot change ${entry.state} entry ${entryId}`);
+    }
+    return entry;
+  });
+}
+function terminalCorrectionEntry(target, planId, action, reason) {
+  return {
+    ...target,
+    entryId: digest(`${planId}\0${target.entryId}`),
+    planId,
+    state: action === "exclude" ? "excluded" : action === "defer" ? "deferred" : "rejected",
+    supersedes: [target.entryId],
+    correction: action,
+    correctionReason: reason,
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    prUrl: void 0
+  };
+}
+function correctOutboxLocked(input, resolution, env) {
+  const request = OutboxCorrectionSchema.parse(input);
+  const manifest = readManifest(resolution);
+  const correctionId = digest(stableJson(request));
+  const prior = manifest.entries.filter((entry) => entry.planId === correctionId && entry.correction !== void 0);
+  if (prior.length > 0) {
+    return {
+      schemaVersion: 1,
+      kind: "grill-adapter.obsidian-wiki-outbox-correction",
+      correctionId,
+      action: request.action,
+      entryIds: prior.map((entry) => entry.entryId)
+    };
+  }
+  if (request.action !== "revise" && request.action !== "merge") {
+    const targets2 = currentCorrectionTargets(manifest, request.entryIds);
+    const entries = targets2.map((target2) => terminalCorrectionEntry(target2, correctionId, request.action, request.reason));
+    manifest.entries.push(...entries);
+    writeManifest2(resolution, manifest);
+    return {
+      schemaVersion: 1,
+      kind: "grill-adapter.obsidian-wiki-outbox-correction",
+      correctionId,
+      action: request.action,
+      entryIds: entries.map((entry) => entry.entryId)
+    };
+  }
+  const requestedIds = request.action === "merge" ? request.entryIds : [request.entryId];
+  const targets = currentCorrectionTargets(manifest, requestedIds);
+  const target = request.action === "merge" ? targets.find((entry) => entry.entryId === request.targetEntryId) : targets[0];
+  if (!target) throw new Error("Outbox merge targetEntryId must be included in entryIds");
+  if (targets.some((entry) => entry.repositoryRef !== target.repositoryRef || entry.sourceId !== target.sourceId)) {
+    throw new Error("Outbox merge corrections must remain within one repository and Source");
+  }
+  const binding = resolution.bindings.find((candidate) => candidate.repositoryRef === target.repositoryRef && candidate.sourceId === target.sourceId);
+  if (!binding) throw new Error(`Outbox correction references an unbound Source: ${target.sourceId}`);
+  const candidateIds = [...new Set(targets.flatMap((entry) => entry.candidateIds))];
+  const digestByCandidate = /* @__PURE__ */ new Map();
+  for (const entry of targets) {
+    entry.candidateIds.forEach((candidateId, index) => digestByCandidate.set(candidateId, entry.candidateDigests[index]));
+  }
+  const decision = {
+    candidateIds,
+    candidateDigests: candidateIds.map((candidateId) => digestByCandidate.get(candidateId)),
+    outcome: "queue",
+    reason: request.reason,
+    sourceId: target.sourceId,
+    operation: "update",
+    path: target.path,
+    expectedHash: target.afterHash,
+    content: request.content
+  };
+  const correctionPlan = {
+    schemaVersion: 1,
+    kind: "grill-adapter.wiki-capture-plan",
+    featureSlug: target.featureSlug,
+    journalSnapshots: [],
+    decisions: [decision]
+  };
+  const staged = stageRepository(
+    correctionPlan,
+    correctionId,
+    [decision],
+    binding,
+    resolution,
+    manifest,
+    env
+  );
+  const revised = staged.entries[0];
+  revised.candidateIds = candidateIds;
+  revised.candidateDigests = decision.candidateDigests;
+  revised.contributingFeatureSlugs = [...new Set(targets.flatMap((entry) => entry.contributingFeatureSlugs ?? [entry.featureSlug]))].sort();
+  revised.supersedes = targets.map((entry) => entry.entryId);
+  revised.correction = request.action;
+  revised.correctionReason = request.reason;
+  const tombstones = request.action === "merge" ? targets.filter((entry) => entry.entryId !== target.entryId).map((entry) => terminalCorrectionEntry(entry, correctionId, "delete", request.reason)) : [];
+  manifest.entries.push(revised, ...tombstones);
+  try {
+    writeManifest2(resolution, manifest);
+  } catch (error2) {
+    rollbackStagedRepository(staged, resolution, env);
+    throw error2;
+  }
+  return {
+    schemaVersion: 1,
+    kind: "grill-adapter.obsidian-wiki-outbox-correction",
+    correctionId,
+    action: request.action,
+    entryIds: [revised.entryId, ...tombstones.map((entry) => entry.entryId)]
+  };
+}
+function correctOutbox(input, env = process.env) {
+  const resolution = healthyResolution(env);
+  return withOutboxLock(resolution, () => correctOutboxLocked(input, resolution, env));
+}
+function outboxStatusLocked(resolution, env) {
+  const manifest = readManifest(resolution);
+  let changed = false;
+  for (const entry of manifest.entries) {
+    if (entry.state !== "pr-open") continue;
+    const binding = resolution.bindings.find((candidate) => candidate.repositoryRef === entry.repositoryRef && candidate.sourceId === entry.sourceId);
+    if (!binding || !binding.repositoryHealth.baseSynchronized) continue;
+    const active = gitFile2(binding.repository.baseBranch, entry.path, env, binding.repository.worktreeRoot);
+    if (!active) continue;
+    const note = parseAtomicNote(active, entry.path);
+    if (note.wikiId === entry.wikiId && note.contentHash === entry.afterHash) {
+      entry.state = "active";
+      changed = true;
+    }
+  }
+  if (changed) writeManifest2(resolution, manifest);
+  const entries = effectiveEntries(manifest);
+  return {
+    schemaVersion: 1,
+    kind: "grill-adapter.obsidian-wiki-outbox-status",
+    authoritative: false,
+    counts: {
+      queued: entries.filter((entry) => entry.state === "queued").length,
+      prOpen: entries.filter((entry) => entry.state === "pr-open").length,
+      active: entries.filter((entry) => entry.state === "active").length,
+      conflicted: entries.filter((entry) => entry.state === "deferred").length
+    },
+    repositories: [...new Set(entries.map((entry) => entry.repositoryRef))].sort().map((repositoryRef) => ({
+      repositoryRef,
+      queued: entries.filter((entry) => entry.repositoryRef === repositoryRef && entry.state === "queued").length,
+      prOpen: entries.filter((entry) => entry.repositoryRef === repositoryRef && entry.state === "pr-open").length,
+      conflicted: entries.filter((entry) => entry.repositoryRef === repositoryRef && entry.state === "deferred").length
+    })),
+    features: [...new Set(entries.map((entry) => entry.featureSlug))].sort().map((featureSlug) => ({
+      featureSlug,
+      queued: entries.filter((entry) => entry.featureSlug === featureSlug && entry.state === "queued").length
+    }))
+  };
+}
+function outboxStatus(env = process.env) {
+  const resolution = healthyResolution(env);
+  return withOutboxLock(resolution, () => outboxStatusLocked(resolution, env));
+}
+function reviewEntries(resolution, manifest, entries, env) {
+  const repositories = [...new Set(entries.map((entry) => entry.repositoryRef))].sort().map((repositoryRef) => {
+    const binding = resolution.bindings.find((candidate) => candidate.repositoryRef === repositoryRef);
+    if (!binding) throw new Error(`Outbox references an unbound repository: ${repositoryRef}`);
+    const changes = entries.filter((entry) => entry.repositoryRef === repositoryRef).map((entry) => {
+      const diff = git2(
+        ["diff", "--no-ext-diff", "--unified=3", entry.baseCommit, entry.objectCommit, "--", entry.path],
+        env,
+        binding.repository.worktreeRoot
+      );
+      return {
+        entryId: entry.entryId,
+        entryIds: manifest.entries.filter((candidate) => candidate.repositoryRef === repositoryRef && candidate.path === entry.path).map((candidate) => candidate.entryId),
+        featureSlugs: [...new Set(manifest.entries.filter((candidate) => candidate.repositoryRef === repositoryRef && candidate.path === entry.path).flatMap((candidate) => candidate.contributingFeatureSlugs ?? [candidate.featureSlug]))].sort(),
+        sourceId: entry.sourceId,
+        wikiId: entry.wikiId,
+        path: entry.path,
+        operation: entry.operation,
+        beforeHash: entry.beforeHash,
+        afterHash: entry.afterHash,
+        authorizationRequired: entry.authorizationRequired,
+        diff
+      };
+    });
+    return { repositoryRef, changes };
+  });
+  const planDigest = digest(stableJson(repositories.map((repository) => ({
+    repositoryRef: repository.repositoryRef,
+    changes: repository.changes.map(({ diff: _diff, ...change }) => change)
+  }))));
+  return {
+    schemaVersion: 1,
+    kind: "grill-adapter.obsidian-wiki-outbox-review",
+    authoritative: false,
+    planDigest,
+    repositories
+  };
+}
+function outboxReview(env = process.env) {
+  const resolution = healthyResolution(env);
+  const manifest = readManifest(resolution);
+  return reviewEntries(
+    resolution,
+    manifest,
+    effectiveEntries(manifest).filter((entry) => entry.state === "queued"),
+    env
+  );
+}
+var CaptureDraftViewInputSchema = object({
+  paths: array(string2().min(1)).max(24).optional()
+}).strict();
+function captureDraftView(input, env = process.env) {
+  const request = CaptureDraftViewInputSchema.parse(input);
+  const resolution = healthyResolution(env);
+  const entries = effectiveEntries(readManifest(resolution)).filter((entry) => entry.state === "queued" || entry.state === "pr-open");
+  const requested = request.paths === void 0 ? [] : request.paths.map(normalizeVaultPath);
+  const available = new Map(entries.map((entry) => [entry.path, entry]));
+  for (const notePath of requested) {
+    if (!available.has(notePath)) throw new Error(`Capture draft path is not in the current project Outbox: ${notePath}`);
+  }
+  return {
+    schemaVersion: 1,
+    kind: "grill-adapter.obsidian-wiki-capture-draft-view",
+    authoritative: false,
+    entries: entries.map((entry) => ({
+      sourceId: entry.sourceId,
+      repositoryRef: entry.repositoryRef,
+      wikiId: entry.wikiId,
+      path: entry.path,
+      contentHash: entry.afterHash,
+      state: entry.state,
+      featureSlug: entry.featureSlug
+    })),
+    selectedNotes: requested.map((notePath) => {
+      const entry = available.get(notePath);
+      const binding = resolution.bindings.find((candidate) => candidate.sourceId === entry.sourceId && candidate.repositoryRef === entry.repositoryRef);
+      if (!binding) throw new Error(`Capture draft references an unbound Source: ${entry.sourceId}`);
+      const content = gitFile2(entry.objectCommit, notePath, env, binding.repository.worktreeRoot);
+      if (!content) throw new Error(`Capture draft object is missing ${notePath}`);
+      const note = parseAtomicNote(content, notePath);
+      if (note.wikiId !== entry.wikiId || note.contentHash !== entry.afterHash) {
+        throw new Error(`Capture draft object identity drift for ${notePath}`);
+      }
+      return {
+        sourceId: entry.sourceId,
+        repositoryRef: entry.repositoryRef,
+        wikiId: entry.wikiId,
+        path: entry.path,
+        contentHash: entry.afterHash,
+        content: note.content
+      };
+    })
+  };
+}
+var PublishRequestSchema = object({
+  planDigest: HashSchema2,
+  confirmed: literal(true)
+}).strict();
+function samePaths2(actual, expected) {
+  return actual.length === expected.length && actual.every((value, index) => value === expected[index]);
+}
+function revisionPaths(baseCommit, revision, env, worktreeRoot) {
+  return git2(["diff", "--name-only", baseCommit, revision, "--"], env, worktreeRoot).split(/\r?\n/).filter(Boolean).map(normalizeVaultPath).sort();
+}
+function validatePublishedContents(entries, revision, binding, env) {
+  for (const entry of entries) {
+    const contents = gitFile2(revision, entry.path, env, binding.repository.worktreeRoot);
+    if (!contents) throw new Error(`Outbox publish revision does not contain ${entry.path}`);
+    const note = parseAtomicNote(contents, entry.path);
+    if (note.wikiId !== entry.wikiId || note.contentHash !== entry.afterHash) {
+      throw new Error(`Outbox publish content identity drift for ${entry.path}`);
+    }
+  }
+}
+function validateReplayBase(entries, revision, binding, env) {
+  for (const entry of entries) {
+    const contents = gitFile2(revision, entry.path, env, binding.repository.worktreeRoot);
+    if (entry.beforeHash === null) {
+      if (contents !== void 0) throw new Error(`Outbox create path changed on synchronized base: ${entry.path}`);
+      continue;
+    }
+    if (!contents) throw new Error(`Outbox update path disappeared from synchronized base: ${entry.path}`);
+    const note = parseAtomicNote(contents, entry.path);
+    if (note.wikiId !== entry.wikiId || note.contentHash !== entry.beforeHash) {
+      throw new Error(`Outbox same-path base drift for ${entry.path}`);
+    }
+  }
+}
+function buildPublishBody(run, repositoryRef) {
+  const repository = run.repositories.find((candidate) => candidate.repositoryRef === repositoryRef);
+  const peers = run.repositories.filter((candidate) => candidate.repositoryRef !== repositoryRef).map((candidate) => candidate.prUrl ?? `${candidate.repositoryRef}: pending`);
+  return [
+    `Obsidian Wiki Outbox batch: ${run.runId}`,
+    "",
+    "Changed Notes:",
+    ...repository.paths.map((notePath) => `- ${notePath}`),
+    "",
+    "Peer PRs:",
+    ...peers.length > 0 ? peers.map((peer) => `- ${peer}`) : ["- none"],
+    "",
+    "This draft is not available to formal Wiki research until merge and base synchronization."
+  ].join("\n");
+}
+function runGh(args, env, workingDirectory) {
+  return runCommand2(env.OBSIDIAN_WIKI_GH_CLI || "gh", args, env, workingDirectory);
+}
+function publishRepository2(run, repositoryRun, entries, binding, resolution, manifest, env) {
+  withRepositoryLock(resolution, binding, () => {
+    let publishEntries = entries;
+    const worktreeRoot = binding.repository.worktreeRoot;
+    if (entries.some((entry) => entry.bindingDigest !== binding.bindingDigest)) {
+      throw new Error(`repository ${repositoryRun.repositoryRef} binding drift requires a refreshed Capture plan`);
+    }
+    if (git2(["status", "--porcelain"], env, worktreeRoot)) {
+      throw new Error(`repository ${repositoryRun.repositoryRef} formal base worktree must be clean`);
+    }
+    if (git2(["branch", "--show-current"], env, worktreeRoot) !== binding.repository.baseBranch) {
+      throw new Error(`repository ${repositoryRun.repositoryRef} formal worktree must remain on ${binding.repository.baseBranch}`);
+    }
+    git2(["fetch", "--quiet", binding.repository.remote, binding.repository.baseBranch], env, worktreeRoot);
+    const localBase = git2(["rev-parse", binding.repository.baseBranch], env, worktreeRoot);
+    const remoteBase = git2(["rev-parse", `${binding.repository.remote}/${binding.repository.baseBranch}`], env, worktreeRoot);
+    if (localBase !== remoteBase) {
+      throw new Error(`repository ${repositoryRun.repositoryRef} base drift requires a refreshed Outbox review`);
+    }
+    if (localBase !== repositoryRun.baseCommit) {
+      try {
+        git2(["merge-base", "--is-ancestor", repositoryRun.baseCommit, localBase], env, worktreeRoot);
+      } catch {
+        throw new Error(`repository ${repositoryRun.repositoryRef} base drift is not a replayable fast-forward`);
+      }
+      const upstreamPaths = new Set(revisionPaths(repositoryRun.baseCommit, localBase, env, worktreeRoot));
+      const conflicts = publishEntries.flatMap((entry) => {
+        try {
+          validateReplayBase([entry], localBase, binding, env);
+          return [];
+        } catch {
+          return [{
+            entry,
+            reason: upstreamPaths.has(entry.path) ? "same-path-base-drift" : "base-identity-drift"
+          }];
+        }
+      });
+      if (conflicts.length > 0) {
+        const conflictIds = new Set(conflicts.map(({ entry }) => entry.entryId));
+        const conflictPlanId = digest(stableJson({
+          runId: run.runId,
+          repositoryRef: repositoryRun.repositoryRef,
+          localBase,
+          conflicts: conflicts.map(({ entry, reason }) => ({ entryId: entry.entryId, reason }))
+        }));
+        for (const { entry, reason } of conflicts) {
+          if (!manifest.entries.some((candidate) => candidate.planId === conflictPlanId && candidate.supersedes?.includes(entry.entryId))) {
+            manifest.entries.push(terminalCorrectionEntry(
+              entry,
+              conflictPlanId,
+              "defer",
+              reason === "same-path-base-drift" ? "Synchronized base changed the same Note path." : "Synchronized base no longer proves the queued Note identity."
+            ));
+          }
+        }
+        repositoryRun.conflicts = conflicts.map(({ entry, reason }) => ({ path: entry.path, reason }));
+        publishEntries = publishEntries.filter((entry) => !conflictIds.has(entry.entryId));
+        repositoryRun.paths = repositoryRun.paths.filter((notePath) => publishEntries.some((entry) => entry.path === notePath));
+      }
+      repositoryRun.baseCommit = localBase;
+      if (publishEntries.length === 0) {
+        repositoryRun.state = "deferred";
+        writeManifest2(resolution, manifest);
+        return;
+      }
+      writeManifest2(resolution, manifest);
+    }
+    if (repositoryRun.commit === null) {
+      const existingCommit = git2(["for-each-ref", "--format=%(objectname)", `refs/heads/${repositoryRun.branch}`], env, worktreeRoot);
+      if (existingCommit) {
+        if (!samePaths2(revisionPaths(localBase, existingCommit, env, worktreeRoot), repositoryRun.paths)) {
+          throw new Error(`Outbox publish branch path allowlist drift for ${repositoryRun.repositoryRef}`);
+        }
+        validatePublishedContents(publishEntries, existingCommit, binding, env);
+        repositoryRun.commit = existingCommit;
+        writeManifest2(resolution, manifest);
+      } else {
+        const temporaryRoot = mkdtempSync(path8.join(tmpdir(), "grill-adapter-publish-"));
+        try {
+          git2(["worktree", "add", "--quiet", "--detach", temporaryRoot, localBase], env, worktreeRoot);
+          git2(["switch", "-c", repositoryRun.branch], env, temporaryRoot);
+          for (const entry of publishEntries) {
+            git2(["restore", "--source", entry.objectCommit, "--staged", "--worktree", "--", entry.path], env, temporaryRoot);
+          }
+          const staged = git2(["diff", "--cached", "--name-only", "--"], env, temporaryRoot).split(/\r?\n/).filter(Boolean).map(normalizeVaultPath).sort();
+          if (!samePaths2(staged, repositoryRun.paths)) {
+            throw new Error(`Outbox publish staged paths differ from the confirmed allowlist for ${repositoryRun.repositoryRef}`);
+          }
+          git2(["commit", "-m", "docs(wiki): publish Outbox batch"], env, temporaryRoot);
+          repositoryRun.commit = git2(["rev-parse", "HEAD"], env, temporaryRoot);
+          validatePublishedContents(publishEntries, repositoryRun.commit, binding, env);
+          writeManifest2(resolution, manifest);
+        } finally {
+          try {
+            git2(["worktree", "remove", "--force", temporaryRoot], env, worktreeRoot);
+          } catch {
+            rmSync2(temporaryRoot, { recursive: true, force: true });
+          }
+        }
+      }
+    }
+    if (!repositoryRun.commit) throw new Error(`Outbox publish commit is unavailable for ${repositoryRun.repositoryRef}`);
+    if (!samePaths2(revisionPaths(localBase, repositoryRun.commit, env, worktreeRoot), repositoryRun.paths)) {
+      throw new Error(`Outbox publish commit differs from the confirmed path allowlist for ${repositoryRun.repositoryRef}`);
+    }
+    validatePublishedContents(publishEntries, repositoryRun.commit, binding, env);
+    const remoteCommit = git2(["ls-remote", "--heads", binding.repository.remote, `refs/heads/${repositoryRun.branch}`], env, worktreeRoot).split(/\s+/)[0] ?? "";
+    if (remoteCommit && remoteCommit !== repositoryRun.commit) {
+      throw new Error(`Outbox remote publish branch drift for ${repositoryRun.repositoryRef}`);
+    }
+    if (!remoteCommit) git2(["push", "--set-upstream", binding.repository.remote, repositoryRun.branch], env, worktreeRoot);
+    const existingPr = runGh(
+      ["pr", "list", "--head", repositoryRun.branch, "--state", "all", "--json", "url", "--jq", ".[0].url"],
+      env,
+      worktreeRoot
+    );
+    if (existingPr) {
+      repositoryRun.prUrl = string2().url().parse(existingPr);
+    } else {
+      const bodyPath = path8.join(statePaths(resolution).root, `${safeRefSegment(repositoryRun.repositoryRef)}-pr.md`);
+      mkdirSync3(path8.dirname(bodyPath), { recursive: true });
+      writeFileSync3(bodyPath, `${buildPublishBody(run, repositoryRun.repositoryRef)}
+`, "utf8");
+      try {
+        repositoryRun.prUrl = string2().url().parse(runGh([
+          "pr",
+          "create",
+          "--draft",
+          "--base",
+          binding.repository.baseBranch,
+          "--head",
+          repositoryRun.branch,
+          "--title",
+          "docs(wiki): publish Outbox batch",
+          "--body-file",
+          bodyPath
+        ], env, worktreeRoot));
+      } finally {
+        rmSync2(bodyPath, { force: true });
+      }
+    }
+    repositoryRun.state = "pr-open";
+    for (const entry of manifest.entries) {
+      if (entry.repositoryRef === repositoryRun.repositoryRef && repositoryRun.paths.includes(entry.path)) {
+        entry.state = "pr-open";
+        entry.prUrl = repositoryRun.prUrl;
+      }
+    }
+    writeManifest2(resolution, manifest);
+  });
+}
+function publishOutboxLocked(input, resolution, env) {
+  const request = PublishRequestSchema.parse(input);
+  const manifest = readManifest(resolution);
+  let run = manifest.publishRuns.find((candidate) => candidate.planDigest === request.planDigest);
+  if (!run) {
+    const review = reviewEntries(
+      resolution,
+      manifest,
+      effectiveEntries(manifest).filter((entry) => entry.state === "queued"),
+      env
+    );
+    if (review.repositories.length === 0) throw new Error("Current project Outbox has no queued changes to publish");
+    if (review.planDigest !== request.planDigest) throw new Error("Outbox publish confirmation digest is stale");
+    const runId = digest(`${request.planDigest}\0${manifest.projectId}`);
+    run = {
+      runId,
+      planDigest: request.planDigest,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      repositories: review.repositories.map((repository) => {
+        const entries = effectiveEntries(manifest).filter((entry) => entry.state === "queued" && entry.repositoryRef === repository.repositoryRef);
+        const baseCommits = [...new Set(entries.map((entry) => entry.baseCommit))];
+        if (baseCommits.length !== 1) throw new Error(`Outbox base identity is inconsistent for ${repository.repositoryRef}`);
+        return {
+          repositoryRef: repository.repositoryRef,
+          baseCommit: baseCommits[0],
+          branch: `grill-adapter/wiki/outbox-${manifest.projectId.slice(0, 8)}-${safeRefSegment(repository.repositoryRef)}-${request.planDigest.slice(7, 15)}`,
+          commit: null,
+          paths: repository.changes.map((change) => change.path).sort(),
+          prUrl: null,
+          state: "pending"
+        };
+      })
+    };
+    manifest.publishRuns.push(run);
+    writeManifest2(resolution, manifest);
+  }
+  for (const repositoryRun of run.repositories) {
+    if (repositoryRun.state === "pr-open" || repositoryRun.state === "deferred") continue;
+    const binding = resolution.bindings.find((candidate) => candidate.repositoryRef === repositoryRun.repositoryRef);
+    if (!binding) throw new Error(`Outbox publish references an unbound repository: ${repositoryRun.repositoryRef}`);
+    const entries = effectiveEntries(manifest).filter((entry) => entry.state === "queued" && entry.repositoryRef === repositoryRun.repositoryRef && repositoryRun.paths.includes(entry.path));
+    publishRepository2(run, repositoryRun, entries, binding, resolution, manifest, env);
+  }
+  return {
+    schemaVersion: 1,
+    kind: "grill-adapter.obsidian-wiki-outbox-publish",
+    runId: run.runId,
+    planDigest: run.planDigest,
+    repositories: run.repositories
+  };
+}
+function publishOutbox(input, env = process.env) {
+  const resolution = healthyResolution(env);
+  return withOutboxLock(resolution, () => publishOutboxLocked(input, resolution, env));
+}
+
 // src/server.ts
 function toResult(value) {
   return {
@@ -25260,6 +26520,26 @@ function createServer(env = process.env) {
     }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(consolidationCandidatesTool(input, requestEnv(extra._meta))));
+  server.registerTool("obsidian_wiki_stage_capture_plan", {
+    description: "Validate one snapshot-bound Wiki Capture Plan and atomically queue its non-authoritative drafts in the current project Outbox without modifying the formal Wiki base worktree.",
+    inputSchema: CapturePlanSchema,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }
+  }, async (input, extra) => toResult(stageCapturePlan(input, requestEnv(extra._meta))));
+  server.registerTool("obsidian_wiki_capture_draft_view", {
+    description: "Return current-project Outbox draft metadata and, for at most 24 explicitly selected draft paths, private content for Capture targeting. This view is non-authoritative and must never be used by formal research or task binding.",
+    inputSchema: object({ paths: array(string2().min(1)).max(24).optional() }),
+    annotations: { readOnlyHint: true, idempotentHint: true }
+  }, async (input, extra) => toResult(captureDraftView(input, requestEnv(extra._meta))));
+  server.registerTool("obsidian_wiki_outbox_review", {
+    description: "Return the current project's consolidated queued Outbox scope and full private Markdown diffs without publishing.",
+    inputSchema: object({}),
+    annotations: { readOnlyHint: true, idempotentHint: true }
+  }, async (_input, extra) => toResult(outboxReview(requestEnv(extra._meta))));
+  server.registerTool("obsidian_wiki_outbox_correct", {
+    description: "Append an immutable superseding Outbox correction that excludes, defers, rejects, revises, or merges current-project draft entries without rewriting prior history.",
+    inputSchema: OutboxCorrectionSchema,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }
+  }, async (input, extra) => toResult(correctOutbox(input, requestEnv(extra._meta))));
   server.registerTool("obsidian_wiki_read_note", {
     description: "Read one active, agent-visible, non-expired atomic Note only when its Vault-relative path is under a readable bound Source.",
     inputSchema: object({ path: string2().min(1) }),
@@ -25307,29 +26587,29 @@ function createServer(env = process.env) {
 import { timingSafeEqual, randomUUID as randomUUID3 } from "node:crypto";
 import { createServer as createServer2 } from "node:http";
 import {
-  existsSync as existsSync7,
+  existsSync as existsSync8,
   linkSync,
   lstatSync as lstatSync5,
-  mkdirSync as mkdirSync3,
-  readFileSync as readFileSync6,
+  mkdirSync as mkdirSync4,
+  readFileSync as readFileSync7,
   readdirSync as readdirSync3,
-  realpathSync as realpathSync4,
-  rmSync as rmSync2,
-  writeFileSync as writeFileSync3
+  realpathSync as realpathSync5,
+  rmSync as rmSync3,
+  writeFileSync as writeFileSync4
 } from "node:fs";
-import path8 from "node:path";
+import path9 from "node:path";
 
 // src/atomic-exchange.ts
-import { execFileSync as execFileSync6 } from "node:child_process";
-import { existsSync as existsSync6 } from "node:fs";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
-var packagedScriptPath2 = fileURLToPath2(new URL("./atomic_swap.py", import.meta.url));
-var sourceScriptPath2 = fileURLToPath2(new URL("../scripts/atomic_swap.py", import.meta.url));
-var scriptPath2 = existsSync6(packagedScriptPath2) ? packagedScriptPath2 : sourceScriptPath2;
+import { execFileSync as execFileSync7 } from "node:child_process";
+import { existsSync as existsSync7 } from "node:fs";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
+var packagedScriptPath2 = fileURLToPath3(new URL("./atomic_swap.py", import.meta.url));
+var sourceScriptPath2 = fileURLToPath3(new URL("../scripts/atomic_swap.py", import.meta.url));
+var scriptPath2 = existsSync7(packagedScriptPath2) ? packagedScriptPath2 : sourceScriptPath2;
 function atomicExchange(firstPath, secondPath, env = process.env) {
   const python = env.OBSIDIAN_WIKI_PYTHON ?? "python3";
   try {
-    execFileSync6(python, [scriptPath2, firstPath, secondPath], {
+    execFileSync7(python, [scriptPath2, firstPath, secondPath], {
       encoding: "utf8",
       env: { ...process.env, ...env },
       stdio: ["ignore", "pipe", "pipe"]
@@ -25364,34 +26644,34 @@ var BridgeError = class extends Error {
   status;
 };
 function normalizeRelativePath(value, description) {
-  if (path8.posix.isAbsolute(value) || path8.win32.isAbsolute(value)) {
+  if (path9.posix.isAbsolute(value) || path9.win32.isAbsolute(value)) {
     throw new BridgeError(403, `${description} must be Vault-relative`);
   }
-  const normalized = path8.posix.normalize(value.replaceAll("\\", "/")).replace(/^\.\//, "");
+  const normalized = path9.posix.normalize(value.replaceAll("\\", "/")).replace(/^\.\//, "");
   if (!normalized || normalized === "." || normalized === ".." || normalized.startsWith("../")) {
     throw new BridgeError(403, `${description} escapes the Vault`);
   }
   return normalized;
 }
 function inside(candidate, root) {
-  return candidate === root || candidate.startsWith(`${root}${path8.sep}`);
+  return candidate === root || candidate.startsWith(`${root}${path9.sep}`);
 }
 function nearestExistingDirectory(directory) {
   let candidate = directory;
-  while (!existsSync7(candidate)) {
-    const parent = path8.dirname(candidate);
+  while (!existsSync8(candidate)) {
+    const parent = path9.dirname(candidate);
     if (parent === candidate) throw new BridgeError(403, "Note parent has no existing Vault ancestor");
     candidate = parent;
   }
   if (!lstatSync5(candidate).isDirectory()) throw new BridgeError(400, "Note parent ancestor is not a directory");
-  return realpathSync4(candidate);
+  return realpathSync5(candidate);
 }
 function atomicNoteFiles(root) {
   const files = [];
   const visit = (directory) => {
     for (const entry of readdirSync3(directory, { withFileTypes: true })) {
       if (entry.name === "_meta") continue;
-      const target = path8.join(directory, entry.name);
+      const target = path9.join(directory, entry.name);
       if (entry.isSymbolicLink()) throw new BridgeError(403, `Symbolic links are not allowed in writable Source content: ${target}`);
       if (entry.isDirectory()) visit(target);
       else if (entry.isFile() && entry.name.endsWith(".md")) files.push(target);
@@ -25404,7 +26684,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
   const noteFiles = [...roots.values()].flatMap(atomicNoteFiles);
   const existingNotes = noteFiles.map((file) => ({
     file,
-    note: parseAtomicNote(readFileSync6(file, "utf8"), file)
+    note: parseAtomicNote(readFileSync7(file, "utf8"), file)
   }));
   const identityMatches = existingNotes.filter(({ note }) => note.wikiId === proposed.wikiId);
   if (proposed.adrSourceId && targetScope !== "project") {
@@ -25420,7 +26700,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
       `ADR source identity ${proposed.adrSourceId} already exists in an allowed Note; update that projection`
     );
   }
-  if (operation === "update" && (identityMatches.length !== 1 || realpathSync4(identityMatches[0].file) !== realpathSync4(targetPath))) {
+  if (operation === "update" && (identityMatches.length !== 1 || realpathSync5(identityMatches[0].file) !== realpathSync5(targetPath))) {
     throw new BridgeError(409, `Updated wiki_id does not resolve uniquely to its existing Note: ${proposed.wikiId}`);
   }
   const targetNote = operation === "update" ? identityMatches[0].note : void 0;
@@ -25430,7 +26710,7 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
   if (targetNote?.adrSourceId && targetNote.adrSourceId !== proposed.adrSourceId) {
     throw new BridgeError(409, "ADR source identity must be preserved on update");
   }
-  if (operation === "update" && adrProjectionMatches.some(({ file }) => realpathSync4(file) !== realpathSync4(targetPath))) {
+  if (operation === "update" && adrProjectionMatches.some(({ file }) => realpathSync5(file) !== realpathSync5(targetPath))) {
     throw new BridgeError(
       409,
       `ADR source identity ${proposed.adrSourceId} already exists in another allowed Note`
@@ -25443,9 +26723,9 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
     throw new BridgeError(409, "Skill Card name identity must be preserved on update");
   }
   if (proposed.skillName) {
-    const projectNotes = [...projectRoots.values()].flatMap(atomicNoteFiles).map((file) => ({ file, note: parseAtomicNote(readFileSync6(file, "utf8"), file) }));
+    const projectNotes = [...projectRoots.values()].flatMap(atomicNoteFiles).map((file) => ({ file, note: parseAtomicNote(readFileSync7(file, "utf8"), file) }));
     const cardMatches = projectNotes.filter(({ note }) => note.skillName === proposed.skillName);
-    const conflictingCards = operation === "create" ? cardMatches : cardMatches.filter(({ file }) => realpathSync4(file) !== realpathSync4(targetPath));
+    const conflictingCards = operation === "create" ? cardMatches : cardMatches.filter(({ file }) => realpathSync5(file) !== realpathSync5(targetPath));
     if (conflictingCards.length > 0) {
       throw new BridgeError(
         409,
@@ -25458,12 +26738,12 @@ function validateTypedLinksAndIdentity(proposed, operation, targetPath, vaultRoo
       const target = /^\[\[([^#|\]]+)/.exec(link)?.[1]?.trim();
       if (!target) throw new BridgeError(400, `Typed edge must use an Obsidian link: ${link}`);
       const vaultPath = normalizeRelativePath(target.endsWith(".md") ? target : `${target}.md`, "Typed edge");
-      const resolvedTarget = path8.resolve(vaultRoot, ...vaultPath.split("/"));
+      const resolvedTarget = path9.resolve(vaultRoot, ...vaultPath.split("/"));
       const owningRoot = [...roots.values()].find((root) => inside(resolvedTarget, root.resolvedRoot));
-      if (!owningRoot || !existsSync7(resolvedTarget) || !lstatSync5(resolvedTarget).isFile()) {
+      if (!owningRoot || !existsSync8(resolvedTarget) || !lstatSync5(resolvedTarget).isFile()) {
         throw new BridgeError(400, `Typed edge does not resolve to an allowed atomic Note: ${link}`);
       }
-      parseAtomicNote(readFileSync6(resolvedTarget, "utf8"), vaultPath);
+      parseAtomicNote(readFileSync7(resolvedTarget, "utf8"), vaultPath);
     }
   }
 }
@@ -25471,29 +26751,29 @@ function enforceGovernance(change, root, apply, vaultRoot, roots, allowedProject
   const { request } = change;
   let projectDir;
   try {
-    projectDir = realpathSync4(request.projectDir);
+    projectDir = realpathSync5(request.projectDir);
   } catch {
     throw new BridgeError(403, "Project is not allowed by this bridge");
   }
   if (!allowedProjects.has(projectDir)) throw new BridgeError(403, "Project is not allowed by this bridge");
-  const settingsPath = path8.join(projectDir, ".grill-adapter", "settings.json");
+  const settingsPath = path9.join(projectDir, ".grill-adapter", "settings.json");
   let settings;
   try {
-    settings = ProjectSettingsSchema.parse(JSON.parse(readFileSync6(settingsPath, "utf8")));
+    settings = ProjectSettingsSchema.parse(JSON.parse(readFileSync7(settingsPath, "utf8")));
   } catch (error2) {
     throw new BridgeError(403, `Project binding cannot be validated: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
-  const binding = settings.wiki.obsidian.bindings.find((candidate) => candidate.sourceId === request.sourceId && candidate.vaultRef === request.vaultRef && path8.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, "") === request.sourceRoot);
+  const binding = settings.wiki.obsidian.bindings.find((candidate) => candidate.sourceId === request.sourceId && candidate.vaultRef === request.vaultRef && path9.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, "") === request.sourceRoot);
   if (!binding || !binding.access.read) throw new BridgeError(403, "Source is not a readable binding of the allowed project");
   const projectRootNames = new Set(
-    settings.wiki.obsidian.bindings.filter((candidate) => candidate.access.read).map((candidate) => path8.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, ""))
+    settings.wiki.obsidian.bindings.filter((candidate) => candidate.access.read).map((candidate) => path9.posix.normalize(candidate.root.replaceAll("\\", "/")).replace(/^\.\//, ""))
   );
   const projectRoots = new Map(
     [...roots].filter(([rootName]) => projectRootNames.has(rootName))
   );
   let manifest;
   try {
-    manifest = parseSourceManifest(readFileSync6(root.manifestPath, "utf8"), root.manifestPath);
+    manifest = parseSourceManifest(readFileSync7(root.manifestPath, "utf8"), root.manifestPath);
   } catch (error2) {
     throw new BridgeError(403, `Source manifest cannot be validated: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
@@ -25563,9 +26843,9 @@ function validateChange(raw, options, vaultRoot, allowedRoots) {
     throw new BridgeError(403, `Note path is metadata and cannot be written: ${notePath}`);
   }
   if (!notePath.endsWith(".md")) throw new BridgeError(400, "Atomic Note path must end in .md");
-  const targetPath = path8.resolve(vaultRoot, ...notePath.split("/"));
+  const targetPath = path9.resolve(vaultRoot, ...notePath.split("/"));
   if (!inside(targetPath, resolvedSourceRoot)) throw new BridgeError(403, `Note path escapes its Source root: ${notePath}`);
-  const parent = path8.dirname(targetPath);
+  const parent = path9.dirname(targetPath);
   const resolvedParent = nearestExistingDirectory(parent);
   if (!inside(resolvedParent, resolvedSourceRoot)) throw new BridgeError(403, `Note parent escapes its Source root: ${notePath}`);
   const proposed = parseAtomicNote(request.content, notePath);
@@ -25573,7 +26853,7 @@ function validateChange(raw, options, vaultRoot, allowedRoots) {
     throw new BridgeError(400, `Proposed Note is already expired: ${notePath}`);
   }
   if (proposed.wikiId !== request.expectedWikiId) throw new BridgeError(409, "Proposed Note wiki_id does not match expectedWikiId");
-  const exists = existsSync7(targetPath);
+  const exists = existsSync8(targetPath);
   let beforeContent = null;
   if (request.operation === "create") {
     if (request.expectedHash !== null) throw new BridgeError(400, "Create requires expectedHash: null");
@@ -25581,9 +26861,9 @@ function validateChange(raw, options, vaultRoot, allowedRoots) {
   } else {
     if (!request.expectedHash) throw new BridgeError(400, "Update requires expectedHash");
     if (!exists || !lstatSync5(targetPath).isFile()) throw new BridgeError(409, `Cannot update a missing Note: ${notePath}`);
-    const resolvedTarget = realpathSync4(targetPath);
+    const resolvedTarget = realpathSync5(targetPath);
     if (!inside(resolvedTarget, resolvedSourceRoot)) throw new BridgeError(403, `Note path escapes its Source root: ${notePath}`);
-    beforeContent = readFileSync6(resolvedTarget, "utf8");
+    beforeContent = readFileSync7(resolvedTarget, "utf8");
     const existing = parseAtomicNote(beforeContent, notePath);
     if (existing.wikiId !== request.expectedWikiId || existing.wikiId !== proposed.wikiId) {
       throw new BridgeError(409, "Existing and proposed Note wiki_id must preserve identity");
@@ -25634,23 +26914,23 @@ function respond(response, status, body) {
 }
 function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
   if (change.request.operation === "create") {
-    mkdirSync3(path8.dirname(change.targetPath), { recursive: true, mode: 448 });
-    if (!inside(realpathSync4(path8.dirname(change.targetPath)), change.resolvedSourceRoot)) {
+    mkdirSync4(path9.dirname(change.targetPath), { recursive: true, mode: 448 });
+    if (!inside(realpathSync5(path9.dirname(change.targetPath)), change.resolvedSourceRoot)) {
       throw new BridgeError(403, "Created Note parent escaped its Source root");
     }
   }
-  const temporaryPath = path8.join(path8.dirname(change.targetPath), `.${path8.basename(change.targetPath)}.${randomUUID3()}.tmp`);
+  const temporaryPath = path9.join(path9.dirname(change.targetPath), `.${path9.basename(change.targetPath)}.${randomUUID3()}.tmp`);
   const lockPath = `${change.targetPath}.grill-adapter-write.lock`;
   let ownsLock = false;
   try {
     try {
-      writeFileSync3(lockPath, `${process.pid}
+      writeFileSync4(lockPath, `${process.pid}
 `, { encoding: "utf8", flag: "wx", mode: 384 });
       ownsLock = true;
     } catch (error2) {
       throw new BridgeError(409, `Note has another active bridge write: ${error2 instanceof Error ? error2.message : String(error2)}`);
     }
-    writeFileSync3(temporaryPath, change.diff.afterContent, { encoding: "utf8", flag: "wx", mode: 384 });
+    writeFileSync4(temporaryPath, change.diff.afterContent, { encoding: "utf8", flag: "wx", mode: 384 });
     if (change.request.operation === "create") {
       try {
         linkSync(temporaryPath, change.targetPath);
@@ -25658,30 +26938,30 @@ function applyValidated(change, beforeAtomicExchange, afterAtomicExchange) {
         throw new BridgeError(409, `Expected hash conflict: Note was created concurrently: ${error2 instanceof Error ? error2.message : String(error2)}`);
       }
     } else {
-      if (!existsSync7(change.targetPath) || contentHash(readFileSync6(change.targetPath, "utf8")) !== change.request.expectedHash) {
+      if (!existsSync8(change.targetPath) || contentHash(readFileSync7(change.targetPath, "utf8")) !== change.request.expectedHash) {
         throw new BridgeError(409, "Expected hash conflict: Note changed concurrently");
       }
       beforeAtomicExchange?.(change.targetPath);
       atomicExchange(change.targetPath, temporaryPath);
       afterAtomicExchange?.(change.targetPath);
-      const swappedOutHash = contentHash(readFileSync6(temporaryPath, "utf8"));
-      const writtenHash = contentHash(readFileSync6(change.targetPath, "utf8"));
+      const swappedOutHash = contentHash(readFileSync7(temporaryPath, "utf8"));
+      const writtenHash = contentHash(readFileSync7(change.targetPath, "utf8"));
       if (swappedOutHash !== change.request.expectedHash || writtenHash !== change.diff.afterHash) {
         let expectedTargetHash = change.diff.afterHash;
-        while (contentHash(readFileSync6(change.targetPath, "utf8")) === expectedTargetHash) {
+        while (contentHash(readFileSync7(change.targetPath, "utf8")) === expectedTargetHash) {
           atomicExchange(change.targetPath, temporaryPath);
-          const displacedHash = contentHash(readFileSync6(temporaryPath, "utf8"));
+          const displacedHash = contentHash(readFileSync7(temporaryPath, "utf8"));
           if (displacedHash === expectedTargetHash) break;
-          expectedTargetHash = contentHash(readFileSync6(change.targetPath, "utf8"));
+          expectedTargetHash = contentHash(readFileSync7(change.targetPath, "utf8"));
         }
         throw new BridgeError(409, "Expected hash conflict: Note changed during atomic exchange");
       }
     }
   } finally {
-    rmSync2(temporaryPath, { force: true });
-    if (ownsLock) rmSync2(lockPath, { force: true });
+    rmSync3(temporaryPath, { force: true });
+    if (ownsLock) rmSync3(lockPath, { force: true });
   }
-  const written = readFileSync6(change.targetPath, "utf8");
+  const written = readFileSync7(change.targetPath, "utf8");
   const note = parseAtomicNote(written, change.request.path);
   if (note.wikiId !== change.proposedWikiId || note.contentHash !== change.diff.afterHash) {
     throw new BridgeError(500, "Post-write Note identity verification failed");
@@ -25692,21 +26972,21 @@ async function startWriteBridge(options) {
   const host = options.host ?? "127.0.0.1";
   if (!isLoopbackHost(host)) throw new Error("Obsidian Wiki write bridge must bind to a loopback host");
   if (!options.token) throw new Error("Obsidian Wiki write bridge token must not be empty");
-  if (!path8.isAbsolute(options.vaultRoot)) throw new Error("Obsidian Wiki write bridge Vault root must be absolute");
-  const vaultRoot = realpathSync4(options.vaultRoot);
+  if (!path9.isAbsolute(options.vaultRoot)) throw new Error("Obsidian Wiki write bridge Vault root must be absolute");
+  const vaultRoot = realpathSync5(options.vaultRoot);
   const allowedProjects = new Set(options.projectDirs.map((projectDir) => {
-    if (!path8.isAbsolute(projectDir)) throw new Error("Obsidian Wiki write bridge project directories must be absolute");
-    return realpathSync4(projectDir);
+    if (!path9.isAbsolute(projectDir)) throw new Error("Obsidian Wiki write bridge project directories must be absolute");
+    return realpathSync5(projectDir);
   }));
   if (allowedProjects.size === 0) throw new Error("Obsidian Wiki write bridge requires at least one allowed project directory");
   const allowedRoots = /* @__PURE__ */ new Map();
   for (const rawRoot of options.allowedRoots) {
     const root = normalizeRelativePath(rawRoot, "Allowed Source root");
-    const resolved = realpathSync4(path8.resolve(vaultRoot, ...root.split("/")));
+    const resolved = realpathSync5(path9.resolve(vaultRoot, ...root.split("/")));
     if (!inside(resolved, vaultRoot)) throw new Error(`Allowed Source root escapes the Vault: ${root}`);
-    const manifestPath = path8.join(resolved, "_meta", "wiki-source.md");
-    if (!existsSync7(manifestPath) || !lstatSync5(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
-    parseSourceManifest(readFileSync6(manifestPath, "utf8"), manifestPath);
+    const manifestPath = path9.join(resolved, "_meta", "wiki-source.md");
+    if (!existsSync8(manifestPath) || !lstatSync5(manifestPath).isFile()) throw new Error(`Allowed Source root has no manifest: ${root}`);
+    parseSourceManifest(readFileSync7(manifestPath, "utf8"), manifestPath);
     allowedRoots.set(root, { resolvedRoot: resolved, manifestPath });
   }
   if (allowedRoots.size === 0) throw new Error("Obsidian Wiki write bridge requires at least one allowed Source root");
@@ -25948,6 +27228,11 @@ Usage:
   printf '<json>' | obsidian-wiki catalog
   printf '<json>' | obsidian-wiki maintenance-summary
   printf '<json>' | obsidian-wiki consolidation-candidates
+  printf '<json>' | obsidian-wiki outbox stage
+  obsidian-wiki outbox status
+  obsidian-wiki outbox review
+  printf '<json>' | obsidian-wiki outbox correct
+  printf '<json>' | obsidian-wiki outbox publish
   printf '<json>' | obsidian-wiki search-by-wiki-ids
   obsidian-wiki bridge start [--config <path>]    Start a detached background write bridge
   obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
@@ -26061,6 +27346,29 @@ async function main() {
       candidateLimit: optionalNumberField(request, "candidateLimit")
     }))}
 `);
+    return;
+  }
+  if (subcommand === "outbox" && action === "stage") {
+    const request = await readJsonRequest();
+    printJson(stageCapturePlan(request));
+    return;
+  }
+  if (subcommand === "outbox" && action === "status") {
+    printJson(outboxStatus());
+    return;
+  }
+  if (subcommand === "outbox" && action === "review") {
+    printJson(outboxReview());
+    return;
+  }
+  if (subcommand === "outbox" && action === "correct") {
+    const request = await readJsonRequest();
+    printJson(correctOutbox(request));
+    return;
+  }
+  if (subcommand === "outbox" && action === "publish") {
+    const request = await readJsonRequest();
+    printJson(publishOutbox(request));
     return;
   }
   if (subcommand === "search" || subcommand === "search-by-wiki-ids") {

@@ -69,7 +69,7 @@ SKILL_VERSION_PATTERN = re.compile(
     r"(?:\.(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*))*)?"
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
-WRITE_RECEIPT_STATES = {"proposed", "applied"}
+WRITE_RECEIPT_STATES = {"proposed", "queued", "applied"}
 WRITE_OPERATIONS = {"create", "update"}
 WRITE_RECEIPT_FIELDS = {
     "provider", "state", "operation", "sourceId", "repositoryRef", "bindingDigest",
@@ -143,7 +143,7 @@ def _validate_write_receipt(receipt: Any, outcome_status: str) -> dict[str, Any]
     if receipt["provider"] != "obsidian":
         raise JournalError("writeReceipt.provider must be obsidian")
     if receipt["state"] not in WRITE_RECEIPT_STATES:
-        raise JournalError("writeReceipt.state must be proposed or applied")
+        raise JournalError("writeReceipt.state must be proposed, queued, or applied")
     if receipt["operation"] not in WRITE_OPERATIONS:
         raise JournalError("writeReceipt.operation must be create or update")
     for field in ("sourceId", "repositoryRef", "wikiId"):
@@ -496,12 +496,12 @@ def fold_events(events: list[dict[str, Any]], expected_feature_slug: str | None 
                     and event["status"] == "kept"
                     and (
                         not isinstance(next_receipt, dict)
-                        or next_receipt.get("state") != "applied"
+                        or next_receipt.get("state") not in {"queued", "applied"}
                     )
                 ):
                     raise JournalError(
                         f"candidate {candidate_id!r} is a Skill Card; kept requires an "
-                        "applied write receipt bound to its staged registration"
+                        "queued/applied write receipt bound to its staged registration"
                     )
                 if isinstance(next_receipt, dict):
                     receipt_skill_registration = next_receipt.get("skillRegistration")
@@ -533,29 +533,35 @@ def fold_events(events: list[dict[str, Any]], expected_feature_slug: str | None 
                     and event["status"] == "kept"
                     and (
                         not isinstance(next_receipt, dict)
-                        or next_receipt.get("state") != "applied"
+                        or next_receipt.get("state") not in {"queued", "applied"}
                         or next_receipt.get("adrProjection") != expected_adr_projection
                     )
                 ):
                     raise JournalError(
                         f"candidate {candidate_id!r} is an ADR projection; kept requires an "
-                        "applied write receipt bound to its authority identity"
+                        "queued/applied write receipt bound to its authority identity"
                     )
                 if expected_correction is not None and event["status"] == "kept":
                     affected_identity = expected_correction["affectedWikiIdentity"]
-                    if (
-                        item["status"] != "deferred"
-                        or not isinstance(previous_receipt, dict)
-                        or previous_receipt.get("state") != "proposed"
-                        or not isinstance(next_receipt, dict)
-                        or next_receipt.get("state") != "applied"
-                        or next_receipt.get("operation") != "update"
+                    queued = (
+                        isinstance(next_receipt, dict)
+                        and next_receipt.get("state") == "queued"
+                    )
+                    applied_after_proposal = (
+                        item["status"] == "deferred"
+                        and isinstance(previous_receipt, dict)
+                        and previous_receipt.get("state") == "proposed"
+                        and isinstance(next_receipt, dict)
+                        and next_receipt.get("state") == "applied"
+                    )
+                    if not (queued or applied_after_proposal) or (
+                        next_receipt.get("operation") != "update"
                         or next_receipt.get("sourceId") != affected_identity["sourceId"]
                         or next_receipt.get("wikiId") != affected_identity["wikiId"]
                     ):
                         raise JournalError(
                             f"candidate {candidate_id!r} is a correction; kept requires an "
-                            "applied update receipt for its affected Wiki identity"
+                            "Outbox-queued or applied update receipt for its affected Wiki identity"
                         )
                 if (
                     item["status"] == "deferred"

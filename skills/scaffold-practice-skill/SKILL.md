@@ -22,7 +22,7 @@ A globally installed plugin is availability, not project opt-in.
 
 Use this skill to turn a reusable engineering practice into a **layered skill pack**, or to restructure an existing skill into that shape, then stage one atomic **Obsidian Skill Card candidate** so reviewed Capture can publish it.
 
-This is an adapter authoring skill. Its completion proves only that a versioned pack was validated and a registration candidate is pending. It is not discoverable until Capture applies it, publishing creates a reviewed PR, a human merges that PR, and the configured base worktree synchronizes.
+This is an adapter authoring skill. Its completion proves only that a versioned pack was validated and a registration candidate is pending. It is not discoverable until Capture queues a validated Card draft, batch publishing creates a reviewed PR, a human merges that PR, and the configured base worktree synchronizes.
 
 ## When to use
 
@@ -112,7 +112,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/scaffold_practice_skill.py \
 
 ## Publishing boundary
 
-`stage-card` writes only append-only local journal state. `update-wiki` remains the semantic and authorization gate: it renders one atomic `type: guide` Card with `skill_name`, `skill_version`, `skill_contract_hash`, `skill_roles`, and `skill_triggers`; then it uses the normal Obsidian proposal/apply receipt and draft-PR publisher. A staged or open-PR Card is `pending`, not discoverable.
+`stage-card` writes only append-only local journal state. The isolated Capture Agent remains the semantic gate: it renders one atomic `type: guide` Card with `skill_name`, `skill_version`, `skill_contract_hash`, `skill_roles`, and `skill_triggers`. Deterministic staging revalidates that identity and queues it in the current project's Outbox; later digest-bound batch publishing creates the draft PR. A queued or open-PR Card is `pending`, not discoverable.
 
 ## Boundaries
 

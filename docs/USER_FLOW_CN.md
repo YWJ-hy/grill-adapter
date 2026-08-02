@@ -71,7 +71,7 @@ Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specif
   <taskId>.wiki-approval.json
   <taskId>.wiki-implement.md
   <taskId>.wiki-review.md
-  wiki-publish.json
+  wiki-publish.json             # 仅 legacy applied-receipt 发布恢复
 ```
 
 这样用户可以展开一个 feature 查看它的完整本地状态。新流程统一写这个布局；已有的平铺文件仍可由显式路径继续读取和恢复，不能在任务执行中自动移动，尤其不要手动移动带 `.lock` 的 journal。迁移 manifest 等非 feature 级运行态仍保留在 `.grill-adapter/context/` 根目录。
@@ -197,19 +197,17 @@ review 通过后，把本轮新沉淀的知识回写 wiki。约定块只让你�
 
 2. 调 `/candidate-journal validate` + `fold`；损坏、尾部截断、重复 identity、未知引用或非法状态转换一律在 Capture 前 fail-closed。
 
-3. 以最终 review 结论与已验证 code/tests 为最高优先级，其次才是 final spec/ticket，再次才是原 candidate 文案；逐条做 keep-or-skip。correction 先按 stable `wikiId` 做 bound read 并要求返回 `sourceId` 精确匹配；零命中、重复、Source 不符、binding/drift 或证据未决都保持 `deferred`，绝不从标题/路径猜测或创建新 Note 来让未知 identity 成功。接受 correction 后 target 固定为受影响 Note 的 `update`，仍必须展示 structured diff、通过 policy/授权并取得 matching apply receipt；被最终证据否定则明确 `skipped`。ADR projection 必须重读 hash 匹配的权威 ADR，只提炼未来实现必须遵守的 durable 约束；没有约束就明确 `skipped`。投影固定写 project Source，以 `adr_source_id` 更新唯一既有 Note，声明自身为派生内容；不得中性化后转投 Shared Wiki。非 ADR 的普通 decision candidate 继续走原 durable gate。可执行流程先交 `scaffold-practice-skill` 生成/转换带 version 的 pack，再用 `stage-card` 计算全 pack contract hash 并追加结构化候选；脚手架不直接写 Wiki。若多个 unresolved candidate 表达同一最终 claim，先追加一个 `capture` stage 的原子 replacement candidate，再用 `supersede` 把相关候选显式归并，只对 replacement 写一次。
+3. 协调器完整读取自包含 `wiki-capture` role，派生**恰好一个**不继承主对话的 Capture Agent，并立即等待这个精确 handle 到终态。Agent 私下读取最多 200 个 unresolved candidates、32 个明确 evidence 文件以及 24 个 formal/overlay Note bodies；主 session 不接收 candidate/Note 正文、路径、diff 或语义推理。dispatch、transport、capacity、malformed output、snapshot drift 与 staging failure 都报告 `broken`，不能伪装成零候选成功。
 
-   `/grill-adapter:update-wiki` 对每条候选逐一过闸：**durable 闸 → 原子候选拆分 → target decision → sectionize（分节）→ type（定类型）→ `[[page#section]]` 边 → dedup（去重）→ 中性化 → 授权**，最终只保留真正值得沉淀的知识。对 Obsidian，same-theme refinement 才 update 既有 Note；不同触发条件、生命周期、失败模式或验证路径的独立 contract 必须 create sibling Note 并使用新的稳定 `wiki_id`；无法判断时 defer/询问，不默认追加到最近的 Note。
+4. Capture Agent 以 final review + verified code/tests 为最高证据，负责 durable gate、原子拆分、语义去重/矛盾、Source ownership、same-theme update 与 sibling create、Shared neutrality wording、ADR/Skill Card 语义。它只能读正式 merged base 与**当前项目** Outbox overlay，并提交一次 schema-v1 Capture Plan；不能调用 proposal/apply、修改 Vault/Git/journal/Outbox manifest 或发布。
 
-4. Obsidian provider 对准备保留的 Note/Card 调 `obsidian_wiki_propose_note_change`，向用户展示 structured diff；effective policy 为 `confirm` 时取得明确授权后，才以完全相同输入调用 `obsidian_wiki_apply_note_change`。Skill Card 是 `type: guide` atomic Note，完整复制 staged name/version/hash/roles/triggers；MCP 与 bridge 都验证 `.agents/skills/<name>` 与 `.claude/skills/<name>` 的本地 pack identity。bridge 通过 loopback token 鉴权并做 expected-hash CAS；任何 binding/path/schema/identity/typed-link/neutrality/policy/pack identity/并发冲突都保持 `deferred`，禁止直接改 Vault 文件绕过。proposal 后暂停时把精确身份记录为 `writeReceipt.state: proposed`，不把 proposal 误当已写入；恢复后若漂移则可追加新的 deferred proposal receipt，fold 以最新 proposal 为准但历史不丢。
+5. `obsidian_wiki_stage_capture_plan` 重新 fold canonical journals，并对精确 journal/candidate digest、binding + root-specific authorization、base/overlay hash、stable `wiki_id`、ADR/Skill Card identity、atomic Note schema、typed links、Source path 与 allowlist 做确定性校验。`deny`/`refuse` 硬拒绝，`ask`/`confirm` 进入 batch 授权。通过后用临时 worktree 构造 Git tree/commit，完整草稿只由 hidden ref 保护，元数据按项目身份放在 active registry 旁；ref/manifest 间中断可由同 plan 恢复，正式 base 始终 clean。staging 记录 `kept + queued` receipt；skip/defer 同样由 journal 追加，Stop 不会反复催促已 queued 候选。
 
-5. 每条候选经 `/candidate-journal outcome` 追加 `kept` / `skipped` / `deferred`。只有 apply 返回与最新 proposal 完全匹配的 post-write identity 才能记 `kept`，并写入 `writeReceipt.state: applied`；receipt 绑定 candidate 与 repository/Source/binding/Note/path/hash。correction 还机械要求 applied `update` receipt 的 `sourceId`/`wikiId` 与 affected identity 完全相同；无 receipt、create 或错 Note 都 fail-closed。Skill Card 的 receipt 还复制 write result 的完整 `skillRegistration`，必须与 staged registration 逐字段相等；没有这份 applied binding 不能记 kept。receipt 不含 Note body、token 或授权 secret。kept/skipped 是终态，deferred 可继续 defer/keep/skip。journal 保留为中断恢复 receipt，不删除、不提交；后续 publishing 只消费这些 allowlisted staged identities。此时 Note 不代表已合并或已进入正式检索。
+6. 默认 Capture 只向主 session 返回 `planId` 与 queued/skipped/needs-decision 计数。正式 Disclose/Carry/Bind 永远只读 merged、synchronized、clean base，忽略 queued 与 `pr-open`；后续 Capture 才可用当前项目 overlay refine 草稿。SessionStart 至多给一条 queued/conflicted 计数提醒。可选 `status` 只显示当前项目计数；`review` 先派生隔离 maintenance child 对 queued drafts 做语义 consolidation，再显示完整 Markdown diff。等价 claim merge，矛盾/证据不足 defer，独立 contract 保持分离。用户的 exclude/defer/delete/revise/merge 都追加 immutable superseding entry，不篡改历史。
 
-6. 默认 Capture 再次 fold journal，按 `repositoryRef` 报告所有 `kept+applied` receipt 的 Source、Note path、operation 与 after-hash，然后停止。Note apply 授权不等于 Git 发布授权；Capture 完成、review 完成或已应用 Note 都不推断 publish 意图。全终态 journal 允许 `wiki-capture-suggest` hook 保持静默。
+7. 用户明确请求 `update-wiki publish` 时**不提供 feature slug**。协调器先跑同一隔离 consolidation，再以不可变 `planDigest` 展示 repository/path/diff/授权 scope，并只在用户确认精确 digest 后发布。新 entry/correction/policy/binding 漂移使旧确认失效；无关 fast-forward 仅在 before identity 可证明时 replay。same-path/CAS 冲突追加 deferred successor 并移出 allowlist，其他 path/repository 继续。publisher 每 repository 创建一个 allowlisted draft PR，支持从 object commit、local/remote branch 与已有 PR 恢复，不重复副作用，也不 merge/approve/force-push/reset/stash/clean/delete branch。
 
-7. 用户明确请求 publish（例如 `/grill-adapter:update-wiki publish <feature-slug>`）时，才展示精确 commit/push/draft-PR scope 并取得显式确认，再把 folded JSON 交给 `obsidian-wiki ... publish`。publisher 核对 binding digest、base/remote、wiki ID/hash 和 worktree 精确变更集，并在每仓 lock 内重验内容与 scope，只提交 receipt allowlist；每仓一个 draft PR，并把 peer PR 相互关联，最后恢复全部 clean base worktree。发布 run 写在本地 `.grill-adapter/context/<feature-slug>/wiki-publish.json`。commit 前失败时，manifest 用 `stagedTree` Git object ID 保留已验证内容身份、清理 base index/worktree；多仓中途失败时修复外部问题并重跑相同的显式 publish 命令，publisher 从 staged tree / commit / Git refs / `gh pr list` 恢复，不重复 Note apply、commit、push 或 PR。禁止自动 merge/approve/force-push/reset/stash/clean/delete branch。开放 PR 中的 Card 仍是 `pending`，不进入 formal research；必须人工 merge、base worktree 同步并重新通过 binding/Note 与本地 pack identity 校验后，搜索才返回 `discoveryState: discoverable`。
-
-8. `wiki-capture-suggest` hook（Stop）只在 pending/deferred 时提醒，journal 全终态静默；invalid journal 单独报错，阻止静默漏 Capture。已应用但尚未发布的 receipt 是有意保留的 staged state，不作为 Stop 噪声。
+8. 用户只需理解 `queued`、`pr-open`、`active`。开放 PR 不是正式知识；人工 merge 且 base 同步后，`status` 以 stable identity + content hash 重验并转为 `active`，下一次 formal research 自然可见。Outbox、hidden refs、reports、receipts 与 manifests 都是 machine-local 派生状态；Markdown on merged synchronized base 仍是唯一真相源。旧 `proposed/applied` receipt 与 feature-scoped `wiki-publish.json` 只保留精确 legacy recovery，不再是正常 Capture 路径。
 
 ### 步骤 6 · `/diagnosing-bugs`（排障）— Disclose + Capture
 

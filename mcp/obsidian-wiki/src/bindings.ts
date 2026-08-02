@@ -99,6 +99,8 @@ export type ResolvedBinding = {
   effectiveReadPolicy: 'allow' | 'deny';
   effectiveUpdatePolicy: WritePolicy;
   effectiveCreatePolicy: WritePolicy;
+  rootUpdateAuthorization: 'skip' | 'ask' | 'refuse';
+  rootCreateAuthorization: 'skip' | 'ask' | 'refuse';
   manifest: SourceManifest;
   bindingDigest: string;
 };
@@ -260,6 +262,8 @@ function bindingDigest(binding: Omit<ResolvedBinding, 'bindingDigest'>): string 
     binding.effectiveReadPolicy,
     binding.effectiveUpdatePolicy,
     binding.effectiveCreatePolicy,
+    binding.rootUpdateAuthorization,
+    binding.rootCreateAuthorization,
     binding.manifest.wikiSchema,
     binding.manifest.sourceId,
     binding.manifest.scope,
@@ -440,6 +444,7 @@ export function resolveBindings(
   const sourceIds = new Set<string>();
   const roots = new Set<string>();
   let projectBindings = 0;
+  const rootsConfig = settings.wiki.roots;
 
   for (const candidate of settings.wiki.obsidian.bindings) {
     try {
@@ -501,6 +506,20 @@ export function resolveBindings(
           return 'deny' as const;
         })()
         : normalizeWritePolicy(candidate.access.update, `binding ${candidate.sourceId} access.update`);
+      const rootAuthorization = rootsConfig?.[candidate.role].updateAuthorization ?? {
+        updateExistingPage: 'skip' as const,
+        createNewDocument: 'ask' as const,
+      };
+      const rootNeutrality = candidate.role === 'shared'
+        ? rootsConfig?.shared.sharedNeutrality
+        : undefined;
+      const effectiveManifest = rootNeutrality
+        ? {
+          ...manifest,
+          blockedTerms: [...new Set([...manifest.blockedTerms, ...rootNeutrality.blockedTerms])],
+          blockedPatterns: [...new Set([...manifest.blockedPatterns, ...rootNeutrality.blockedPatterns])],
+        }
+        : manifest;
       const resolved = {
         sourceId: candidate.sourceId,
         role: candidate.role,
@@ -518,7 +537,9 @@ export function resolveBindings(
         effectiveReadPolicy: candidate.access.read ? 'allow' as const : 'deny' as const,
         effectiveUpdatePolicy: stricterPolicy(bindingUpdate, manifest.updateExisting),
         effectiveCreatePolicy: stricterPolicy(bindingUpdate, manifest.createNote),
-        manifest,
+        rootUpdateAuthorization: rootAuthorization.updateExistingPage,
+        rootCreateAuthorization: rootAuthorization.createNewDocument,
+        manifest: effectiveManifest,
       };
       bindings.push({ ...resolved, bindingDigest: bindingDigest(resolved) });
     } catch (error) {
@@ -526,7 +547,6 @@ export function resolveBindings(
     }
   }
 
-  const rootsConfig = settings.wiki.roots;
   if (!rootsConfig) {
     warnings.push(
       'Project settings do not declare wiki.roots.project/shared canonical policy; '

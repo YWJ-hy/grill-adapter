@@ -38,6 +38,7 @@ const ReceiptIdentitySchema = z.object({
 const AppliedReceiptSchema = ReceiptIdentitySchema.extend({ state: z.literal('applied') });
 const WriteReceiptSchema = z.discriminatedUnion('state', [
   ReceiptIdentitySchema.extend({ state: z.literal('proposed') }),
+  ReceiptIdentitySchema.extend({ state: z.literal('queued') }),
   AppliedReceiptSchema,
 ]);
 

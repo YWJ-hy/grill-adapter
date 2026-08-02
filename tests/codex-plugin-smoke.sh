@@ -50,7 +50,8 @@ for required in (
     "Those failures follow the `broken` path",
 ):
     assert required in readiness_skill, required
-assert len(list((root / "agents").glob("*.md"))) == 2
+assert len(list((root / "agents").glob("*.md"))) == 3
+assert root / "agents" / "wiki-capture.md" in list((root / "agents").glob("*.md"))
 assert not any(removed_capability in path.as_posix().lower() for path in (root / "agents").glob("*.md"))
 
 hooks = json.loads((root / "hooks/hooks.json").read_text(encoding="utf-8"))

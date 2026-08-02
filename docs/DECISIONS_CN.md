@@ -372,3 +372,21 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 **结论**：新项目以 `wiki.provider: obsidian` 的 bound Source 为正式 Wiki runtime。已有 legacy roots 的项目在切换 provider 后进入 `shadow-validation`：四触点只走 Obsidian，旧内容仅保留给 migration plan/coverage/verify，不作读取 fallback。`doctor` 对 active provider 做严格 health gate；`bootstrap-wiki` 拒绝在 active Obsidian provider 下重新播种 legacy root。只有 migration verify + 单独确认 cutover 后才进入 `cutover-complete`，并只归档 plan 覆盖的 roots。
 
 **原因**：双读或失败回退会把 binding/hash/base drift 变成静默使用旧知识，破坏 Carry/Bind 的 fail-closed 身份契约。显式 shadow 状态允许在不删除 legacy bytes 的情况下验收新路径，而 doctor 的非零退出给 release gate 一个稳定、可自动判断的运维边界。
+
+---
+
+## 决策 18：Capture Agent + machine-local Outbox 取代正常 direct apply（2026-08）
+
+**决策**
+
+- `/update-wiki` 默认派生恰好一个无继承主对话的 `wiki-capture` Agent；候选/evidence/Note 正文与 durable、atomic、ownership、neutrality 判断留在 child，主 session 只接收 plan ID 与计数。
+- child 只能提交一次 snapshot-bound Capture Plan。确定性执行层重验 journal/candidate digest、binding + root authorization、schema、stable/ADR/Skill Card identity、typed links、CAS hash 与 path，再把草稿写入按 project identity 分区的 machine-local Outbox；plan-owned ref/manifest 中断可由相同输入恢复。
+- 完整草稿由 Wiki repository hidden refs 下的 immutable Git commits 保护；临时 worktree 用后即删，正式 base worktree 始终 clean。正式 Disclose/Carry/Bind 忽略 queued 与 `pr-open`；Capture targeting 与隔离 Outbox consolidation 才能读取当前项目 overlay。
+- `status`/`review`/`correct` 只作用于当前项目；review/publish 复用 maintenance role 做语义等价合并与矛盾 defer，所有 exclude/defer/delete/revise/merge 都追加 superseding entry。显式 `publish` 不接 feature slug，以 `planDigest` 批量发布 eligible entries；same-path/identity 冲突 defer 而不阻断无关 path/repository。用户可见状态只有 `queued`、`pr-open`、`active`，SessionStart 至多一条 counts-only reminder。
+- 2026-07 的 direct proposal/apply + feature-scoped applied-receipt publisher 被本决策取代为正常流程；原实现只保留 migration 与精确 legacy recovery。
+
+**理由**
+
+- queued 草稿不再弄脏正式 base，因此白天连续工作与 formal research 不互相阻塞。
+- 语义判断隔离在一个一致 snapshot 的专用 Agent，固定身份、授权、Git 与恢复规则回到可重复执行层。
+- 跨 feature、按 repository 聚合的延迟发布把用户心智模型缩减为“入草稿箱、统一审核、人工合并”。Markdown on merged synchronized base 仍是唯一知识真相源。

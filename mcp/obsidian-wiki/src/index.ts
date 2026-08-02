@@ -12,6 +12,7 @@ import { graphNeighborsTool } from './tools/graph.js';
 import { applyNoteChangeTool, proposeNoteChangeTool, type NoteChangeInput } from './tools/write.js';
 import { runWriteBridgeFromEnvironment } from './write-bridge.js';
 import { preparePublishBranches, publishFromFoldedJournal } from './publish.js';
+import { correctOutbox, outboxReview, outboxStatus, publishOutbox, stageCapturePlan } from './outbox.js';
 import {
   initConfig,
   loadRegistry,
@@ -191,6 +192,11 @@ Usage:
   printf '<json>' | obsidian-wiki catalog
   printf '<json>' | obsidian-wiki maintenance-summary
   printf '<json>' | obsidian-wiki consolidation-candidates
+  printf '<json>' | obsidian-wiki outbox stage
+  obsidian-wiki outbox status
+  obsidian-wiki outbox review
+  printf '<json>' | obsidian-wiki outbox correct
+  printf '<json>' | obsidian-wiki outbox publish
   printf '<json>' | obsidian-wiki search-by-wiki-ids
   obsidian-wiki bridge start [--config <path>]    Start a detached background write bridge
   obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
@@ -302,6 +308,29 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify(consolidationCandidatesTool({
       candidateLimit: optionalNumberField(request, 'candidateLimit'),
     }))}\n`);
+    return;
+  }
+  if (subcommand === 'outbox' && action === 'stage') {
+    const request = await readJsonRequest();
+    printJson(stageCapturePlan(request));
+    return;
+  }
+  if (subcommand === 'outbox' && action === 'status') {
+    printJson(outboxStatus());
+    return;
+  }
+  if (subcommand === 'outbox' && action === 'review') {
+    printJson(outboxReview());
+    return;
+  }
+  if (subcommand === 'outbox' && action === 'correct') {
+    const request = await readJsonRequest();
+    printJson(correctOutbox(request));
+    return;
+  }
+  if (subcommand === 'outbox' && action === 'publish') {
+    const request = await readJsonRequest();
+    printJson(publishOutbox(request));
     return;
   }
   if (subcommand === 'search' || subcommand === 'search-by-wiki-ids') {

@@ -140,13 +140,15 @@ PY
 # next plugin update (the cache path is version-scoped).
 for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
   need "$f" 'resumable publisher'
-  need "$f" 'explicit Git publishing confirmation'
-  need "$f" 'Default Capture ends after all outcomes are recorded'
-  need "$f" 'explicitly asks'
+  need "$f" 'exact digest-bound'
+  need "$f" 'takes no feature slug'
   need "$f" 'Open PR content remains unavailable to formal research'
-  need "$f" 'affected `sourceId` + stable `wikiId`'
-  need "$f" 'An unresolved correction is only a maintenance signal'
-  need "$f" 'matching apply receipt before recording `kept`'
+  need "$f" 'exactly one isolated `wiki-capture` agent'
+  need "$f" 'immediately waits on that same path'
+  need "$f" 'queued/skipped/needs-decision counts'
+  need "$f" 'machine-local'
+  need "$f" 'Formal'
+  need "$f" '`queued`, `pr-open`, and `active`'
   need "$f" 'obsidian_wiki_maintenance_summary'
   need "$f" 'non-authoritative, and never replaces task identity, readiness, Bind, proposal, or authorization'
   need "$f" 'normalized UTC `asOf` timestamp'
@@ -173,11 +175,11 @@ done
 # consumes its output, where the path does get substituted.
 need "$ROOT/skills/update-wiki/SKILL.md" 'grill_context_to_candidates.py'
 need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/scripts/grill_context_to_candidates.py'
-need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/mcp/obsidian-wiki/dist/index.js publish'
+need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/mcp/obsidian-wiki/dist/index.js outbox publish'
 need "$ROOT/skills/update-wiki/SKILL.md" '`Capture` is the default mode'
-need "$ROOT/skills/update-wiki/SKILL.md" 'only when the user explicitly asks to publish'
-need "$ROOT/skills/update-wiki/SKILL.md" '### Correction candidates'
-need "$ROOT/skills/update-wiki/SKILL.md" 'applied update receipt carries the same affected'
+need "$ROOT/skills/update-wiki/SKILL.md" 'Enter only when the user explicitly asks to publish'
+need "$ROOT/skills/update-wiki/SKILL.md" 'Spawn exactly one Capture agent'
+need "$ROOT/skills/update-wiki/SKILL.md" 'fork_turns: "none"'
 
 # no residual Superpowers host references in the host blocks
 if grep -nE 'Superpowers' "$GRILL" "$PLAIN" | grep -vE '\.grill-adapter/'; then

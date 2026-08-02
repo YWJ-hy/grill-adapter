@@ -20,8 +20,9 @@ doctor 必须报告 `Obsidian runtime healthy: yes`。新项目没有 legacy roo
 3. 从安装后的 host 调 `wiki-research`，确认搜索只返回 bound、active、agent-visible、base-eligible Notes，且未合并分支内容不可见。分别准备无 freshness metadata、review-due 和 expired Note：旧 Note 保持可用，review-due 可选且返回 warning，expired 不进入正式 selection；再制造 base 不同步，确认 knowledge freshness 与 repository health 两道门互不绕过。
 4. 完成 schema-v6 Carry 后，让用户审核选中的约束并以一次 `freeze --all` 生成每个 task 的 `<taskId>.wiki-implement.md` / `<taskId>.wiki-review.md`。确认 snapshot metadata 包含对应角色的直接 Note/Card 与 1 跳闭包 freshness；推进时钟后 review-due warning 应在 Bind 出现，closure expired 必须 fail-closed，且批准 Markdown digest 不变。批量中任一 task 的 freeze 失败不得留下更早 task 的新批准快照。
 5. code-review 启动两个 reviewer 前复用 readiness：健康 context 的 reviewer-only Card 必须经批准 `<taskId>.wiki-review.md` 到达派生 `<taskId>.wiki-review-handoff.md`，由两个轴共同读取并由实际 reviewer 执行；再编辑 reviewer snapshot 或制造 ticket fingerprint drift，确认 handoff 只产生 caveat、无部分内容且 Standards/Spec 正常完成。
-6. 对测试 candidate 走 proposal -> explicit confirmation -> apply，核对 journal 的 proposed/applied write receipts，并确认默认 Capture 未要求 Git publish。随后显式请求 publish，再授权确认每 repository 一个 draft PR、base worktree恢复 clean、开放 PR 内容仍不可检索。
-7. 在 apply 或 publish 中断一次并恢复：保留 journal、write receipts 和 publish run manifest，rerun the same publish step；不得手改 Vault worktree或删除 manifest 来“修复”。
+6. 让自动 Capture 派生恰好一个 `wiki-capture` Agent；用 candidate/Note 私密 marker 证明主 session 只收到 plan ID、计数和 bounded caveat。核对 hidden Outbox ref、project-scoped status/draft view，并立即运行 formal research：base 仍 clean、queued 正文不可见、既有 merged Note 仍可读。
+7. 跨两个 feature queue 同一路径的顺序更新，再运行可选 review 与无 feature slug publish。确认 review 先经隔离语义 consolidation，只显示最终 diff并保留 provenance；演练 exclude/defer/delete/revise/merge 均追加 successor 且旧 digest 失效，root `refuse` 不可绕过。每 repository 一个 allowlisted draft PR，开放 PR 仍不可检索。分别演练 Capture ref/manifest 中断恢复、PR 创建后恢复、same-path drift 自动 defer 且无关 path/repository 继续、disjoint fast-forward replay；不得手改 Outbox manifest 来“修复”。
+8. 人工 merge 并同步 base，运行 status 确认 `pr-open -> active`，再从 formal research 读到新 Note。另用共享 registry/repository 的第二项目确认 status/review/publish 与 overlay 不泄漏跨项目内容。
 
 ## 3. installed Claude Code
 
@@ -32,7 +33,7 @@ grill-with-docs -> to-spec -> to-tickets
 -> implement -> code-review -> update-wiki
 ```
 
-记录 plugin 版本、Claude Code 版本、日期、feature slug、ticket IDs、schema-v6 sidecar 路径、两个角色 Markdown 路径与 digest、implement/reviewer 消费结果、两个 review 轴读取的同一 handoff Markdown、journal fold、write receipts、draft PR URL 与最终结果。另分别运行 `/grill-adapter:wiki-maintenance audit <feature-slug>` 与 `consolidation <feature-slug>`，确认调用同一个原生 `wiki-maintenance` agent：audit 只使用绑定 Source 的只读工具，consolidation 只使用 bounded canonical candidate input；主 session 两次都只收到通过 schema-v1 校验的 report path 与 compact summary，不收到 Note/candidate prose，并验证 dispatch/validation/journal drift failure 为 `broken`。必须确认 Disclose/Carry/Bind/Capture、source-truth verify/lint、hook 提醒与 publish recovery 均由安装后的 skill/host 约定触发。
+记录 plugin/host 版本、日期、feature/task identity、角色 Markdown digest、两个 review 轴的共享 handoff、Capture child handle、Outbox plan ID/计数、batch plan digest、draft PR URL 与 active 结果。必须确认 Capture child 无继承上下文、只调用一次 staging、主 session 无 candidate/Note 正文，formal research 忽略 queued/pr-open。另跑 maintenance audit/consolidation，确认它们仍使用独立只读 maintenance role。Disclose/Carry/Bind/Capture、source-truth、hook、delayed publish 与恢复都必须由安装后的 skill/host 约定触发。
 
 ## 4. installed Codex
 

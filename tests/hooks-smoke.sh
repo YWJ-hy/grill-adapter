@@ -76,6 +76,23 @@ OUT="$(printf '{"cwd":"%s","hook_event_name":"UserPromptSubmit"}' "$T" | CLAUDE_
 [[ -z "$OUT" ]] || fail "wiki-reread not silent with no sidecar"
 rm -rf "$T"
 
+# --- wiki-reread: one bounded SessionStart reminder for queued Outbox work. ---
+T="$(mktemp -d)"; ( cd "$T" && git init -q ); BIN="$(mktemp -d)"
+activate_project "$T"
+cat > "$BIN/node" <<'SH'
+#!/usr/bin/env sh
+printf '%s\n' '{"counts":{"queued":2,"conflicted":1}}'
+SH
+chmod +x "$BIN/node"
+OUT="$(printf '{"cwd":"%s","hook_event_name":"SessionStart"}' "$T" | \
+  CLAUDE_PROJECT_DIR="$T" OBSIDIAN_WIKI_NODE="$BIN/node" bash "$HOOKS/wiki-reread.sh")"
+printf '%s' "$OUT" | grep -q '2 queued draft(s), 1 needing a decision' || \
+  fail "wiki-reread did not emit the bounded Outbox reminder"
+OUT="$(printf '{"cwd":"%s","hook_event_name":"UserPromptSubmit"}' "$T" | \
+  CLAUDE_PROJECT_DIR="$T" OBSIDIAN_WIKI_NODE="$BIN/node" bash "$HOOKS/wiki-reread.sh")"
+[[ -z "$OUT" ]] || fail "Outbox reminder fired outside SessionStart"
+rm -rf "$T" "$BIN"
+
 # --- wiki-reread: schema-v6 is silent until approved snapshots await their first Bind. ---
 T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.grill-adapter/context/feature"
 activate_project "$T"

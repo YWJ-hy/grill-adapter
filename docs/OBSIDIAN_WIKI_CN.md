@@ -1,6 +1,6 @@
 # Obsidian Wiki Source 绑定
 
-本页描述 Obsidian Wiki 的受控运行边界：项目只能解析它明确绑定的 Source；规划期将受绑定限制的 atomic Note 和 Skill Card 选择承载为 schema-v6 sidecar，并在用户批准后冻结 task 的 implement/review Markdown；执行期与评审分别消费对应角色文件；review 后 atomic Note（含 Skill Card）只能经本机 loopback write bridge 做 proposal + expected-hash CAS 写入，再由 applied receipts 驱动可恢复的 GitHub draft-PR 发布。schema-v5 sidecar 在过渡期只读，不能再由新规划生成；legacy Wiki 通过 snapshot-bound plan、受治理 apply、base verify 与显式 cutover 迁移，旧目录始终保留。
+本页描述 Obsidian Wiki 的受控运行边界：项目只能解析它明确绑定的 Source；规划期把受绑定限制的 atomic Note/Skill Card 冻结为角色化 task Markdown；review 后一个隔离 Capture Agent 把值得保留的修改提交给确定性 staging，写入 machine-local Outbox 与 hidden Git objects，正式 base 不变。用户稍后以无 feature slug 的 digest-bound batch publish 创建 draft PR；只有 merge + base sync 后内容才进入正式读取。loopback proposal/apply 与 applied-receipt publisher 仅保留 legacy migration/recovery。
 
 ## Legacy Wiki 迁移规划
 
@@ -22,7 +22,7 @@ PR 由用户审查/合并且 configured base worktree 同步后，`verify` 才�
 
 ## 运行边界
 
-插件只发货一个 `obsidian-wiki` MCP：解析当前项目的 Obsidian Source bindings，并提供 Source/status、受绑定限制的 Note/Card 搜索读取、一跳 typed neighbor，以及统一 proposal/apply 工具。legacy Wiki 不再注册独立 MCP，也不参与正式 runtime。
+插件只发货一个 `obsidian-wiki` MCP：解析当前项目的 Obsidian Source bindings，并提供 formal Source/status/read/search/typed-neighbor、bounded Capture input、当前项目 draft view、受限 Capture Plan staging，以及仅限当前项目的 Outbox review/correct。CLI 提供 Outbox status/review/correct/publish；proposal/apply 仍在 bundle 中但不是正常 Capture 入口。legacy Wiki 不注册独立 MCP，也不参与正式 runtime。
 
 `obsidian-wiki` 只从宿主确定的项目根下 `.grill-adapter/settings.json` 读取 bindings：Claude Code 使用 `CLAUDE_PROJECT_DIR`，Codex 使用受控 MCP request 的 Git workspace metadata，直接 CLI 可使用进程 cwd。工具不接受 Vault、Source 或 root 路径参数，因此调用方不能扩大到未绑定内容；多个 Codex workspace 同时声明 settings 时按歧义 fail-closed。
 
@@ -30,7 +30,7 @@ PR 由用户审查/合并且 configured base worktree 同步后，`verify` 才�
 
 `grill-with-docs`、specification、tickets、implementation、review 与 debugging 阶段发现的 Wiki Note / Skill Card 候选，只能经 journal 追加，不能写 Obsidian。Skill Card 候选必须由已验证的双运行时 pack 产生，并携带 name/version/contract hash/roles/triggers；初始 `discoveryState` 恒为 `pending`。journal 每次追加前完整 replay，并对损坏、截断、重复 identity、未知引用和非法状态转换 fail-closed。
 
-review 后 `update-wiki` 先 validate/fold，以最终 review + 已验证 code/tests、final spec/ticket、原 candidate 的顺序对 pending/deferred 候选做语义审查；语义相同的 claims 先合并成一个 `capture` replacement 并显式 supersede，再只写一次。Obsidian outcome 可保存严格的 `writeReceipt`：proposal 暂停是 `proposed+deferred`，恢复后可用另一条 deferred 事件刷新漂移后的 proposal；bridge apply 成功是 `applied+kept`，且必须与最新 proposal 的 repository/binding/Note/path/hash 身份完全一致。Skill Card 的 receipt 还必须携带 write result 返回的完整 `skillRegistration`，并与 staged candidate 逐字段一致；没有匹配 applied receipt 的 Card 不能进入 `kept`。默认 Capture 到此停止；journal 是本地、不可提交的恢复 receipt，保留而不删除，只有用户显式请求 publish 时才消费其中的 applied allowlist。它不包含权威 Note body、token 或授权 secret，也不是绕过 Source policy、write bridge 或后续 PR publishing 的写通道。
+review 后 `update-wiki` validate/fold journal，再派生恰好一个无继承主对话的 `wiki-capture` Agent。Agent 私下按最终 review、verified code/tests、final spec/ticket、candidate 的优先级做 durable/atomic/ownership/dedup 判断，并只提交一次 snapshot-bound Capture Plan。staging 成功后 journal 记录 `kept + writeReceipt.state: queued`；完整草稿不进 journal，而由项目分区 hidden ref 保护。`skipped` 与 `deferred` 保留原因，queued/kept 与 skipped 对 Capture reminder 是终态。Skill Card receipt 必须携带与 staged pack 完全一致的 registration；ADR projection 必须保留 authority identity。旧 `proposed/applied` 事件仅用于精确 legacy recovery。
 
 ## 项目配置
 
@@ -227,29 +227,27 @@ node mcp/obsidian-wiki/dist/index.js serve-write-bridge
 
 `PROJECT_DIRS` 是 bridge 启动时的项目白名单。每个 proposal/apply 都携带 MCP 已解析的当前项目根；bridge 只接受白名单成员，并在**每次请求**重新读取该项目 `.grill-adapter/settings.json` 与 Source manifest，重新计算 binding + manifest 的 effective policy 和 neutrality，运行中收紧治理无需重启。一个 bridge 可列出多个明确项目，但请求不能提供白名单之外的任意项目路径。
 
-`update-wiki` 的固定写路径是：
+正常 `update-wiki` 不调用 write bridge。协调器派生一个隔离 `wiki-capture` Agent，Agent 私下读取 bounded candidates/evidence/formal Notes 与当前项目 Outbox overlay，并把完整 schema-v1 Capture Plan 直接交给 `obsidian_wiki_stage_capture_plan`。staging 再机械校验 journal snapshot、binding/policy、stable identity、before/after hash、Note schema、ADR/Skill Card identity、typed links、root 与 Shared neutrality；任何漂移在 Outbox 变更前 fail-closed。
 
-1. `obsidian_wiki_propose_note_change` 接受已绑定 `sourceId`、Vault 相对 `.md` 路径、完整 atomic Note 内容、`create|update` 和 expected hash（create 为 `null`），完成 schema、freshness、stable ID、typed links、root、effective policy 与 Shared neutrality 校验；Skill Card 还复核当前项目 pack identity。write lookup 可定位 expired Note 以便治理更新，但 proposed 内容不得仍然 expired，也不得声明未来 `verified_at`。返回 structured diff，但不写。
-2. agent 向用户展示 diff。effective policy 为 `confirm` 时必须获得明确授权；`deny` 永远不能被 `authorized: true` 绕过。
-3. `obsidian_wiki_apply_note_change` 把同一输入交给 bridge。bridge 再独立校验 Bearer token、项目 binding + Source manifest effective policy、identity/typed links、允许 root、`_meta` 禁写与 Shared neutrality，并以每 Note 独占写锁串行 bridge 请求。create 使用 no-replace 原子 link；update 通过随包 Python helper 调用宿主的原生 atomic exchange（macOS `renamex_np(RENAME_SWAP)`、Linux `renameat2(RENAME_EXCHANGE)`、Windows `ReplaceFileW`），交换后校验被换出的旧目标 hash。若外部编辑抢先，bridge 原子交换回滚并返回 409，保留外部内容。
-4. bridge 随后返回 `wikiId`、path、content hash，MCP 客户端还会核对 post-write identity 与 proposal 是否完全匹配。成功只表示工作树中的 staged knowledge state；合并、base 同步与正式 runtime 可见性由后续 Git PR publishing 流程负责。
+完整草稿写入对应 Wiki Git repository 的 immutable commit，并由 `refs/grill-adapter/outbox/<project-id>/<repository>` 保护；machine-local manifest 位于 active registry 相邻 state root，按 originating project identity 分区。构造只使用短生命周期临时 worktree，正式 base worktree不换分支、不变脏、不包含 queued 内容。ref 已推进但 manifest 尚未落盘的中断可由相同 plan retry 识别并恢复；不属于该 plan/parent 的 ref 仍按 drift 拒绝。root `updateAuthorization` 与 Source/binding policy 一并进入 binding digest：`refuse`/`deny` 硬拒绝，`ask`/`confirm` 进入 batch authorization，缺省 root 仍是 update=`skip`、create=`ask`。`obsidian_wiki_capture_draft_view` 只供 Capture targeting 与隔离 Outbox consolidation；formal catalog/search/read 永远忽略 queued 与开放 PR。
 
-JSON CLI 同样暴露 `propose-note-change` / `apply-note-change`，请求从 stdin 读取；它们仍从当前项目 binding 解析 Source，不能接受任意 Vault/root 覆盖。
+JSON CLI/MCP 中的 `propose-note-change` / `apply-note-change` 与 loopback bridge 仍保留给 migration 和旧事务恢复。它们继续执行原有 token、binding、policy、CAS、identity 与原子交换校验，但不再是正常 Capture 用户路径。
 
 ## GitHub draft-PR 发布
 
-只有在用户明确请求 publish 后，`update-wiki` 才再次 fold。只有 `status: kept` 且 `writeReceipt.state: applied` 的 Obsidian receipt 能进入发布 allowlist；`proposed`、`deferred`、无 receipt 的 kept candidate 都不会发布。agent 才按 `repositoryRef` 展示 Source/path/operation/after-hash，并取得这一次 commit/push/draft-PR scope 的明确确认，然后运行：
+日常 Capture 只返回 queued/skipped/needs-decision 计数。`SessionStart` 至多给一条当前项目 queued/conflicted 计数提醒。用户可选运行 `update-wiki status`，或 `update-wiki review` 查看跨 feature、按 repository 聚合的完整 diff。review/publish 先派生隔离 maintenance role：等价 durable claim 合并，矛盾/证据不足 defer，独立 contract 保持分离。用户可 exclude、defer、delete、revise 或 merge 指定 entry；每次都追加 superseding immutable entry，不重写旧 receipt/object。只有用户明确请求**无 feature slug**的 `update-wiki publish` 时才发布 eligible entries。顺序更新同一路径只发布最终内容，同时保留全部 entry/feature provenance。确认绑定不可变 `planDigest`，任何 scope、correction、policy 或 binding 变化都必须刷新 review。
 
 ```bash
-python3 <plugin-root>/scripts/wiki_candidate_journal.py fold \
-  --journal .grill-adapter/context/<feature-slug>/wiki-candidates.jsonl \
-  --feature-slug <feature-slug> \
-| node <plugin-root>/mcp/obsidian-wiki/dist/index.js publish
+node <plugin-root>/mcp/obsidian-wiki/dist/index.js outbox review
+printf '%s\n' '<correction-json>' \
+  | node <plugin-root>/mcp/obsidian-wiki/dist/index.js outbox correct
+printf '%s\n' '{"planDigest":"sha256:<confirmed-digest>","confirmed":true}' \
+  | node <plugin-root>/mcp/obsidian-wiki/dist/index.js outbox publish
 ```
 
-publisher 每仓依次验证当前 binding digest、`publishing.mode: git-pr`、remote identity、base branch 与 remote/base 同步、Source containment、wiki ID、before/after hash，以及 worktree changed paths 与 receipts 完全相等；拿到 repository lock 后会再次核对 Note hash 与精确 path scope。它创建 `.grill-adapter-wiki.publish.lock` 阻止 formal read，在 run 专属 branch 上只 add allowlist paths、commit/push、创建 draft PR，并在所有仓库拿到 URL 后回填 peer PR 列表。成功或普通外部失败都会切回 clean base 后移除 lock；若 base 恢复本身失败则保留 lock 并 fail-closed。publisher 不 merge、approve、force-push、reset、stash、clean 或删 branch。
+publisher 每仓锁定后重验 clean base、branch、remote、binding digest、wiki identity/hash 与确认路径 allowlist；same-path/identity drift 追加 deferred successor 并从 allowlist 移除，其他 path/repository 继续，可证明 before identity 未变的 disjoint fast-forward 可机械 replay。它从 hidden object commit 构造 batch branch，只 push allowlisted path，并创建一个 draft PR。中断后相同 digest 从 local commit、remote branch 或 `gh pr list` 恢复，不重复 commit/push/PR。publisher 不 merge、approve、force-push、reset、stash、clean 或删 branch。
 
-本地 `.grill-adapter/context/<feature-slug>/wiki-publish.json` 是恢复 receipt，不提交。commit 前失败时，manifest 的 `stagedTree` 只保存已验证 Git tree 的 object ID（不保存 Note body），publisher 清理 base index/worktree；重跑时从该 tree 恢复同一 allowlist。已有 local commit、remote branch 或 GitHub PR 会按 content hash/commit/path/URL 重新核验并复用；base 上若出现新的 Capture 改动则 fail-closed，必须另行处理。PR 分支内容不是 runtime truth；只有人工 merge 后，配置的 base worktree 完成同步并重新通过 binding/Note 校验，formal research 才能读取。
+Outbox manifest 与 Git objects 都是 machine-local 派生状态，不提交业务项目。PR 分支内容不是 runtime truth；只有人工 merge 后，配置的 base worktree完成同步且 `status` 重新通过 stable identity/content hash 校验，entry 才从 `pr-open` 转为 `active`，formal research 才能读取。旧 `.grill-adapter/context/<feature-slug>/wiki-publish.json` 仅用于 legacy recovery。
 
 ## 诊断与失败模式
 

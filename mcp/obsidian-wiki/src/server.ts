@@ -10,6 +10,14 @@ import { applyNoteChangeTool, proposeNoteChangeTool } from './tools/write.js';
 import { maintenanceSummaryTool } from './tools/maintenance-summary.js';
 import { consolidationCandidatesTool } from './tools/consolidation-candidates.js';
 import { environmentForMcpRequest } from './bindings.js';
+import {
+  CapturePlanSchema,
+  OutboxCorrectionSchema,
+  captureDraftView,
+  correctOutbox,
+  outboxReview,
+  stageCapturePlan,
+} from './outbox.js';
 
 function toResult(value: unknown) {
   return {
@@ -69,6 +77,26 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(consolidationCandidatesTool(input, requestEnv(extra._meta))));
+  server.registerTool('obsidian_wiki_stage_capture_plan', {
+    description: 'Validate one snapshot-bound Wiki Capture Plan and atomically queue its non-authoritative drafts in the current project Outbox without modifying the formal Wiki base worktree.',
+    inputSchema: CapturePlanSchema,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+  }, async (input, extra) => toResult(stageCapturePlan(input, requestEnv(extra._meta))));
+  server.registerTool('obsidian_wiki_capture_draft_view', {
+    description: 'Return current-project Outbox draft metadata and, for at most 24 explicitly selected draft paths, private content for Capture targeting. This view is non-authoritative and must never be used by formal research or task binding.',
+    inputSchema: z.object({ paths: z.array(z.string().min(1)).max(24).optional() }),
+    annotations: { readOnlyHint: true, idempotentHint: true },
+  }, async (input, extra) => toResult(captureDraftView(input, requestEnv(extra._meta))));
+  server.registerTool('obsidian_wiki_outbox_review', {
+    description: 'Return the current project\'s consolidated queued Outbox scope and full private Markdown diffs without publishing.',
+    inputSchema: z.object({}),
+    annotations: { readOnlyHint: true, idempotentHint: true },
+  }, async (_input, extra) => toResult(outboxReview(requestEnv(extra._meta))));
+  server.registerTool('obsidian_wiki_outbox_correct', {
+    description: 'Append an immutable superseding Outbox correction that excludes, defers, rejects, revises, or merges current-project draft entries without rewriting prior history.',
+    inputSchema: OutboxCorrectionSchema,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+  }, async (input, extra) => toResult(correctOutbox(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_read_note', {
     description: 'Read one active, agent-visible, non-expired atomic Note only when its Vault-relative path is under a readable bound Source.',
     inputSchema: z.object({ path: z.string().min(1) }),
