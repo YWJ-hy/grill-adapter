@@ -70,6 +70,13 @@ grep -Fq '\x1b\[6n' "$ACCEPTANCE"
 grep -Fq '\x1b\[6n' "$ROOT/acceptance/codex-maintenance-installed.sh"
 grep -Fq 'log_user 0' "$ACCEPTANCE"
 grep -Fq 'log_user 0' "$ROOT/acceptance/codex-maintenance-installed.sh"
+grep -Fq 'mcp_servers.obsidian-wiki.tools.obsidian_wiki_stage_capture_plan.approval_mode="approve"' "$ACCEPTANCE"
+grep -Fq 'ACCEPTANCE_MONITOR_CAPTURE_MCP' "$ACCEPTANCE"
+grep -Fq 'pending mcp_tool_call_approval elicitation' "$ACCEPTANCE"
+if grep -Fq 'mcp_servers.obsidian-wiki.default_tools_approval_mode="approve"' "$ACCEPTANCE"; then
+  printf 'context-isolation acceptance must not auto-approve every Obsidian MCP write tool\n' >&2
+  exit 1
+fi
 if grep -Fq 'terminal_text' "$ACCEPTANCE"; then
   printf 'context-isolation evaluator must not use terminal rendering as evidence\n' >&2
   exit 1

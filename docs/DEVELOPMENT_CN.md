@@ -147,6 +147,8 @@ bash tests/host-conventions-smoke.sh "$PWD"
 
 installed acceptance 只从当前 Codex home 复制认证以及选中 model/provider 的最小配置到临时 home；marketplace、其他 plugin、MCP、hook 与 project trust 均不复制。Source、Vault、Obsidian CLI 和插件缓存都在临时目录生成，fake CLI 自带 `search`/`read`，不调用本机 `grill-adapter` / `@grill-adapter/obsidian-wiki` npm 包，也不要求 write bridge 已启动。`expect` 只负责交互式 TUI 的确认与终态等待；最终断言读取 Codex rollout、实际 child tool-call input、正式 task contract 和 canonical report，而不是终端渲染文本或继承到 child rollout 的 parent prompt。Codex 会加密持久化 rollout 中的 spawn `message`；验收因此机械核对 sealed payload、任务名和 `fork_turns`，再从 child rollout 的实际读取/工具调用及正式产物证明解密后的角色与 phase/task contract 被消费。provider transport 在重试耗尽后失败属于环境前置失败，不能改写成 adapter PASS。
 
+`--ask-for-approval never` 只覆盖 Codex 的普通命令审批，不能假定它会自动批准带写入 annotation 的 MCP 工具。上下文隔离门在临时验收 home 中只对白名单 `obsidian_wiki_stage_capture_plan` 设置 tool-specific `approval_mode="approve"`，仍禁止 server 级 `default_tools_approval_mode="approve"`，因此不会顺带放行 apply/correct/publish 等其他写路径。Capture 仍必须经 installed skill → isolated child → `functions.exec` → MCP → Outbox 真链路；不得通过改 prompt 跳过 staging。runner 同时监控 rollout 中已发出但未结束的 staging call，默认 45 秒后以专用诊断失败，而不是等完整阶段超时；可用 `GRILL_ADAPTER_CODEX_CAPTURE_MCP_STALL_SECONDS`、`GRILL_ADAPTER_CODEX_CAPTURE_TIMEOUT_SECONDS` 和 `GRILL_ADAPTER_CODEX_ACCEPTANCE_TIMEOUT_SECONDS` 调整环境预算。
+
 当当前模型触发额度限制但同一 provider 仍有可用模型时，可用 `GRILL_ADAPTER_CODEX_MODEL=<model>` 覆盖两条 installed acceptance 的 sampling model；脚本会把覆盖值传给每个交互式 parent（child 继承）并记录进 evaluation report。未设置时仍继承当前 Codex 配置，且 transport 失败仍必须整体失败。
 
 ---

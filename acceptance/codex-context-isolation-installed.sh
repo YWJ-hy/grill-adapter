@@ -75,6 +75,18 @@ fi
 
 CODEX_BIN="${GRILL_ADAPTER_CODEX_BIN:-}"
 CODEX_MODEL="${GRILL_ADAPTER_CODEX_MODEL:-}"
+CODEX_ACCEPTANCE_TIMEOUT_SECONDS="${GRILL_ADAPTER_CODEX_ACCEPTANCE_TIMEOUT_SECONDS:-900}"
+CODEX_CAPTURE_TIMEOUT_SECONDS="${GRILL_ADAPTER_CODEX_CAPTURE_TIMEOUT_SECONDS:-240}"
+CODEX_CAPTURE_MCP_STALL_SECONDS="${GRILL_ADAPTER_CODEX_CAPTURE_MCP_STALL_SECONDS:-45}"
+for timeout_value in \
+  "$CODEX_ACCEPTANCE_TIMEOUT_SECONDS" \
+  "$CODEX_CAPTURE_TIMEOUT_SECONDS" \
+  "$CODEX_CAPTURE_MCP_STALL_SECONDS"; do
+  [[ "$timeout_value" =~ ^[1-9][0-9]*$ ]] || {
+    printf 'Codex acceptance timeouts must be positive integer seconds: %s\n' "$timeout_value" >&2
+    exit 2
+  }
+done
 if [[ -z "$CODEX_BIN" && -x "${HOME}/.npm-global/bin/codex" ]]; then
   CODEX_BIN="${HOME}/.npm-global/bin/codex"
 elif [[ -z "$CODEX_BIN" ]]; then
@@ -404,6 +416,8 @@ export ACCEPTANCE_OBSIDIAN_CLI="$OBSIDIAN_CLI"
 export ACCEPTANCE_VAULT="$VAULT"
 export ACCEPTANCE_READ_LOG="$OBSIDIAN_READ_LOG"
 export ACCEPTANCE_SESSIONS="$CODEX_SANDBOX_HOME/sessions"
+export ACCEPTANCE_RUN_TIMEOUT_SECONDS="$CODEX_ACCEPTANCE_TIMEOUT_SECONDS"
+export ACCEPTANCE_CAPTURE_MCP_STALL_SECONDS="$CODEX_CAPTURE_MCP_STALL_SECONDS"
 export OBSIDIAN_WIKI_CONFIG="$REGISTRY"
 export OBSIDIAN_WIKI_OBSIDIAN_CLI="$OBSIDIAN_CLI"
 export FAKE_OBSIDIAN_VAULT_ROOT="$VAULT"
@@ -427,6 +441,10 @@ set feature_args {}
 if {[info exists env(ACCEPTANCE_DISABLE_MULTI_AGENT)] && $env(ACCEPTANCE_DISABLE_MULTI_AGENT) == "1"} {
   lappend feature_args --disable multi_agent
 }
+set capture_approval_args {}
+if {[info exists env(ACCEPTANCE_AUTO_APPROVE_CAPTURE)] && $env(ACCEPTANCE_AUTO_APPROVE_CAPTURE) == "1"} {
+  lappend capture_approval_args -c {mcp_servers.obsidian-wiki.tools.obsidian_wiki_stage_capture_plan.approval_mode="approve"}
+}
 
 proc parent_complete {} {
   global env
@@ -443,6 +461,27 @@ proc parent_complete {} {
   return [expr {$completed > $env(ACCEPTANCE_COMPLETED_PARENTS)}]
 }
 
+proc capture_stage_pending {} {
+  global env
+  foreach rollout [glob -nocomplain [file join $env(ACCEPTANCE_SESSIONS) * * * rollout-*.jsonl]] {
+    set handle [open $rollout r]
+    set pending 0
+    while {[gets $handle line] >= 0} {
+      if {[regexp {"type":"custom_tool_call".*"input":.*obsidian_wiki_stage_capture_plan} $line]} {
+        set pending 1
+      }
+      if {[regexp {"type":"mcp_tool_call_end".*"tool":"obsidian_wiki_stage_capture_plan"} $line]} {
+        set pending 0
+      }
+    }
+    close $handle
+    if {$pending} {
+      return 1
+    }
+  }
+  return 0
+}
+
 spawn -noecho $env(ACCEPTANCE_CODEX_BIN) \
   --no-alt-screen \
   --dangerously-bypass-hook-trust \
@@ -454,14 +493,16 @@ spawn -noecho $env(ACCEPTANCE_CODEX_BIN) \
   -c $mcp_args \
   -c $mcp_env \
   -c $project_trust \
+  {*}$capture_approval_args \
   {*}$model_args \
   {*}$feature_args \
   $env(ACCEPTANCE_PROMPT)
 catch {exec stty rows 40 columns 120 < $spawn_out(slave,name)}
 catch {exec kill -WINCH [exp_pid]}
 
-set deadline [expr {[clock seconds] + 900}]
+set deadline [expr {[clock seconds] + $env(ACCEPTANCE_RUN_TIMEOUT_SECONDS)}]
 set finished 0
+set capture_pending_since 0
 while {[clock seconds] < $deadline} {
   set timeout 1
   expect {
@@ -480,8 +521,24 @@ while {[clock seconds] < $deadline} {
     set finished 1
     break
   }
+  if {[info exists env(ACCEPTANCE_MONITOR_CAPTURE_MCP)] && $env(ACCEPTANCE_MONITOR_CAPTURE_MCP) == "1"} {
+    if {[capture_stage_pending]} {
+      if {$capture_pending_since == 0} {
+        set capture_pending_since [clock seconds]
+      } elseif {[clock seconds] - $capture_pending_since >= $env(ACCEPTANCE_CAPTURE_MCP_STALL_SECONDS)} {
+        puts stderr "Capture MCP staging remained unresolved for $env(ACCEPTANCE_CAPTURE_MCP_STALL_SECONDS)s; check the preserved Codex logs for a pending mcp_tool_call_approval elicitation"
+        send -- "\003"
+        after 800
+        send -- "\003"
+        exit 125
+      }
+    } else {
+      set capture_pending_since 0
+    }
+  }
 }
 if {!$finished} {
+  puts stderr "Codex acceptance stage timed out after $env(ACCEPTANCE_RUN_TIMEOUT_SECONDS)s"
   send -- "\003"
   after 800
   send -- "\003"
@@ -683,7 +740,12 @@ VAULT_STATUS_BEFORE="$(git -C "$VAULT" status --porcelain=v1 --untracked-files=a
 export ACCEPTANCE_TERMINAL_LOG="$CAPTURE_LOG"
 export ACCEPTANCE_COMPLETED_PARENTS=6
 export ACCEPTANCE_PROMPT='ISSUE35_STAGE_CAPTURE. Invoke $grill-adapter:update-wiki for feature issue-35 after the accepted review. Apply its durable-knowledge gate. This formatter-only fixture has no candidate journal and no durable cross-project knowledge, so a no-update conclusion is expected, but it must be the installed skill own conclusion. Do not propose, apply, publish, edit the Vault, append a journal, or change product files. Return only {"acceptanceStage":"capture","status":"skipped","reason":"no-durable-candidate"}.'
+export ACCEPTANCE_RUN_TIMEOUT_SECONDS="$CODEX_CAPTURE_TIMEOUT_SECONDS"
+export ACCEPTANCE_AUTO_APPROVE_CAPTURE=1
+export ACCEPTANCE_MONITOR_CAPTURE_MCP=1
 run_codex_acceptance
+export ACCEPTANCE_RUN_TIMEOUT_SECONDS="$CODEX_ACCEPTANCE_TIMEOUT_SECONDS"
+unset ACCEPTANCE_AUTO_APPROVE_CAPTURE ACCEPTANCE_MONITOR_CAPTURE_MCP
 
 [[ "$(git -C "$PROJECT" status --porcelain=v1 --untracked-files=all)" == "$CAPTURE_STATUS_BEFORE" ]] || {
   printf 'Capture changed project state despite a no-update conclusion\n' >&2
