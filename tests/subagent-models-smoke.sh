@@ -19,10 +19,22 @@ from subagent_models import load_subagent_model_config
 
 config_path = sandbox / "adapter.config.json"
 config_path.write_text(
-    json.dumps({"subagentModels": {"agents": {"wiki-researcher": "inherit"}}}),
+    json.dumps(
+        {
+            "subagentModels": {
+                "agents": {
+                    "wiki-maintenance": "haiku",
+                    "wiki-researcher": "inherit",
+                }
+            }
+        }
+    ),
     encoding="utf-8",
 )
-assert load_subagent_model_config(sandbox).agents == {"wiki-researcher": "inherit"}
+assert load_subagent_model_config(sandbox).agents == {
+    "wiki-maintenance": "haiku",
+    "wiki-researcher": "inherit",
+}
 
 removed_ids = [
     "lan" + "hu-frontend-requirements-analyst",

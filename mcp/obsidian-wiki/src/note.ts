@@ -6,6 +6,15 @@ const SkillVersionSchema = z.string().regex(
   /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
 );
 const ContentHashSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+const NormalizedTimestampSchema = z.string().refine((value) => {
+  if (!/^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$/.test(value)) {
+    return false;
+  }
+  if (value.startsWith('0000-')) return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime())
+    && parsed.toISOString().replace('.000Z', 'Z') === value;
+}, 'must be a normalized UTC timestamp (YYYY-MM-DDTHH:mm:ssZ)');
 const AdrSourceIdSchema = z.string().regex(/^project-adr:[a-f0-9]{64}$/);
 const AdrSourcePathSchema = z.string().refine((value) => {
   if (value.includes('\\') || value.startsWith('/')) return false;
@@ -25,6 +34,9 @@ const NoteSchema = z.object({
   status: z.enum(['active', 'draft', 'archived']),
   agent_visible: z.boolean().optional(),
   summary: z.string().min(1),
+  verified_at: NormalizedTimestampSchema.optional(),
+  review_after: NormalizedTimestampSchema.optional(),
+  expires_at: NormalizedTimestampSchema.optional(),
   constraint_strength: z.enum(['hard', 'soft']).optional(),
   depends_on: z.array(z.string()).optional(),
   see_also: z.array(z.string()).optional(),
@@ -52,6 +64,9 @@ export type AtomicNote = {
   status: 'active' | 'draft' | 'archived';
   agentVisible: boolean;
   summary: string;
+  verifiedAt: string | undefined;
+  reviewAfter: string | undefined;
+  expiresAt: string | undefined;
   constraintStrength: 'hard' | 'soft' | undefined;
   skillRoles: ('implementer' | 'reviewer')[];
   skillName: string | undefined;
@@ -67,6 +82,12 @@ export type AtomicNote = {
 };
 
 export type AtomicNoteMetadata = Omit<AtomicNote, 'content' | 'contentHash'>;
+export type KnowledgeFreshnessState = 'fresh' | 'review-due' | 'expired';
+
+export type KnowledgeFreshness = {
+  state: KnowledgeFreshnessState;
+  warning?: string;
+};
 
 function parseScalar(raw: string): string | boolean {
   const value = raw.trim();
@@ -119,7 +140,13 @@ export function parseAtomicNoteMetadata(contents: string, description = 'Note'):
   const raw = parseFrontmatter(contents);
   const parsed = NoteSchema.safeParse(raw);
   if (!parsed.success) {
-    throw new Error(`${description} has invalid atomic Note properties: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`);
+    throw new Error(
+      `${description} has invalid atomic Note properties: ${
+        parsed.error.issues
+          .map((issue) => `${issue.path.join('.') || 'frontmatter'} ${issue.message}`)
+          .join('; ')
+      }`,
+    );
   }
   const note = parsed.data;
   const skillFields = [
@@ -151,12 +178,27 @@ export function parseAtomicNoteMetadata(contents: string, description = 'Note'):
   ) {
     throw new Error(`${description} ADR execution projection must be a hard constraint`);
   }
+  const verifiedAt = note.verified_at === undefined ? undefined : new Date(note.verified_at);
+  const reviewAfter = note.review_after === undefined ? undefined : new Date(note.review_after);
+  const expiresAt = note.expires_at === undefined ? undefined : new Date(note.expires_at);
+  if (verifiedAt && reviewAfter && reviewAfter < verifiedAt) {
+    throw new Error(`${description} review_after must not be earlier than verified_at`);
+  }
+  if (verifiedAt && expiresAt && expiresAt < verifiedAt) {
+    throw new Error(`${description} expires_at must not be earlier than verified_at`);
+  }
+  if (reviewAfter && expiresAt && expiresAt < reviewAfter) {
+    throw new Error(`${description} expires_at must not be earlier than review_after`);
+  }
   return {
     wikiId: note.wiki_id,
     type: note.type,
     status: note.status,
     agentVisible: note.agent_visible ?? true,
     summary: note.summary,
+    verifiedAt: note.verified_at,
+    reviewAfter: note.review_after,
+    expiresAt: note.expires_at,
     constraintStrength: note.constraint_strength,
     skillRoles: note.skill_roles ?? [],
     skillName: note.skill_name,
@@ -173,6 +215,28 @@ export function parseAtomicNoteMetadata(contents: string, description = 'Note'):
       contradicts: note.contradicts ?? [],
     },
   };
+}
+
+export function evaluateKnowledgeFreshness(
+  note: Pick<AtomicNoteMetadata, 'wikiId' | 'verifiedAt' | 'reviewAfter' | 'expiresAt'>,
+  now: Date = new Date(),
+  description = `Wiki Note ${note.wikiId}`,
+): KnowledgeFreshness {
+  if (Number.isNaN(now.getTime())) throw new Error('Knowledge freshness clock is invalid');
+  const verifiedAt = note.verifiedAt === undefined ? undefined : new Date(note.verifiedAt);
+  if (verifiedAt && verifiedAt > now) {
+    throw new Error(`${description} verified_at cannot be in the future: ${note.verifiedAt}`);
+  }
+  const expiresAt = note.expiresAt === undefined ? undefined : new Date(note.expiresAt);
+  if (expiresAt && expiresAt <= now) return { state: 'expired' };
+  const reviewAfter = note.reviewAfter === undefined ? undefined : new Date(note.reviewAfter);
+  if (reviewAfter && reviewAfter <= now) {
+    return {
+      state: 'review-due',
+      warning: `Wiki Note ${note.wikiId} is review-due since ${note.reviewAfter}.`,
+    };
+  }
+  return { state: 'fresh' };
 }
 
 export function parseAtomicNote(contents: string, description = 'Note'): AtomicNote {

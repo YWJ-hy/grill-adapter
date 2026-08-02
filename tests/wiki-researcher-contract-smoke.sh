@@ -25,6 +25,9 @@ for required in (
     "full Note/Card bodies",
     "Treat direct neighbors as new candidates",
     "single `snapshotHash`",
+    "`freshnessState: review-due`",
+    "never select a result reported as expired",
+    "`verifiedAt`, `reviewAfter`, and `expiresAt`",
     "selectionRationales",
     "array** (never an object/map)",
     "status: \"ok\"` or `\"partial\"`",
@@ -36,6 +39,8 @@ for required in (
     "Do not call any `obsidian_wiki_*` tool, including `obsidian_wiki_catalog`",
     "A main-agent search is never a substitute",
     "Carry validates but deliberately drops `selectionRationales`",
+    "review-due Notes remain eligible with deterministic maintenance warnings",
+    "rejects future verification and expired Notes",
     "Never scan whole Wiki trees",
 ):
     assert required in skill, required

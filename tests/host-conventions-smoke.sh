@@ -27,7 +27,7 @@ for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN" "$HOOKS_JSON"; do
 done
 
 # Codex blocks carry the same touchpoints with native skill mentions.
-for skill in wiki-readiness wiki-research wiki-materialize update-wiki candidate-journal source-truth-check break-loop; do
+for skill in wiki-readiness wiki-research wiki-materialize wiki-maintenance update-wiki candidate-journal source-truth-check break-loop; do
   need "$CODEX_GRILL" "\$grill-adapter:$skill"
 done
 need "$CODEX_GRILL" '$mattpocock-skills:grill-with-docs'
@@ -36,9 +36,12 @@ need "$CODEX_GRILL" '$mattpocock-skills:implement'
 need "$CODEX_GRILL" 'Activation gate:'
 need "$CODEX_GRILL" 'ordinary user request'
 need "$CODEX_GRILL" 'A direct request that does not enter'
+need "$CODEX_GRILL" '$grill-adapter:wiki-maintenance consolidation'
 need "$CODEX_PLAIN" '$grill-adapter:wiki-research'
 need "$CODEX_PLAIN" '$grill-adapter:wiki-readiness'
 need "$CODEX_PLAIN" '$grill-adapter:wiki-materialize'
+need "$CODEX_PLAIN" '$grill-adapter:wiki-maintenance'
+need "$CODEX_PLAIN" '$grill-adapter:wiki-maintenance consolidation'
 need "$CODEX_PLAIN" 'plain Codex host'
 
 # grill block: markers + zero-patch invariant + all four wiki touchpoints + subsystems.
@@ -52,6 +55,8 @@ need "$GRILL" 'A direct request that does not enter'
 need "$GRILL" '/grill-adapter:wiki-research'       # Disclose
 need "$GRILL" '/grill-adapter:wiki-readiness'      # implementation-entry readiness
 need "$GRILL" '/grill-adapter:wiki-materialize'    # Bind
+need "$GRILL" '/grill-adapter:wiki-maintenance'    # read-only maintenance audit
+need "$GRILL" '/grill-adapter:wiki-maintenance consolidation'
 need "$GRILL" '/grill-adapter:update-wiki'         # Capture
 need "$GRILL" '/grill-adapter:candidate-journal'   # feature journal
 need "$GRILL" '/grill-adapter:source-truth-check'  # source-of-truth Verify
@@ -65,6 +70,8 @@ need "$PLAIN" 'grill-adapter:host:plain:start'
 need "$PLAIN" '/grill-adapter:wiki-research'
 need "$PLAIN" '/grill-adapter:wiki-readiness'
 need "$PLAIN" '/grill-adapter:wiki-materialize'
+need "$PLAIN" '/grill-adapter:wiki-maintenance'
+need "$PLAIN" '/grill-adapter:wiki-maintenance consolidation'
 need "$PLAIN" '/grill-adapter:update-wiki'
 need "$PLAIN" '/grill-adapter:candidate-journal'
 need "$PLAIN" '/grill-adapter:source-truth-check'
@@ -137,6 +144,17 @@ for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
   need "$f" 'Default Capture ends after all outcomes are recorded'
   need "$f" 'explicitly asks'
   need "$f" 'Open PR content remains unavailable to formal research'
+  need "$f" 'affected `sourceId` + stable `wikiId`'
+  need "$f" 'An unresolved correction is only a maintenance signal'
+  need "$f" 'matching apply receipt before recording `kept`'
+  need "$f" 'obsidian_wiki_maintenance_summary'
+  need "$f" 'non-authoritative, and never replaces task identity, readiness, Bind, proposal, or authorization'
+  need "$f" 'normalized UTC `asOf` timestamp'
+  need "$f" 'bounded identity/body-read limits'
+  need "$f" 'immediately waits on that same path'
+  need "$f" 'main session receives only a validated schema-v1 report path plus compact summary'
+  need "$f" 'Dispatch/transport/capacity/lifecycle failure'
+  need "$f" 'The role cannot call write/apply/publish'
   deny "$f" '__GRILL_ADAPTER_ROOT__'
   deny "$f" 'CLAUDE_PLUGIN_ROOT'
   deny "$f" 'PLUGIN_ROOT'
@@ -158,6 +176,8 @@ need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/scripts/grill_co
 need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/mcp/obsidian-wiki/dist/index.js publish'
 need "$ROOT/skills/update-wiki/SKILL.md" '`Capture` is the default mode'
 need "$ROOT/skills/update-wiki/SKILL.md" 'only when the user explicitly asks to publish'
+need "$ROOT/skills/update-wiki/SKILL.md" '### Correction candidates'
+need "$ROOT/skills/update-wiki/SKILL.md" 'applied update receipt carries the same affected'
 
 # no residual Superpowers host references in the host blocks
 if grep -nE 'Superpowers' "$GRILL" "$PLAIN" | grep -vE '\.grill-adapter/'; then

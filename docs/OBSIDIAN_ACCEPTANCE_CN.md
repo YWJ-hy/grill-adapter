@@ -17,9 +17,9 @@ doctor 必须报告 `Obsidian runtime healthy: yes`。新项目没有 legacy roo
 
 1. 在 Obsidian Desktop 打开 registry 中 `vaultRef` 对应的 Vault，确认绑定 Source 和 `_meta/wiki-source.md` 可见。
 2. 在 Desktop 修改一张测试 Note，保存并确认 CLI 能立即读到；恢复 clean base 后再开始正式读取验收。
-3. 从安装后的 host 调 `wiki-research`，确认搜索只返回 bound、active、agent-visible、base-synchronized Notes，且未合并分支内容不可见。
-4. 完成 schema-v6 Carry 后，让用户审核选中的约束并以一次 `freeze --all` 生成每个 task 的 `<taskId>.wiki-implement.md` / `<taskId>.wiki-review.md`。确认文件包含对应角色的 Note/Card 与 1 跳闭包，且实现阶段消费的是该 Markdown；批量中任一 task 的 freeze 失败不得留下更早 task 的新批准快照。freeze 前改变正文 hash、binding 或 base 状态时必须 fail-closed。
-5. code-review 启动两个 reviewer 前复用 readiness：健康 context 的 reviewer-only Card 必须到达 `<taskId>.wiki-review.md`，由两个轴共同读取并由实际 reviewer 执行；再编辑 reviewer Markdown 或制造 ticket fingerprint drift，确认只产生 caveat、无部分内容且 Standards/Spec 正常完成。
+3. 从安装后的 host 调 `wiki-research`，确认搜索只返回 bound、active、agent-visible、base-eligible Notes，且未合并分支内容不可见。分别准备无 freshness metadata、review-due 和 expired Note：旧 Note 保持可用，review-due 可选且返回 warning，expired 不进入正式 selection；再制造 base 不同步，确认 knowledge freshness 与 repository health 两道门互不绕过。
+4. 完成 schema-v6 Carry 后，让用户审核选中的约束并以一次 `freeze --all` 生成每个 task 的 `<taskId>.wiki-implement.md` / `<taskId>.wiki-review.md`。确认 snapshot metadata 包含对应角色的直接 Note/Card 与 1 跳闭包 freshness；推进时钟后 review-due warning 应在 Bind 出现，closure expired 必须 fail-closed，且批准 Markdown digest 不变。批量中任一 task 的 freeze 失败不得留下更早 task 的新批准快照。
+5. code-review 启动两个 reviewer 前复用 readiness：健康 context 的 reviewer-only Card 必须经批准 `<taskId>.wiki-review.md` 到达派生 `<taskId>.wiki-review-handoff.md`，由两个轴共同读取并由实际 reviewer 执行；再编辑 reviewer snapshot 或制造 ticket fingerprint drift，确认 handoff 只产生 caveat、无部分内容且 Standards/Spec 正常完成。
 6. 对测试 candidate 走 proposal -> explicit confirmation -> apply，核对 journal 的 proposed/applied write receipts，并确认默认 Capture 未要求 Git publish。随后显式请求 publish，再授权确认每 repository 一个 draft PR、base worktree恢复 clean、开放 PR 内容仍不可检索。
 7. 在 apply 或 publish 中断一次并恢复：保留 journal、write receipts 和 publish run manifest，rerun the same publish step；不得手改 Vault worktree或删除 manifest 来“修复”。
 
@@ -32,11 +32,32 @@ grill-with-docs -> to-spec -> to-tickets
 -> implement -> code-review -> update-wiki
 ```
 
-记录 plugin 版本、Claude Code 版本、日期、feature slug、ticket IDs、schema-v6 sidecar 路径、两个角色 Markdown 路径与 digest、implement/reviewer 消费结果、两个 review 轴读取的同一 handoff Markdown、journal fold、write receipts、draft PR URL 与最终结果。必须确认 Disclose/Carry/Bind/Capture、source-truth verify/lint、hook 提醒与 publish recovery 均由安装后的 skill/host 约定触发。
+记录 plugin 版本、Claude Code 版本、日期、feature slug、ticket IDs、schema-v6 sidecar 路径、两个角色 Markdown 路径与 digest、implement/reviewer 消费结果、两个 review 轴读取的同一 handoff Markdown、journal fold、write receipts、draft PR URL 与最终结果。另分别运行 `/grill-adapter:wiki-maintenance audit <feature-slug>` 与 `consolidation <feature-slug>`，确认调用同一个原生 `wiki-maintenance` agent：audit 只使用绑定 Source 的只读工具，consolidation 只使用 bounded canonical candidate input；主 session 两次都只收到通过 schema-v1 校验的 report path 与 compact summary，不收到 Note/candidate prose，并验证 dispatch/validation/journal drift failure 为 `broken`。必须确认 Disclose/Carry/Bind/Capture、source-truth verify/lint、hook 提醒与 publish recovery 均由安装后的 skill/host 约定触发。
 
 ## 4. installed Codex
 
-以 marketplace 安装 plugin、执行 `manage.sh install ... --runtime codex`，在 Codex 中走同一条完整路径。记录实际 `model` 和 `provider`，确认一个 Obsidian MCP server、12 skills 和 host `AGENTS.md` 约定都来自安装后的 plugin。确认 `setup-init-obsidian` 先检查并使用 `grill-adapter` 与 `@grill-adapter/obsidian-wiki` 两个 npm 包；code-review 在两个 sub-agent 前复用 receipt，两个轴读取同一 reviewer Markdown；Wiki freeze/snapshot 故障只报告 caveat 且 review 仍完成。至少另跑一次跳过 formal to-tickets、从 direct issue/manual 进入 `$grill-adapter:wiki-readiness` 的单任务路径，并确认 `disabled`/`no-relevant` 可继续、`broken` 不注入部分内容。隔离 `CODEX_HOME` 时必须保留 effective provider 配置；只验证 manifest 安装不算模型驱动集成验收。
+以 marketplace 安装 plugin、执行 `manage.sh install ... --runtime codex`，在 Codex 中走同一条完整路径。记录实际 `model` 和 `provider`，确认一个 Obsidian MCP server、13 skills 和 host `AGENTS.md` 约定都来自安装后的 plugin。确认 `setup-init-obsidian` 先检查并使用 `grill-adapter` 与 `@grill-adapter/obsidian-wiki` 两个 npm 包；code-review 在两个 sub-agent 前复用 receipt，两个轴读取同一 reviewer Markdown；Wiki freeze/snapshot 故障只报告 caveat 且 review 仍完成。至少另跑一次跳过 formal to-tickets、从 direct issue/manual 进入 `$grill-adapter:wiki-readiness` 的单任务路径，并确认 `disabled`/`no-relevant` 可继续、`broken` 不注入部分内容。再分别运行 `$grill-adapter:wiki-maintenance audit <feature-slug>` 与 `consolidation <feature-slug>`：前者确认唯一 maintenance agent 私下读取有界 Note body；后者以包含等价、矛盾、独立 contract 的多个 feature journals 确认同一 agent 私下读取 bounded candidate prose、只返回 identity/digest proposal groups，journal drift 时不覆盖旧报告。主 session 两次都只能收到 schema-v1 report path 与 compact summary。本仓提供 `GRILL_ADAPTER_RUN_CODEX_ACCEPTANCE=1 bash acceptance/codex-maintenance-installed.sh "$PWD"`，通过 PTY 顺序真跑 audit 与 consolidation 两次交互式 Codex CLI（禁止改回 `codex exec`），生成隔离 plugin cache、Source/Vault、`search`/`read` fake Obsidian CLI、私密正文/candidate marker 与 canonical journals，并机械验证每次唯一 spawn、合法 wait/terminal author、请求参数绑定、等价/矛盾/独立语义分类、report/final response、事件流正文隔离、drift 失败保留旧报告及 Project/Vault/Git 不变性。该 fixture 不使用本机两个 npm 包，也不启动或要求 write bridge；该命令必须实际输出 `OK`，默认不纳入 smoke。隔离 `CODEX_HOME` 时只带入认证及 effective model/provider 最小配置；只验证 manifest 安装不算模型驱动集成验收。
+
+Issue #35 的完整上下文隔离验收运行：
+
+```bash
+GRILL_ADAPTER_RUN_CODEX_ACCEPTANCE=1 \
+  bash acceptance/codex-context-isolation-installed.sh "$PWD"
+```
+
+它从本地 marketplace 安装当前工作树，依次真跑 discovery/planning、installed parent 内的
+Carry/freeze/readiness、主 session 直接实现、独立 implementer、共享 handoff 的 Standards/Spec
+reviewer、Capture、research/maintenance dispatch failure 和 binding-broken 后用户继续，再复用
+maintenance audit/consolidation installed gate。脚本对 malformed researcher output、binding drift、
+stale maintenance report 和 proposal side effect 做机械断言；malformed/stale 两条路径也由安装后的
+Codex coordinator 调用对应 validator，并核对正式 `broken` caveat 与旧报告保留，而不是只直跑脚本。
+随后输出包含
+hard-constraint miss、irrelevant selection、expired injection、correction recurrence、Note body
+read 与端到端延迟的 JSON evaluation report；后两项 injection/recurrence 也从正式产物和实际
+formatter 输出计算，不允许常量冒充。默认关闭且不属于普通 smoke；只有命令实际输出
+`codex context isolation installed acceptance OK` 才算通过。未指定
+`GRILL_ADAPTER_CODEX_ACCEPTANCE_REPORT` 时，report 保存在 `$TMPDIR` 下的固定 evaluation 路径，
+不会随成功 sandbox 删除。
 
 ## 5. shadow-validation 与 cutover
 
@@ -80,3 +101,23 @@ grill-with-docs -> to-spec -> to-tickets
 
 结论：**PASS**。安装后的 Codex 能在 direct manual 入口建立稳定单任务身份，并在
 Wiki 未启用时记录可继续且不携带伪造约束的 `disabled` readiness。
+
+## 8. Issue #35 installed Codex 上下文隔离记录（2026-08-01）
+
+- 环境：`model: gpt-5.6-sol`，`provider: custom`；隔离 `CODEX_HOME` 只复制认证和
+  effective model/provider 配置，并从当前工作树安装 `grill-adapter@grill-adapter`。
+- 实际路径：discovery/planning、Carry/freeze/readiness、主 session 直接实现、隔离
+  implementer、Standards/Spec reviewer、Capture、maintenance audit/consolidation 全部通过；
+  最终输出 `codex context isolation installed acceptance OK`。
+- 故障路径：researcher/maintenance dispatch failure 均返回 `broken` caveat，malformed
+  researcher output 未留下部分 context，stale maintenance report 保留旧报告，binding drift
+  记录 `broken` 后仅按显式用户决定继续且不注入 Wiki 内容。
+- 隔离结果：coordinator 只收到 metadata/envelope、批准的 role contract 或 receipt；researcher、
+  maintenance、implementer 与 reviewer 的私有 reasoning/未选正文未进入 parent transcript；
+  maintenance proposal 未修改 Note、journal、Git 或 PR。
+- evaluation report：`/tmp/grill-adapter-issue35-evaluation.json`，`status: pass`；
+  `hardConstraintMisses: 0`、`irrelevantSelections: 0`、`expiredInjections: 0`、
+  `correctionRecurrences: 0`、`noteBodyReads: 44`、`endToEndLatencyMs: 664313`。
+
+结论：**PASS**。Issue #35 的安装后 Codex 全路径、上下文隔离、角色 contract 绑定、proposal-only
+维护和 fail-closed/fail-open 边界均由真实 rollout、child tool-call input 与正式产物机械验证。

@@ -41,6 +41,6 @@
 // Host availability is fail-open: no-relevant and disabled continue automatically; broken offers
 // the user a stop-or-continue choice. Continuing never injects unverified Wiki content. Wiki
 // validation itself remains fail-closed, and fingerprint drift invalidates this receipt.
-// Before code-review subagents start, `review-handoff` revalidates this receipt and reuses the
-// frozen reviewer Markdown. Every other status/failure becomes a caveat-only handoff; the receipt
-// never stores Note bodies.
+// Before code-review subagents start, `review-handoff` revalidates this receipt and the frozen
+// reviewer Markdown, then writes one derived `<taskId>.wiki-review-handoff.md` for both axes.
+// Every other status/failure becomes a caveat-only handoff; the receipt never stores Note bodies.

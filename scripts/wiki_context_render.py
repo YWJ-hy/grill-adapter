@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,10 @@ V6_NOTE_TYPES = {"constraint", "domain", "decision", "guide"}
 V6_ROLES = {"project", "shared"}
 V6_REQUIRED_SKILL_ROLES = {"implementer", "reviewer"}
 ADR_SOURCE_ID_RE = re.compile(r"^project-adr:[a-f0-9]{64}$")
+NORMALIZED_TIMESTAMP_RE = re.compile(
+    r"^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])"
+    r"T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+)
 # A digest of 64 identical hex chars (0000…, 1111…, ffff…) is an authoring placeholder, never a
 # real sha256. Rejecting it stops copy-pasted skeleton fingerprints from passing validation and
 # only blowing up later at the execution-side --fingerprint-preflight.
@@ -72,6 +77,64 @@ class ValidationError(Exception):
 
 class FingerprintError(Exception):
     pass
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc).replace(microsecond=0)
+
+
+def _parse_normalized_timestamp(value: Any, field: str) -> datetime | None:
+    if value is None:
+        return None
+    if (
+        not isinstance(value, str)
+        or not NORMALIZED_TIMESTAMP_RE.fullmatch(value)
+        or value.startswith("0000-")
+    ):
+        raise ValidationError(
+            f"{field} must be a normalized UTC timestamp (YYYY-MM-DDTHH:mm:ssZ)"
+        )
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise ValidationError(
+            f"{field} must be a normalized UTC timestamp (YYYY-MM-DDTHH:mm:ssZ)"
+        ) from exc
+    return parsed
+
+
+def _knowledge_freshness(
+    note: dict[str, Any],
+    field: str,
+    now: datetime | None = None,
+) -> tuple[str, str | None]:
+    evaluation_time = now or _utc_now()
+    verified_at = _parse_normalized_timestamp(note.get("verifiedAt"), f"{field}.verifiedAt")
+    review_after = _parse_normalized_timestamp(note.get("reviewAfter"), f"{field}.reviewAfter")
+    expires_at = _parse_normalized_timestamp(note.get("expiresAt"), f"{field}.expiresAt")
+    if verified_at is not None and review_after is not None and review_after < verified_at:
+        raise ValidationError(f"{field}.reviewAfter must not be earlier than verifiedAt")
+    if verified_at is not None and expires_at is not None and expires_at < verified_at:
+        raise ValidationError(f"{field}.expiresAt must not be earlier than verifiedAt")
+    if review_after is not None and expires_at is not None and expires_at < review_after:
+        raise ValidationError(f"{field}.expiresAt must not be earlier than reviewAfter")
+    if verified_at is not None and verified_at > evaluation_time:
+        raise ValidationError(f"{field}.verifiedAt cannot be in the future")
+    if expires_at is not None and expires_at <= evaluation_time:
+        return "expired", None
+    if review_after is not None and review_after <= evaluation_time:
+        warning = (
+            f"Wiki Note {note.get('wikiId')} is review-due since {note['reviewAfter']}."
+        )
+        return "review-due", warning
+    return "fresh", None
+
+
+def _validated_messages(value: Any, field: str) -> list[str]:
+    messages = _as_list(value, field)
+    if any(not isinstance(message, str) or not message.strip() for message in messages):
+        raise ValidationError(f"{field} must contain only non-empty strings")
+    return list(messages)
 
 
 def _configure_stdio() -> None:
@@ -132,6 +195,7 @@ def _validate_v6_note(
     require_skill: bool = False,
     allow_destination: bool = False,
     project_root: Path | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     value = dict(_as_dict(note, field))
     # Older selections/sidecars may carry provider metadata. Runtime chooses
@@ -139,6 +203,7 @@ def _validate_v6_note(
     value.pop("skillProvider", None)
     allowed_fields = {
         "sourceId", "role", "path", "wikiId", "type", "summary", "bindingDigest", "contentHash",
+        "verifiedAt", "reviewAfter", "expiresAt",
         "adrSourceId", "adrSourcePath", "adrSourceContentHash",
         *(
             (
@@ -168,6 +233,9 @@ def _validate_v6_note(
         raise ValidationError(f"{field}.bindingDigest must be a 64-character sha256 digest")
     if not SHA256_RE.match(value["contentHash"]):
         raise ValidationError(f"{field}.contentHash must be a sha256 digest")
+    freshness, _ = _knowledge_freshness(value, field, now)
+    if freshness == "expired":
+        raise ValidationError(f"{field} is expired and cannot enter formal Wiki context")
     adr_values = [value.get("adrSourceId"), value.get("adrSourcePath"), value.get("adrSourceContentHash")]
     if any(item is not None for item in adr_values):
         if require_skill:
@@ -317,7 +385,9 @@ def _validate_v6_context(
     data: dict[str, Any],
     execution_ready: bool,
     project_root: Path | None = None,
+    now: datetime | None = None,
 ) -> list[str]:
+    evaluation_time = now or _utc_now()
     if data.get("kind") != KIND:
         raise ValidationError(f"kind must be {KIND}")
     if not isinstance(data.get("featureSlug"), str) or not data["featureSlug"].strip():
@@ -352,6 +422,7 @@ def _validate_v6_context(
                 require_skill=is_skill,
                 allow_destination=True,
                 project_root=project_root,
+                now=evaluation_time,
             )
             if note["wikiId"] in seen_ids:
                 raise ValidationError(f"{collection}[{index}] duplicates wikiId {note['wikiId']}")
@@ -370,9 +441,9 @@ def _validate_v6_context(
     _as_list(data.get("taskWikiRefs"), "taskWikiRefs")
     _as_dict(data.get("taskRouting"), "taskRouting")
     if "caveats" in data:
-        _as_list(data.get("caveats"), "caveats")
+        _validated_messages(data.get("caveats"), "caveats")
     if "maintenanceWarnings" in data:
-        _as_list(data.get("maintenanceWarnings"), "maintenanceWarnings")
+        _validated_messages(data.get("maintenanceWarnings"), "maintenanceWarnings")
     if execution_ready:
         _validate_execution_ready(data)
     return []
@@ -383,11 +454,12 @@ def _validate_context(
     strict: bool,
     execution_ready: bool = False,
     project_root: Path | None = None,
+    now: datetime | None = None,
 ) -> list[str]:
     schema_version = data.get("schemaVersion")
     if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
         raise ValidationError("schemaVersion must be 6; legacy contexts are migration input only and cannot be executed")
-    return _validate_v6_context(data, execution_ready, project_root)
+    return _validate_v6_context(data, execution_ready, project_root, now)
 
 
 def _v6_task_notes(data: dict[str, Any], task_id: str | None, role: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -434,11 +506,23 @@ def _render_v6_markdown(data: dict[str, Any], role: str, task_id: str | None) ->
         lines.append(f"### `{note['wikiId']}` · {strength}")
         lines.append(f"- Summary: {note['summary']}")
         lines.append(f"- Note: `{note['path']}`")
+        freshness, _ = _knowledge_freshness(note, f"Wiki Note {note['wikiId']}")
+        if freshness == "expired":
+            raise ValidationError(f"Wiki Note {note['wikiId']} expired before role rendering")
+        if freshness == "review-due":
+            lines.append(f"- Freshness: review-due since `{note['reviewAfter']}`")
         lines.append("")
     if skills:
         lines.extend(["### Required Skill Cards", ""])
         for skill in skills:
             lines.append(f"- `{skill['wikiId']}`: {skill['summary']} (`{skill['path']}`)")
+            freshness, _ = _knowledge_freshness(skill, f"Wiki Note {skill['wikiId']}")
+            if freshness == "expired":
+                raise ValidationError(
+                    f"Wiki Note {skill['wikiId']} expired before role rendering"
+                )
+            if freshness == "review-due":
+                lines.append(f"  Freshness: review-due since `{skill['reviewAfter']}`")
         lines.append("")
     for caveat in _as_list(data.get("caveats"), "caveats"):
         lines.append(f"- Context caveat: {caveat}")
@@ -622,10 +706,36 @@ def _scaffold_v6_destination(note: dict[str, Any], is_skill: bool = False) -> No
         note["destination"]["tasks"] = []
 
 
-def _scaffold_v6_from_selection(selection: dict[str, Any], feature_slug: str | None, ticket_source: str | None) -> dict[str, Any]:
+def _scaffold_v6_from_selection(
+    selection: dict[str, Any],
+    feature_slug: str | None,
+    ticket_source: str | None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    evaluation_time = now or _utc_now()
     bindings = [_as_dict(binding, "selection.wikiBindings[]") for binding in _as_list(selection.get("wikiBindings"), "selection.wikiBindings")]
-    notes = [_validate_v6_note(note, "selection.wikiNotes[]") for note in _as_list(selection.get("wikiNotes"), "selection.wikiNotes")]
-    skills = [_validate_v6_note(skill, "selection.requiredSkills[]", require_skill=True) for skill in _as_list(selection.get("requiredSkills"), "selection.requiredSkills")]
+    notes = [
+        _validate_v6_note(note, "selection.wikiNotes[]", now=evaluation_time)
+        for note in _as_list(selection.get("wikiNotes"), "selection.wikiNotes")
+    ]
+    skills = [
+        _validate_v6_note(
+            skill,
+            "selection.requiredSkills[]",
+            require_skill=True,
+            now=evaluation_time,
+        )
+        for skill in _as_list(selection.get("requiredSkills"), "selection.requiredSkills")
+    ]
+    warnings = (
+        _validated_messages(selection.get("maintenanceWarnings"), "selection.maintenanceWarnings")
+        if "maintenanceWarnings" in selection
+        else []
+    )
+    for index, note in enumerate([*notes, *skills]):
+        _, warning = _knowledge_freshness(note, f"selection Note[{index}]", evaluation_time)
+        if warning and warning not in warnings:
+            warnings.append(warning)
     data: dict[str, Any] = {
         "schemaVersion": SCHEMA_VERSION,
         "kind": KIND,
@@ -636,8 +746,8 @@ def _scaffold_v6_from_selection(selection: dict[str, Any], feature_slug: str | N
         "requiredSkills": [dict(skill) for skill in skills],
         "taskRouting": dict(SCAFFOLD_TASK_ROUTING),
         "taskWikiRefs": [],
-        "caveats": _as_list(selection.get("caveats"), "selection.caveats") if "caveats" in selection else [],
-        "maintenanceWarnings": _as_list(selection.get("maintenanceWarnings"), "selection.maintenanceWarnings") if "maintenanceWarnings" in selection else [],
+        "caveats": _validated_messages(selection.get("caveats"), "selection.caveats") if "caveats" in selection else [],
+        "maintenanceWarnings": warnings,
     }
     if feature_slug:
         data["featureSlug"] = feature_slug
@@ -651,7 +761,10 @@ def _scaffold_v6_from_selection(selection: dict[str, Any], feature_slug: str | N
 
 
 def scaffold_from_selection(
-    selection: dict[str, Any], feature_slug: str | None, ticket_source: str | None
+    selection: dict[str, Any],
+    feature_slug: str | None,
+    ticket_source: str | None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Build a schema-v6 sidecar skeleton from a bound Obsidian metadata selection.
 
@@ -674,7 +787,7 @@ def scaffold_from_selection(
         raise ValidationError(
             "Obsidian selection contains unsupported fields: " + ", ".join(unknown_fields)
         )
-    data = _scaffold_v6_from_selection(selection, feature_slug, ticket_source)
+    data = _scaffold_v6_from_selection(selection, feature_slug, ticket_source, now)
     _validate_selection_rationales(
         selection,
         {note["wikiId"] for note in [*data["wikiNotes"], *data["requiredSkills"]]},

@@ -179,9 +179,12 @@ Shared Source 必须声明 `blocked_terms` 与 `blocked_patterns`。manifest 的
 
 `obsidian_wiki_catalog`、`obsidian_wiki_search`、`obsidian_wiki_read_note`、`obsidian_wiki_read_notes` 与 `obsidian_wiki_graph_neighbors` 只操作当前项目可读 binding 下的 atomic Note。每次 Obsidian CLI 调用都带 resolver 得到的 Vault selector；调用者不能指定 Vault 或 root。catalog/search 可接受已绑定的 `sourceId`，catalog/search 的 `pathPrefix` 只能是该 Source 内的相对目录，绝对路径、`..` 逃逸和未知 Source 都拒绝。
 
+普通 Note 与 Skill Card 都可选声明 `verified_at`（最近验证）、`review_after`（到期复查）和 `expires_at`（硬失效），只接受 `YYYY-MM-DDTHH:mm:ssZ` 形式的规范化 UTC 秒级时间。若同时存在，必须满足 `verified_at <= review_after <= expires_at`；未来 `verified_at` fail-closed。缺失全部或部分字段保持旧 Note 兼容。runtime 在每次读取时派生 `fresh` / `review-due` / `expired`：review-due 继续可用并返回 maintenance warning，expired 从正式 catalog/search/read/graph 排除。selection 与 schema-v6 sidecar 只携带 camelCase `verifiedAt` / `reviewAfter` / `expiresAt`，Carry/finalize/freeze/Bind 都按当前时间重算，不能信任陈旧状态标签。repository/base synchronization 健康门仍按既有 binding 配置独立执行；允许 stale-read 不能让 expired claim 重新可用，freshness 也不能让未同步的 Skill Card 变为 discoverable。
+
 - `obsidian_wiki_catalog` 是分页的 metadata-only 目录视图：根调用返回顶层目录和 Note 计数，展开调用返回直接子目录与直接 Note 的 path/summary/type/Card discovery metadata，永不返回 `content`。它不引入第二份索引或持久缓存。
 - `obsidian_wiki_search` 保持仅 `query` 的兼容调用，同时可加 `sourceId` + `pathPrefix` 将检索限制到 catalog 选中的分支。
-- 搜索结果会机械排除 `_meta/`、未绑定路径、非 active/visible Note；Skill Card 还要求 Source 已明确同步到 remote base，并排除本地 name/version/contract hash 不可用者。`syncBeforeResearch: false` 或 stale-read 降级都不能让 Card 变为 discoverable。通过者返回 `discoveryState: discoverable` 与完整 Card 身份。
+- 搜索结果会机械排除 `_meta/`、未绑定路径、非 active/visible 或 expired Note；review-due 结果保留 freshness metadata 与 warning。Skill Card 还要求 Source 已明确同步到 remote base，并排除本地 name/version/contract hash 不可用者。`syncBeforeResearch: false` 或 stale-read 降级都不能让 Card 变为 discoverable。通过者返回 `discoveryState: discoverable` 与完整 Card 身份。
+- `obsidian_wiki_maintenance_summary` 从可读 bound Source 的 frontmatter 和项目内 canonical feature journal fold 生成 schema-v1、非权威、metadata-only 摘要。调用必须带规范 UTC 秒级 `asOf`，重复运行复用同一值；它分开报告 active/fresh/review-due/expired/带 `contradicts` 边的 stable identities、repository/base health、correction-pending 与 Capture-pending。`identityLimit` 取 1–200，默认 100，对每类 identity 的全部 Source 全局生效，每个 Source/类别给出 `truncated`；readable binding 总数另限 200。它不返回 Note body/summary、candidate claim/evidence/impact、outcome reason、unbound correction identity、任意项目/Vault path 或 transcript。journal 缺换行、非法事件/生命周期、symlink artifact、unhealthy binding 或 correction identity drift 一律 fail-closed；摘要不能进入 readiness/Bind 或授权写入。
 - 批量读取经两轮 Obsidian CLI 重读，返回每条 Note 的 canonical `contentHash` 及整批稳定 `snapshotHash`；读取期间内容、路径或 ID 改变，以及重复 `wiki_id`，都会 fail-closed。
 - typed neighbor 查询仅解析请求 Note 的 `depends_on`、`see_also`、`supersedes`、`contradicts` 一跳目标，去重且不递归跟随 target 的边；source/target 若是 Card，同样先通过 remote-base、pack availability 与唯一性门。
 
@@ -226,7 +229,7 @@ node mcp/obsidian-wiki/dist/index.js serve-write-bridge
 
 `update-wiki` 的固定写路径是：
 
-1. `obsidian_wiki_propose_note_change` 接受已绑定 `sourceId`、Vault 相对 `.md` 路径、完整 atomic Note 内容、`create|update` 和 expected hash（create 为 `null`），完成 schema、stable ID、typed links、root、effective policy 与 Shared neutrality 校验；Skill Card 还复核当前项目 pack identity。返回 structured diff，但不写。
+1. `obsidian_wiki_propose_note_change` 接受已绑定 `sourceId`、Vault 相对 `.md` 路径、完整 atomic Note 内容、`create|update` 和 expected hash（create 为 `null`），完成 schema、freshness、stable ID、typed links、root、effective policy 与 Shared neutrality 校验；Skill Card 还复核当前项目 pack identity。write lookup 可定位 expired Note 以便治理更新，但 proposed 内容不得仍然 expired，也不得声明未来 `verified_at`。返回 structured diff，但不写。
 2. agent 向用户展示 diff。effective policy 为 `confirm` 时必须获得明确授权；`deny` 永远不能被 `authorized: true` 绕过。
 3. `obsidian_wiki_apply_note_change` 把同一输入交给 bridge。bridge 再独立校验 Bearer token、项目 binding + Source manifest effective policy、identity/typed links、允许 root、`_meta` 禁写与 Shared neutrality，并以每 Note 独占写锁串行 bridge 请求。create 使用 no-replace 原子 link；update 通过随包 Python helper 调用宿主的原生 atomic exchange（macOS `renamex_np(RENAME_SWAP)`、Linux `renameat2(RENAME_EXCHANGE)`、Windows `ReplaceFileW`），交换后校验被换出的旧目标 hash。若外部编辑抢先，bridge 原子交换回滚并返回 409，保留外部内容。
 4. bridge 随后返回 `wikiId`、path、content hash，MCP 客户端还会核对 post-write identity 与 proposal 是否完全匹配。成功只表示工作树中的 staged knowledge state；合并、base 同步与正式 runtime 可见性由后续 Git PR publishing 流程负责。

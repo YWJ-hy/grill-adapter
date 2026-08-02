@@ -25,6 +25,12 @@
       "summary": "Preserve the transaction boundary for runtime writes.",
       "contentHash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       "bindingDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      // Optional normalized UTC knowledge-freshness metadata copied from MCP output.
+      // review-due Notes remain selectable with a maintenance warning; expired Notes
+      // are excluded by MCP and rejected by Carry.
+      "verifiedAt": "2026-07-01T00:00:00Z",
+      "reviewAfter": "2027-01-01T00:00:00Z",
+      "expiresAt": "2028-01-01T00:00:00Z",
       // Optional, only for a project-owned ADR execution projection. Carry validates the
       // normalized project-relative authority path and its current content identity.
       "adrSourceId": "project-adr:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
@@ -63,5 +69,7 @@
     }
   ],
   "caveats": [],
+  // Copy MCP freshness warnings unchanged. Carry also derives any missing review-due
+  // warning from the selected Note timestamps.
   "maintenanceWarnings": []
 }

@@ -61,7 +61,10 @@ cat > "$SELECTION" <<'JSON'
       "constraintStrength": "hard",
       "summary": "Runtime writes must preserve the established transaction boundary.",
       "contentHash": "sha256:ab31c6c9848e035118b3dc7a8c9926d5862f5802e0a567c70873b0e082ae943b",
-      "bindingDigest": "d44631c6c041e294a6823d3986d7195e517e84038cfad4f2f78ee71d4a1e8798"
+      "bindingDigest": "d44631c6c041e294a6823d3986d7195e517e84038cfad4f2f78ee71d4a1e8798",
+      "verifiedAt": "2020-01-01T00:00:00Z",
+      "reviewAfter": "2021-01-01T00:00:00Z",
+      "expiresAt": "2999-01-01T00:00:00Z"
     },
     {
       "sourceId": "shared-practices",
@@ -127,9 +130,15 @@ note = context['wikiNotes'][0]
 assert note['wikiId'] == 'project/runtime/constraints'
 assert note['path'] == 'Projects/example/Runtime/constraints.md'
 assert note['contentHash'].startswith('sha256:')
+assert note['verifiedAt'] == '2020-01-01T00:00:00Z'
+assert note['reviewAfter'] == '2021-01-01T00:00:00Z'
+assert note['expiresAt'] == '2999-01-01T00:00:00Z'
 assert note['destination'] == {'kind': 'task-bound', 'reason': '', 'tasks': []}
 assert 'content' not in note
 assert 'selectionRationales' not in context
+assert context['maintenanceWarnings'] == [
+    'Wiki Note project/runtime/constraints is review-due since 2021-01-01T00:00:00Z.'
+]
 skill = context['requiredSkills'][0]
 assert skill['wikiId'] == 'shared/skills/review-contracts'
 assert skill['requiredFor'] == ['reviewer']
@@ -201,6 +210,68 @@ fi
 python3 "$SCRIPT" "$CONTEXT" --task-id T1 --role implementer --strict --execution-ready >/tmp/obsidian-v6-render.out
 if ! grep -q 'Runtime writes must preserve' /tmp/obsidian-v6-render.out; then
   cat /tmp/obsidian-v6-render.out >&2
+  exit 1
+fi
+if ! grep -q 'Freshness: review-due since `2021-01-01T00:00:00Z`' /tmp/obsidian-v6-render.out; then
+  cat /tmp/obsidian-v6-render.out >&2
+  exit 1
+fi
+
+EXPIRED_SELECTION="$TMP/expired.obsidian-wiki-selection.json"
+python3 - "$SELECTION" "$EXPIRED_SELECTION" <<'PY'
+import json
+import sys
+
+selection = json.load(open(sys.argv[1], encoding='utf-8'))
+selection['wikiNotes'][0]['expiresAt'] = '2021-06-01T00:00:00Z'
+with open(sys.argv[2], 'w', encoding='utf-8') as handle:
+    json.dump(selection, handle)
+PY
+if python3 "$SCRIPT" "$TMP/expired.wiki-context.json" --scaffold "$EXPIRED_SELECTION" --strict >/tmp/obsidian-v6-expired.out 2>&1; then
+  printf 'Expected an expired Note selection to fail Carry\n' >&2
+  exit 1
+fi
+if ! grep -q 'expired' /tmp/obsidian-v6-expired.out; then
+  cat /tmp/obsidian-v6-expired.out >&2
+  exit 1
+fi
+
+FUTURE_VERIFIED_SELECTION="$TMP/future-verified.obsidian-wiki-selection.json"
+python3 - "$SELECTION" "$FUTURE_VERIFIED_SELECTION" <<'PY'
+import json
+import sys
+
+selection = json.load(open(sys.argv[1], encoding='utf-8'))
+selection['wikiNotes'][0]['verifiedAt'] = '2998-01-01T00:00:00Z'
+selection['wikiNotes'][0]['reviewAfter'] = '2998-06-01T00:00:00Z'
+with open(sys.argv[2], 'w', encoding='utf-8') as handle:
+    json.dump(selection, handle)
+PY
+if python3 "$SCRIPT" "$TMP/future-verified.wiki-context.json" --scaffold "$FUTURE_VERIFIED_SELECTION" --strict >/tmp/obsidian-v6-future-verified.out 2>&1; then
+  printf 'Expected a future verifiedAt timestamp to fail Carry\n' >&2
+  exit 1
+fi
+if ! grep -q 'verifiedAt.*future' /tmp/obsidian-v6-future-verified.out; then
+  cat /tmp/obsidian-v6-future-verified.out >&2
+  exit 1
+fi
+
+MALFORMED_FRESHNESS_SELECTION="$TMP/malformed-freshness.obsidian-wiki-selection.json"
+python3 - "$SELECTION" "$MALFORMED_FRESHNESS_SELECTION" <<'PY'
+import json
+import sys
+
+selection = json.load(open(sys.argv[1], encoding='utf-8'))
+selection['wikiNotes'][0]['reviewAfter'] = '2021-01-01'
+with open(sys.argv[2], 'w', encoding='utf-8') as handle:
+    json.dump(selection, handle)
+PY
+if python3 "$SCRIPT" "$TMP/malformed-freshness.wiki-context.json" --scaffold "$MALFORMED_FRESHNESS_SELECTION" --strict >/tmp/obsidian-v6-malformed-freshness.out 2>&1; then
+  printf 'Expected a malformed freshness timestamp to fail Carry\n' >&2
+  exit 1
+fi
+if ! grep -q 'reviewAfter.*normalized UTC timestamp' /tmp/obsidian-v6-malformed-freshness.out; then
+  cat /tmp/obsidian-v6-malformed-freshness.out >&2
   exit 1
 fi
 

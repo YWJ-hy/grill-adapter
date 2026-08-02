@@ -174,7 +174,7 @@ grep -q "ADR source path" /tmp/adr-path.out
 
 python3 "${READINESS}" record --receipt "${RECEIPT}" --roster "${ROSTER}" \
   --task-id T1 --status broken --reason "ADR authority drift; continue without Wiki." >/dev/null
-HANDOFF="${CONTEXT_DIR}/T1.wiki-review.md"
+HANDOFF="${CONTEXT_DIR}/T1.wiki-review-handoff.md"
 python3 "${READINESS}" review-handoff --receipt "${RECEIPT}" --task-id T1 \
   --project-root "${PROJECT}" --handoff "${HANDOFF}" >/dev/null
 grep -q "Status: broken" "${HANDOFF}"

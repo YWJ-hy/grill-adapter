@@ -13,7 +13,7 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import * as z from 'zod/v4';
-import { contentHash, parseAtomicNote } from './note.js';
+import { contentHash, evaluateKnowledgeFreshness, parseAtomicNote } from './note.js';
 import { assertSkillCardAvailable } from './skill-card.js';
 import { parseSourceManifest, ProjectSettingsSchema, type SourceManifest } from './bindings.js';
 import { isLoopbackHost } from './loopback.js';
@@ -343,6 +343,9 @@ function validateChange(
   if (!inside(resolvedParent, resolvedSourceRoot)) throw new BridgeError(403, `Note parent escapes its Source root: ${notePath}`);
 
   const proposed = parseAtomicNote(request.content, notePath);
+  if (evaluateKnowledgeFreshness(proposed).state === 'expired') {
+    throw new BridgeError(400, `Proposed Note is already expired: ${notePath}`);
+  }
   if (proposed.wikiId !== request.expectedWikiId) throw new BridgeError(409, 'Proposed Note wiki_id does not match expectedWikiId');
   const exists = existsSync(targetPath);
   let beforeContent: string | null = null;

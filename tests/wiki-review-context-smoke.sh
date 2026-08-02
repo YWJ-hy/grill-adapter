@@ -32,7 +32,7 @@ SHA_D="$(printf 'd%.0s' {1..64})"
 ROSTER="$CTX_DIR/ticket-roster.json"
 CONTEXT="$CTX_DIR/wiki-context.json"
 RECEIPT="$CTX_DIR/wiki-readiness.json"
-HANDOFF="$CTX_DIR/21.wiki-review.md"
+HANDOFF="$CTX_DIR/21.wiki-review-handoff.md"
 CALL_LOG="$TMP/obsidian-calls.log"
 
 cat > "$ROSTER" <<'JSON'
@@ -335,7 +335,7 @@ assert folded["counts"]["skipped"] == 1
 '
 
 # Independent review with no task/receipt is fail-open and performs no Wiki read.
-UNKNOWN="$CONTEXT_ROOT/independent.wiki-review.md"
+UNKNOWN="$CONTEXT_ROOT/independent.wiki-review-handoff.md"
 CALLS_BEFORE="$(wc -l < "$CALL_LOG")"
 FAKE_CALL_LOG="$CALL_LOG" python3 "$READINESS" review-handoff \
   --project-root "$PROJECT" \
@@ -349,7 +349,7 @@ need "$UNKNOWN" "No verified Wiki reviewer context"
 # late research or calls the materializer for these states.
 for status in no-relevant disabled broken; do
   state_receipt="$CTX_DIR/reviewer.${status}.wiki-readiness.json"
-  state_handoff="$CTX_DIR/reviewer.${status}.wiki-review.md"
+  state_handoff="$CTX_DIR/reviewer.${status}.wiki-review-handoff.md"
   python3 "$READINESS" record \
     --receipt "$state_receipt" \
     --roster "$ROSTER" \
@@ -381,10 +381,10 @@ FAKE_CALL_LOG="$CALL_LOG" python3 "$READINESS" review-handoff \
   --receipt "$OUTSIDE/reviewer.wiki-readiness.json" \
   --task-id 21 \
   --project-root "$PROJECT" \
-  --handoff "$CTX_DIR/outside.wiki-review.md" \
+  --handoff "$CTX_DIR/outside.wiki-review-handoff.md" \
   --obsidian-wiki-cmd "$FAKE_CMD"
-need "$CTX_DIR/outside.wiki-review.md" "Status: broken"
-deny "$CTX_DIR/outside.wiki-review.md" "AUTHORITATIVE"
+need "$CTX_DIR/outside.wiki-review-handoff.md" "Status: broken"
+deny "$CTX_DIR/outside.wiki-review-handoff.md" "AUTHORITATIVE"
 [[ "$(wc -l < "$CALL_LOG")" == "$CALLS_BEFORE" ]] || fail "out-of-project receipt must not access Wiki"
 
 # Ticket fingerprint drift invalidates reviewer reuse before any Wiki read.
@@ -405,10 +405,10 @@ FAKE_CALL_LOG="$CALL_LOG" python3 "$READINESS" review-handoff \
   --receipt "$RECEIPT" \
   --task-id 21 \
   --project-root "$PROJECT" \
-  --handoff "$CTX_DIR/drift.wiki-review.md" \
+  --handoff "$CTX_DIR/drift.wiki-review-handoff.md" \
   --obsidian-wiki-cmd "$FAKE_CMD"
-need "$CTX_DIR/drift.wiki-review.md" "Status: broken"
-deny "$CTX_DIR/drift.wiki-review.md" "AUTHORITATIVE"
+need "$CTX_DIR/drift.wiki-review-handoff.md" "Status: broken"
+deny "$CTX_DIR/drift.wiki-review-handoff.md" "AUTHORITATIVE"
 [[ "$(wc -l < "$CALL_LOG")" == "$CALLS_BEFORE" ]] || fail "fingerprint drift must stop before Wiki access"
 mv "$TMP/roster.before-drift.json" "$ROSTER"
 

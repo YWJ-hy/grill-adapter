@@ -30,6 +30,7 @@ PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-}"
 [ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -z "$PROJECT_ROOT" ] && exit 0
 [ -d "$PROJECT_ROOT" ] || exit 0
+python3 "$SCRIPT_DIR/../scripts/project_activation.py" "$PROJECT_ROOT" >/dev/null 2>&1 || exit 0
 
 # Collect unresolved or invalid feature journals with a bounded search.
 FOUND=""

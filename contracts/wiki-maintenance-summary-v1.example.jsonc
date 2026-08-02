@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "kind": "grill-adapter.wiki-maintenance-summary",
+  "authoritative": false,
+  "status": "ok",
+  "asOf": "2026-07-31T12:00:00Z",
+  "identityLimit": 100,
+  "identityLimitScope": "per-category-global",
+  "knowledge": {
+    "counts": {"active": 3, "fresh": 1, "reviewDue": 1, "expired": 1, "contradictory": 1},
+    "sources": [
+      {
+        "sourceId": "project-source",
+        "role": "project",
+        "bindingDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "counts": {"active": 3, "fresh": 1, "reviewDue": 1, "expired": 1, "contradictory": 1},
+        "identities": {
+          "active": ["project/runtime-boundary", "project/review-due", "project/expired"],
+          "reviewDue": ["project/review-due"],
+          "expired": ["project/expired"],
+          "contradictory": ["project/runtime-boundary"]
+        },
+        "truncated": {"active": false, "reviewDue": false, "expired": false, "contradictory": false}
+      }
+    ]
+  },
+  "repositories": [
+    {
+      "repositoryRef": "project-wiki",
+      "baseBranch": "main",
+      "currentBranch": "main",
+      "baseStatus": "synchronized",
+      "sourceIds": ["project-source"]
+    }
+  ],
+  "candidateLifecycle": {
+    "counts": {
+      "pending": 1,
+      "deferred": 1,
+      "kept": 0,
+      "skipped": 0,
+      "superseded": 0,
+      "capturePending": 2,
+      "correctionPending": 1
+    },
+    "capturePending": [
+      {"featureSlug": "runtime-change", "candidateId": "decision-1", "kind": "decision", "status": "pending"}
+    ],
+    "correctionPending": [
+      {
+        "featureSlug": "runtime-change",
+        "candidateId": "correction-1",
+        "status": "deferred",
+        "affectedWikiIdentity": {"sourceId": "project-source", "wikiId": "project/runtime-boundary"}
+      }
+    ],
+    "truncated": {"capturePending": false, "correctionPending": false}
+  },
+  "caveats": []
+}

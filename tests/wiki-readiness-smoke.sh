@@ -12,7 +12,7 @@ READINESS="${TARGET_INPUT}/scripts/wiki_readiness.py"
 RENDER="${TARGET_INPUT}/scripts/wiki_context_render.py"
 MATERIALIZE="${TARGET_INPUT}/scripts/wiki_materialize_task.py"
 CONTRACT="${TARGET_INPUT}/contracts/wiki-readiness-v1.example.jsonc"
-SNAPSHOT_CONTRACT="${TARGET_INPUT}/contracts/wiki-task-snapshot-v1.example.jsonc"
+SNAPSHOT_CONTRACT="${TARGET_INPUT}/contracts/wiki-task-snapshot-v2.example.jsonc"
 APPROVAL_CONTRACT="${TARGET_INPUT}/contracts/wiki-task-approval-v1.example.jsonc"
 SKILL="${TARGET_INPUT}/skills/wiki-readiness/SKILL.md"
 
@@ -35,6 +35,7 @@ mkdir -p "$ISSUE_DIR" "$MANUAL_DIR" "$FORMAL_DIR" "$BATCH_DIR" "$ATOMIC_BATCH_DI
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 need() { grep -Fq "$2" "$1" || fail "$1 missing: $2"; }
+deny() { if grep -Fq "$2" "$1"; then fail "$1 unexpectedly contains: $2"; fi; }
 
 # Direct GitHub issue implementation uses the real issue id and exact body as the fingerprint input.
 ISSUE_JSON="$ISSUE_DIR/issue.json"
@@ -209,7 +210,24 @@ cat > "$FORMAL_SELECTION" <<JSON
       "constraintStrength": "hard",
       "summary": "Formal execution boundary must be materialized before implementation.",
       "contentHash": "${FORMAL_CONTENT}",
-      "bindingDigest": "${FORMAL_BINDING}"
+      "bindingDigest": "${FORMAL_BINDING}",
+      "verifiedAt": "2020-01-01T00:00:00Z",
+      "reviewAfter": "2999-01-01T00:00:00Z",
+      "expiresAt": "3999-01-01T00:00:00Z"
+    },
+    {
+      "sourceId": "project-runtime",
+      "role": "project",
+      "path": "Projects/example/Runtime/operational-context.md",
+      "wikiId": "project/runtime/operational-context",
+      "type": "guide",
+      "constraintStrength": "soft",
+      "summary": "Operational context remains visible without a full-text reread.",
+      "contentHash": "sha256:cb31c6c9848e035118b3dc7a8c9926d5862f5802e0a567c70873b0e082ae943b",
+      "bindingDigest": "${FORMAL_BINDING}",
+      "verifiedAt": "2020-01-01T00:00:00Z",
+      "reviewAfter": "2999-01-01T00:00:00Z",
+      "expiresAt": "3999-01-01T00:00:00Z"
     }
   ],
   "requiredSkills": [],
@@ -225,10 +243,12 @@ import sys
 
 path = sys.argv[1]
 context = json.load(open(path, encoding="utf-8"))
-context["wikiNotes"][0]["destination"].update({
-    "reason": "The formal ticket implements this boundary.",
-    "tasks": ["01"],
-})
+for note in context["wikiNotes"]:
+    note["destination"].update({
+        "kind": "task-bound",
+        "reason": "The formal ticket uses this Wiki context.",
+        "tasks": ["01"],
+    })
 context["taskRouting"]["status"] = "confirmed"
 context["taskRouting"]["selectedSectionsFrozen"] = True
 with open(path, "w", encoding="utf-8") as handle:
@@ -245,10 +265,10 @@ import sys
 
 request = json.load(sys.stdin)
 wiki_id = "project/runtime/execution-boundary"
+closure_id = "project/runtime/dependency-boundary"
 if sys.argv[1] == "read-notes-by-wiki-ids":
-    assert request == {"wikiIds": [wiki_id]}
-    print(json.dumps({
-        "notes": [{
+    if request == {"wikiIds": [wiki_id]}:
+        notes = [{
             "sourceId": "project-runtime",
             "role": "project",
             "path": "Projects/example/Runtime/execution-boundary.md",
@@ -258,18 +278,73 @@ if sys.argv[1] == "read-notes-by-wiki-ids":
             "summary": "Formal execution boundary must be materialized before implementation.",
             "contentHash": "sha256:ab31c6c9848e035118b3dc7a8c9926d5862f5802e0a567c70873b0e082ae943b",
             "bindingDigest": "d44631c6c041e294a6823d3986d7195e517e84038cfad4f2f78ee71d4a1e8798",
+            "verifiedAt": "2020-01-01T00:00:00Z",
+            "reviewAfter": "2999-01-01T00:00:00Z",
+            "expiresAt": "3999-01-01T00:00:00Z",
             "content": "Formal execution boundary must be materialized before implementation.",
-        }],
+        }]
+    elif request == {"wikiIds": [closure_id]}:
+        notes = [{
+            "sourceId": "project-runtime",
+            "role": "project",
+            "path": "Projects/example/Runtime/dependency-boundary.md",
+            "wikiId": closure_id,
+            "type": "constraint",
+            "constraintStrength": "hard",
+            "summary": "The direct dependency must remain current.",
+            "contentHash": "sha256:bb31c6c9848e035118b3dc7a8c9926d5862f5802e0a567c70873b0e082ae943b",
+            "bindingDigest": "d44631c6c041e294a6823d3986d7195e517e84038cfad4f2f78ee71d4a1e8798",
+            "verifiedAt": "2020-01-01T00:00:00Z",
+            "reviewAfter": "2021-01-01T00:00:00Z",
+            "expiresAt": "2999-06-01T00:00:00Z",
+            "content": "The direct dependency must remain current.",
+        }]
+    else:
+        raise SystemExit(f"unexpected read request: {request}")
+    print(json.dumps({
+        "notes": notes,
         "snapshotHash": "sha256:6240d8cadfd2df3df96ee005f0349145191b5b219b922c3c93aab9c7f2bd2e6e",
     }))
 elif sys.argv[1] == "graph-neighbors":
     assert request == {"wikiIds": [wiki_id]}
-    print(json.dumps({"neighbors": {wiki_id: []}}))
+    print(json.dumps({"neighbors": {wiki_id: [{
+        "type": "depends_on",
+        "wikiId": closure_id,
+        "path": "Projects/example/Runtime/dependency-boundary.md",
+    }]}}))
 else:
     raise SystemExit(f"unexpected command: {sys.argv[1]}")
 PY
 chmod +x "$FAKE_OBSIDIAN"
 FAKE_OBSIDIAN_CMD="python3 $FAKE_OBSIDIAN"
+
+EXPIRED_DIR="$TMP/expired-formal"
+mkdir -p "$EXPIRED_DIR"
+EXPIRED_CONTEXT="$EXPIRED_DIR/wiki-context.json"
+EXPIRED_ROSTER="$EXPIRED_DIR/ticket-roster.json"
+cp "$FORMAL_CONTEXT" "$EXPIRED_CONTEXT"
+cp "$FORMAL_ROSTER" "$EXPIRED_ROSTER"
+python3 - "$EXPIRED_CONTEXT" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+context = json.load(open(path, encoding="utf-8"))
+context["wikiNotes"][0]["reviewAfter"] = "2021-01-01T00:00:00Z"
+context["wikiNotes"][0]["expiresAt"] = "2021-06-01T00:00:00Z"
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(context, handle, indent=2)
+    handle.write("\n")
+PY
+if python3 "$READINESS" freeze \
+  --context "$EXPIRED_CONTEXT" \
+  --roster "$EXPIRED_ROSTER" \
+  --task-id 01 \
+  --project-root "$TMP/project" \
+  --obsidian-wiki-cmd "$FAKE_OBSIDIAN_CMD" >"$TMP/expired-freeze.out" 2>&1; then
+  fail "expired Note must not enter frozen role contracts"
+fi
+need "$TMP/expired-freeze.out" "expired"
 
 write_runtime_selection() {
   cat > "$1" <<JSON
@@ -294,7 +369,10 @@ write_runtime_selection() {
       "constraintStrength": "hard",
       "summary": "Formal execution boundary must be materialized before implementation.",
       "contentHash": "${FORMAL_CONTENT}",
-      "bindingDigest": "${FORMAL_BINDING}"
+      "bindingDigest": "${FORMAL_BINDING}",
+      "verifiedAt": "2020-01-01T00:00:00Z",
+      "reviewAfter": "2999-01-01T00:00:00Z",
+      "expiresAt": "3999-01-01T00:00:00Z"
     }
   ],
   "requiredSkills": [],
@@ -331,6 +409,12 @@ need "$IMPLEMENT_SNAPSHOT" 'Role: `implementer`'
 need "$REVIEW_SNAPSHOT" 'Role: `reviewer`'
 need "$REVIEW_SNAPSHOT" "Reviewer Handoff"
 need "$REVIEW_SNAPSHOT" "same read-only context"
+deny "$IMPLEMENT_SNAPSHOT" "Knowledge Freshness Warnings"
+deny "$REVIEW_SNAPSHOT" "Knowledge Freshness Warnings"
+need "$IMPLEMENT_SNAPSHOT" '"freshnessEntries"'
+need "$IMPLEMENT_SNAPSHOT" '"wikiId": "project/runtime/dependency-boundary"'
+need "$IMPLEMENT_SNAPSHOT" '"wikiId": "project/runtime/operational-context"'
+need "$IMPLEMENT_SNAPSHOT" "Wiki Note project/runtime/dependency-boundary is review-due since 2021-01-01T00:00:00Z."
 # Explicit planning approval refreshes both role files together. A subsequent Bind consumes the
 # frozen files and no longer depends on the current Obsidian CLI.
 python3 "$READINESS" freeze \
@@ -340,6 +424,41 @@ python3 "$READINESS" freeze \
   --project-root "$TMP/project" \
   --obsidian-wiki-cmd "$FAKE_OBSIDIAN_CMD" >/dev/null
 need "$IMPLEMENT_SNAPSHOT" '"snapshotOrigin": "planning-approved"'
+
+LEGACY_SNAPSHOT="$TMP/legacy-without-freshness.wiki-implement.md"
+if python3 - "$READINESS" "$IMPLEMENT_SNAPSHOT" "$LEGACY_SNAPSHOT" "$FORMAL_CONTEXT" <<'PY' >"$TMP/legacy-snapshot.out" 2>&1
+import json
+import sys
+from pathlib import Path
+
+scripts = Path(sys.argv[1]).resolve().parent
+sys.path.insert(0, str(scripts))
+from wiki_task_snapshot import SNAPSHOT_END, SNAPSHOT_MARKER, validate_snapshot
+
+source = Path(sys.argv[2]).read_text(encoding="utf-8")
+prefix = SNAPSHOT_MARKER + "\n"
+marker = "\n" + SNAPSHOT_END + "\n"
+end = source.index(marker, len(prefix))
+metadata = json.loads(source[len(prefix):end])
+metadata.pop("freshnessEntries")
+legacy = prefix + json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + marker + source[end + len(marker):]
+legacy_path = Path(sys.argv[3])
+legacy_path.write_text(legacy, encoding="utf-8")
+validate_snapshot(
+    legacy_path,
+    context_path=Path(sys.argv[4]),
+    feature_slug="formal-feature",
+    ticket_source="grill-local-scratch",
+    task_id="01",
+    task_title="Preserve formal routing",
+    task_fingerprint=metadata["taskFingerprint"],
+    role="implementer",
+)
+PY
+then
+  fail "schema-v2 snapshot without freshnessEntries was accepted"
+fi
+need "$TMP/legacy-snapshot.out" "freshnessEntries are missing"
 
 # One approved planning pass can freeze every roster task without exposing a per-ticket command
 # loop. Each task still receives its own role snapshots and approval manifest.
@@ -465,14 +584,99 @@ python3 "$READINESS" bind \
 need "$TMP/frozen-bind.out" "Formal execution boundary must be materialized"
 python3 "$READINESS" validate --receipt "$FORMAL_RECEIPT" --task-id 01 >/dev/null
 REVIEW_HASH_BEFORE="$(sha256_file "$REVIEW_SNAPSHOT")"
+if python3 "$READINESS" review-handoff \
+  --receipt "$FORMAL_RECEIPT" \
+  --task-id 01 \
+  --project-root "$TMP/project" \
+  --handoff "$REVIEW_SNAPSHOT" >"$TMP/review-overwrite.out" 2>&1; then
+  fail "review handoff accepted the approved reviewer snapshot as its output path"
+fi
+need "$TMP/review-overwrite.out" "must not overwrite"
+[[ "$(sha256_file "$REVIEW_SNAPSHOT")" == "$REVIEW_HASH_BEFORE" ]] || fail "rejected handoff path mutated reviewer snapshot"
+REVIEW_HANDOFF="$FORMAL_DIR/01.wiki-review-handoff.md"
 python3 "$READINESS" review-handoff \
   --receipt "$FORMAL_RECEIPT" \
   --task-id 01 \
   --project-root "$TMP/project" \
-  --handoff "$REVIEW_SNAPSHOT" \
+  --handoff "$REVIEW_HANDOFF" \
   --obsidian-wiki-cmd "definitely-missing-obsidian-command" >"$TMP/frozen-review-handoff.out"
-need "$TMP/frozen-review-handoff.out" "reused ready reviewer Wiki snapshot"
+need "$TMP/frozen-review-handoff.out" "wrote ready reviewer handoff"
+need "$REVIEW_HANDOFF" "Formal execution boundary must be materialized"
 [[ "$(sha256_file "$REVIEW_SNAPSHOT")" == "$REVIEW_HASH_BEFORE" ]] || fail "review handoff mutated the approved reviewer snapshot"
+
+# Runtime freshness is derived again from the approved snapshot metadata without mutating its body.
+python3 - "$READINESS" "$FORMAL_RECEIPT" "$FORMAL_ROSTER" "$FORMAL_CONTEXT" "$TMP/project" <<'PY' >"$TMP/future-bind.out"
+import importlib.util
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("wiki_readiness", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+sys.path.insert(0, str(Path(sys.argv[1]).resolve().parent))
+spec.loader.exec_module(module)
+print(module.bind_readiness(
+    Path(sys.argv[2]),
+    Path(sys.argv[3]),
+    Path(sys.argv[4]),
+    "01",
+    Path(sys.argv[5]),
+    "Future-clock Bind revalidated snapshot freshness.",
+    now=datetime(2999, 2, 1, tzinfo=timezone.utc),
+))
+PY
+need "$TMP/future-bind.out" "Wiki Note project/runtime/execution-boundary is review-due since 2999-01-01T00:00:00Z."
+need "$TMP/future-bind.out" "Wiki Note project/runtime/operational-context is review-due since 2999-01-01T00:00:00Z."
+need "$TMP/future-bind.out" "Wiki Note project/runtime/dependency-boundary is review-due since 2021-01-01T00:00:00Z."
+
+FUTURE_REVIEW_HANDOFF="$FORMAL_DIR/01.future.wiki-review-handoff.md"
+python3 - "$READINESS" "$FORMAL_RECEIPT" "$TMP/project" "$FUTURE_REVIEW_HANDOFF" <<'PY'
+import importlib.util
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("wiki_readiness", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+sys.path.insert(0, str(Path(sys.argv[1]).resolve().parent))
+spec.loader.exec_module(module)
+print(module.review_handoff(
+    receipt_path=Path(sys.argv[2]),
+    task_id="01",
+    project_root=Path(sys.argv[3]),
+    handoff_path=Path(sys.argv[4]),
+    obsidian_wiki_cmd=None,
+    now=datetime(2999, 2, 1, tzinfo=timezone.utc),
+))
+PY
+need "$FUTURE_REVIEW_HANDOFF" "Wiki Note project/runtime/execution-boundary is review-due since 2999-01-01T00:00:00Z."
+need "$FUTURE_REVIEW_HANDOFF" "Wiki Note project/runtime/operational-context is review-due since 2999-01-01T00:00:00Z."
+need "$FUTURE_REVIEW_HANDOFF" "Wiki Note project/runtime/dependency-boundary is review-due since 2021-01-01T00:00:00Z."
+
+if python3 - "$READINESS" "$FORMAL_RECEIPT" "$FORMAL_ROSTER" "$FORMAL_CONTEXT" "$TMP/project" <<'PY' >"$TMP/expired-closure-bind.out" 2>&1
+import importlib.util
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("wiki_readiness", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+sys.path.insert(0, str(Path(sys.argv[1]).resolve().parent))
+spec.loader.exec_module(module)
+module.bind_readiness(
+    Path(sys.argv[2]),
+    Path(sys.argv[3]),
+    Path(sys.argv[4]),
+    "01",
+    Path(sys.argv[5]),
+    "Expired closure must fail.",
+    now=datetime(3000, 1, 1, tzinfo=timezone.utc),
+)
+PY
+then
+  fail "Bind accepted a depends_on Note that expired after freeze"
+fi
+need "$TMP/expired-closure-bind.out" "project/runtime/dependency-boundary is expired"
 python3 - "$FORMAL_RECEIPT" "$CONTEXT_HASH_BEFORE" "$ROSTER_HASH_BEFORE" "$FORMAL_CONTEXT" "$FORMAL_ROSTER" "$IMPLEMENT_SNAPSHOT" "$REVIEW_SNAPSHOT" <<'PY'
 import hashlib
 import json
@@ -581,10 +785,12 @@ done
 need "$SNAPSHOT_CONTRACT" "bodyDigest"
 need "$SNAPSHOT_CONTRACT" "taskFingerprint"
 need "$SNAPSHOT_CONTRACT" "role"
+need "$SNAPSHOT_CONTRACT" "freshnessEntries"
 need "$APPROVAL_CONTRACT" "implementWikiDigest"
 need "$APPROVAL_CONTRACT" "reviewWikiDigest"
 need "$SKILL" "before the first code edit"
 need "$SKILL" "freeze --all"
+need "$SKILL" "wiki-review-handoff.md"
 need "$SKILL" "gh issue view"
 need "$SKILL" "manual"
 need "$SKILL" "Do not patch"

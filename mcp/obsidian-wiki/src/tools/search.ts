@@ -12,6 +12,7 @@ import {
 } from '../retrieval.js';
 import { skillCardAvailability } from '../skill-card.js';
 import { publishBranchOptions } from '../publish.js';
+import { evaluateKnowledgeFreshness } from '../note.js';
 import type { BoundNoteScope } from '../retrieval.js';
 import {
   boundedPageLimit,
@@ -44,13 +45,13 @@ export function presentNotes(
   resolution: ReturnType<typeof searchResolution>,
   env: NodeJS.ProcessEnv,
   publishFeatureSlug?: string,
+  now: Date = new Date(),
 ) {
   for (const note of found) {
     if (publishFeatureSlug) assertUniqueBoundSkillCard(note, resolution.bindings, env);
     else assertUniqueBoundSkillCardMetadata(note, resolution.bindings);
   }
-  return {
-    notes: found
+  const notes = found
       .filter((note) => {
         const binding = resolution.bindings.find(
           (candidate) => candidate.bindingDigest === note.bindingDigest,
@@ -64,30 +65,48 @@ export function presentNotes(
           },
         ).available;
       })
-      .map((note) => ({
-      sourceId: note.sourceId,
-      role: note.role,
-      path: note.path,
-      wikiId: note.wikiId,
-      type: note.type,
-      constraintStrength: note.constraintStrength,
-      skillRoles: note.skillRoles,
-      skillName: note.skillName,
-      skillVersion: note.skillVersion,
-      skillContractHash: note.skillContractHash,
-      skillTriggers: note.skillTriggers,
-      adrSourceId: note.adrSourceId,
-      adrSourcePath: note.adrSourcePath,
-      adrSourceContentHash: note.adrSourceContentHash,
-      discoveryState: note.skillName ? 'discoverable' : undefined,
-      summary: note.summary,
-      contentHash: note.contentHash,
-      bindingDigest: note.bindingDigest,
-      })),
+      .map((note) => {
+        const freshness = evaluateKnowledgeFreshness(note, now);
+        return {
+          verifiedAt: note.verifiedAt,
+          reviewAfter: note.reviewAfter,
+          expiresAt: note.expiresAt,
+          freshnessState: freshness.state,
+          maintenanceWarning: freshness.warning,
+          sourceId: note.sourceId,
+          role: note.role,
+          path: note.path,
+          wikiId: note.wikiId,
+          type: note.type,
+          constraintStrength: note.constraintStrength,
+          skillRoles: note.skillRoles,
+          skillName: note.skillName,
+          skillVersion: note.skillVersion,
+          skillContractHash: note.skillContractHash,
+          skillTriggers: note.skillTriggers,
+          adrSourceId: note.adrSourceId,
+          adrSourcePath: note.adrSourcePath,
+          adrSourceContentHash: note.adrSourceContentHash,
+          discoveryState: note.skillName ? 'discoverable' : undefined,
+          summary: note.summary,
+          contentHash: note.contentHash,
+          bindingDigest: note.bindingDigest,
+        };
+      });
+  const maintenanceWarnings = notes
+    .map((note) => note.maintenanceWarning)
+    .filter((warning): warning is string => warning !== undefined);
+  return {
+    notes,
+    ...(maintenanceWarnings.length > 0 ? { maintenanceWarnings } : {}),
   };
 }
 
-export function searchTool(input: SearchInput, env: NodeJS.ProcessEnv = process.env) {
+export function searchTool(
+  input: SearchInput,
+  env: NodeJS.ProcessEnv = process.env,
+  now: Date = new Date(),
+) {
   if (typeof input.query !== 'string' || !input.query.trim()) {
     throw new Error('query must be a non-empty string');
   }
@@ -115,7 +134,7 @@ export function searchTool(input: SearchInput, env: NodeJS.ProcessEnv = process.
     env,
     { sourceId: input.sourceId, pathPrefix: normalizedPathPrefix },
   );
-  assertUniqueActiveBoundSearchCandidateIds(candidates);
+  assertUniqueActiveBoundSearchCandidateIds(candidates, now, input.publishFeatureSlug !== undefined);
   const bounded = pageByKey(candidates, (candidate) => candidate.sortKey, {
     kind: 'obsidian-wiki-search',
     scope,
@@ -124,8 +143,12 @@ export function searchTool(input: SearchInput, env: NodeJS.ProcessEnv = process.
   });
   const seenIds = new Set<string>();
   const found = bounded.items.flatMap(({ binding, notePath }) => {
-    const note = readBoundNote(notePath, [binding], env, false);
+    const note = readBoundNote(notePath, [binding], env, false, now);
     if (note.status !== 'active' || !note.agentVisible) return [];
+    if (
+      input.publishFeatureSlug === undefined
+      && evaluateKnowledgeFreshness(note, now).state === 'expired'
+    ) return [];
     if (seenIds.has(note.wikiId)) {
       throw new Error(`Duplicate wiki_id in readable bound Sources: ${note.wikiId}`);
     }
@@ -137,6 +160,7 @@ export function searchTool(input: SearchInput, env: NodeJS.ProcessEnv = process.
     resolution,
     env,
     input.publishFeatureSlug,
+    now,
   );
   return {
     ...presented,
@@ -150,11 +174,20 @@ export function searchTool(input: SearchInput, env: NodeJS.ProcessEnv = process.
 export function searchWikiIdsTool(
   input: { wikiIds: string[]; publishFeatureSlug?: string },
   env: NodeJS.ProcessEnv = process.env,
+  now: Date = new Date(),
 ) {
   const resolution = searchResolution(input, env);
   const found = input.wikiIds.flatMap((wikiId) => (
-    searchBoundNotes(`[wiki_id:${wikiId}]`, resolution.bindings, env)
+    searchBoundNotes(
+      `[wiki_id:${wikiId}]`,
+      resolution.bindings,
+      env,
+      {
+        now,
+        includeExpired: input.publishFeatureSlug !== undefined,
+      },
+    )
       .filter((note) => note.wikiId === wikiId)
   ));
-  return presentNotes(found, resolution, env, input.publishFeatureSlug);
+  return presentNotes(found, resolution, env, input.publishFeatureSlug, now);
 }

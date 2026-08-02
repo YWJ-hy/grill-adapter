@@ -23,6 +23,9 @@ function note(wikiId: string, summary: string, options: {
   status?: string;
   agentVisible?: boolean;
   dependsOn?: string[];
+  verifiedAt?: string;
+  reviewAfter?: string;
+  expiresAt?: string;
   skill?: {
     name: string;
     version: string;
@@ -37,10 +40,19 @@ function note(wikiId: string, summary: string, options: {
     : '';
   const type = options.skill ? 'guide' : 'constraint';
   const strength = options.skill ? '' : 'constraint_strength: hard\n';
-  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: ${type}\nstatus: ${options.status ?? 'active'}\nagent_visible: ${options.agentVisible ?? true}\nsummary: ${summary}\n${strength}${dependsOn}${skill}---\n\n# ${wikiId}\n\nRule body.\n`;
+  const freshness = [
+    options.verifiedAt === undefined ? '' : `verified_at: ${options.verifiedAt}\n`,
+    options.reviewAfter === undefined ? '' : `review_after: ${options.reviewAfter}\n`,
+    options.expiresAt === undefined ? '' : `expires_at: ${options.expiresAt}\n`,
+  ].join('');
+  return `---\nwiki_schema: grill-adapter.obsidian-note/v1\nwiki_id: ${wikiId}\ntype: ${type}\nstatus: ${options.status ?? 'active'}\nagent_visible: ${options.agentVisible ?? true}\nsummary: ${summary}\n${strength}${freshness}${dependsOn}${skill}---\n\n# ${wikiId}\n\nRule body.\n`;
 }
 
-function fixture(options: { duplicateSkillActive?: boolean; extraNoteCount?: number } = {}) {
+function fixture(options: {
+  duplicateSkillActive?: boolean;
+  extraNoteCount?: number;
+  freshnessNotes?: 'valid' | 'invalid' | 'invalid-order' | 'future-verified';
+} = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'obsidian-retrieval-'));
   createdDirectories.push(root);
   const projectDir = path.join(root, 'project');
@@ -71,6 +83,45 @@ function fixture(options: { duplicateSkillActive?: boolean; extraNoteCount?: num
   writeFileSync(path.join(sourceRoot, 'Transitive.md'), note('project/example/transitive', 'Transitive note'), 'utf8');
   writeFileSync(path.join(sourceRoot, 'Archived.md'), note('project/example/archived', 'Archived note', { status: 'archived' }), 'utf8');
   writeFileSync(path.join(sourceRoot, 'Private.md'), note('project/example/private', 'Private note', { agentVisible: false }), 'utf8');
+  const freshnessPaths: string[] = [];
+  if (options.freshnessNotes === 'valid') {
+    writeFileSync(path.join(sourceRoot, 'Fresh.md'), note('project/example/fresh', 'Fresh note', {
+      verifiedAt: '2026-07-01T00:00:00Z',
+      reviewAfter: '2026-08-01T00:00:00Z',
+      expiresAt: '2027-01-01T00:00:00Z',
+    }), 'utf8');
+    writeFileSync(path.join(sourceRoot, 'ReviewDue.md'), note('project/example/review-due', 'Review-due note', {
+      verifiedAt: '2026-01-01T00:00:00Z',
+      reviewAfter: '2026-07-01T00:00:00Z',
+      expiresAt: '2027-01-01T00:00:00Z',
+    }), 'utf8');
+    writeFileSync(path.join(sourceRoot, 'Expired.md'), note('project/example/expired', 'Expired note', {
+      verifiedAt: '2025-01-01T00:00:00Z',
+      reviewAfter: '2025-06-01T00:00:00Z',
+      expiresAt: '2026-01-01T00:00:00Z',
+    }), 'utf8');
+    freshnessPaths.push(
+      'Projects/example/Fresh.md',
+      'Projects/example/ReviewDue.md',
+      'Projects/example/Expired.md',
+    );
+  } else if (options.freshnessNotes === 'invalid') {
+    writeFileSync(path.join(sourceRoot, 'InvalidFreshness.md'), note('project/example/invalid-freshness', 'Invalid freshness note', {
+      verifiedAt: '2026-07-01',
+    }), 'utf8');
+    freshnessPaths.push('Projects/example/InvalidFreshness.md');
+  } else if (options.freshnessNotes === 'invalid-order') {
+    writeFileSync(path.join(sourceRoot, 'InvalidFreshnessOrder.md'), note('project/example/invalid-freshness-order', 'Invalid freshness order note', {
+      verifiedAt: '2026-07-01T00:00:00Z',
+      reviewAfter: '2026-06-01T00:00:00Z',
+    }), 'utf8');
+    freshnessPaths.push('Projects/example/InvalidFreshnessOrder.md');
+  } else if (options.freshnessNotes === 'future-verified') {
+    writeFileSync(path.join(sourceRoot, 'FutureVerified.md'), note('project/example/future-verified', 'Future-verified note', {
+      verifiedAt: '2026-08-01T00:00:00Z',
+    }), 'utf8');
+    freshnessPaths.push('Projects/example/FutureVerified.md');
+  }
   mkdirSync(path.join(sourceRoot, 'guides', 'runtime'), { recursive: true });
   writeFileSync(path.join(sourceRoot, 'guides', 'Overview.md'), note('project/example/guides/overview', 'Guide overview'), 'utf8');
   writeFileSync(path.join(sourceRoot, 'guides', 'runtime', 'Boundary.md'), note('project/example/guides/runtime-boundary', 'Runtime guide boundary'), 'utf8');
@@ -127,6 +178,7 @@ function fixture(options: { duplicateSkillActive?: boolean; extraNoteCount?: num
     'Projects/example/MissingSkill.md',
     'Projects/example/DuplicateSkill.md',
     'Projects/other/Other.md',
+    ...freshnessPaths,
     ...bulkPaths,
   ];
   writeFileSync(obsidianScript, `#!/usr/bin/env node
@@ -302,6 +354,80 @@ describe('Obsidian Wiki retrieval', () => {
     expect(result.notes.map((note) => note.wikiId)).not.toContain('project/example/archived');
     expect(result.notes.map((note) => note.wikiId)).not.toContain('project/example/private');
     expect(result.notes.map((note) => note.wikiId)).not.toContain('project/other/private');
+  });
+
+  it('derives knowledge freshness independently and excludes expired Notes from formal reads', () => {
+    const now = new Date('2026-07-31T00:00:00Z');
+    const { env } = fixture({ freshnessNotes: 'valid' });
+
+    const search = searchTool({ query: 'note' }, env, now);
+    expect(search.notes).toContainEqual(expect.objectContaining({
+      wikiId: 'project/example/fresh',
+      verifiedAt: '2026-07-01T00:00:00Z',
+      reviewAfter: '2026-08-01T00:00:00Z',
+      expiresAt: '2027-01-01T00:00:00Z',
+      freshnessState: 'fresh',
+    }));
+    expect(search.notes).toContainEqual(expect.objectContaining({
+      wikiId: 'project/example/review-due',
+      freshnessState: 'review-due',
+    }));
+    expect(search.notes).toContainEqual(expect.objectContaining({
+      wikiId: 'project/example/visible',
+      freshnessState: 'fresh',
+    }));
+    expect(search.notes.map((entry) => entry.wikiId)).not.toContain('project/example/expired');
+    expect(search.maintenanceWarnings).toContain(
+      'Wiki Note project/example/review-due is review-due since 2026-07-01T00:00:00Z.',
+    );
+
+    const catalog = catalogTool({ sourceId: 'project' }, env, now);
+    expect(catalog.entries).toContainEqual(expect.objectContaining({
+      kind: 'note',
+      wikiId: 'project/example/review-due',
+      freshnessState: 'review-due',
+    }));
+    expect(JSON.stringify(catalog)).not.toContain('project/example/expired');
+
+    const reviewDue = readNotesTool({ paths: ['Projects/example/ReviewDue.md'] }, env, now);
+    expect(reviewDue.notes[0]).toMatchObject({
+      wikiId: 'project/example/review-due',
+      freshnessState: 'review-due',
+    });
+    expect(reviewDue.maintenanceWarnings).toHaveLength(1);
+    expect(() => readNotesTool({ paths: ['Projects/example/Expired.md'] }, env, now))
+      .toThrow(/expired/);
+  });
+
+  it('fails closed for malformed freshness metadata and future verification times', () => {
+    const now = new Date('2026-07-31T00:00:00Z');
+    const malformed = fixture({ freshnessNotes: 'invalid' });
+    expect(() => catalogTool({ sourceId: 'project' }, malformed.env, now))
+      .toThrow(/verified_at.*normalized UTC timestamp/);
+
+    const invalidOrder = fixture({ freshnessNotes: 'invalid-order' });
+    expect(() => searchTool({ query: 'note' }, invalidOrder.env, now))
+      .toThrow(/review_after must not be earlier than verified_at/);
+
+    const future = fixture({ freshnessNotes: 'future-verified' });
+    expect(() => searchTool({ query: 'note' }, future.env, now))
+      .toThrow(/verified_at.*future/);
+  });
+
+  it('keeps knowledge freshness independent from base synchronization', () => {
+    const now = new Date('2026-07-31T00:00:00Z');
+    const { env, registryPath } = fixture({ freshnessNotes: 'valid' });
+    const registry = JSON.parse(readFileSync(registryPath, 'utf8'));
+    registry.repositories.wiki.syncBeforeResearch = false;
+    writeJson(registryPath, registry);
+
+    const result = searchTool({ query: 'note' }, env, now);
+    expect(result.notes.map((note) => note.wikiId)).toContain('project/example/fresh');
+    expect(result.notes.map((note) => note.wikiId)).toContain('project/example/review-due');
+    expect(result.notes.map((note) => note.wikiId)).not.toContain('project/example/expired');
+    expect(result.notes.map((note) => note.wikiId)).not.toContain('project/example/review-skill');
+    expect(() => readNotesByWikiIdsTool({ wikiIds: ['project/example/review-skill'] }, env, now))
+      .toThrow(/base.*synchron/i);
   });
 
   it('lists a paginated metadata-only catalog and expands selected directories', () => {
@@ -593,21 +719,38 @@ describe('Obsidian Wiki retrieval', () => {
 
     const output = execFileSync('node', [bundle, 'read-notes-by-wiki-ids'], {
       encoding: 'utf8',
-      input: JSON.stringify({ wikiIds: ['project/example/visible'] }),
+      input: JSON.stringify({
+        sourceId: 'project',
+        wikiIds: ['project/example/visible'],
+      }),
       env: { ...process.env, ...env },
     });
 
     expect(JSON.parse(output)).toMatchObject({
-      notes: [expect.objectContaining({ wikiId: 'project/example/visible', path: 'Projects/example/Visible.md' })],
+      notes: [expect.objectContaining({
+        sourceId: 'project',
+        wikiId: 'project/example/visible',
+        path: 'Projects/example/Visible.md',
+      })],
       snapshotHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     });
   });
 
-  it('fails closed when a stable wiki ID is missing or duplicated', () => {
+  it('fails closed when a source-scoped stable Wiki identity is missing, duplicated, or bound to another Source', () => {
     const { env } = fixture();
 
-    expect(() => readNotesByWikiIdsTool({ wikiIds: ['project/example/missing'] }, env)).toThrow(/resolved 0 readable active Notes/);
-    expect(() => readNotesByWikiIdsTool({ wikiIds: ['project/example/visible', 'project/example/visible'] }, env)).toThrow(/Duplicate wiki_id requested/);
+    expect(() => readNotesByWikiIdsTool({
+      sourceId: 'project',
+      wikiIds: ['project/example/missing'],
+    }, env)).toThrow(/resolved 0 readable active Notes/);
+    expect(() => readNotesByWikiIdsTool({
+      sourceId: 'project',
+      wikiIds: ['project/example/visible', 'project/example/visible'],
+    }, env)).toThrow(/Duplicate wiki_id requested/);
+    expect(() => readNotesByWikiIdsTool({
+      sourceId: 'shared',
+      wikiIds: ['project/example/visible'],
+    }, env)).toThrow(/Unknown readable Obsidian Wiki Source: shared/);
   });
 
   it('fails closed for requests outside bound Sources', () => {

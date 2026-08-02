@@ -7,11 +7,12 @@ import hashlib
 import json
 import os
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 
-SNAPSHOT_SCHEMA_VERSION = 1
+SNAPSHOT_SCHEMA_VERSION = 2
 SNAPSHOT_KIND = "grill-adapter.task-wiki-snapshot"
 SNAPSHOT_GENERATED_BY = "grill-adapter"
 APPROVAL_SCHEMA_VERSION = 1
@@ -136,6 +137,8 @@ def validate_snapshot(
         raise SnapshotError(f"snapshot kind must be {SNAPSHOT_KIND}")
     if metadata.get("generatedBy") != SNAPSHOT_GENERATED_BY:
         raise SnapshotError("snapshot generatedBy must be grill-adapter")
+    if "freshnessEntries" not in metadata:
+        raise SnapshotError("snapshot freshnessEntries are missing; re-freeze the task snapshots")
     checks = {
         "featureSlug": feature_slug,
         "ticketSource": ticket_source,
@@ -158,6 +161,53 @@ def validate_snapshot(
     return metadata, body
 
 
+def evaluate_snapshot_freshness(
+    metadata: dict[str, Any],
+    now: datetime | None = None,
+) -> list[str]:
+    from wiki_context_render import ValidationError, _knowledge_freshness
+
+    raw_entries = metadata.get("freshnessEntries", [])
+    if not isinstance(raw_entries, list):
+        raise SnapshotError("snapshot freshnessEntries must be a list")
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for index, raw_entry in enumerate(raw_entries):
+        if not isinstance(raw_entry, dict):
+            raise SnapshotError(f"snapshot freshnessEntries[{index}] must be an object")
+        unknown = sorted(
+            set(raw_entry)
+            - {"wikiId", "path", "verifiedAt", "reviewAfter", "expiresAt"}
+        )
+        if unknown:
+            raise SnapshotError(
+                f"snapshot freshnessEntries[{index}] contains unsupported fields: "
+                + ", ".join(unknown)
+            )
+        wiki_id = raw_entry.get("wikiId")
+        note_path = raw_entry.get("path")
+        if not isinstance(wiki_id, str) or not wiki_id.strip():
+            raise SnapshotError(f"snapshot freshnessEntries[{index}].wikiId must be non-empty")
+        if not isinstance(note_path, str) or not note_path.strip():
+            raise SnapshotError(f"snapshot freshnessEntries[{index}].path must be non-empty")
+        if wiki_id in seen:
+            raise SnapshotError(f"snapshot freshnessEntries duplicates wikiId {wiki_id}")
+        seen.add(wiki_id)
+        try:
+            state, warning = _knowledge_freshness(
+                raw_entry,
+                f"snapshot Wiki Note {wiki_id}",
+                now,
+            )
+        except ValidationError as exc:
+            raise SnapshotError(str(exc)) from exc
+        if state == "expired":
+            raise SnapshotError(f"snapshot Wiki Note {wiki_id} is expired")
+        if warning and warning not in warnings:
+            warnings.append(warning)
+    return warnings
+
+
 def render_snapshot(
     *,
     context: dict[str, Any],
@@ -167,6 +217,7 @@ def render_snapshot(
     role: str,
     rendered: str,
     materialized: str,
+    freshness_entries: list[dict[str, Any]],
     origin: str,
 ) -> str:
     task_id = safe_task_id(task_id)
@@ -211,6 +262,7 @@ def render_snapshot(
         "contextDigest": file_digest(context_path),
         "sourceSnapshotHash": context.get("snapshotHash"),
         "snapshotOrigin": origin,
+        "freshnessEntries": freshness_entries,
         "bodyDigest": _digest_bytes(body.encode("utf-8")),
     }
     metadata_text = json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True)

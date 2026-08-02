@@ -19,8 +19,16 @@ need "$SKILL" 'same-theme refinement'
 need "$SKILL" 'creates a sibling Note with a new stable `wiki_id`'
 need "$SKILL" 'record `deferred` and ask the user'
 need "$SKILL" 'targetWikiId`/path'
+need "$SKILL" '### Correction candidates'
+need "$SKILL" 'exact affected `sourceId` + `wikiId`'
+need "$SKILL" '`obsidian_wiki_read_notes_by_wiki_ids`'
+need "$SKILL" 'one-element `wikiIds` list'
+need "$SKILL" 'never suppresses'
+need "$SKILL" 'matching apply succeeds'
+need "$SKILL" 'without that prior'
 need "$TARGETING" '### Obsidian atomic Note targeting'
 need "$TARGETING" 'The bridge validates the chosen operation and'
+need "$TARGETING" 'never choose a nearest path or create a'
 need "$TEMPLATES" 'explicit `create`/`update` decision'
 
 for host in \
@@ -31,6 +39,8 @@ for host in \
   need "$host" 'explicit target decision before proposal'
   need "$host" 'same-theme refinement'
   need "$host" 'defer and ask'
+  need "$host" 'An unresolved correction is only a maintenance signal'
+  need "$host" 'matching apply receipt before recording `kept`'
 done
 
 python3 - "$SKILL" "$TARGETING" <<'PY'

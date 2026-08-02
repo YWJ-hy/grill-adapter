@@ -50,6 +50,12 @@ for its exact `adr_source_id`; update the sole match, create only when there is 
 on duplicates. Its `sourcePath` and authority identity must never be neutralized into a Shared
 target.
 
+A `correction` candidate never enters normal ownership selection. Stable-read its exact
+`wikiId`, require the returned Note's `sourceId` to match the affected identity, and update that
+one Note only after final evidence accepts the correction. Zero or duplicate matches, a Source
+mismatch, or an ambiguous correction remains `deferred`; never choose a nearest path or create a
+new Note to make an unknown identity succeed.
+
 Prefer the most specific indexed leaf that owns the rule.
 Use broader guide wiki pages only when the candidate is a checklist or thinking prompt.
 

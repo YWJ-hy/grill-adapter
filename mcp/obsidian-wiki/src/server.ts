@@ -7,6 +7,8 @@ import { catalogTool } from './tools/catalog.js';
 import { readNoteTool, readNotesByWikiIdsTool, readNotesTool } from './tools/read.js';
 import { graphNeighborsTool } from './tools/graph.js';
 import { applyNoteChangeTool, proposeNoteChangeTool } from './tools/write.js';
+import { maintenanceSummaryTool } from './tools/maintenance-summary.js';
+import { consolidationCandidatesTool } from './tools/consolidation-candidates.js';
 import { environmentForMcpRequest } from './bindings.js';
 
 function toResult(value: unknown) {
@@ -31,7 +33,7 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (_input, extra) => toResult(sourcesTool(requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_search', {
-    description: 'Search active, agent-visible atomic Notes within readable bound Sources, optionally scoped to one Source-relative directory.',
+    description: 'Search active, agent-visible, non-expired atomic Notes within readable bound Sources, optionally scoped to one Source-relative directory; review-due Notes remain eligible with maintenance warnings.',
     inputSchema: z.object({
       query: z.string().min(1),
       sourceId: z.string().min(1).optional(),
@@ -42,7 +44,7 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(searchTool(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_catalog', {
-    description: 'List a bounded metadata-only directory view for one readable bound Obsidian Wiki Source; it never returns Note bodies.',
+    description: 'List a bounded metadata-only directory view of active, non-expired Notes for one readable bound Obsidian Wiki Source; it never returns Note bodies.',
     inputSchema: z.object({
       sourceId: z.string().min(1),
       pathPrefix: z.string().optional(),
@@ -52,19 +54,37 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(catalogTool(input, requestEnv(extra._meta))));
+  server.registerTool('obsidian_wiki_maintenance_summary', {
+    description: 'Return a bounded, metadata-only, non-authoritative summary of bound Note freshness, contradiction edges, repository health, and canonical candidate lifecycle; it never returns Note bodies or journal prose.',
+    inputSchema: z.object({
+      asOf: z.string().min(1),
+      identityLimit: z.number().int().min(1).max(200).optional(),
+    }),
+    annotations: { readOnlyHint: true, idempotentHint: true },
+  }, async (input, extra) => toResult(maintenanceSummaryTool(input, requestEnv(extra._meta))));
+  server.registerTool('obsidian_wiki_consolidation_candidates', {
+    description: 'Return a bounded, read-only snapshot of unresolved canonical cross-feature candidates for private maintenance-agent consolidation; candidate prose must not be returned to the coordinator.',
+    inputSchema: z.object({
+      candidateLimit: z.number().int().min(1).max(200).optional(),
+    }),
+    annotations: { readOnlyHint: true, idempotentHint: true },
+  }, async (input, extra) => toResult(consolidationCandidatesTool(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_read_note', {
-    description: 'Read one atomic Note only when its Vault-relative path is under a readable bound Source.',
+    description: 'Read one active, agent-visible, non-expired atomic Note only when its Vault-relative path is under a readable bound Source.',
     inputSchema: z.object({ path: z.string().min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(readNoteTool(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_read_notes', {
-    description: 'Batch read atomic Notes with stable content hashes and a snapshot hash, failing closed on inconsistency.',
+    description: 'Batch read active, non-expired atomic Notes with stable content hashes and a snapshot hash, failing closed on inconsistency and surfacing review-due warnings.',
     inputSchema: z.object({ paths: z.array(z.string().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(readNotesTool(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_read_notes_by_wiki_ids', {
-    description: 'Batch read atomic Notes by stable wiki_id, resolving exactly one readable active Note per ID.',
-    inputSchema: z.object({ wikiIds: z.array(z.string().min(1)).min(1) }),
+    description: 'Batch read atomic Notes by stable wiki_id, optionally within one readable bound Source, resolving exactly one active Note per ID.',
+    inputSchema: z.object({
+      wikiIds: z.array(z.string().min(1)).min(1),
+      sourceId: z.string().min(1).optional(),
+    }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(readNotesByWikiIdsTool(input, requestEnv(extra._meta))));
   server.registerTool('obsidian_wiki_graph_neighbors', {

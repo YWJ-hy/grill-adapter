@@ -33,6 +33,7 @@ PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-}"
 [ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -z "$PROJECT_ROOT" ] && exit 0
 [ -d "$PROJECT_ROOT" ] || exit 0
+python3 "$SCRIPTS_DIR/project_activation.py" "$PROJECT_ROOT" >/dev/null 2>&1 || exit 0
 
 # Fast bail-out if sourceOfTruth is not configured in the canonical project settings
 # (avoids a python spawn per tool call).

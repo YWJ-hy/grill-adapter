@@ -40,9 +40,9 @@
     ],
     "websiteURL": "https://github.com/YWJ-hy/grill-adapter",
     "defaultPrompt": [
-      "Research the project wiki before planning this change.",
-      "Establish Wiki readiness and bind any selected constraints before the first implementation edit.",
-      "Review durable knowledge from this completed change."
+      "In a project wired for grill-adapter, research the project wiki before planning this change.",
+      "In a project wired for grill-adapter, establish Wiki readiness and bind any selected constraints before the first implementation edit.",
+      "In a project wired for grill-adapter, review durable knowledge from this completed change."
     ],
     "brandColor": "#247B63"
   }

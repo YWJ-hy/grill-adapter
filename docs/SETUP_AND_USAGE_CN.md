@@ -49,7 +49,7 @@ codex plugin marketplace add YWJ-hy/grill-adapter
 codex plugin add grill-adapter@grill-adapter
 ```
 
-plugin 一启用，12 个 skill、1 个 agent、3 个 hook 和一个 Source-binding `obsidian-wiki` MCP server **一起注册、自动生效**——不往 `~/.claude/skills`、`~/.claude/agents` 拷文件，也不往你项目的 `.claude/settings.json` 里并 hook 片段。初始化 Obsidian 项目时使用 `setup-init-obsidian`，它会先检查 `grill-adapter` 与 `@grill-adapter/obsidian-wiki` 两个 npm 包，并复用它们的 CLI。
+plugin 一启用，13 个 skill、2 个 agent、3 个 hook 和一个 Source-binding `obsidian-wiki` MCP server **一起注册、自动生效**——不往 `~/.claude/skills`、`~/.claude/agents` 拷文件，也不往你项目的 `.claude/settings.json` 里并 hook 片段。初始化 Obsidian 项目时使用 `setup-init-obsidian`，它会先检查 `grill-adapter` 与 `@grill-adapter/obsidian-wiki` 两个 npm 包，并复用它们的 CLI。
 
 **关于 `--scope`**：skills / agents / hooks / MCP **共用 plugin 的 scope**，plugin 自带的 MCP 无法单独设 scope。
 
@@ -140,7 +140,7 @@ grill-adapter doctor /path/to/your/project
 ## 6. 验证你的安装
 
 ```bash
-claude --plugin-dir "$PWD" plugin details grill-adapter   # 不安装即加载：应报 12 skills / 1 agent / 3 hooks / 1 MCP server
+claude --plugin-dir "$PWD" plugin details grill-adapter   # 不安装即加载：应报 13 skills / 2 agents / 3 hooks / 1 MCP server
 ./manage.sh self-test                # 跑全套 smoke/regression（别传仓库根，见 DEVELOPMENT_CN.md）
 ./manage.sh release-check <project>  # 发布前总门（plugin 加载 + 沙盒接线 + verify + 全套 + doctor，非破坏）
 ```

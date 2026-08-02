@@ -8,6 +8,7 @@ import {
   sourceRelativePath,
 } from '../retrieval.js';
 import { skillCardAvailability } from '../skill-card.js';
+import { evaluateKnowledgeFreshness } from '../note.js';
 import {
   boundedPageLimit,
   cursorScope,
@@ -79,18 +80,22 @@ function immediateEntry(relativePath: string, pathPrefix: string): { directory?:
   return { directory: pathPrefix ? `${pathPrefix}/${firstSegment}` : firstSegment, direct: false };
 }
 
-export function catalogTool(input: CatalogInput, env: NodeJS.ProcessEnv = process.env) {
+export function catalogTool(
+  input: CatalogInput,
+  env: NodeJS.ProcessEnv = process.env,
+  now: Date = new Date(),
+) {
   const normalized = catalogInput(input);
   const resolution = catalogResolution(env);
   const [binding] = readableBindingsForScope(resolution.bindings, { sourceId: normalized.sourceId });
-  const activeNotes = boundNoteMetadata(binding).filter((note) => (
-    note.status === 'active'
-    && note.agentVisible
-  ));
-  for (const note of activeNotes) {
+  const activeNotes = boundNoteMetadata(binding)
+    .filter((note) => note.status === 'active' && note.agentVisible)
+    .map((note) => ({ note, freshness: evaluateKnowledgeFreshness(note, now) }))
+    .filter(({ freshness }) => freshness.state !== 'expired');
+  for (const { note } of activeNotes) {
     assertUniqueBoundSkillCardMetadata(note, resolution.bindings);
   }
-  const notes = activeNotes.filter((note) => (
+  const notes = activeNotes.filter(({ note }) => (
     skillCardAvailability(note, resolution.projectDir, {
       mode: 'discovery',
       baseSynchronized: binding.repositoryHealth.baseSynchronized,
@@ -99,7 +104,7 @@ export function catalogTool(input: CatalogInput, env: NodeJS.ProcessEnv = proces
   const directories = new Map<string, number>();
   const directNotes: CatalogNote[] = [];
 
-  for (const note of notes) {
+  for (const { note, freshness } of notes) {
     const relativePath = sourceRelativePath(note.path, binding);
     if (
       normalized.pathPrefix
@@ -130,6 +135,11 @@ export function catalogTool(input: CatalogInput, env: NodeJS.ProcessEnv = proces
         discoveryState: note.skillName ? 'discoverable' : undefined,
         summary: note.summary,
         bindingDigest: note.bindingDigest,
+        verifiedAt: note.verifiedAt,
+        reviewAfter: note.reviewAfter,
+        expiresAt: note.expiresAt,
+        freshnessState: freshness.state,
+        maintenanceWarning: freshness.warning,
       });
     }
   }

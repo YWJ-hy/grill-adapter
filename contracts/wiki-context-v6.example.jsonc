@@ -37,6 +37,11 @@
       "summary": "Preserve the transaction boundary for runtime writes.",
       "contentHash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       "bindingDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      // Optional source metadata. Runtime validation recomputes freshness on every
+      // Carry/finalize/freeze/Bind operation; no persisted status is authoritative.
+      "verifiedAt": "2026-07-01T00:00:00Z",
+      "reviewAfter": "2027-01-01T00:00:00Z",
+      "expiresAt": "2028-01-01T00:00:00Z",
       "adrSourceId": "project-adr:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
       "adrSourcePath": "docs/adr/0001-runtime.md",
       "adrSourceContentHash": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
@@ -81,5 +86,6 @@
     }
   ],
   "caveats": [],
+  // Includes deterministic review-due warnings for selected Notes/Cards.
   "maintenanceWarnings": []
 }

@@ -10,9 +10,13 @@ ROOT="${1:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 HOOKS="$ROOT/hooks"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
+activate_project() {
+  printf '%s\n' '<!-- grill-adapter:host:grill:start -->' > "$1/AGENTS.md"
+}
 
 # --- wiki-capture-suggest: fires only when journal candidates are unresolved ---
 T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.grill-adapter/context/feature-a"
+activate_project "$T"
 JOURNAL="$T/.grill-adapter/context/feature-a/wiki-candidates.jsonl"
 python3 "$ROOT/scripts/wiki_candidate_journal.py" append \
   --journal "$JOURNAL" --feature-slug feature-a --event-id evt-1 --candidate-id cand-1 \
@@ -74,6 +78,7 @@ rm -rf "$T"
 
 # --- wiki-reread: schema-v6 is silent until approved snapshots await their first Bind. ---
 T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.grill-adapter/context/feature"
+activate_project "$T"
 printf '{"schemaVersion":6,"kind":"grill-adapter.wiki-context"}\n' > "$T/.grill-adapter/context/feature/wiki-context.json"
 OUT="$(printf '{"cwd":"%s","hook_event_name":"UserPromptSubmit"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-reread.sh")"
 [[ -z "$OUT" ]] || fail "wiki-reread must not materialize schema-v6 notes on UserPromptSubmit"
@@ -114,6 +119,7 @@ rm -rf "$T"
 
 # The hook remains able to resume an existing flat sidecar without moving it.
 T="$(mktemp -d)"; ( cd "$T" && git init -q ); mkdir -p "$T/.grill-adapter/context"
+activate_project "$T"
 printf '{"schemaVersion":6,"kind":"grill-adapter.wiki-context"}\n' > "$T/.grill-adapter/context/legacy.wiki-context.json"
 OUT="$(printf '{"cwd":"%s","hook_event_name":"SessionStart"}' "$T" | CLAUDE_PROJECT_DIR="$T" bash "$HOOKS/wiki-reread.sh")"
 printf '%s' "$OUT" | grep -q 'legacy.wiki-context.json' || fail "wiki-reread did not find a legacy flat sidecar"

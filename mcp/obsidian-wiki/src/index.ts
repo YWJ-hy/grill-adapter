@@ -5,6 +5,8 @@ import { createServer } from './server.js';
 import { statusTool } from './tools/status.js';
 import { searchTool, searchWikiIdsTool } from './tools/search.js';
 import { catalogTool } from './tools/catalog.js';
+import { maintenanceSummaryTool } from './tools/maintenance-summary.js';
+import { consolidationCandidatesTool } from './tools/consolidation-candidates.js';
 import { readNotesByWikiIdsTool, readNotesTool } from './tools/read.js';
 import { graphNeighborsTool } from './tools/graph.js';
 import { applyNoteChangeTool, proposeNoteChangeTool, type NoteChangeInput } from './tools/write.js';
@@ -187,6 +189,8 @@ Usage:
   obsidian-wiki config validate [--config <path>]
   obsidian-wiki doctor [--config <path>]           Validate project bindings and runtime health
   printf '<json>' | obsidian-wiki catalog
+  printf '<json>' | obsidian-wiki maintenance-summary
+  printf '<json>' | obsidian-wiki consolidation-candidates
   printf '<json>' | obsidian-wiki search-by-wiki-ids
   obsidian-wiki bridge start [--config <path>]    Start a detached background write bridge
   obsidian-wiki bridge status [--config <path>]   Check the write bridge health endpoint
@@ -283,6 +287,23 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify(catalogTool(request as never))}\n`);
     return;
   }
+  if (subcommand === 'maintenance-summary') {
+    const request = await readJsonRequest();
+    const asOf = optionalStringField(request, 'asOf');
+    if (asOf === undefined) throw new Error('asOf is required');
+    process.stdout.write(`${JSON.stringify(maintenanceSummaryTool({
+      asOf,
+      identityLimit: optionalNumberField(request, 'identityLimit'),
+    }))}\n`);
+    return;
+  }
+  if (subcommand === 'consolidation-candidates') {
+    const request = await readJsonRequest();
+    process.stdout.write(`${JSON.stringify(consolidationCandidatesTool({
+      candidateLimit: optionalNumberField(request, 'candidateLimit'),
+    }))}\n`);
+    return;
+  }
   if (subcommand === 'search' || subcommand === 'search-by-wiki-ids') {
     const request = await readJsonRequest();
     if (subcommand === 'search') {
@@ -323,11 +344,18 @@ async function main(): Promise<void> {
     if (!Array.isArray(values) || values.length === 0 || values.some((value) => typeof value !== 'string' || !value)) {
       throw new Error(`${field} must be a non-empty array of non-empty strings`);
     }
-    const result = subcommand === 'read-notes'
-      ? readNotesTool({ paths: values })
-      : subcommand === 'read-notes-by-wiki-ids'
-        ? readNotesByWikiIdsTool({ wikiIds: values })
-        : graphNeighborsTool({ wikiIds: values });
+    let result;
+    if (subcommand === 'read-notes') {
+      result = readNotesTool({ paths: values });
+    } else if (subcommand === 'read-notes-by-wiki-ids') {
+      const sourceId = optionalStringField(request, 'sourceId');
+      if (sourceId !== undefined && !sourceId.trim()) {
+        throw new Error('sourceId must be a non-empty string');
+      }
+      result = readNotesByWikiIdsTool({ wikiIds: values, sourceId });
+    } else {
+      result = graphNeighborsTool({ wikiIds: values });
+    }
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
   }
