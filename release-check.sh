@@ -96,6 +96,37 @@ else
   echo "  FAIL (Codex plugin smoke)"; fail=1
 fi
 
+step "6b. Installed Codex context budget"
+# This size gate uses Codex's rendered prompt and the live MCP discovery contract. It
+# complements plugin loading and model-driven acceptance; it proves neither behavior.
+BUDGET_REPORT="$(mktemp)"
+if "$BASH_BIN" "$SCRIPT_DIR/acceptance/codex-context-budget-installed.sh" \
+  "$SCRIPT_DIR" --output "$BUDGET_REPORT"; then
+  python3 - "$BUDGET_REPORT" <<'PY'
+import json
+import sys
+
+report = json.load(open(sys.argv[1], encoding="utf-8"))
+fixed = report["fixedCosts"]
+stages = report["stages"]
+print(
+    "  OK (catalog={catalog}, host={host}, MCP={mcp}, research={research}, "
+    "readiness={readiness}, capture={capture}, maintenance={maintenance} bytes)".format(
+        catalog=fixed["globalPluginSkillCatalog"]["bytes"],
+        host=fixed["projectHostInstructions"]["bytes"],
+        mcp=fixed["mcpToolSchemas"]["bytes"],
+        research=stages["research"]["bytes"],
+        readiness=stages["readiness"]["bytes"],
+        capture=stages["capture"]["bytes"],
+        maintenance=stages["maintenance"]["bytes"],
+    )
+)
+PY
+else
+  echo "  FAIL (installed Codex context budget)"; fail=1
+fi
+rm -f "$BUDGET_REPORT"
+
 step "7. Sandbox project wiring + verify (throwaway project)"
 SANDBOX_PROJECT="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX_PROJECT"' EXIT
