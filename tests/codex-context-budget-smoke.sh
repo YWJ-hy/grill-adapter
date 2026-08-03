@@ -163,9 +163,10 @@ assert [tool["name"] for tool in report["fixedCosts"]["mcpToolSchemas"]["tools"]
 ]
 assert report["stages"]["research"]["resources"] == [
     "skills/wiki-research/SKILL.md",
-    "agents/wiki-researcher.md",
 ]
 assert "skills/wiki-research/SKILL.md" in report["stages"]["readiness"]["resources"]
+assert "agents/wiki-researcher.md" not in report["stages"]["research"]["resources"]
+assert "agents/wiki-researcher.md" not in report["stages"]["readiness"]["resources"]
 installed = pathlib.Path(sys.argv[2])
 source_bytes = sum(
     (installed / relative).stat().st_size

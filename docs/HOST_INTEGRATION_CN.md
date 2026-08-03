@@ -66,7 +66,7 @@ grill 的 roster 边界仍由该 router 保留：local scratch ticket 用文件�
 
 ### Agent 角色在两种运行时的差异
 
-Claude Code 会直接注册 `agents/wiki-researcher.md`、`agents/wiki-maintenance.md` 与 `agents/wiki-capture.md`。Codex 由对应入口 skill 读取完整自包含 prompt，并以 `fork_turns: none` 派生一个通用 sub-agent。dispatch 返回的是句柄；必须把等待精确 child 终态作为下一步。research/maintenance/Capture 的 dispatch、容量、transport 或 lifecycle 失败都进入各自 `broken` 路径；Capture 尤其不得 inline fallback、派生第二个 child 或把候选正文带回主 session。
+Claude Code 会直接注册 `agents/wiki-researcher.md`、`agents/wiki-maintenance.md` 与 `agents/wiki-capture.md`。Codex 对 research 先只解析带 role identity、已解析只读 source 与 expected digest 的 metadata descriptor，再以 `fork_turns: none` 派生通用 child；child 在任何 Wiki 调用前自行读取并校验完整 researcher role，父 session 不摄入或内嵌 role 正文。其他 role 保持各自入口 skill 的既有 dispatch contract。dispatch 返回的是句柄；必须把等待精确 child 终态作为下一步。research/maintenance/Capture 的 dispatch、容量、transport 或 lifecycle 失败都进入各自 `broken` 路径；research role 的 source/digest/load 失败也直接 `broken`。Capture 尤其不得 inline fallback、派生第二个 child 或把候选正文带回主 session。
 
 ## hook 配置（`hooks/hooks.json`）
 

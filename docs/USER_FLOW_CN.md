@@ -111,7 +111,7 @@ grill 进入质询/发现阶段时，用 wiki-research 披露与当前话题相�
 /wiki-research      # phase: brainstorm
 ```
 
-- 由 `wiki-researcher` agent 先查看每个 bound Source 的 metadata 目录，再按需展开相关分支、在该分支内检索，并只全文复核少量候选 Note/Card；正文不离开该子 agent。
+- 由 `wiki-researcher` agent 先查看每个 bound Source 的 metadata 目录，再按需展开相关分支、在该分支内检索，并只全文复核少量候选 Note/Card；正文不离开该子 agent。Codex coordinator 只传 role identity、已解析 source、expected digest 和本阶段输入，child 校验后才读取完整 role 与调用 Wiki；Claude Code 直接使用同一注册 role。
 - 此阶段**只披露、不写 selection/context sidecar**。若质询解决了 durable 决策，可经 `/candidate-journal` 以 `grill-with-docs` stage 追加候选，但不写 Obsidian。
 
 ### 步骤 2 · `/to-spec` — 真实源 Verify
@@ -283,7 +283,7 @@ grill-adapter 同时以 **Claude Code plugin** 与 **Codex plugin** 形式发布
 >
 > 约定块里对 grill-adapter 自己的 skill 一律带命名空间调用（`/grill-adapter:wiki-research` 等）；grill 自带的 `/grill-with-docs`、`/to-spec`、`/implement` 等不加。
 
-**Agent roles（2）**：`wiki-researcher`、`wiki-maintenance`。Claude Code 直接注册；Codex 由对应入口 skill 读取同一 prompt 并各派生一个通用 sub-agent。dispatch 返回句柄后，等待同一 agent path 是唯一允许的下一步；在终态前不得发送用户消息、提问、调用 MCP 或继续主流程，且有界等待超时要继续等待。dispatch/容量/transport/生命周期失败走对应 `broken` 路径，不能降级为 `no-relevant` 或空维护结果。
+**Agent roles（3）**：`wiki-researcher`、`wiki-maintenance`、`wiki-capture`。Claude Code 直接注册；Codex 的 research coordinator 只解析 role descriptor 并派生不继承上下文的 child，由 child 校验 digest 后读取同一 role，其余入口按各自 role dispatch contract 派生通用 sub-agent。dispatch 返回句柄后，等待同一 agent path 是唯一允许的下一步；在终态前不得发送用户消息、提问、调用 MCP 或继续主流程，且有界等待超时要继续等待。dispatch/容量/transport/生命周期或 research role load 失败走对应 `broken` 路径，不能降级为 `no-relevant` 或空维护结果。
 
 **MCP server（1）**：`obsidian-wiki` 解析受约束的 Obsidian Source binding，并提供状态、Source、读取、proposal 与 apply 工具。它随 plugin 自动启动，无需手工注册；只操作当前项目 `.grill-adapter/settings.json` 声明的 binding，未绑定、Vault/仓库不健康或 policy 不兼容时 fail-closed。实际写入由另行启动、只监听 loopback 的 write bridge 完成，MCP 自身不开放 HTTP 端口。
 

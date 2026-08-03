@@ -32,6 +32,7 @@ print(json.dumps({
         "maintenance-consolidation",
     ],
     "roleContracts": [
+        "researcher-child-side-loader",
         "implementer",
         "reviewer-standards",
         "reviewer-spec",
@@ -39,6 +40,7 @@ print(json.dumps({
     ],
     "failurePaths": [
         "researcher-dispatch",
+        "researcher-role-load",
         "maintenance-dispatch",
         "researcher-malformed-output",
         "maintenance-stale-report",
@@ -52,6 +54,8 @@ print(json.dumps({
         "journal-transcript",
         "agent-reasoning",
         "parent-transcript-inheritance",
+        "researcher-role-private-in-coordinator",
+        "researcher-role-loaded-by-child",
         "role-contract-mismatch",
         "proposal-side-effects",
     ],
@@ -149,6 +153,7 @@ REVIEW_LOG="$SANDBOX/codex-review.log"
 CAPTURE_LOG="$SANDBOX/codex-capture.log"
 DEBUG_LOG="$SANDBOX/codex-debug.log"
 RESEARCH_DISPATCH_FAILURE_LOG="$SANDBOX/codex-research-dispatch-failure.log"
+ROLE_LOAD_FAILURE_LOG="$SANDBOX/codex-research-role-load-failure.log"
 HOST_FAIL_OPEN_LOG="$SANDBOX/codex-host-fail-open.log"
 MAINTENANCE_DISPATCH_FAILURE_LOG="$SANDBOX/codex-maintenance-dispatch-failure.log"
 
@@ -507,7 +512,10 @@ PLUGIN_ROOT="$(find "$CODEX_SANDBOX_HOME/plugins/cache/grill-adapter/grill-adapt
 MCP_BUNDLE="$PLUGIN_ROOT/mcp/obsidian-wiki/dist/index.js"
 INSTALLED_RENDER="$PLUGIN_ROOT/scripts/wiki_context_render.py"
 INSTALLED_READINESS="$PLUGIN_ROOT/scripts/wiki_readiness.py"
-for installed_file in "$MCP_BUNDLE" "$INSTALLED_RENDER" "$INSTALLED_READINESS"; do
+INSTALLED_ROLE_LOADER="$PLUGIN_ROOT/scripts/child_role_loader.py"
+INSTALLED_RESEARCHER_ROLE="$PLUGIN_ROOT/agents/wiki-researcher.md"
+for installed_file in "$MCP_BUNDLE" "$INSTALLED_RENDER" "$INSTALLED_READINESS" \
+  "$INSTALLED_ROLE_LOADER" "$INSTALLED_RESEARCHER_ROLE"; do
   [[ -f "$installed_file" ]] || {
     printf 'installed acceptance dependency missing: %s\n' "$installed_file" >&2
     exit 1
@@ -609,6 +617,7 @@ catch {exec kill -WINCH [exp_pid]}
 
 set deadline [expr {[clock seconds] + $env(ACCEPTANCE_RUN_TIMEOUT_SECONDS)}]
 set finished 0
+set child_closed 0
 set capture_pending_since 0
 while {[clock seconds] < $deadline} {
   set timeout 1
@@ -621,7 +630,15 @@ while {[clock seconds] < $deadline} {
     -re {Continue anyway.*\[y/N\]} { send -- "y\r" }
     -re {Yes, continue} { send -- "\r" }
     -re {Approaching rate limits} { send -- "\033\[B\033\[B\r" }
-    eof { exit 1 }
+    eof {
+      set child_closed 1
+      if {[parent_complete]} {
+        set finished 1
+      }
+      if {!$finished} {
+        exit 1
+      }
+    }
     timeout {}
   }
   if {[parent_complete]} {
@@ -651,11 +668,13 @@ if {!$finished} {
   send -- "\003"
   exit 124
 }
-after 1000
-send -- "\003"
-after 800
-send -- "\003"
-expect eof
+if {!$child_closed} {
+  after 1000
+  send -- "\003"
+  after 800
+  send -- "\003"
+  expect eof
+}
 EXPECT
 }
 
@@ -677,13 +696,46 @@ unset ACCEPTANCE_DISABLE_MULTI_AGENT
 run_codex_acceptance
 
 if [[ ! -f "$SELECTION" ]]; then
-  python3 - "$CODEX_SANDBOX_HOME/sessions" "$SELECTION" <<'PY'
+  python3 - "$CODEX_SANDBOX_HOME/sessions" "$CONTEXT" "$SELECTION" <<'PY'
 import json
 import pathlib
 import sys
 
 sessions = pathlib.Path(sys.argv[1])
-selection_path = pathlib.Path(sys.argv[2])
+context_path = pathlib.Path(sys.argv[2])
+selection_path = pathlib.Path(sys.argv[3])
+if context_path.is_file():
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    note_fields = {
+        "sourceId", "role", "path", "wikiId", "type", "constraintStrength", "summary",
+        "contentHash", "bindingDigest", "verifiedAt", "reviewAfter", "expiresAt",
+        "adrSourceId", "adrSourcePath", "adrSourceContentHash",
+    }
+    skill_fields = {
+        "sourceId", "role", "path", "wikiId", "type", "summary", "contentHash",
+        "bindingDigest", "skillName", "skillVersion", "skillContractHash", "skillTriggers",
+        "discoveryState", "requiredFor", "verifiedAt", "reviewAfter", "expiresAt",
+    }
+    selection = {
+        "status": "ok",
+        "phase": "plan",
+        "snapshotHash": context["snapshotHash"],
+        "wikiBindings": context["wikiBindings"],
+        "wikiNotes": [
+            {key: value for key, value in note.items() if key in note_fields}
+            for note in context["wikiNotes"]
+        ],
+        "requiredSkills": [
+            {key: value for key, value in skill.items() if key in skill_fields}
+            for skill in context["requiredSkills"]
+        ],
+        "caveats": context["caveats"],
+        "maintenanceWarnings": context["maintenanceWarnings"],
+    }
+    selection_path.parent.mkdir(parents=True, exist_ok=True)
+    selection_path.write_text(json.dumps(selection, indent=2) + "\n", encoding="utf-8")
+    raise SystemExit(0)
+
 rollouts = []
 for path in sessions.rglob("rollout-*.jsonl"):
     events = [json.loads(line) for line in path.open(encoding="utf-8") if line.strip()]
@@ -716,6 +768,10 @@ fi
   printf 'installed researcher did not write the plan selection\n' >&2
   exit 1
 }
+
+# `to-tickets` is allowed to Carry and consume the transient selection itself. The remaining
+# stages exercise a separate manual task, so retain only the recovered metadata selection.
+find "$CONTEXT_DIR" -maxdepth 1 -type f ! -name "$(basename "$SELECTION")" -delete
 
 # Carry rejects malformed researcher output before it can become formal context.
 MALFORMED_SELECTION="$CONTEXT_DIR/malformed-selection.json"
@@ -903,8 +959,20 @@ export ACCEPTANCE_COMPLETED_PARENTS=9
 export ACCEPTANCE_PROMPT='ISSUE39_STAGE_DIAGNOSING_BUGS. Invoke $mattpocock-skills:diagnosing-bugs for the formatter regression that was already reproduced, fixed, and verified. The former symptom was angle-bracket output; the tight feedback loop is ./test-format.sh, the confirmed root cause was an implementation that used angle brackets, and the verified fix now emits square brackets. This installed test exercises the host router: after the cause is narrowed, disclose targeted Wiki context; after the verified fix, run the debugging retrospective and emit its prescribed analysis with its no-update conclusion. Do not call a grill-adapter skill by name, change product files, edit the Vault, publish anything, or create a durable candidate. Return once the debugging-stage work has reached its normal user-facing handoff.'
 run_codex_acceptance
 
-export ACCEPTANCE_TERMINAL_LOG="$RESEARCH_DISPATCH_FAILURE_LOG"
+# The manifest retains the released digest while the installed role drifts. The child loader must
+# reject that mismatch before it can call any Wiki tool or write a selection.
+printf '\nacceptance role content drift\n' >> "$INSTALLED_RESEARCHER_ROLE"
+export ACCEPTANCE_TERMINAL_LOG="$ROLE_LOAD_FAILURE_LOG"
 export ACCEPTANCE_COMPLETED_PARENTS=10
+export ACCEPTANCE_PROMPT='ISSUE40_STAGE_RESEARCH_ROLE_LOAD_FAILURE. Invoke $grill-adapter:wiki-research for phase plan and featureSlug role-load-failure. The installed researcher role was changed after its trusted descriptor was shipped. The isolated child must reject the digest mismatch before any Wiki call. Do not read, reconstruct, or inline the role in the coordinator; do not create a selection or sidecar. Return only {"acceptanceStage":"research-role-load-failure","status":"broken","caveat":"role-load-failed"}.'
+run_codex_acceptance
+[[ ! -e "$PROJECT/.grill-adapter/context/role-load-failure/obsidian-wiki-selection.json" ]] || {
+  printf 'research role-load failure wrote a selection\n' >&2
+  exit 1
+}
+
+export ACCEPTANCE_TERMINAL_LOG="$RESEARCH_DISPATCH_FAILURE_LOG"
+export ACCEPTANCE_COMPLETED_PARENTS=11
 export ACCEPTANCE_DISABLE_MULTI_AGENT=1
 export ACCEPTANCE_PROMPT='ISSUE35_STAGE_RESEARCH_DISPATCH_FAILURE. Invoke $grill-adapter:wiki-research for phase plan and featureSlug dispatch-failure. Multi-agent dispatch is unavailable in this run. Follow the installed skill failure contract: do not research inline, do not call Wiki MCP from the coordinator, do not create a selection or sidecar, and report a broken dispatch caveat rather than no relevant knowledge. Return only {"acceptanceStage":"research-dispatch-failure","status":"broken","caveat":"dispatch-unavailable"}.'
 run_codex_acceptance
@@ -935,7 +1003,7 @@ with open(path, "w", encoding="utf-8") as handle:
     handle.write("\n")
 PY
 export ACCEPTANCE_TERMINAL_LOG="$HOST_FAIL_OPEN_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=11
+export ACCEPTANCE_COMPLETED_PARENTS=12
 export ACCEPTANCE_PROMPT='ISSUE35_STAGE_HOST_FAIL_OPEN. Invoke $grill-adapter:wiki-readiness for the confirmed manual task at .grill-adapter/context/broken-binding/task-brief.md with featureSlug broken-binding. The configured Wiki binding is broken. My explicit user decision is to continue without Wiki context: record readiness status broken, discard every partial selection/context/snapshot, then create ./broken-path.txt from only the task brief with exactly `continued without wiki`. Do not spawn an agent. Return only {"acceptanceStage":"host-fail-open","status":"pass","readinessStatus":"broken","userDecision":"continue-without-wiki"}.'
 run_codex_acceptance
 cp "$SANDBOX/settings-before-host-failure.json" "$PROJECT/.grill-adapter/settings.json"
@@ -963,7 +1031,7 @@ PY
 
 # Maintenance dispatch failure is also an installed skill path and must never fall back inline.
 export ACCEPTANCE_TERMINAL_LOG="$MAINTENANCE_DISPATCH_FAILURE_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=12
+export ACCEPTANCE_COMPLETED_PARENTS=13
 export ACCEPTANCE_DISABLE_MULTI_AGENT=1
 export ACCEPTANCE_PROMPT='ISSUE35_STAGE_MAINTENANCE_DISPATCH_FAILURE. Invoke $grill-adapter:wiki-maintenance audit maintenance-dispatch-failure with asOf 2026-08-01T12:00:00Z, identityLimit 10, and noteReadLimit 1. Multi-agent dispatch is unavailable. Do not audit inline, call Wiki MCP, or write a report. Return only {"acceptanceStage":"maintenance-dispatch-failure","status":"broken","mode":"audit","caveat":"dispatch-unavailable"}.'
 run_codex_acceptance
@@ -1108,6 +1176,9 @@ implement_meta, implement_events = parent_for("ISSUE35_STAGE_AGENT_IMPLEMENTATIO
 review_meta, review_events = parent_for("ISSUE35_STAGE_CODE_REVIEW")
 capture_meta, capture_events = parent_for("ISSUE35_STAGE_CAPTURE")
 debug_meta, debug_events = parent_for("ISSUE39_STAGE_DIAGNOSING_BUGS")
+role_load_failure_meta, role_load_failure_events = parent_for(
+    "ISSUE40_STAGE_RESEARCH_ROLE_LOAD_FAILURE"
+)
 research_dispatch_meta, research_dispatch_events = parent_for("ISSUE35_STAGE_RESEARCH_DISPATCH_FAILURE")
 host_fail_open_meta, host_fail_open_events = parent_for("ISSUE35_STAGE_HOST_FAIL_OPEN")
 maintenance_dispatch_meta, maintenance_dispatch_events = parent_for(
@@ -1153,6 +1224,7 @@ stage_parents = (
     (review_meta, review_events),
     (capture_meta, capture_events),
     (debug_meta, debug_events),
+    (role_load_failure_meta, role_load_failure_events),
     (research_dispatch_meta, research_dispatch_events),
     (host_fail_open_meta, host_fail_open_events),
     (maintenance_dispatch_meta, maintenance_dispatch_events),
@@ -1213,6 +1285,11 @@ assert terminal_result(capture_events) == {
     "status": "skipped",
     "reason": "no-durable-candidate",
 }
+assert terminal_result(role_load_failure_events) == {
+    "acceptanceStage": "research-role-load-failure",
+    "status": "broken",
+    "caveat": "role-load-failed",
+}
 assert terminal_result(research_dispatch_events) == {
     "acceptanceStage": "research-dispatch-failure",
     "status": "broken",
@@ -1233,6 +1310,9 @@ assert terminal_result(maintenance_dispatch_events) == {
 
 discovery_children = [item for item in children if item[0].get("parent_thread_id") == discovery_meta["id"]]
 research_children = [item for item in children if item[0].get("parent_thread_id") == research_meta["id"]]
+role_load_failure_children = [
+    item for item in children if item[0].get("parent_thread_id") == role_load_failure_meta["id"]
+]
 malformed_children = [item for item in children if item[0].get("parent_thread_id") == malformed_meta["id"]]
 readiness_children = [item for item in children if item[0].get("parent_thread_id") == readiness_meta["id"]]
 direct_children = [item for item in children if item[0].get("parent_thread_id") == direct_meta["id"]]
@@ -1246,6 +1326,7 @@ review_capture_children = [
 ]
 reviewer_children = [item for item in review_children if item not in review_capture_children]
 assert len(research_children) == 1
+assert len(role_load_failure_children) == 1
 assert discovery_children
 assert not malformed_children
 assert not readiness_children
@@ -1354,13 +1435,30 @@ for required in ("wiki_context_render.py", "--scaffold", "malformed-selection.js
     assert required in malformed_calls, (required, malformed_calls)
 assert "obsidian_wiki_" not in malformed_calls.lower()
 
+role_load_failure_parent_calls = "\n".join(
+    json.dumps(call, ensure_ascii=False) for call in calls(role_load_failure_events)
+)
+assert "obsidian_wiki_" not in role_load_failure_parent_calls.lower()
+role_load_failure_child_meta, role_load_failure_child_events = role_load_failure_children[0]
+role_load_failure_child_calls = "\n".join(
+    json.dumps(call, ensure_ascii=False) for call in calls(role_load_failure_child_events)
+)
+assert "child_role_loader.py load" in role_load_failure_child_calls
+assert "obsidian_wiki_" not in role_load_failure_child_calls.lower()
+assert terminal_result(role_load_failure_child_events) == {
+    "status": "broken",
+    "phase": "plan",
+    "caveats": ["role-load-failed"],
+}
+
 research_spawns = calls(research_events, "spawn_agent")
 implement_spawns = calls(implement_events, "spawn_agent")
 review_spawns = calls(review_events, "spawn_agent")
 assert len(research_spawns) == 1
 assert len(implement_spawns) == 1
 assert len(review_spawns) == 3
-research_spawn = call_arguments(research_spawns[0])
+research_spawn_call = research_spawns[0]
+research_spawn = call_arguments(research_spawn_call)
 implement_spawn = call_arguments(implement_spawns[0])
 review_spawn_args = [call_arguments(call) for call in review_spawns]
 reviewer_spawn_args = [
@@ -1374,6 +1472,41 @@ assert implement_spawn["task_name"] == "issue35_implementer"
 assert {value["task_name"] for value in reviewer_spawn_args} == {"standards_review", "spec_review"}
 assert len(capture_spawn_args) == 1
 assert all(value["fork_turns"] == "none" for value in review_spawn_args)
+
+research_parent_calls = indexed_calls(research_events)
+research_child_meta, research_child_events = research_children[0]
+research_child_path = research_child_meta["agent_path"]
+research_spawn_outputs = [
+    event["payload"]
+    for event in research_events
+    if event.get("type") == "response_item"
+    and event.get("payload", {}).get("type") == "function_call_output"
+    and event.get("payload", {}).get("call_id") == research_spawn_call["call_id"]
+]
+assert len(research_spawn_outputs) == 1
+assert json.loads(research_spawn_outputs[0]["output"])["task_name"] == research_child_path
+research_spawn_call_position = next(
+    index for index, (_, call) in enumerate(research_parent_calls) if call is research_spawn_call
+)
+assert research_spawn_call_position + 1 < len(research_parent_calls)
+research_wait_event_index, research_wait = research_parent_calls[research_spawn_call_position + 1]
+assert research_wait.get("name") == "wait_agent"
+research_child_terminal_messages = [
+    (index, event["payload"])
+    for index, event in enumerate(research_events)
+    if event.get("type") == "response_item"
+    and event.get("payload", {}).get("type") == "agent_message"
+    and event.get("payload", {}).get("author") == research_child_path
+]
+assert len(research_child_terminal_messages) == 1
+research_waits_until_terminal = [
+    (index, call)
+    for index, call in research_parent_calls
+    if research_wait_event_index <= index < research_child_terminal_messages[0][0]
+]
+assert research_waits_until_terminal
+assert research_waits_until_terminal[0][0] == research_wait_event_index
+assert all(call.get("name") == "wait_agent" for _, call in research_waits_until_terminal)
 
 review_parent_calls = indexed_calls(review_events)
 review_capture_spawns = [
@@ -1465,16 +1598,54 @@ def assert_sealed_message(arguments, minimum_length):
 
 
 researcher_role = pathlib.Path(researcher_role_arg).read_text(encoding="utf-8")
+researcher_role_marker = "ROLE-LOADER-PRIVATE-MARKER"
+researcher_role_manifest = json.loads(
+    (pathlib.Path(researcher_role_arg).parent.parent / "contracts" / "child-role-loader-v1.json")
+    .read_text(encoding="utf-8")
+)
+researcher_role_digest = researcher_role_manifest["roles"]["grill-adapter:wiki-researcher"]["digest"]
+assert researcher_role_marker in researcher_role
 sealed_messages = [
-    assert_sealed_message(research_spawn, len(researcher_role)),
+    assert_sealed_message(research_spawn, 200),
     assert_sealed_message(implement_spawn, 200),
     *(assert_sealed_message(value, 200) for value in review_spawn_args),
 ]
 assert len(set(sealed_messages)) == len(sealed_messages)
+assert len(sealed_messages[0]) < len(researcher_role), "research spawn embedded the role body"
+
+research_parent_calls = indexed_calls(research_events)
+research_loader_calls = [
+    (index, call)
+    for index, call in research_parent_calls
+    if "child_role_loader.py" in json.dumps(call, ensure_ascii=False)
+]
+assert len(research_loader_calls) == 1, research_loader_calls
+_, research_loader_call = research_loader_calls[0]
+research_loader_arguments = call_arguments(research_loader_call)
+assert "child_role_loader.py resolve" in research_loader_arguments.get("cmd", "")
+assert researcher_role_digest in event_text(research_events)
+assert researcher_role_marker not in event_text(research_events)
+
+research_child_meta, research_child_events = research_children[0]
+research_child_indexed_calls = indexed_calls(research_child_events)
+assert research_child_indexed_calls
+research_loader_first_call = research_child_indexed_calls[0]
+assert research_loader_first_call[1].get("name") == "exec_command", research_loader_first_call
+research_loader_arguments = call_arguments(research_loader_first_call[1])
+research_loader_command = research_loader_arguments.get("cmd", "")
+assert "child_role_loader.py load" in research_loader_command
+assert "--role grill-adapter:wiki-researcher" in research_loader_command
+assert researcher_role_digest in research_loader_command
+assert "/agents/wiki-researcher.md" in research_loader_command
+assert researcher_role_marker in event_text(research_child_events)
+assert "Each accepts exactly one positional value" in event_text(research_child_events)
 
 research_child_calls = "\n".join(
-    json.dumps(call, ensure_ascii=False) for call in calls(research_children[0][1])
+    json.dumps(call, ensure_ascii=False) for call in calls(research_child_events)
 )
+for index, call in research_child_indexed_calls[1:]:
+    if "obsidian_wiki_" in json.dumps(call, ensure_ascii=False):
+        assert index > research_loader_first_call[0]
 for required in (
     "obsidian_wiki_status",
     "obsidian_wiki_sources",
@@ -1533,7 +1704,7 @@ for events in (research_events, implement_events, review_events):
         if payload.get("author") in {meta.get("agent_path") for meta, _ in children}:
             assert payload.get("type") == "agent_message"
 
-for events in (research_dispatch_events, maintenance_dispatch_events):
+for events in (role_load_failure_events, research_dispatch_events, maintenance_dispatch_events):
     for call in calls(events):
         call_text = json.dumps(call, ensure_ascii=False).lower()
         assert "obsidian_wiki_" not in call_text
@@ -1627,6 +1798,7 @@ report = {
     },
     "failurePaths": {
         "researcherDispatch": "broken-caveat",
+        "researcherRoleLoad": "broken-before-wiki-call",
         "maintenanceDispatch": "broken-caveat",
         "researcherMalformedOutput": "rejected-without-partial-context",
         "maintenanceStaleReport": "preserved-previous-report",
@@ -1635,6 +1807,8 @@ report = {
     },
     "isolation": {
         "researchAndMaintenanceCoordinatorMetadataOnly": True,
+        "researcherRolePrivateInCoordinator": True,
+        "researcherRoleLoadedByChild": True,
         "directImplementationConsumedImplementerContract": True,
         "directImplementationContractVisible": True,
         "implementerContractMatched": True,

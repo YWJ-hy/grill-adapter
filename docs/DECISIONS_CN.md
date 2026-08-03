@@ -273,7 +273,7 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 **决策**
 - 新增 `.codex-plugin/plugin.json`，复用现有 skills、hooks、MCP bundle 与 marketplace；Codex MCP 声明使用原生 `cwd: "."` + 相对 bundle 路径，不复制执行层。
 - `manage.sh` 增加独立的 `--runtime claude|codex|both` 维度；workflow host 仍由 `--host grill|plain` 决定。Claude 写 `CLAUDE.md`，Codex 写 `AGENTS.md`。
-- 保留 `agents/wiki-researcher.md` 为单一角色真相源。Claude 直接注册；Codex 由 `wiki-research` 读取完整 prompt 后派生通用 sub-agent。
+- 保留 `agents/wiki-researcher.md` 为单一角色真相源。Claude 直接注册；Codex 的 `wiki-research` coordinator 只解析带 role identity、已解析 source 与 expected digest 的 descriptor，再以无继承上下文派生通用 child；child 在任何 Wiki 调用前自行校验并读取完整 prompt。source/digest/read 失败均为 `broken`，coordinator 不读取、回显或内嵌 role 正文。
 - hooks/MCP 配置使用两端都接受的严格 JSON 子集。MCP 项目根在 Claude Code 下取 `CLAUDE_PROJECT_DIR`，在 Codex 下取 MCP request 的 Git workspace metadata，并兼容标准 roots capability；直接 CLI 才回退进程 cwd。Codex 的 plugin MCP cwd 是插件根，不能充当消费项目根。
 - 发布门加入隔离 `CODEX_HOME` 下的真实 marketplace add + plugin add smoke；共享运行时改动最终仍需真跑完整 Codex 集成路径。
 

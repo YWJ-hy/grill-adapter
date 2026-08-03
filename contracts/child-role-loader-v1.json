@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "kind": "grill-adapter.child-role-loader",
+  "roles": {
+    "grill-adapter:wiki-researcher": {
+      "source": "agents/wiki-researcher.md",
+      "digest": "sha256:aa92da6028c35bb42e3860a6401692eff445cbd5de78e4c5cac72d1eada1b5be"
+    }
+  }
+}

@@ -21,6 +21,8 @@ PACKAGE="$TMP/$TARBALL"
 test -f "$PACKAGE"
 tar -tf "$PACKAGE" | grep '^package/bin/grill-adapter.mjs$' >/dev/null
 tar -tf "$PACKAGE" | grep '^package/.codex-plugin/plugin.json$' >/dev/null
+tar -tf "$PACKAGE" | grep '^package/contracts/child-role-loader-v1.json$' >/dev/null
+tar -tf "$PACKAGE" | grep '^package/scripts/child_role_loader.py$' >/dev/null
 tar -tf "$PACKAGE" | grep '^package/mcp/obsidian-wiki/dist/index.js$' >/dev/null
 tar -tf "$PACKAGE" | grep '^package/mcp/obsidian-wiki/dist/atomic_swap.py$' >/dev/null
 tar -tf "$PACKAGE" | grep '^package/mcp/obsidian-wiki/dist/wiki_candidate_journal.py$' >/dev/null

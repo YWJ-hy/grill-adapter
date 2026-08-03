@@ -36,14 +36,42 @@ Formal planning uses only the bound Obsidian Sources exposed by `obsidian_wiki_*
 ### Researcher dispatch compatibility
 
 - When the runtime exposes the named `grill-adapter:wiki-researcher` plugin agent, invoke it directly.
-- Codex does not register plugin `agents/*.md` as callable agents. In Codex, read `${CLAUDE_PLUGIN_ROOT}/agents/wiki-researcher.md` completely, then spawn one general sub-agent with that file as its role instructions plus the phase input below. Do not perform the research inline in the main session.
+- Codex does not register plugin `agents/*.md` as callable agents. Its coordinator must not read,
+  echo, or inline the researcher role body. Instead, resolve the trusted metadata-only descriptor:
+
+  ```bash
+  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/child_role_loader.py resolve \
+    --plugin-root ${CLAUDE_PLUGIN_ROOT} \
+    --role grill-adapter:wiki-researcher
+  ```
+
+  The descriptor contains only the role identity, resolved read-only source, and expectedDigest.
+  Spawn one general sub-agent with `fork_turns: "none"`; its message contains that exact
+  `roleDescriptor` plus the exact phase input below, never a role body, a role excerpt, prior
+  transcript, or another input. The child must load and verify the complete role before any Wiki
+  tool call. Do not perform the research inline in the main session.
 - The same prompt and output contract apply on both runtimes; only the dispatch mechanism differs.
 
 #### Codex dispatch transaction (mandatory)
 
 Codex sub-agent dispatch is asynchronous. Treat the agent path as a handle, not a result:
 
-1. Spawn exactly one researcher for this invocation and keep its returned path/handle.
+1. Resolve the descriptor above before dispatch. If resolution fails, classify the invocation as
+   `broken`; for `brainstorm`, surface a caveat. Never fall back to reading the role file in the
+   coordinator. Spawn exactly one researcher for this invocation with the resolved descriptor and
+   keep its returned path/handle. Its bootstrap instruction must require this exact command before
+   every research action:
+
+   ```bash
+   python3 <derived-plugin-root>/scripts/child_role_loader.py load \
+     --role grill-adapter:wiki-researcher \
+     --source <roleDescriptor.source> \
+     --expected-digest <roleDescriptor.expectedDigest>
+   ```
+
+   The child derives its plugin root only from the supplied source. A missing source, out-of-bounds
+   source, content drift, digest mismatch, unreadable role, or loader failure returns
+   `{"status":"broken","phase":"<phase>","caveats":["role-load-failed"]}` without a Wiki call.
 2. **The wait is the only legal next operation after dispatch.** Do not send any user message,
    ask a question, call an MCP tool, search inline, or start another workflow step after
    `spawn_agent` returns. Immediately use the host's wait-for-task operation with that exact path.

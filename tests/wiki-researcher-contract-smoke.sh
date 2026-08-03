@@ -32,6 +32,12 @@ for required in (
     "array** (never an object/map)",
     "status: \"ok\"` or `\"partial\"`",
     "Never emit `content`, body excerpts, quotations",
+    "ROLE-LOADER-PRIVATE-MARKER",
+    "Child-side role loading",
+    "`roleDescriptor` bootstrap",
+    "child_role_loader.py load",
+    "`role-load-failed`",
+    "After a successful load",
 ):
     assert required in agent, required
 
@@ -42,6 +48,11 @@ for required in (
     "review-due Notes remain eligible with deterministic maintenance warnings",
     "rejects future verification and expired Notes",
     "Never scan whole Wiki trees",
+    "child_role_loader.py resolve",
+    "coordinator must not read",
+    "expectedDigest",
+    "roleDescriptor",
+    "role body",
 ):
     assert required in skill, required
 PY

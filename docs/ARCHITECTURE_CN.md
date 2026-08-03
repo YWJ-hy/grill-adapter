@@ -41,7 +41,7 @@ adapter 动作或文件写入前调用只读 `scripts/project_activation.py`；�
 
 | 触点 | 机制 | 落到 grill |
 |---|---|---|
-| **Disclose** 选 wiki | 独立 `/grill-adapter:wiki-research` skill（驱动 `grill-adapter:wiki-researcher` agent）：先用硬 limit + scope-bound cursor 读 frontmatter-only bound Source catalog，再在选定分支做稳定有界检索并私下复核少量非 expired Note body；review-due 保留 warning，任何 host 都能调 | grill-with-docs 质询期 |
+| **Disclose** 选 wiki | 独立 `/grill-adapter:wiki-research` skill（驱动 `grill-adapter:wiki-researcher` agent）：先用硬 limit + scope-bound cursor 读 frontmatter-only bound Source catalog，再在选定分支做稳定有界检索并私下复核少量非 expired Note body；Codex coordinator 只传受信 role descriptor，child 校验 digest 后自行加载 role；review-due 保留 warning，任何 host 都能调 | grill-with-docs 质询期 |
 | **Carry** 带约束 | schema-v6 `.grill-adapter/context/<feature-slug>/wiki-context.json` 保存 binding digest、atomic Note ID/path/hash/summary/可选 freshness timestamps、已验证 Skill Card 的 name/version/contract hash/triggers/roles 与 ticket roster 指纹，绝不保存 Note body；Carry 重算 freshness 并拒绝 expired；锚点是 feature，不是 plan 文件；direct task 可由 readiness 在首次代码修改前 late Carry | to-tickets，或无 formal context 的 implement 入口 |
 | **Bind** 角色化 task contract | 规划确认后以一次 roster batch 生成同一批准快照的 `<taskId>.wiki-implement.md` 与 `<taskId>.wiki-review.md`，并在 digest 保护的 metadata 中记录直接 Note 与 1 跳闭包 freshness；Bind 重算状态，拒绝期间到期的 Note，把新产生的 review-due warning 包在不变批准正文之外，reviewer 使用派生的 `<taskId>.wiki-review-handoff.md` | implement 逐 task + code-review 两轴前 |
 | **Capture** 回写 | `/grill-adapter:update-wiki` 派生隔离 Capture Agent，把最终证据 reconciliation 与 Note 语义判断交给 child，再由确定性 staging 写 machine-local Outbox；review/publish 另用隔离 maintenance role 做跨 feature 语义归并，所有人工修正追加 superseding entry；Git/draft-PR publish 仅在用户显式请求时执行 | code-review 后 |

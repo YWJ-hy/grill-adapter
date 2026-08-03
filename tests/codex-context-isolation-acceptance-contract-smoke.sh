@@ -35,6 +35,7 @@ assert contract == {
         "maintenance-consolidation",
     ],
     "roleContracts": [
+        "researcher-child-side-loader",
         "implementer",
         "reviewer-standards",
         "reviewer-spec",
@@ -42,6 +43,7 @@ assert contract == {
     ],
     "failurePaths": [
         "researcher-dispatch",
+        "researcher-role-load",
         "maintenance-dispatch",
         "researcher-malformed-output",
         "maintenance-stale-report",
@@ -55,6 +57,8 @@ assert contract == {
         "journal-transcript",
         "agent-reasoning",
         "parent-transcript-inheritance",
+        "researcher-role-private-in-coordinator",
+        "researcher-role-loaded-by-child",
         "role-contract-mismatch",
         "proposal-side-effects",
     ],
@@ -82,6 +86,13 @@ grep -Fq 'GRILL_ADAPTER_CODEX_MODEL' "$ROOT/acceptance/codex-maintenance-install
 grep -Fq 'ISSUE35_STAGE_MALFORMED_RESEARCHER_OUTPUT' "$ACCEPTANCE"
 grep -Fq 'ISSUE35_STAGE_MAINTENANCE_STALE_REPORT' "$ROOT/acceptance/codex-maintenance-installed.sh"
 grep -Fq 'researchAndMaintenanceCoordinatorMetadataOnly' "$ACCEPTANCE"
+grep -Fq 'researcher_role_marker' "$ACCEPTANCE"
+grep -Fq 'child_role_loader.py' "$ACCEPTANCE"
+grep -Fq 'research_loader_calls' "$ACCEPTANCE"
+grep -Fq 'research_loader_first_call' "$ACCEPTANCE"
+grep -Fq 'research_waits_until_terminal' "$ACCEPTANCE"
+grep -Fq 'ISSUE40_STAGE_RESEARCH_ROLE_LOAD_FAILURE' "$ACCEPTANCE"
+grep -Fq 'role_load_failure_child_calls' "$ACCEPTANCE"
 grep -Fq 'GRILL_ADAPTER_CODEX_ACCEPTANCE_REPORT' "$ACCEPTANCE"
 grep -Fq '\x1b\[6n' "$ACCEPTANCE"
 grep -Fq '\x1b\[6n' "$ROOT/acceptance/codex-maintenance-installed.sh"
@@ -155,6 +166,10 @@ for required in (
     "review_child_terminal_messages",
     "waits_until_capture_terminal",
     "review_capture_terminal_messages",
+    "researcher-role-private-in-coordinator",
+    "researcher-role-loaded-by-child",
+    "research_waits_until_terminal",
+    "role_load_failure_events",
     "<name>grill-adapter:break-loop</name>",
     "debug_terminal = terminal_message(debug_events)",
 ):
@@ -177,6 +192,13 @@ assert source.index('review_child_terminal_messages = [', capture_spawn) > captu
 assert source.index('review_capture_terminal_messages[0][1].get("author") == review_capture_child_path', capture_spawn) > capture_spawn
 assert source.index('all(call.get("name") == "wait_agent" for _, call in waits_until_capture_terminal)', capture_spawn) > capture_spawn
 assert source.index('review_capture_result["status"] == "ok"', capture_spawn) > capture_spawn
+
+runner = source.index("run_codex_acceptance()")
+eof_handler = source.index("    eof {", runner)
+cleanup = source.index("if {!$child_closed} {", eof_handler)
+assert source.index("set child_closed 0", runner, eof_handler) >= 0
+assert source.index("set child_closed 1", eof_handler, cleanup) >= 0
+assert source.index('send -- "\\003"', cleanup) > cleanup
 PY
 
 printf 'codex context isolation acceptance contract smoke OK\n'

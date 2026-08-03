@@ -3,13 +3,11 @@
   "measurementUnit": "utf8Bytes",
   "stageResources": {
     "research": [
-      "skills/wiki-research/SKILL.md",
-      "agents/wiki-researcher.md"
+      "skills/wiki-research/SKILL.md"
     ],
     "readiness": [
       "skills/wiki-readiness/SKILL.md",
       "skills/wiki-research/SKILL.md",
-      "agents/wiki-researcher.md",
       "skills/wiki-materialize/SKILL.md"
     ],
     "capture": [
