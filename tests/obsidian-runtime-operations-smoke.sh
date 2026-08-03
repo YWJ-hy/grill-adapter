@@ -193,15 +193,11 @@ fi
 need "$ROOT/skills/init-wiki/SKILL.md" 'wiki.provider: obsidian'
 need "$ROOT/skills/init-wiki/SKILL.md" 'stop without writing legacy Wiki content'
 
-for host in \
-  "$ROOT/host-adapters/grill/CLAUDE.md" \
-  "$ROOT/host-adapters/grill/AGENTS.md" \
-  "$ROOT/host-adapters/plain/CLAUDE.md" \
-  "$ROOT/host-adapters/plain/AGENTS.md"; do
-  need "$host" 'shadow-validation'
-  need "$host" 'migration verify'
-  need "$host" 'rerun the same publish step'
-done
+# The thin host router reaches entry skills; rollout, migration, and recovery details stay in
+# the skill that owns the corresponding transaction.
+need "$ROOT/skills/setup-init-obsidian/SKILL.md" 'shadow-validation'
+need "$ROOT/skills/migrate-wiki/SKILL.md" 'Obsidian migration verify'
+need "$ROOT/skills/update-wiki/SKILL.md" 'On interruption, rerun the same confirmed request.'
 
 for manifest in "$ROOT/.codex-plugin/plugin.json" "$ROOT/.claude-plugin/plugin.json" "$ROOT/manifest.json"; do
   need "$manifest" 'Obsidian atomic Notes'

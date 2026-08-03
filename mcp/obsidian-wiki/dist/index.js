@@ -25934,7 +25934,17 @@ ${candidateId}`)) {
 }
 function stageCapturePlan(input, env = process.env) {
   const resolution = healthyResolution(env);
-  return withOutboxLock(resolution, () => stageCapturePlanLocked(input, resolution, env));
+  const plan = CapturePlanSchema.parse(input);
+  if (plan.decisions.length === 0) {
+    validateSnapshot(plan, env);
+    return {
+      status: "ok",
+      planId: digest(stableJson(plan)),
+      counts: { queued: 0, skipped: 0, needsDecision: 0 },
+      caveats: []
+    };
+  }
+  return withOutboxLock(resolution, () => stageCapturePlanLocked(plan, resolution, env));
 }
 function effectiveEntries(manifest) {
   const superseded = new Set(manifest.entries.flatMap((entry) => entry.supersedes ?? []));

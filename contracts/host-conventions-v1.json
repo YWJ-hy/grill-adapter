@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "common": {
+    "invariants": [
+      "Each entry skill owns its detailed state machine, permissions, failures, and recovery.",
+      "The router never patches host skills and never carries a plugin installation path."
+    ],
+    "stateBoundary": "Workflow state stays local under `.grill-adapter/context/`; do not commit it or bypass an entry skill's documented workflow when changing it. `.grill-adapter/settings.json` is project configuration."
+  },
+  "hosts": {
+    "grill": {
+      "activation": [
+        "This router is inert unless the matching grill stage is explicitly invoked.",
+        "Do not infer a stage from an ordinary request.",
+        "When no matching stage is active, do not route adapter work.",
+        "During a matching active stage, invoke every listed entry skill at its row's stated workflow moment; the route is mandatory, not advisory. Do not invoke a later-moment route early.",
+        "An explicit adapter-skill invocation remains available outside a grill stage."
+      ],
+      "routes": [
+        {
+          "moment": "grill-with-docs",
+          "skills": ["wiki-research"],
+          "purpose": "Disclose relevant Wiki context."
+        },
+        {
+          "moment": "to-spec",
+          "skills": ["source-truth-check"],
+          "purpose": "Verify source-of-truth policy for the spec."
+        },
+        {
+          "moment": "to-tickets",
+          "skills": ["wiki-research", "source-truth-check"],
+          "purpose": "Carry selected context and verify the plan."
+        },
+        {
+          "moment": "implement",
+          "skills": ["wiki-readiness"],
+          "purpose": "Establish one task before code changes."
+        },
+        {
+          "moment": "code-review (before reviewers)",
+          "skills": ["wiki-readiness"],
+          "purpose": "Prepare reviewer context."
+        },
+        {
+          "moment": "code-review (after accepted review)",
+          "skills": ["update-wiki"],
+          "purpose": "Capture durable knowledge."
+        },
+        {
+          "moment": "diagnosing-bugs (after evidence narrows the cause)",
+          "skills": ["wiki-research"],
+          "purpose": "Disclose targeted Wiki context."
+        },
+        {
+          "moment": "diagnosing-bugs (after a verified fix)",
+          "skills": ["break-loop"],
+          "purpose": "Run the debugging retrospective."
+        }
+      ],
+      "crossStage": [
+        {
+          "moment": "Any stage with a durable candidate",
+          "skills": ["candidate-journal"],
+          "purpose": "Record it for post-review Capture instead of writing Wiki state directly."
+        },
+        {
+          "moment": "Explicit knowledge upkeep",
+          "skills": ["wiki-maintenance"],
+          "purpose": "Run an audit or consolidation only when explicitly requested."
+        }
+      ],
+      "rosterBoundary": "For local scratch tickets use the NN filename prefix; for a real tracker use its issue number. Preserve verbatim ticket text."
+    },
+    "plain": {
+      "activation": [
+        "Plain workflows do not infer a host stage.",
+        "When an explicit workflow moment matches a row, invoke every listed entry skill at that moment; the route is mandatory, not advisory."
+      ],
+      "routes": [
+        {
+          "moment": "Before an approach",
+          "skills": ["wiki-research"],
+          "purpose": "Disclose relevant Wiki context."
+        },
+        {
+          "moment": "Before finalizing a spec",
+          "skills": ["source-truth-check"],
+          "purpose": "Verify source-of-truth policy for the spec."
+        },
+        {
+          "moment": "Implementation plan",
+          "skills": ["wiki-research", "source-truth-check"],
+          "purpose": "Carry selected context and verify source-of-truth policy for the plan."
+        },
+        {
+          "moment": "Before code changes",
+          "skills": ["wiki-readiness"],
+          "purpose": "Establish one task before implementation."
+        },
+        {
+          "moment": "Before reviewers",
+          "skills": ["wiki-readiness"],
+          "purpose": "Prepare the reviewer context."
+        },
+        {
+          "moment": "Accepted review",
+          "skills": ["update-wiki"],
+          "purpose": "Capture durable knowledge."
+        },
+        {
+          "moment": "After evidence narrows the debugging cause",
+          "skills": ["wiki-research"],
+          "purpose": "Disclose targeted Wiki context."
+        },
+        {
+          "moment": "After a verified debugging fix",
+          "skills": ["break-loop"],
+          "purpose": "Run the debugging retrospective."
+        }
+      ],
+      "crossStage": [
+        {
+          "moment": "Any stage with a durable candidate",
+          "skills": ["candidate-journal"],
+          "purpose": "Record it for post-review Capture instead of writing Wiki state directly."
+        },
+        {
+          "moment": "Explicit knowledge upkeep",
+          "skills": ["wiki-maintenance"],
+          "purpose": "Run an audit or consolidation only when explicitly requested."
+        }
+      ],
+      "rosterBoundary": "Use the user-confirmed task source, one stable task id, and verbatim full task text."
+    }
+  }
+}

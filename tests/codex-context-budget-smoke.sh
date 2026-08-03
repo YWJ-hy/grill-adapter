@@ -46,6 +46,15 @@ assert report == {
 }
 PY
 
+python3 - "$ROOT/contracts/codex-context-budget-v1.json" <<'PY'
+import json
+import pathlib
+import sys
+
+contract = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert contract["limits"]["projectHostInstructions"] == 4096
+PY
+
 # The runner accepts captured runtime discovery so its behavior can be tested without
 # depending on the developer machine's Codex defaults or credentials.
 mkdir -p "$TMP/captures" "$TMP/installed/skills/wiki-research" \

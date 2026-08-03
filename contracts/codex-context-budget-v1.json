@@ -25,7 +25,7 @@
   },
   "limits": {
     "globalPluginSkillCatalog": 5500,
-    "projectHostInstructions": 20500,
+    "projectHostInstructions": 4096,
     "mcpToolSchemas": 11500,
     "stages": {
       "research": 26500,

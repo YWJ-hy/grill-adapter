@@ -12,6 +12,15 @@ import json
 print(json.dumps({
     "schemaVersion": 1,
     "kind": "grill-adapter.codex-context-isolation-acceptance",
+    "installedHost": "grill",
+    "hostStages": [
+        "grill-with-docs",
+        "to-spec",
+        "to-tickets",
+        "implement",
+        "code-review",
+        "diagnosing-bugs",
+    ],
     "workflowStages": [
         "discovery-planning",
         "task-readiness",
@@ -116,6 +125,7 @@ PROJECT="$SANDBOX/project"
 VAULT="$SANDBOX/vault"
 CODEX_SANDBOX_HOME="$SANDBOX/codex-home"
 REGISTRY="$SANDBOX/obsidian-wiki.json"
+OUTBOX_ROOT="$SANDBOX/outbox"
 OBSIDIAN_CLI="$SANDBOX/obsidian"
 OBSIDIAN_READ_LOG="$SANDBOX/obsidian-reads.log"
 REPORT_OUTPUT="${GRILL_ADAPTER_CODEX_ACCEPTANCE_REPORT:-${TMPDIR:-/tmp}/grill-adapter-codex-context-isolation-evaluation.json}"
@@ -128,6 +138,8 @@ IMPLEMENT_SNAPSHOT="$CONTEXT_DIR/manual.wiki-implement.md"
 REVIEW_SNAPSHOT="$CONTEXT_DIR/manual.wiki-review.md"
 REVIEW_HANDOFF="$CONTEXT_DIR/manual.wiki-review-handoff.md"
 TASK_BRIEF="$PROJECT/task-brief.md"
+DISCOVERY_LOG="$SANDBOX/codex-discovery.log"
+SPEC_LOG="$SANDBOX/codex-spec.log"
 RESEARCH_LOG="$SANDBOX/codex-research.log"
 MALFORMED_RESEARCH_LOG="$SANDBOX/codex-malformed-research.log"
 READINESS_LOG="$SANDBOX/codex-readiness.log"
@@ -135,6 +147,7 @@ DIRECT_IMPLEMENT_LOG="$SANDBOX/codex-direct-implement.log"
 IMPLEMENT_LOG="$SANDBOX/codex-agent-implement.log"
 REVIEW_LOG="$SANDBOX/codex-review.log"
 CAPTURE_LOG="$SANDBOX/codex-capture.log"
+DEBUG_LOG="$SANDBOX/codex-debug.log"
 RESEARCH_DISPATCH_FAILURE_LOG="$SANDBOX/codex-research-dispatch-failure.log"
 HOST_FAIL_OPEN_LOG="$SANDBOX/codex-host-fail-open.log"
 MAINTENANCE_DISPATCH_FAILURE_LOG="$SANDBOX/codex-maintenance-dispatch-failure.log"
@@ -144,6 +157,54 @@ UNSELECTED_MARKER='ISSUE_35_UNSELECTED_NOTE_BODY_MUST_NOT_ESCAPE'
 EXPIRED_MARKER='ISSUE_35_EXPIRED_NOTE_BODY_MUST_NOT_ESCAPE'
 CATALOG_MARKER='ISSUE_35_CATALOG_INVENTORY_MUST_NOT_ESCAPE'
 CORRECTION_MARKER='ISSUE_35_CORRECTION_CONSTRAINT'
+
+snapshot_tree() {
+  local root="$1"
+  local ignored_relative="${2:-}"
+  if [[ ! -e "$root" ]]; then
+    printf '<absent>\n'
+    return
+  fi
+
+  (
+    cd "$root"
+    if [[ -n "$ignored_relative" ]]; then
+      find . -path './.git' -prune -o -path "$ignored_relative" -prune -o -print
+    else
+      find . -path './.git' -prune -o -print
+    fi | LC_ALL=C sort | while IFS= read -r path; do
+      if [[ -L "$path" ]]; then
+        printf 'symlink %s %s\n' "$path" "$(readlink "$path")"
+      elif [[ -d "$path" ]]; then
+        printf 'directory %s\n' "$path"
+      elif [[ -f "$path" ]]; then
+        printf 'file %s ' "$path"
+        shasum -a 256 "$path"
+      else
+        printf 'other %s\n' "$path"
+      fi
+    done
+  )
+}
+
+snapshot_repository_state() {
+  local root="$1"
+  local ignored_relative="${2:-}"
+  local ignored_path="${ignored_relative#./}"
+
+  snapshot_tree "$root" "$ignored_relative"
+  printf '%s\n' '-- git status --'
+  git -C "$root" status --porcelain=v1 --untracked-files=all | while IFS= read -r line; do
+    if [[ -n "$ignored_path" && "$line" == *" $ignored_path" ]]; then
+      continue
+    fi
+    printf '%s\n' "$line"
+  done
+  printf '%s\n' '-- git diff --'
+  git -C "$root" diff --binary
+  printf '%s\n' '-- git cached diff --'
+  git -C "$root" diff --cached --binary
+}
 
 mkdir -p \
   "$CONTEXT_DIR" \
@@ -303,6 +364,16 @@ cat > "$PROJECT/.grill-adapter/settings.json" <<'EOF'
         }
       }
     }
+  },
+  "sourceOfTruth": {
+    "heuristics": false,
+    "sources": [
+      {
+        "paths": ["generated/**"],
+        "role": "truth",
+        "edit": "never"
+      }
+    ]
   }
 }
 EOF
@@ -360,13 +431,47 @@ git -C "$VAULT" remote add origin https://github.com/acme/knowledge.git
 git -C "$VAULT" add .
 git -C "$VAULT" commit -qm fixture
 
-"$ROOT/manage.sh" install "$PROJECT" --host plain --runtime codex >/dev/null
+"$ROOT/manage.sh" install "$PROJECT" --host grill --runtime codex >/dev/null
+grep -Fq '<!-- grill-adapter:host:grill:start -->' "$PROJECT/AGENTS.md" || {
+  printf 'installed Codex grill host block is missing\n' >&2
+  exit 1
+}
 git -C "$PROJECT" add .
 git -C "$PROJECT" commit -qm fixture
 PROJECT_HEAD="$(git -C "$PROJECT" rev-parse HEAD)"
 VAULT_HEAD="$(git -C "$VAULT" rev-parse HEAD)"
 
 SOURCE_CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
+MATTPOCOCK_SKILLS_ROOT="${GRILL_ADAPTER_MATTPOCOCK_SKILLS_ROOT:-}"
+is_plugin_root() {
+  [[ -f "$1/.claude-plugin/plugin.json" || -f "$1/.codex-plugin/plugin.json" ]]
+}
+if [[ -z "$MATTPOCOCK_SKILLS_ROOT" ]]; then
+  for codex_home in "$SOURCE_CODEX_HOME" "${HOME}/.codex"; do
+    for candidate in "$codex_home"/plugins/cache/mattpocock/mattpocock-skills/*; do
+      is_plugin_root "$candidate" || continue
+      MATTPOCOCK_SKILLS_ROOT="$candidate"
+    done
+  done
+fi
+if [[ -z "$MATTPOCOCK_SKILLS_ROOT" ]]; then
+  MATTPOCOCK_SKILLS_ROOT="$(
+    CODEX_HOME="$SOURCE_CODEX_HOME" "$CODEX_BIN" plugin marketplace list --json \
+      | python3 -c '
+import json
+import sys
+
+for marketplace in json.load(sys.stdin).get("marketplaces", []):
+    if marketplace.get("name") == "mattpocock" and isinstance(marketplace.get("root"), str):
+        print(marketplace["root"])
+        break
+'
+  )"
+fi
+[[ -n "$MATTPOCOCK_SKILLS_ROOT" ]] && is_plugin_root "$MATTPOCOCK_SKILLS_ROOT" || {
+  printf 'mattpocock-skills plugin source not found; set GRILL_ADAPTER_MATTPOCOCK_SKILLS_ROOT\n' >&2
+  exit 1
+}
 if [[ -f "$SOURCE_CODEX_HOME/auth.json" ]]; then
   cp "$SOURCE_CODEX_HOME/auth.json" "$CODEX_SANDBOX_HOME/auth.json"
 fi
@@ -390,6 +495,8 @@ fi
 export CODEX_HOME="$CODEX_SANDBOX_HOME"
 "$CODEX_BIN" plugin marketplace add "$ROOT" --json >/dev/null
 "$CODEX_BIN" plugin add grill-adapter@grill-adapter --json >/dev/null
+"$CODEX_BIN" plugin marketplace add "$MATTPOCOCK_SKILLS_ROOT" --json >/dev/null
+"$CODEX_BIN" plugin add mattpocock-skills@mattpocock --json >/dev/null
 
 PLUGIN_ROOT="$(find "$CODEX_SANDBOX_HOME/plugins/cache/grill-adapter/grill-adapter" \
   -path '*/.codex-plugin/plugin.json' -type f -print -quit | xargs dirname | xargs dirname)"
@@ -552,9 +659,20 @@ expect eof
 EXPECT
 }
 
-export ACCEPTANCE_TERMINAL_LOG="$RESEARCH_LOG"
+export ACCEPTANCE_TERMINAL_LOG="$DISCOVERY_LOG"
 export ACCEPTANCE_COMPLETED_PARENTS=0
-export ACCEPTANCE_PROMPT='ISSUE35_STAGE_RESEARCH_SUCCESS. Invoke $grill-adapter:wiki-research for phase plan, featureSlug issue-35, selectionOutputPath .grill-adapter/context/issue-35/obsidian-wiki-selection.json, and this exact complete task: Implement format-value.sh in the main session and format-value-agent.sh in an isolated implementer. Each accepts exactly one positional value and writes the formatted value to stdout. Keep both changes local to the formatter and make ./test-format.sh plus ./test-format-agent.sh pass. Follow the installed skill exactly. Spawn the researcher with task_name issue35_wiki_researcher, fork_turns none, and the complete role file contents, then immediately wait on only that exact child until terminal. Return only the compact researcher summary.'
+export ACCEPTANCE_PROMPT='ISSUE39_STAGE_GRILL_WITH_DOCS. Invoke $mattpocock-skills:grill-with-docs for the already-confirmed formatter change in ./task-brief.md. This installed test exercises the host router: before any design discussion, follow the router-disclosed Wiki context for this stage. Do not call a grill-adapter skill by name, create or publish a document, modify tickets, or edit product files. The requirements are already confirmed; return once the discovery-stage work has reached its normal user-facing handoff.'
+unset ACCEPTANCE_DISABLE_MULTI_AGENT
+run_codex_acceptance
+
+export ACCEPTANCE_TERMINAL_LOG="$SPEC_LOG"
+export ACCEPTANCE_COMPLETED_PARENTS=1
+export ACCEPTANCE_PROMPT='ISSUE39_STAGE_TO_SPEC. Invoke $mattpocock-skills:to-spec for the already-confirmed formatter change in ./task-brief.md. This installed test exercises the host router: run the source-of-truth spec policy before drafting. Do not call a grill-adapter skill by name, create or publish an issue, modify tickets, or edit product files. Return once the spec-stage work has reached its normal user-facing handoff.'
+run_codex_acceptance
+
+export ACCEPTANCE_TERMINAL_LOG="$RESEARCH_LOG"
+export ACCEPTANCE_COMPLETED_PARENTS=2
+export ACCEPTANCE_PROMPT='ISSUE35_STAGE_RESEARCH_SUCCESS. Invoke $mattpocock-skills:to-tickets for this already-approved single-ticket plan. This is an installed integration test, so do not publish or modify tracker tickets; complete only the planning-stage preparation for featureSlug issue-35. The complete task is: Implement format-value.sh in the main session and format-value-agent.sh in an isolated implementer. Each accepts exactly one positional value and writes the formatted value to stdout. Keep both changes local to the formatter and make ./test-format.sh plus ./test-format-agent.sh pass. Return the planning result when ready.'
 unset ACCEPTANCE_DISABLE_MULTI_AGENT
 run_codex_acceptance
 
@@ -604,7 +722,7 @@ MALFORMED_SELECTION="$CONTEXT_DIR/malformed-selection.json"
 MALFORMED_CONTEXT="$CONTEXT_DIR/malformed-context.json"
 printf '%s\n' '{"status":"ok","phase":"plan","wikiNotes":"not-an-array"}' > "$MALFORMED_SELECTION"
 export ACCEPTANCE_TERMINAL_LOG="$MALFORMED_RESEARCH_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=1
+export ACCEPTANCE_COMPLETED_PARENTS=3
 export ACCEPTANCE_PROMPT='ISSUE35_STAGE_MALFORMED_RESEARCHER_OUTPUT. Resume $grill-adapter:wiki-research immediately after a terminal researcher wrote the malformed plan selection fixture at .grill-adapter/context/issue-35/malformed-selection.json. Do not dispatch another researcher or call Wiki MCP. Run the installed Carry scaffold validation into .grill-adapter/context/issue-35/malformed-context.json with featureSlug malformed-output and ticketSource manual. Treat validator rejection as broken, leave no partial context, and return only {"acceptanceStage":"malformed-researcher-output","status":"broken","caveat":"selection-validation-failed"}.'
 run_codex_acceptance
 [[ ! -e "$MALFORMED_CONTEXT" ]] || {
@@ -684,8 +802,8 @@ cp "$SANDBOX/settings-before-drift.json" "$PROJECT/.grill-adapter/settings.json"
 
 # Installed task readiness performs the actual Carry, routing, finalize, freeze, and Bind path.
 export ACCEPTANCE_TERMINAL_LOG="$READINESS_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=2
-export ACCEPTANCE_PROMPT='ISSUE35_STAGE_TASK_READINESS. Invoke $grill-adapter:wiki-readiness before any product edit. Use the confirmed conversational task in ./task-brief.md with featureSlug issue-35 and taskId manual. Reuse the existing plan selection at .grill-adapter/context/issue-35/obsidian-wiki-selection.json without dispatching another researcher: prepare the manual roster from the complete brief, scaffold wiki-context.json with --keep-selection, route project/formatter as task-bound to manual, confirm routing, finalize, freeze both role contracts, and Bind the implementer contract into the main session. Return only {"acceptanceStage":"task-readiness","status":"ready"} after the receipt is ready.'
+export ACCEPTANCE_COMPLETED_PARENTS=4
+export ACCEPTANCE_PROMPT='ISSUE35_STAGE_TASK_READINESS. Invoke $mattpocock-skills:implement for the confirmed conversational task in ./task-brief.md. This installed test exercises the host router: before any product edit, establish task readiness for featureSlug issue-35 and taskId manual. Reuse the existing plan selection at .grill-adapter/context/issue-35/obsidian-wiki-selection.json without dispatching another researcher: prepare the manual roster from the complete brief, scaffold wiki-context.json with --keep-selection, route project/formatter as task-bound to manual, confirm routing, finalize, freeze both role contracts, and Bind the implementer contract into the main session. Do not call a grill-adapter skill by name. Return only {"acceptanceStage":"task-readiness","status":"ready"} after the receipt is ready.'
 run_codex_acceptance
 
 [[ -f "$CONTEXT" && -f "$ROSTER" && -f "$RECEIPT" \
@@ -698,7 +816,7 @@ python3 "$INSTALLED_READINESS" validate \
 
 # The direct host path must consume the same implementer contract without an implementation child.
 export ACCEPTANCE_TERMINAL_LOG="$DIRECT_IMPLEMENT_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=3
+export ACCEPTANCE_COMPLETED_PARENTS=5
 export ACCEPTANCE_PROMPT='ISSUE35_STAGE_DIRECT_IMPLEMENTATION. Validate the existing issue-35/manual readiness receipt and read the exact .grill-adapter/context/issue-35/manual.wiki-implement.md contract into this main session. Do not spawn an agent, read the reviewer snapshot, or call the live Wiki. Implement only format-value.sh and run ./test-format.sh. Return only {"acceptanceStage":"direct-implementation","status":"pass"}.'
 run_codex_acceptance
 
@@ -710,7 +828,7 @@ run_codex_acceptance
 
 # The isolated role path independently consumes the frozen implementer contract.
 export ACCEPTANCE_TERMINAL_LOG="$IMPLEMENT_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=4
+export ACCEPTANCE_COMPLETED_PARENTS=6
 export ACCEPTANCE_PROMPT='ISSUE35_STAGE_AGENT_IMPLEMENTATION. Validate the existing issue-35/manual readiness receipt, then read the entire .grill-adapter/context/issue-35/manual.wiki-implement.md contract into this parent main session before dispatch. Spawn exactly one implementer subagent named issue35_implementer with fork_turns none; tell it to read only ./task-brief.md, ./test-format-agent.sh, and ./.grill-adapter/context/issue-35/manual.wiki-implement.md as task inputs, implement only format-value-agent.sh, and run ./test-format-agent.sh. Immediately wait on only that exact child until terminal. Do not read the reviewer snapshot or live Wiki. Return only {"acceptanceStage":"agent-implementation","status":"pass","childStatus":"completed"}.'
 run_codex_acceptance
 
@@ -721,9 +839,14 @@ run_codex_acceptance
 (cd "$PROJECT" && ./test-format-agent.sh)
 
 export ACCEPTANCE_TERMINAL_LOG="$REVIEW_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=5
-export ACCEPTANCE_PROMPT='ISSUE35_STAGE_CODE_REVIEW. Review the current task manual after implementation. Follow the reviewer-reuse section of $grill-adapter:wiki-readiness: create .grill-adapter/context/issue-35/manual.wiki-review-handoff.md from the existing receipt before spawning reviewers. Then spawn exactly two subagents in parallel: task_name standards_review for Standards and task_name spec_review for Spec, both with fork_turns none. Each must read that same handoff file plus the git diff; the Spec reviewer must also read the exact project-root path ./task-brief.md. Neither may read manual.wiki-implement.md, the live Wiki, or any other task contract. Wait for both exact children. Return only {"acceptanceStage":"code-review","status":"pass","standardsCompleted":true,"specCompleted":true}.'
+export ACCEPTANCE_COMPLETED_PARENTS=7
+REVIEW_ROUTER_PRODUCT_BEFORE="$(snapshot_repository_state "$PROJECT" "./.grill-adapter/context/issue-35/manual.wiki-review-handoff.md")"
+REVIEW_ROUTER_VAULT_BEFORE="$(snapshot_repository_state "$VAULT")"
+REVIEW_ROUTER_OUTBOX_BEFORE="$(snapshot_tree "$OUTBOX_ROOT")"
+export ACCEPTANCE_PROMPT='ISSUE35_STAGE_CODE_REVIEW. Invoke $mattpocock-skills:code-review since HEAD for the current task manual after implementation. This installed test exercises the host router: prepare reviewer context before spawning reviewers, then after an accepted review run the post-review Capture route for feature issue-35. Do not call a grill-adapter skill by name. Create .grill-adapter/context/issue-35/manual.wiki-review-handoff.md from the existing receipt before spawning reviewers. Then spawn exactly two subagents in parallel: task_name standards_review for Standards and task_name spec_review for Spec, both with fork_turns none. Each must read that same handoff file plus the git diff; the Spec reviewer must also read the exact project-root path ./task-brief.md. Neither may read manual.wiki-implement.md, the live Wiki, or any other task contract. This formatter-only fixture has no durable candidate, so the required post-review Capture route must still run its single isolated child, named issue35_capture, and leave product and Vault state unchanged. Wait for every exact child. Return only {"acceptanceStage":"code-review","status":"pass","standardsCompleted":true,"specCompleted":true,"captureStatus":"skipped"}.'
+export ACCEPTANCE_AUTO_APPROVE_CAPTURE=1
 run_codex_acceptance
+unset ACCEPTANCE_AUTO_APPROVE_CAPTURE
 
 [[ -f "$REVIEW_HANDOFF" ]] || {
   printf 'installed code-review stage did not create the reviewer handoff\n' >&2
@@ -733,12 +856,24 @@ grep -Fq 'Status: ready' "$REVIEW_HANDOFF" || {
   printf 'installed reviewer handoff was not ready\n' >&2
   exit 1
 }
+[[ "$(snapshot_repository_state "$PROJECT" "./.grill-adapter/context/issue-35/manual.wiki-review-handoff.md")" == "$REVIEW_ROUTER_PRODUCT_BEFORE" ]] || {
+  printf 'router-driven review Capture changed project state beyond its reviewer handoff\n' >&2
+  exit 1
+}
+[[ "$(snapshot_repository_state "$VAULT")" == "$REVIEW_ROUTER_VAULT_BEFORE" ]] || {
+  printf 'router-driven review Capture changed the Vault\n' >&2
+  exit 1
+}
+[[ "$(snapshot_tree "$OUTBOX_ROOT")" == "$REVIEW_ROUTER_OUTBOX_BEFORE" ]] || {
+  printf 'router-driven review Capture changed the Outbox despite no durable candidate\n' >&2
+  exit 1
+}
 
-CAPTURE_STATUS_BEFORE="$(git -C "$PROJECT" status --porcelain=v1 --untracked-files=all)"
-CAPTURE_DIFF_BEFORE="$(git -C "$PROJECT" diff --binary)"
-VAULT_STATUS_BEFORE="$(git -C "$VAULT" status --porcelain=v1 --untracked-files=all)"
+CAPTURE_PRODUCT_BEFORE="$(snapshot_repository_state "$PROJECT")"
+CAPTURE_VAULT_BEFORE="$(snapshot_repository_state "$VAULT")"
+CAPTURE_OUTBOX_BEFORE="$(snapshot_tree "$OUTBOX_ROOT")"
 export ACCEPTANCE_TERMINAL_LOG="$CAPTURE_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=6
+export ACCEPTANCE_COMPLETED_PARENTS=8
 export ACCEPTANCE_PROMPT='ISSUE35_STAGE_CAPTURE. Invoke $grill-adapter:update-wiki for feature issue-35 after the accepted review. Apply its durable-knowledge gate. This formatter-only fixture has no candidate journal and no durable cross-project knowledge, so a no-update conclusion is expected, but it must be the installed skill own conclusion. Do not propose, apply, publish, edit the Vault, append a journal, or change product files. Return only {"acceptanceStage":"capture","status":"skipped","reason":"no-durable-candidate"}.'
 export ACCEPTANCE_RUN_TIMEOUT_SECONDS="$CODEX_CAPTURE_TIMEOUT_SECONDS"
 export ACCEPTANCE_AUTO_APPROVE_CAPTURE=1
@@ -747,21 +882,29 @@ run_codex_acceptance
 export ACCEPTANCE_RUN_TIMEOUT_SECONDS="$CODEX_ACCEPTANCE_TIMEOUT_SECONDS"
 unset ACCEPTANCE_AUTO_APPROVE_CAPTURE ACCEPTANCE_MONITOR_CAPTURE_MCP
 
-[[ "$(git -C "$PROJECT" status --porcelain=v1 --untracked-files=all)" == "$CAPTURE_STATUS_BEFORE" ]] || {
+[[ "$(snapshot_repository_state "$PROJECT")" == "$CAPTURE_PRODUCT_BEFORE" ]] || {
   printf 'Capture changed project state despite a no-update conclusion\n' >&2
   exit 1
 }
-[[ "$(git -C "$PROJECT" diff --binary)" == "$CAPTURE_DIFF_BEFORE" ]] || {
-  printf 'Capture changed the product diff despite a no-update conclusion\n' >&2
-  exit 1
-}
-[[ "$(git -C "$VAULT" status --porcelain=v1 --untracked-files=all)" == "$VAULT_STATUS_BEFORE" ]] || {
+[[ "$(snapshot_repository_state "$VAULT")" == "$CAPTURE_VAULT_BEFORE" ]] || {
   printf 'Capture changed the Vault despite a no-update conclusion\n' >&2
   exit 1
 }
+[[ "$(snapshot_tree "$OUTBOX_ROOT")" == "$CAPTURE_OUTBOX_BEFORE" ]] || {
+  printf 'Capture changed the Outbox despite a no-update conclusion\n' >&2
+  exit 1
+}
+
+# The debug branch is a separate grill stage. Its historical symptom, root cause, and verified fix
+# are deliberately supplied so the router can reach both its post-cause disclosure and post-fix
+# retrospective moments without reopening the product change.
+export ACCEPTANCE_TERMINAL_LOG="$DEBUG_LOG"
+export ACCEPTANCE_COMPLETED_PARENTS=9
+export ACCEPTANCE_PROMPT='ISSUE39_STAGE_DIAGNOSING_BUGS. Invoke $mattpocock-skills:diagnosing-bugs for the formatter regression that was already reproduced, fixed, and verified. The former symptom was angle-bracket output; the tight feedback loop is ./test-format.sh, the confirmed root cause was an implementation that used angle brackets, and the verified fix now emits square brackets. This installed test exercises the host router: after the cause is narrowed, disclose targeted Wiki context; after the verified fix, run the debugging retrospective and emit its prescribed analysis with its no-update conclusion. Do not call a grill-adapter skill by name, change product files, edit the Vault, publish anything, or create a durable candidate. Return once the debugging-stage work has reached its normal user-facing handoff.'
+run_codex_acceptance
 
 export ACCEPTANCE_TERMINAL_LOG="$RESEARCH_DISPATCH_FAILURE_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=7
+export ACCEPTANCE_COMPLETED_PARENTS=10
 export ACCEPTANCE_DISABLE_MULTI_AGENT=1
 export ACCEPTANCE_PROMPT='ISSUE35_STAGE_RESEARCH_DISPATCH_FAILURE. Invoke $grill-adapter:wiki-research for phase plan and featureSlug dispatch-failure. Multi-agent dispatch is unavailable in this run. Follow the installed skill failure contract: do not research inline, do not call Wiki MCP from the coordinator, do not create a selection or sidecar, and report a broken dispatch caveat rather than no relevant knowledge. Return only {"acceptanceStage":"research-dispatch-failure","status":"broken","caveat":"dispatch-unavailable"}.'
 run_codex_acceptance
@@ -792,7 +935,7 @@ with open(path, "w", encoding="utf-8") as handle:
     handle.write("\n")
 PY
 export ACCEPTANCE_TERMINAL_LOG="$HOST_FAIL_OPEN_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=8
+export ACCEPTANCE_COMPLETED_PARENTS=11
 export ACCEPTANCE_PROMPT='ISSUE35_STAGE_HOST_FAIL_OPEN. Invoke $grill-adapter:wiki-readiness for the confirmed manual task at .grill-adapter/context/broken-binding/task-brief.md with featureSlug broken-binding. The configured Wiki binding is broken. My explicit user decision is to continue without Wiki context: record readiness status broken, discard every partial selection/context/snapshot, then create ./broken-path.txt from only the task brief with exactly `continued without wiki`. Do not spawn an agent. Return only {"acceptanceStage":"host-fail-open","status":"pass","readinessStatus":"broken","userDecision":"continue-without-wiki"}.'
 run_codex_acceptance
 cp "$SANDBOX/settings-before-host-failure.json" "$PROJECT/.grill-adapter/settings.json"
@@ -820,7 +963,7 @@ PY
 
 # Maintenance dispatch failure is also an installed skill path and must never fall back inline.
 export ACCEPTANCE_TERMINAL_LOG="$MAINTENANCE_DISPATCH_FAILURE_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=9
+export ACCEPTANCE_COMPLETED_PARENTS=12
 export ACCEPTANCE_DISABLE_MULTI_AGENT=1
 export ACCEPTANCE_PROMPT='ISSUE35_STAGE_MAINTENANCE_DISPATCH_FAILURE. Invoke $grill-adapter:wiki-maintenance audit maintenance-dispatch-failure with asOf 2026-08-01T12:00:00Z, identityLimit 10, and noteReadLimit 1. Multi-agent dispatch is unavailable. Do not audit inline, call Wiki MCP, or write a report. Return only {"acceptanceStage":"maintenance-dispatch-failure","status":"broken","mode":"audit","caveat":"dispatch-unavailable"}.'
 run_codex_acceptance
@@ -926,6 +1069,10 @@ def calls(events, name=None):
 
 
 def terminal_result(events):
+    return json.loads(terminal_message(events))
+
+
+def terminal_message(events):
     messages = [
         event.get("payload", {}).get("last_agent_message")
         for event in events
@@ -933,7 +1080,7 @@ def terminal_result(events):
         and event.get("payload", {}).get("type") == "task_complete"
     ]
     assert len(messages) == 1 and isinstance(messages[0], str), messages
-    return json.loads(messages[0])
+    return messages[0]
 
 
 def call_arguments(call):
@@ -942,6 +1089,17 @@ def call_arguments(call):
     return json.loads(value)
 
 
+def indexed_calls(events):
+    return [
+        (index, event["payload"])
+        for index, event in enumerate(events)
+        if event.get("type") == "response_item"
+        and event.get("payload", {}).get("type") in {"function_call", "custom_tool_call"}
+    ]
+
+
+discovery_meta, discovery_events = parent_for("ISSUE39_STAGE_GRILL_WITH_DOCS")
+spec_meta, spec_events = parent_for("ISSUE39_STAGE_TO_SPEC")
 research_meta, research_events = parent_for("ISSUE35_STAGE_RESEARCH_SUCCESS")
 malformed_meta, malformed_events = parent_for("ISSUE35_STAGE_MALFORMED_RESEARCHER_OUTPUT")
 readiness_meta, readiness_events = parent_for("ISSUE35_STAGE_TASK_READINESS")
@@ -949,13 +1107,44 @@ direct_meta, direct_events = parent_for("ISSUE35_STAGE_DIRECT_IMPLEMENTATION")
 implement_meta, implement_events = parent_for("ISSUE35_STAGE_AGENT_IMPLEMENTATION")
 review_meta, review_events = parent_for("ISSUE35_STAGE_CODE_REVIEW")
 capture_meta, capture_events = parent_for("ISSUE35_STAGE_CAPTURE")
+debug_meta, debug_events = parent_for("ISSUE39_STAGE_DIAGNOSING_BUGS")
 research_dispatch_meta, research_dispatch_events = parent_for("ISSUE35_STAGE_RESEARCH_DISPATCH_FAILURE")
 host_fail_open_meta, host_fail_open_events = parent_for("ISSUE35_STAGE_HOST_FAIL_OPEN")
 maintenance_dispatch_meta, maintenance_dispatch_events = parent_for(
     "ISSUE35_STAGE_MAINTENANCE_DISPATCH_FAILURE"
 )
 
+def user_message(events):
+    messages = [
+        event.get("payload", {}).get("message")
+        for event in events
+        if event.get("type") == "event_msg"
+        and event.get("payload", {}).get("type") == "user_message"
+    ]
+    assert len(messages) == 1 and isinstance(messages[0], str), messages
+    return messages[0]
+
+
+discovery_user_message = user_message(discovery_events)
+spec_user_message = user_message(spec_events)
+research_user_message = user_message(research_events)
+readiness_user_message = user_message(readiness_events)
+review_user_message = user_message(review_events)
+debug_user_message = user_message(debug_events)
+for stage, message in (
+    ("grill-with-docs", discovery_user_message),
+    ("to-spec", spec_user_message),
+    ("to-tickets", research_user_message),
+    ("implement", readiness_user_message),
+    ("code-review", review_user_message),
+    ("diagnosing-bugs", debug_user_message),
+):
+    assert f"$mattpocock-skills:{stage}" in message, (stage, message)
+    assert "$grill-adapter:" not in message, (stage, message)
+
 stage_parents = (
+    (discovery_meta, discovery_events),
+    (spec_meta, spec_events),
     (research_meta, research_events),
     (malformed_meta, malformed_events),
     (readiness_meta, readiness_events),
@@ -963,6 +1152,7 @@ stage_parents = (
     (implement_meta, implement_events),
     (review_meta, review_events),
     (capture_meta, capture_events),
+    (debug_meta, debug_events),
     (research_dispatch_meta, research_dispatch_events),
     (host_fail_open_meta, host_fail_open_events),
     (maintenance_dispatch_meta, maintenance_dispatch_events),
@@ -1016,6 +1206,7 @@ assert terminal_result(review_events) == {
     "status": "pass",
     "standardsCompleted": True,
     "specCompleted": True,
+    "captureStatus": "skipped",
 }
 assert terminal_result(capture_events) == {
     "acceptanceStage": "capture",
@@ -1040,21 +1231,58 @@ assert terminal_result(maintenance_dispatch_events) == {
     "caveat": "dispatch-unavailable",
 }
 
+discovery_children = [item for item in children if item[0].get("parent_thread_id") == discovery_meta["id"]]
 research_children = [item for item in children if item[0].get("parent_thread_id") == research_meta["id"]]
 malformed_children = [item for item in children if item[0].get("parent_thread_id") == malformed_meta["id"]]
 readiness_children = [item for item in children if item[0].get("parent_thread_id") == readiness_meta["id"]]
 direct_children = [item for item in children if item[0].get("parent_thread_id") == direct_meta["id"]]
 implement_children = [item for item in children if item[0].get("parent_thread_id") == implement_meta["id"]]
 review_children = [item for item in children if item[0].get("parent_thread_id") == review_meta["id"]]
+debug_children = [item for item in children if item[0].get("parent_thread_id") == debug_meta["id"]]
+review_capture_children = [
+    item
+    for item in review_children
+    if item[0].get("agent_path", "").rsplit("/", 1)[-1] == "issue35_capture"
+]
+reviewer_children = [item for item in review_children if item not in review_capture_children]
 assert len(research_children) == 1
+assert discovery_children
 assert not malformed_children
 assert not readiness_children
 assert not direct_children
 assert len(implement_children) == 1
-assert len(review_children) == 2
+assert len(review_capture_children) == 1
+assert len(reviewer_children) == 2
 for meta in (research_dispatch_meta, host_fail_open_meta, maintenance_dispatch_meta):
     assert not [item for item in children if item[0].get("parent_thread_id") == meta["id"]]
 assert "ISSUE35_STAGE_RESEARCH_SUCCESS" not in event_text(research_children[0][1])
+
+
+def child_call_text(items):
+    return "\n".join(
+        json.dumps(call, ensure_ascii=False)
+        for _, events in items
+        for call in calls(events)
+    )
+
+
+discovery_child_calls = child_call_text(discovery_children)
+for required in ("obsidian_wiki_status", "obsidian_wiki_catalog", "obsidian_wiki_search"):
+    assert required in discovery_child_calls, (required, discovery_child_calls)
+
+debug_child_calls = child_call_text(debug_children)
+for required in ("obsidian_wiki_status", "obsidian_wiki_catalog", "obsidian_wiki_search"):
+    assert required in debug_child_calls, (required, debug_child_calls)
+
+review_capture_calls = child_call_text(review_capture_children)
+for required in (
+    "obsidian_wiki_status",
+    "obsidian_wiki_sources",
+    "obsidian_wiki_consolidation_candidates",
+    "obsidian_wiki_capture_draft_view",
+    "obsidian_wiki_stage_capture_plan",
+):
+    assert required in review_capture_calls, (required, review_capture_calls)
 
 selection = json.loads((project / ".grill-adapter/context/issue-35/obsidian-wiki-selection.json").read_text(encoding="utf-8"))
 selected_ids = [note["wikiId"] for note in selection["wikiNotes"]]
@@ -1072,6 +1300,8 @@ formal_paths = [
 ]
 formal_text = "\n".join(path.read_text(encoding="utf-8") for path in formal_paths)
 parent_text = "\n".join(event_text(events) for _, events in (
+    (discovery_meta, discovery_events),
+    (spec_meta, spec_events),
     (research_meta, research_events),
     (malformed_meta, malformed_events),
     (readiness_meta, readiness_events),
@@ -1079,6 +1309,7 @@ parent_text = "\n".join(event_text(events) for _, events in (
     (implement_meta, implement_events),
     (review_meta, review_events),
     (capture_meta, capture_events),
+    (debug_meta, debug_events),
     (research_dispatch_meta, research_dispatch_events),
     (host_fail_open_meta, host_fail_open_events),
     (maintenance_dispatch_meta, maintenance_dispatch_events),
@@ -1095,9 +1326,28 @@ assert correction_marker in formal_text
 assert selected_marker in event_text(direct_events), "direct main session never received the implementer contract"
 assert selected_marker in event_text(implement_events), "main session never received the implementer contract"
 
+research_calls = "\n".join(json.dumps(call, ensure_ascii=False) for call in calls(research_events))
+for required in ("source_truth_settings.py", "--render-prompt", "plan-pre"):
+    assert required in research_calls, (required, research_calls)
+
+spec_calls = "\n".join(json.dumps(call, ensure_ascii=False) for call in calls(spec_events))
+for required in ("source_truth_settings.py", "--render-prompt", "spec-pre"):
+    assert required in spec_calls, (required, spec_calls)
+
 readiness_calls = "\n".join(json.dumps(call, ensure_ascii=False) for call in calls(readiness_events))
 for required in ("wiki_context_render.py", "--scaffold", "--finalize", "wiki_readiness.py", "freeze", "bind"):
     assert required in readiness_calls, (required, readiness_calls)
+
+debug_skill_events = event_text(debug_events)
+assert "<name>grill-adapter:break-loop</name>" in debug_skill_events, debug_skill_events
+debug_terminal = terminal_message(debug_events)
+for required in ("## Bug Loop Analysis:", "### 6. Update-Wiki Handoff"):
+    assert required in debug_terminal, (required, debug_terminal)
+assert re.search(
+    r"^\s*-\s+\*\*Decision\*\*:\s*skip update-wiki\s*$",
+    debug_terminal,
+    flags=re.MULTILINE | re.IGNORECASE,
+), debug_terminal
 
 malformed_calls = "\n".join(json.dumps(call, ensure_ascii=False) for call in calls(malformed_events))
 for required in ("wiki_context_render.py", "--scaffold", "malformed-selection.json", "malformed-context.json"):
@@ -1109,16 +1359,100 @@ implement_spawns = calls(implement_events, "spawn_agent")
 review_spawns = calls(review_events, "spawn_agent")
 assert len(research_spawns) == 1
 assert len(implement_spawns) == 1
-assert len(review_spawns) == 2
+assert len(review_spawns) == 3
 research_spawn = call_arguments(research_spawns[0])
 implement_spawn = call_arguments(implement_spawns[0])
 review_spawn_args = [call_arguments(call) for call in review_spawns]
+reviewer_spawn_args = [
+    value for value in review_spawn_args if value["task_name"] in {"standards_review", "spec_review"}
+]
+capture_spawn_args = [value for value in review_spawn_args if value["task_name"] == "issue35_capture"]
 assert research_spawn["fork_turns"] == "none"
 assert research_spawn["task_name"] == "issue35_wiki_researcher"
 assert implement_spawn["fork_turns"] == "none"
 assert implement_spawn["task_name"] == "issue35_implementer"
-assert {value["task_name"] for value in review_spawn_args} == {"standards_review", "spec_review"}
+assert {value["task_name"] for value in reviewer_spawn_args} == {"standards_review", "spec_review"}
+assert len(capture_spawn_args) == 1
 assert all(value["fork_turns"] == "none" for value in review_spawn_args)
+
+review_parent_calls = indexed_calls(review_events)
+review_capture_spawns = [
+    (index, call)
+    for index, call in review_parent_calls
+    if call.get("name") == "spawn_agent"
+    and call_arguments(call).get("task_name") == "issue35_capture"
+]
+assert len(review_capture_spawns) == 1
+review_capture_spawn_event_index, review_capture_spawn = review_capture_spawns[0]
+review_capture_call_position = next(
+    index
+    for index, (_, call) in enumerate(review_parent_calls)
+    if call is review_capture_spawn
+)
+assert review_capture_call_position + 1 < len(review_parent_calls)
+review_capture_wait_event_index, review_capture_wait = review_parent_calls[review_capture_call_position + 1]
+assert review_capture_wait.get("name") == "wait_agent"
+
+review_capture_child_meta, review_capture_child_events = review_capture_children[0]
+review_capture_child_path = review_capture_child_meta["agent_path"]
+reviewer_child_paths = {child_meta["agent_path"] for child_meta, _ in reviewer_children}
+review_capture_spawn_outputs = [
+    event["payload"]
+    for event in review_events
+    if event.get("type") == "response_item"
+    and event.get("payload", {}).get("type") == "function_call_output"
+    and event.get("payload", {}).get("call_id") == review_capture_spawn["call_id"]
+]
+assert len(review_capture_spawn_outputs) == 1
+assert json.loads(review_capture_spawn_outputs[0]["output"])["task_name"] == review_capture_child_path
+
+review_child_terminal_messages = [
+    (index, event["payload"])
+    for index, event in enumerate(review_events)
+    if event.get("type") == "response_item"
+    and event.get("payload", {}).get("type") == "agent_message"
+    and event.get("payload", {}).get("author") in (reviewer_child_paths | {review_capture_child_path})
+]
+reviewer_terminal_messages = [
+    item for item in review_child_terminal_messages if item[1].get("author") in reviewer_child_paths
+]
+assert len(reviewer_terminal_messages) == 2
+assert all(index < review_capture_spawn_event_index for index, _ in reviewer_terminal_messages)
+review_capture_terminal_messages = [
+    item for item in review_child_terminal_messages if item[1].get("author") == review_capture_child_path
+]
+assert len(review_capture_terminal_messages) == 1
+assert review_capture_terminal_messages[0][1].get("author") == review_capture_child_path
+waits_until_capture_terminal = [
+    (index, call)
+    for index, call in review_parent_calls
+    if review_capture_spawn_event_index < index < review_capture_terminal_messages[0][0]
+]
+assert waits_until_capture_terminal
+assert waits_until_capture_terminal[0][0] == review_capture_wait_event_index
+assert all(call.get("name") == "wait_agent" for _, call in waits_until_capture_terminal)
+review_capture_wait_call_ids = {call["call_id"] for _, call in waits_until_capture_terminal}
+review_capture_wait_outputs = [
+    (index, event["payload"])
+    for index, event in enumerate(review_events)
+    if event.get("type") == "response_item"
+    and event.get("payload", {}).get("type") == "function_call_output"
+    and event.get("payload", {}).get("call_id") in review_capture_wait_call_ids
+]
+assert len(review_capture_wait_outputs) == len(waits_until_capture_terminal)
+review_capture_wait_results = [
+    json.loads(payload["output"])
+    for _, payload in review_capture_wait_outputs
+]
+assert all(result in ({"message": "Wait timed out.", "timed_out": True}, {
+    "message": "Wait completed.", "timed_out": False,
+}) for result in review_capture_wait_results)
+assert review_capture_wait_results[-1] == {"message": "Wait completed.", "timed_out": False}
+assert review_capture_terminal_messages[0][0] > review_capture_wait_outputs[-1][0]
+review_capture_result = terminal_result(review_capture_child_events)
+assert review_capture_result["kind"] == "grill-adapter.wiki-capture-result"
+assert review_capture_result["status"] == "ok"
+assert review_capture_result["counts"] == {"queued": 0, "skipped": 0, "needsDecision": 0}
 
 
 def assert_sealed_message(arguments, minimum_length):
@@ -1173,7 +1507,7 @@ assert "manual.wiki-review-handoff.md" not in implement_child_calls
 
 review_children_by_name = {
     child_meta.get("agent_path", "").rsplit("/", 1)[-1]: (child_meta, child_events)
-    for child_meta, child_events in review_children
+    for child_meta, child_events in reviewer_children
 }
 assert set(review_children_by_name) == {"standards_review", "spec_review"}, review_children_by_name
 for role_name, (child_meta, child_events) in review_children_by_name.items():
@@ -1245,12 +1579,15 @@ def parse_timestamp(value):
 
 
 workflow_events = (
-    research_events
+    discovery_events
+    + spec_events
+    + research_events
     + readiness_events
     + direct_events
     + implement_events
     + review_events
     + capture_events
+    + debug_events
 )
 timestamps = [parse_timestamp(event.get("timestamp")) for event in workflow_events]
 timestamps = [value for value in timestamps if value is not None]
@@ -1275,12 +1612,16 @@ report = {
         "provider": actual_provider,
     },
     "workflowStages": {
+        "grillWithDocs": "pass",
+        "toSpec": "pass",
+        "toTickets": "pass",
         "discoveryPlanning": "pass",
         "taskReadiness": "pass",
         "directImplementation": "pass",
         "agentImplementation": "pass",
         "codeReview": "pass",
         "capture": "pass",
+        "diagnosingBugs": "pass",
         "maintenanceAudit": "pass",
         "maintenanceConsolidation": "pass",
     },

@@ -583,10 +583,10 @@ def load_ticket_roster(
     """Load the host-produced ticket roster: the task identity + fingerprint source of truth.
 
     This is the host-agnostic boundary. The engine never reads a tracker, a plan document, or the
-    network -- it fingerprints exactly the text it is handed. Each host's convention block tells the
-    agent how to fill the roster (grill local-markdown reads `.scratch/<slug>/issues/<NN>-<slug>.md`,
-    grill GitHub runs `gh issue view`, plain takes a user-specified source), so a new host needs a
-    convention block and no engine change.
+    network -- it fingerprints exactly the text it is handed. The planning entry skill (or an
+    equivalent roster producer) tells the agent how to fill the roster. In grill-adapter,
+    `wiki-research` owns the source-specific mapping while the thin host router only keeps the
+    source boundary, so a new host needs an equivalent roster producer and no engine change.
 
     Returns the same shape the renderer's fingerprint/scaffold paths consume: taskId -> title/text/hash.
     """

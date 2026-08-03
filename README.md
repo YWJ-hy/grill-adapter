@@ -118,7 +118,7 @@ cd grill-adapter
 
 For a new project, use `setup-init-obsidian` to state how many Wiki libraries the project needs and what each is for; it then guides each Source binding and the machine-local registry. Each project may have at most one project Source plus multiple shared Sources. `doctor` must report `obsidian-native` and healthy before formal research. Existing legacy projects use `migrate-wiki`; for a GitHub-backed legacy shared Wiki, pass its repository URL explicitly to the migration planner. There is no legacy runtime fallback.
 
-- The convention block is marker-delimited and **names skills only — it carries no install path**, so plugin upgrades can't rot it. Claude Code uses `CLAUDE.md`; Codex uses `AGENTS.md`.
+- The convention block is marker-delimited and **names skills only — it carries no install path**, so plugin upgrades can't rot it. It is a thin stage router: entry skills own the detailed state, permission, failure, and recovery behavior. Claude Code uses `CLAUDE.md`; Codex uses `AGENTS.md`.
 - To use **grill only** while keeping a globally installed grill-adapter bundle, run
   `./manage.sh uninstall /path/to/your/project --runtime claude|codex|both` to remove the project
   marker. Existing `.grill-adapter/` working state is not deleted automatically.
@@ -167,15 +167,15 @@ Install Git for Windows if no usable Bash is found. To select a non-default inst
 
 The installed Codex context budget command reports the plugin skill catalog, project host block,
 live MCP tool schemas, and Codex-rendered research/readiness/Capture/Maintenance stage payloads in UTF-8 bytes.
-Default limits live in `contracts/codex-context-budget-v1.json`; pass `--thresholds <json>` to test
-an alternate budget. The report contains measurements and stable resource names only. This size
+Default limits live in `contracts/codex-context-budget-v1.json`; the installed project host block is
+capped at 4,096 UTF-8 bytes. Pass `--thresholds <json>` to test an alternate budget. The report contains measurements and stable resource names only. This size
 gate complements, and does not replace, plugin discovery smoke or installed model-driven acceptance.
 
 Legacy Wiki migration to Obsidian runs through `/grill-adapter:migrate-wiki` (Claude) or `$grill-adapter:migrate-wiki` (Codex): deterministic no-write plan -> explicit confirmation -> dedicated PR branches + governed CAS apply -> one draft PR per repository -> merge/base sync -> read-only runtime verify -> separate cutover confirmation. Before planning, use the bounded legacy section-repartition pass when existing markers are too broad; it proposes marker/index/graph metadata changes without rewriting body prose. After migration, the Obsidian Note maintenance/repartition mode audits active bound Notes in batches and applies confirmed old-Note updates plus new sibling Notes through the existing bridge/journal/publisher/verify path. Use repeatable `--exclude-path shared:.claude/skills` when a legacy subtree must not migrate; the exclusion is part of the plan and source digest. Apply persists the full plan, binding/policy snapshot, and every CAS intent before the first bridge write; interrupted runs reconcile only exact expected states and never write migration content on base. Verify rejects open PRs, stale bases, source/binding/coverage drift, missing/duplicate/out-of-Source Notes, hash/search/edge/pack drift, and never overwrites human edits. Cutover reruns verify, rejects an active schema-v5 sidecar, and preserves only the plan-selected legacy roots byte-for-byte as mechanically enforced read-only archives.
 
 ## Relationship to grill / Claude Code / Codex
 
-grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe to; grill-adapter never forks or edits it. grill-adapter adds wiki, source-truth, and break-loop touchpoints *around* grill by convention. Without a grill-adapter host marker or settings, grill runs alone and adapter skills do not create local state. With the `grill` host block installed, that block remains inert until the corresponding grill stage is explicitly invoked; an ordinary direct request does not activate Wiki touchpoints. On plain Claude Code or Codex you invoke the same skills yourself at the matching moments (see the runtime-specific `plain` host block).
+grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe to; grill-adapter never forks or edits it. grill-adapter adds wiki, source-truth, and break-loop touchpoints *around* grill by convention. Without a grill-adapter host marker or settings, grill runs alone and adapter skills do not create local state. With the `grill` host block installed, that block remains inert until the corresponding grill stage is explicitly invoked; an ordinary direct request does not activate Wiki touchpoints, while an explicit adapter-skill invocation remains available. On plain Claude Code or Codex you invoke the same skills yourself at the matching moments (see the runtime-specific `plain` host block).
 
 ## Documentation
 

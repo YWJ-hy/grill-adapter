@@ -46,10 +46,11 @@ GRILL_ADAPTER_RUN_CODEX_ACCEPTANCE=1 \
   bash acceptance/codex-context-isolation-installed.sh "$PWD"
 ```
 
-它从本地 marketplace 安装当前工作树，依次真跑 discovery/planning、installed parent 内的
-Carry/freeze/readiness、主 session 直接实现、独立 implementer、共享 handoff 的 Standards/Spec
-reviewer、Capture、research/maintenance dispatch failure 和 binding-broken 后用户继续，再复用
-maintenance audit/consolidation installed gate。脚本对 malformed researcher output、binding drift、
+它从本地 marketplace 安装当前工作树，先分别真跑 `grill-with-docs`、`to-spec`、`to-tickets`、
+`implement`、`code-review` 与 `diagnosing-bugs`，从 installed rollout 验证 host router 的入口触点；
+随后覆盖 installed parent 内的 Carry/freeze/readiness、主 session 直接实现、独立 implementer、共享
+handoff 的 Standards/Spec reviewer、Capture、research/maintenance dispatch failure 和 binding-broken
+后用户继续，再复用 maintenance audit/consolidation installed gate。脚本对 malformed researcher output、binding drift、
 stale maintenance report 和 proposal side effect 做机械断言；malformed/stale 两条路径也由安装后的
 Codex coordinator 调用对应 validator，并核对正式 `broken` caveat 与旧报告保留，而不是只直跑脚本。
 随后输出包含

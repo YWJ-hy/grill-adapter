@@ -823,7 +823,18 @@ function stageCapturePlanLocked(
 
 export function stageCapturePlan(input: unknown, env: NodeJS.ProcessEnv = process.env) {
   const resolution = healthyResolution(env);
-  return withOutboxLock(resolution, () => stageCapturePlanLocked(input, resolution, env));
+  const plan = CapturePlanSchema.parse(input);
+  if (plan.decisions.length === 0) {
+    // A validated no-candidate Capture must not create an empty machine-local Outbox.
+    validateSnapshot(plan, env);
+    return {
+      status: 'ok' as const,
+      planId: digest(stableJson(plan)),
+      counts: { queued: 0, skipped: 0, needsDecision: 0 },
+      caveats: [] as string[],
+    };
+  }
+  return withOutboxLock(resolution, () => stageCapturePlanLocked(plan, resolution, env));
 }
 
 function effectiveEntries(manifest: Manifest): Entry[] {

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -187,6 +187,33 @@ afterEach(() => {
 });
 
 describe('machine-local Wiki Outbox', () => {
+  it('keeps a no-candidate Capture read-only', () => {
+    const input = fixture();
+    const journalPath = path.join(
+      input.projectDir,
+      '.grill-adapter',
+      'context',
+      'feature-a',
+      'wiki-candidates.jsonl',
+    );
+    rmSync(journalPath);
+    const snapshot = consolidationCandidatesTool({ candidateLimit: 200 }, input.env);
+    const outboxRoot = path.join(path.dirname(String(input.env.OBSIDIAN_WIKI_REGISTRY)), 'outbox');
+
+    expect(existsSync(outboxRoot)).toBe(false);
+    expect(stageCapturePlan({
+      schemaVersion: 1,
+      kind: 'grill-adapter.wiki-capture-plan',
+      featureSlug: 'feature-a',
+      journalSnapshots: snapshot.journalSnapshots,
+      decisions: [],
+    }, input.env)).toMatchObject({
+      status: 'ok',
+      counts: { queued: 0, skipped: 0, needsDecision: 0 },
+    });
+    expect(existsSync(outboxRoot)).toBe(false);
+  });
+
   it('queues a capture plan in a hidden Git ref while formal base stays clean', () => {
     const input = fixture();
 

@@ -6,7 +6,7 @@ grill-adapter 是一个**宿主无关（host-agnostic）的 Claude Code adapter*
 - **真实源校验 / lint（source-of-truth verify/lint）**；
 - **break-loop 调试复盘与知识回流**。
 
-核心原则：grill-adapter **从不 patch 任何宿主 skill**，只在宿主阶段之间挂接自己的 skill 与 hook。默认宿主是 **grill**（mattpocock/skills）。安装 plugin 只让能力可用，不会让所有 grill 项目自动启用 adapter：项目必须有 install 写入的 host marker、已有 `.grill-adapter/settings.json`，或用户显式调用当前 adapter skill，才会进入 adapter workflow。三者都没有时就是 standalone grill，任何入口都不得创建 `.grill-adapter/`。项目已接线后，grill host 的约定块也只有在用户明确调用对应 grill 阶段时才激活，普通直接需求不会自动进入 Wiki 触点：
+核心原则：grill-adapter **从不 patch 任何宿主 skill**，只在宿主阶段之间挂接自己的 skill 与 hook。默认宿主是 **grill**（mattpocock/skills）。安装 plugin 只让能力可用，不会让所有 grill 项目自动启用 adapter：项目必须有 install 写入的 host marker、已有 `.grill-adapter/settings.json`，或用户显式调用当前 adapter skill，才会进入 adapter workflow。三者都没有时就是 standalone grill，任何入口都不得创建 `.grill-adapter/`。项目已接线后，grill host 的约定块也只有在用户明确调用对应 grill 阶段时才激活，普通直接需求不会自动进入 Wiki 触点；没有活跃 grill 阶段时不自动路由 adapter，但用户仍可显式调用 adapter skill。活跃 stage 的每一行都是必须在其标明 workflow moment 执行的路由，后置时机不得提前，而不是说明文字。这个约定块是薄 router，只携带阶段到入口 skill 的映射、激活门和 roster / 本地状态边界；详细状态机、权限、失败和恢复由入口 skill 自己定义：
 
 ```
 /grill-with-docs → /to-spec → /to-tickets → /implement → /code-review
@@ -139,13 +139,13 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
    ```bash
    wiki_context_render.py --scaffold --feature-slug <slug> --ticket-source <source>
    # 人工编辑每个 Note/Card 的 destination（一次）；sidecar 不保存 Note body
-   # ticket 发布后：按 host 约定块建 .grill-adapter/context/<slug>/ticket-roster.json
+   # ticket 发布后：按 wiki-research skill 的 roster mapping 建 .grill-adapter/context/<slug>/ticket-roster.json
    wiki_context_render.py --finalize --ticket-roster <roster>   # 固化 sidecar + 盖指纹
    wiki_readiness.py freeze --context <context> --roster <roster> --all --project-root <project-root>
    # 用户审核后一次冻结 roster 的角色化 Markdown task contracts
    ```
 
-   **task 身份来自 ticket roster，不来自 plan 文件**——grill 不产出 plan 文档，所以引擎不解析任何文档，只对 roster 交给它的 ticket 正文算 sha256 指纹。roster 怎么填由 host 约定块规定（grill 本地形态读 `.scratch/<slug>/issues/*.md`，GitHub 形态跑 `gh issue view`），引擎本身 host 无关、不碰网络。
+   **task 身份来自 ticket roster，不来自 plan 文件**——grill 不产出 plan 文档，所以引擎不解析任何文档，只对 roster 交给它的 ticket 正文算 sha256 指纹。roster 怎么填由 `wiki-research` skill 规定（grill 本地形态读 `.scratch/<slug>/issues/*.md`，GitHub 形态跑 `gh issue view`），引擎本身 host 无关、不碰网络。
 
 3. sidecar 自身即记录：grill 不产出 plan 文档（ticket 发到 tracker 或 `.scratch/<slug>/issues/`），所以不往任何文档里加小节，而是把选中的 wiki 页/节告知用户。
 
@@ -275,7 +275,7 @@ grill-adapter 明确承认自己不是无缝的，并把降级点讲清楚：
 
 grill-adapter 同时以 **Claude Code plugin** 与 **Codex plugin** 形式发布。Claude 使用 `claude plugin install grill-adapter@grill-adapter --scope project|user`；Codex 使用 `codex plugin marketplace add YWJ-hy/grill-adapter` 后 `codex plugin add grill-adapter@grill-adapter`。
 
-唯一不由 plugin 承载的是目标项目的 host 约定块：Claude 写 `CLAUDE.md`，Codex 写 `AGENTS.md`。由 `./manage.sh install <project> --host grill|plain --runtime claude|codex|both` 写入；块里只点名 skill，不含任何安装路径，同时作为该项目的 workflow opt-in marker。
+唯一不由 plugin 承载的是目标项目的 host 约定块：Claude 写 `CLAUDE.md`，Codex 写 `AGENTS.md`。由 `./manage.sh install <project> --host grill|plain --runtime claude|codex|both` 写入；块里只点名 skill，不含任何安装路径，同时作为该项目的 workflow opt-in marker。四种运行时输出从 `contracts/host-conventions-v1.json` 统一生成，防止 Claude/Codex 语法或 host 路由独立漂移。
 
 **Skills（13）**：`wiki-readiness`、`wiki-research`、`wiki-materialize`、`wiki-maintenance`、`candidate-journal`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`setup-init-obsidian`、`scaffold-practice-skill`、`break-loop`、`source-truth-check`。
 

@@ -140,7 +140,12 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_context_render.py .grill-adapter/cont
    - Flip `taskRouting.status` to `confirmed` with `selectedSectionsFrozen: true`.
    - Surface every global Note/Card summary to the user as a feature-wide constraint.
 
-6. Build the ticket roster `.grill-adapter/context/<feature-slug>/ticket-roster.json` from the host's real tickets (shape: `${CLAUDE_PLUGIN_ROOT}/contracts/ticket-roster-v1.example.jsonc`). Your host's convention block in the project `CLAUDE.md` or `AGENTS.md` says where its tickets live and which `ticketSource` applies — read it rather than guessing. Copy each ticket's `text` verbatim: it is the fingerprint input.
+6. Build the ticket roster `.grill-adapter/context/<feature-slug>/ticket-roster.json` from the host's real tickets (shape: `${CLAUDE_PLUGIN_ROOT}/contracts/ticket-roster-v1.example.jsonc`). The thin host router supplies only the source boundary; this skill owns the exact mapping:
+   - **grill local scratch**: use `ticketSource: grill-local-scratch`; add one entry per `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, use the `NN` prefix as `taskId`, use the text of the file's first Markdown H1 (without its `#` marker) as `taskTitle`, and copy the whole file as `text`. If a ticket has no H1, stop and obtain a stable title instead of inventing one.
+   - **grill real tracker**: use `ticketSource: github-issues`; use the tracker issue number as `taskId`, copy its unchanged title into `taskTitle`, and copy only its unchanged body into `text`. `text` is the fingerprint input. For GitHub, fetch the unchanged issue with `gh issue view <number> --json body,title`.
+   - **plain host**: use the user-confirmed task source, one stable `taskId`, and the user-confirmed one-line task title as `taskTitle`; copy each task's complete, unedited text.
+
+   Never summarize or reformat `text`: it is the fingerprint input.
 
 7. Finalize in one call — builds the `taskWikiRefs` roster, stamps each `taskFingerprint`, validates execution readiness, writes once:
 

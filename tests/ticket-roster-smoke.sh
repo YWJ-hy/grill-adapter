@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Smoke test for the ticket roster — the host-agnostic boundary between a host's tracker and the
 # Carry/Bind engine. Proves:
-#   1. the shipped contract documents the shape AND how each host fills it,
+#   1. the shipped contract documents the shape and planning-entry ownership,
 #   2. the engine fingerprints exactly the text it is handed (independent oracle),
 #   3. a malformed roster fails closed rather than silently binding wiki to the wrong tasks,
 #   4. --scaffold stamps the feature identity without needing a plan file to exist.
@@ -33,15 +33,29 @@ assert_contains() {
   fi
 }
 
-# --- The shipped contract tells the agent how each host fills the roster. ---
+# --- The shipped contract assigns source-specific mapping to the planning entry skill. ---
 EXAMPLE_TEXT="$(cat "$ROSTER_EXAMPLE")"
 assert_contains "roster contract" 'featureSlug' "$EXAMPLE_TEXT"
 assert_contains "roster contract" 'ticketSource' "$EXAMPLE_TEXT"
 assert_contains "roster contract" '.scratch/<feature-slug>/issues/<NN>-<slug>.md' "$EXAMPLE_TEXT"
 assert_contains "roster contract" 'gh issue view' "$EXAMPLE_TEXT"
+assert_contains "roster contract" '`wiki-research`' "$EXAMPLE_TEXT"
+assert_contains "roster contract" 'taskTitle is the first Markdown H1 text' "$EXAMPLE_TEXT"
+assert_contains "roster contract" 'taskTitle is the issue title' "$EXAMPLE_TEXT"
+assert_contains "roster contract" 'text is the unchanged issue body' "$EXAMPLE_TEXT"
+assert_contains "roster contract" 'taskTitle is the user-confirmed one-line task title' "$EXAMPLE_TEXT"
 assert_contains "roster contract" 'docs/agents/issue-tracker.md' "$EXAMPLE_TEXT"
+if [[ "$EXAMPLE_TEXT" == *"Your host's convention block"* ]]; then
+  printf 'ticket roster contract must not delegate its mapping to the thin host router\n' >&2
+  exit 1
+fi
 # The roster is transient working state, never a committed deliverable.
 assert_contains "roster contract" 'Nothing under .grill-adapter/context/ is committed' "$EXAMPLE_TEXT"
+
+RESEARCH_SKILL="${TARGET_INPUT}/skills/wiki-research/SKILL.md"
+RESEARCH_TEXT="$(cat "$RESEARCH_SKILL")"
+assert_contains "wiki-research roster mapping" 'first Markdown H1 (without its `#` marker) as `taskTitle`' "$RESEARCH_TEXT"
+assert_contains "wiki-research roster mapping" 'user-confirmed one-line task title as `taskTitle`' "$RESEARCH_TEXT"
 
 # --- The engine fingerprints the handed text, verified against an independent oracle. ---
 ROSTER="$TMP/feature.ticket-roster.json"

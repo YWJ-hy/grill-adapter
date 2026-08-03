@@ -6,7 +6,7 @@ grill-adapter 用**约定 + hook** 接入宿主，**零 skill patch**。同一�
 
 grill-adapter 本身是一个双运行时插件：`.claude-plugin/plugin.json` 服务 Claude Code，`.codex-plugin/plugin.json` 服务 Codex；skills、hooks 与 Source-binding `obsidian-wiki` MCP 共享同一份实现。插件唯一做不到的事是改目标项目的持久指令文件——所以一个「host 适配器」现在只剩一样东西：
 
-**一段运行时约定块**：Claude Code 使用 `host-adapters/<host>/CLAUDE.md` 并写入目标项目 `CLAUDE.md`；Codex 使用 `host-adapters/<host>/AGENTS.md` 并写入目标项目 `AGENTS.md`。两者均由 marker 包裹（`<!-- grill-adapter:host:<host>:start -->` … `end`），install 时机械写入，幂等、可换宿主、可整块移除。
+**一段运行时约定块**：Claude Code 使用 `host-adapters/<host>/CLAUDE.md` 并写入目标项目 `CLAUDE.md`；Codex 使用 `host-adapters/<host>/AGENTS.md` 并写入目标项目 `AGENTS.md`。两者均由 marker 包裹（`<!-- grill-adapter:host:<host>:start -->` … `end`），install 时机械写入，幂等、可换宿主、可整块移除。四个运行时文件不是独立手写：`contracts/host-conventions-v1.json` 是唯一规范源，`scripts/render_host_conventions.py --write` 生成它们，`--check` 在验收中拒绝漂移。
 
 ```bash
 ./manage.sh install <project> --host grill --runtime claude
@@ -14,7 +14,7 @@ grill-adapter 本身是一个双运行时插件：`.claude-plugin/plugin.json` �
 ./manage.sh install <project> --host grill --runtime both
 ```
 
-**不变式**：约定块只引用 grill-adapter 自己的 skill（`/grill-adapter:wiki-research` 等），**不含任何安装路径**；绝不改宿主 skill 一行。宿主升级不影响 grill-adapter。
+**不变式**：约定块只引用 grill-adapter 自己的 skill（`/grill-adapter:wiki-research` 等），**不含任何安装路径**；绝不改宿主 skill 一行。它只保留激活门、阶段到入口 skill 的路由、ticket roster / 本地状态边界；`.grill-adapter/context/` 是不可提交的本地工作态，变更必须遵循相应入口 skill 的已记录工作流，`.grill-adapter/settings.json` 是项目配置。状态机、权限、失败和恢复细节由入口 skill 自己拥有。宿主升级不影响 grill-adapter。
 
 ### 项目激活边界
 
@@ -43,28 +43,26 @@ preflight；未接线且未配置的项目即使残留旧 context 也必须静�
 
 ## grill-host 约定块（`host-adapters/grill/{CLAUDE,AGENTS}.md`）
 
-映射 grill 阶段 → grill-adapter 触点（全文见该文件，install 会写进目标 CLAUDE.md）：
+这是一个薄 stage router，而不是运行手册。它默认保持静默，只有当前任务明确调用对应 grill skill/stage 才激活；普通用户需求、计划措辞或准备编辑代码都不能推断出 grill 阶段。当前没有 grill stage 时不自动路由 adapter，但用户仍可显式调用某个 adapter skill。stage 活跃后，表格每一行的入口 skill 必须在其标明的 workflow moment 调用，后置时机不得提前；路由是强制的，不只是提示。Claude 的入口使用 `/`，Codex 的 grill 入口使用 `$mattpocock-skills:`，adapter skill 使用各自运行时的命名空间。
 
-grill host 约定块默认保持静默，只有当前任务明确调用对应的 grill skill/stage 才激活相应触点。普通用户需求、计划措辞或准备编辑代码都不能推断出 grill 阶段；用户仍可直接显式调用某个 `grill-adapter` skill。
+| grill 阶段 | 入口 skill | 路由目的 |
+|---|---|---|
+| `grill-with-docs` | `wiki-research` | Disclose |
+| `to-spec` | `source-truth-check` | Verify spec policy |
+| `to-tickets` | `wiki-research`、`source-truth-check` | Carry + Verify plan |
+| `implement` | `wiki-readiness` | 首次代码修改前建立 task identity、Readiness + Bind |
+| `code-review`（启动 reviewer 前） | `wiki-readiness` | reviewer handoff |
+| `code-review`（评审接受后） | `update-wiki` | Capture |
+| `diagnosing-bugs`（根因收窄后） | `wiki-research` | 目标披露 |
+| `diagnosing-bugs`（修复验证后） | `break-loop` | 复盘 |
+| 任一阶段产生 durable candidate | `candidate-journal` | 只追加候选，交由 Capture 判断 |
+| 显式知识维护 | `wiki-maintenance` | audit / consolidation |
 
-| grill 阶段 | 约定动作 |
-|---|---|
-| `/grill-with-docs` | **Disclose**：`/grill-adapter:wiki-research`（phase brainstorm）披露相关 wiki |
-| `/to-spec` | source-truth **Verify**：`/grill-adapter:source-truth-check`（spec-pre） |
-| `/to-tickets` | **Disclose+Carry**：`/grill-adapter:wiki-research`（phase plan）以硬 limit + scope-bound cursor 浏览 frontmatter-only catalog / 搜索选定分支，排除 expired、保留 review-due warning，再 stable-batch 全文复核入选的 bound Obsidian Notes/Skill Cards → `wiki_context_render.py --scaffold` 生成 schema-v6 并重验 freshness → 编辑 `destination`（一次）→ `--finalize` → 用户批准后一次 `wiki_readiness.py freeze --all` 生成所有 task 的 implement/review Markdown；`/grill-adapter:source-truth-check`（plan-pre/plan-review） |
-| 全阶段 | **Journal**：`/grill-adapter:candidate-journal` 把 Wiki Note / Skill Card 候选作为事件追加到同一 feature journal，不写 Obsidian |
-| `/implement`（每 task） | **Readiness+Bind**：首次代码修改前 `/grill-adapter:wiki-readiness` 复用 formal context，或为 direct issue/manual 建单任务 roster 并 late Carry；`ready` 做 fingerprint preflight + 消费 `<taskId>.wiki-implement.md`；`no-relevant`/`disabled` 直接继续，`broken` 由用户选择停止或无 Wiki 继续 |
-| `/code-review`（启动 sub-agents 前） | **Reviewer Bind**：复用当前 task 的 readiness receipt；`ready` 校验同一批准快照的 `<taskId>.wiki-review.md`，重算直接/闭包 Note freshness，再派生 `<taskId>.wiki-review-handoff.md` 给 Standards/Spec 两轴；其他状态、无法确定 task 或任何验证失败只产生非阻塞 caveat，不 late research、不阻止 review |
-| `/code-review` 后 | **Capture**：`/grill-adapter:update-wiki` 校验/折叠 journal，派生恰好一个无继承上下文的 `wiki-capture` Agent 私下 reconcile 最终证据与 bounded formal/overlay Notes；Agent 只提交一次 Capture Plan。确定性 staging 重验 snapshot/binding/policy/schema/stable identity/hash/typed links，将 accepted Note/Card 写入当前项目 machine-local Outbox hidden refs，正式 base 保持 clean。默认只返回 queued/skipped/needs-decision；可选 status/review，显式无 feature slug publish 才以 digest-bound consolidated scope 每 repository 创建 draft PR。queued/pr-open 不进入 formal research，merge + base 同步重验后才 active |
-
-Wiki maintenance/navigation 通过 `/grill-adapter:wiki-maintenance audit|consolidation <feature-slug>` 进入，两种模式都只派生一个 maintenance agent 并立即等待同一路径。audit 以规范 UTC 秒级 `asOf` 和硬 `identityLimit` 调用 metadata-only summary，再私下全文复核最多 24 个 Note。consolidation 通过只读 `obsidian_wiki_consolidation_candidates` 确定性 replay canonical feature journals，只在 agent 内比较有界 unresolved candidate prose；等价 durable claim 形成单一 replacement proposal group，矛盾 claim 要求用户决定，不同 trigger/lifecycle/failure mode/validation path/task routing/Card/ADR identity 的 contract 保持独立。主 session 只得到经 journal/candidate digest 重验的 schema-v1 metadata report path 与 compact summary；report 不含 Note/candidate 正文、evidence、journal prose 或 agent reasoning，非权威且不能替代 task identity、Wiki readiness、Bind、Capture、proposal 或授权。dispatch/容量/transport/lifecycle、journal/binding/identity drift 或 report validation 错误全部走 `broken`，不得 inline fallback 或伪装成空维护结果。
-| `/diagnosing-bugs` | 根因收窄后可 `/grill-adapter:wiki-research`（phase debug，≤2 节）；修复验证后 `/grill-adapter:break-loop` → `/grill-adapter:update-wiki` |
-
-grill 自己的 skill（`/grill-with-docs`、`/to-spec` 等）按宿主原样引用，不加我们的命名空间。
+grill 的 roster 边界仍由该 router 保留：local scratch ticket 用文件名 `NN` 前缀，真实 tracker 用 issue number，ticket text 必须逐字保留。其余 Carry、freeze、权限、`broken` 降级、reviewer handoff、Capture / Outbox、维护 agent 和恢复细节均由相应入口 skill 定义。
 
 ## plain-host 约定块（`host-adapters/plain/{CLAUDE,AGENTS}.md`）
 
-裸 Claude Code/Codex 没有固定规划框架，所以由用户在对应时刻**自己**调同样的触点。Claude Code 用 `/grill-adapter:<skill>`，Codex 用 `$grill-adapter:<skill>`；触点和引擎完全相同，只是触发方式从「grill 阶段约定」变「手动调用」。
+裸 Claude Code/Codex 没有固定规划框架，所以不推断 host stage；用户只在对应 workflow moment 明确时调同样的入口。`wiki-research` 对应发现与 implementation plan Carry，`source-truth-check` 对应 spec / plan Verify，`wiki-readiness` 对应首次代码修改和 reviewer handoff，`update-wiki` 对应已接受评审后的 Capture，`candidate-journal` 对应 durable candidate，`wiki-maintenance` 对应显式维护，`break-loop` 对应已验证的调试修复。plain roster 使用用户确认的任务来源、一个稳定 task id 和逐字完整 task text。Claude Code 用 `/grill-adapter:<skill>`，Codex 用 `$grill-adapter:<skill>`。
 
 ### Agent 角色在两种运行时的差异
 
@@ -133,7 +131,7 @@ grill-adapter verify <project> --host grill --runtime both
 
 wiki 数据/绑定仍是项目级的：新项目在 `.grill-adapter/settings.json` 声明 `wiki.provider: obsidian` 与 Source bindings，机器本地 registry 解析 Vault/repository；`doctor` 校验 active provider 并报告 `obsidian-native` / `shadow-validation` / `cutover-complete`。legacy 内容只通过 `migrate-wiki` 的本地根或用户显式 Git URL 进入迁移计划，不提供 runtime fallback。
 
-`manifest.json` 现在只剩 `projectLevel.hostConventions`——组件清单由 `.claude-plugin/plugin.json` + 插件布局声明，Claude Code 自己发现，不再由 manifest 记账。
+`manifest.json` 现在只剩 `projectLevel.hostConventions`——组件清单由 `.claude-plugin/plugin.json` + 插件布局声明，Claude Code 自己发现，不再由 manifest 记账。它继续指向四个已渲染的安装输出；`contracts/host-conventions-v1.json` + `scripts/render_host_conventions.py --check` 保证它们没有独立漂移。
 
 ### 环境变量
 

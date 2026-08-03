@@ -4,14 +4,17 @@
   //
   // WHAT THIS IS: the host-agnostic boundary between whatever tracker a host uses and grill-adapter's
   // Carry/Bind engine. The engine never reads a tracker, a plan document, or the network -- it
-  // fingerprints exactly the ticket text this file hands it. Your host's convention block in the
-  // project CLAUDE.md tells you how to fill it:
+  // fingerprints exactly the ticket text this file hands it. The planning entry skill owns the
+  // source-specific mapping; for grill-adapter, `wiki-research` supplies it:
   //
   //   grill, local-markdown tracker -> one entry per `.scratch/<feature-slug>/issues/<NN>-<slug>.md`;
-  //                                    taskId is the NN prefix, text is the whole file body.
+  //                                    taskId is the NN prefix, taskTitle is the first Markdown H1 text,
+  //                                    text is the whole file body.
   //   grill, GitHub/Linear tracker  -> one entry per ticket issue (`gh issue view <n> --json body,title`);
-  //                                    taskId is the issue number, text is the issue body.
-  //   plain Claude Code             -> whatever the user points you at; taskId is any stable id.
+  //                                    taskId is the issue number, taskTitle is the issue title,
+  //                                    text is the unchanged issue body.
+  //   plain Claude Code             -> whatever the user points you at; taskId is any stable id,
+  //                                    taskTitle is the user-confirmed one-line task title.
   //   direct tracker implementation -> exactly one entry; wiki_readiness.py prepare-issue copies the
   //                                    real issue id/title and full body without rewriting it.
   //   confirmed conversational work -> exactly one `manual` entry; the complete confirmed brief is
@@ -22,7 +25,8 @@
   //
   // WHY IT EXISTS: hosts disagree about where tickets live and some (grill on a real tracker) produce
   // no local plan file at all, so there is no single document the engine could parse. Handing the
-  // engine a roster keeps it host-agnostic: a new host needs a convention block, never an engine change.
+  // engine a roster keeps it host-agnostic: a new host needs an equivalent roster producer, never an
+  // engine change.
   //
   // LIFECYCLE: transient. It is an input to --scaffold-tasks / --bind-fingerprints / --finalize /
   // --fingerprint-preflight, never a deliverable. Nothing under .grill-adapter/context/ is committed.

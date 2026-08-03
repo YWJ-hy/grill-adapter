@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Asserts the host-adapter convention blocks carry every touchpoint the dropped native
-# patches used to inject (blueprint §3, §8.5-8.7), and that the plugin's hooks.json wires the
-# three hooks to the right events. This is the convention-based replacement for the removed
-# "patch into Superpowers brainstorming/writing-plans/..." coupling.
-#
-# The blocks are written into a target project's CLAUDE.md, which is NOT plugin content, so
-# Claude Code never substitutes ${CLAUDE_PLUGIN_ROOT} there and the version-scoped plugin
-# path must not be baked in either. Hence: the blocks name skills, and carry no path at all.
+# Host conventions are intentionally thin stage routers. The detailed state machines,
+# permissions, failures, and recovery paths belong to the entry skills. One canonical
+# specification renders both Claude Code and Codex variants, so their syntax cannot drift.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${1:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+SPEC="$ROOT/contracts/host-conventions-v1.json"
+RENDER="$ROOT/scripts/render_host_conventions.py"
+BUDGET="$ROOT/contracts/codex-context-budget-v1.json"
 GRILL="$ROOT/host-adapters/grill/CLAUDE.md"
 PLAIN="$ROOT/host-adapters/plain/CLAUDE.md"
 CODEX_GRILL="$ROOT/host-adapters/grill/AGENTS.md"
@@ -22,181 +20,191 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 need() { grep -Fq -- "$2" "$1" || fail "$1 missing: $2"; }
 deny() { ! grep -Fq -- "$2" "$1" || fail "$1 must not contain: $2"; }
 
-for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN" "$HOOKS_JSON"; do
-  [[ -f "$f" ]] || fail "missing host-adapter file: $f"
+for f in "$SPEC" "$RENDER" "$BUDGET" "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN" "$HOOKS_JSON"; do
+  [[ -f "$f" ]] || fail "missing host convention input: $f"
 done
 
-# Codex blocks carry the same touchpoints with native skill mentions.
-for skill in wiki-readiness wiki-research wiki-materialize wiki-maintenance update-wiki candidate-journal source-truth-check break-loop; do
-  need "$CODEX_GRILL" "\$grill-adapter:$skill"
-done
-need "$CODEX_GRILL" '$mattpocock-skills:grill-with-docs'
-need "$CODEX_GRILL" '$mattpocock-skills:to-tickets'
-need "$CODEX_GRILL" '$mattpocock-skills:implement'
-need "$CODEX_GRILL" 'Activation gate:'
-need "$CODEX_GRILL" 'ordinary user request'
-need "$CODEX_GRILL" 'A direct request that does not enter'
-need "$CODEX_GRILL" '$grill-adapter:wiki-maintenance consolidation'
-need "$CODEX_PLAIN" '$grill-adapter:wiki-research'
-need "$CODEX_PLAIN" '$grill-adapter:wiki-readiness'
-need "$CODEX_PLAIN" '$grill-adapter:wiki-materialize'
-need "$CODEX_PLAIN" '$grill-adapter:wiki-maintenance'
-need "$CODEX_PLAIN" '$grill-adapter:wiki-maintenance consolidation'
-need "$CODEX_PLAIN" 'plain Codex host'
+# The committed runtime files are derived outputs, not four independently edited manuals.
+python3 "$RENDER" --root "$ROOT" --check || fail "host convention outputs are out of sync"
 
-# grill block: markers + zero-patch invariant + all four wiki touchpoints + subsystems.
-# Skills are plugin skills, so every invocation must carry the grill-adapter: namespace.
-need "$GRILL" 'grill-adapter:host:grill:start'
-need "$GRILL" 'grill-adapter:host:grill:end'
-need "$GRILL" 'never patches any grill skill'
-need "$GRILL" 'Activation gate:'
-need "$GRILL" 'ordinary user request'
-need "$GRILL" 'A direct request that does not enter'
-need "$GRILL" '/grill-adapter:wiki-research'       # Disclose
-need "$GRILL" '/grill-adapter:wiki-readiness'      # implementation-entry readiness
-need "$GRILL" '/grill-adapter:wiki-materialize'    # Bind
-need "$GRILL" '/grill-adapter:wiki-maintenance'    # read-only maintenance audit
-need "$GRILL" '/grill-adapter:wiki-maintenance consolidation'
-need "$GRILL" '/grill-adapter:update-wiki'         # Capture
-need "$GRILL" '/grill-adapter:candidate-journal'   # feature journal
-need "$GRILL" '/grill-adapter:source-truth-check'  # source-of-truth Verify
-need "$GRILL" '/grill-adapter:break-loop'          # break-loop
-need "$GRILL" 'grill-with-docs'
-need "$GRILL" 'to-tickets'
-need "$GRILL" 'diagnosing-bugs'
-
-# plain block: same touchpoints, host-name-free framing
-need "$PLAIN" 'grill-adapter:host:plain:start'
-need "$PLAIN" '/grill-adapter:wiki-research'
-need "$PLAIN" '/grill-adapter:wiki-readiness'
-need "$PLAIN" '/grill-adapter:wiki-materialize'
-need "$PLAIN" '/grill-adapter:wiki-maintenance'
-need "$PLAIN" '/grill-adapter:wiki-maintenance consolidation'
-need "$PLAIN" '/grill-adapter:update-wiki'
-need "$PLAIN" '/grill-adapter:candidate-journal'
-need "$PLAIN" '/grill-adapter:source-truth-check'
-need "$PLAIN" '/grill-adapter:break-loop'
-need "$PLAIN" 'no host skill is patched'
-
-# Every knowledge-producing workflow stage targets the same mechanical feature journal.
-for f in "$GRILL" "$PLAIN"; do
-  need "$f" 'grill-with-docs'
-  need "$f" 'specification'
-  need "$f" 'tickets'
-  need "$f" 'implementation'
-  need "$f" 'review'
-  need "$f" 'debugging'
-  need "$f" 'wiki-candidates.jsonl'
-  need "$f" 'wiki-session-state.json'
-  need "$f" 'navigation hint'
-  need "$f" '.grill-adapter/context/<feature-slug>/'
-done
-
-# The implementation entry is one readiness seam for formal tickets, direct tracker issues,
-# and confirmed conversational work. It must run before code changes and preserve fail-open host
-# availability without allowing broken or partial Wiki content into execution.
-for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
-  need "$f" 'before the first code edit'
-  need "$f" 'formal finalized context'
-  need "$f" 'direct tracker issue'
-  need "$f" 'manual'
-  need "$f" 'no-relevant'
-  need "$f" 'disabled'
-  need "$f" 'broken'
-  need "$f" 'continue without Wiki context'
-  need "$f" 'must not'
-  need "$f" 'freeze'
-  need "$f" '--all'
-  need "$f" 'wiki-implement.md'
-  need "$f" 'wiki-review.md'
-done
-
-# Review reuses the implementation readiness result before the host launches its isolated review
-# agents. Both axes receive one all-or-nothing reviewer handoff; no review path performs late
-# research or turns Wiki health into an availability dependency.
-for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
-  need "$f" 'review-handoff'
-  need "$f" 'before spawning'
-  need "$f" 'same read-only handoff'
-  need "$f" 'Standards'
-  need "$f" 'Spec'
-  need "$f" 'late research'
-  need "$f" 'non-blocking'
-  need "$f" 'partial'
-  need "$f" 'Capture'
-done
-python3 - "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN" <<'PY'
+# The neutral specification itself is the routing contract. Presence-only checks would allow a
+# skill to drift into the wrong host stage while all four generated files still agreed.
+python3 - "$SPEC" <<'PY'
+import json
+import pathlib
 import sys
 
-for path in sys.argv[1:]:
-    text = open(path, encoding="utf-8").read()
-    assert text.index("### Reviewer Bind") < text.index("### Capture"), (
-        f"{path}: Reviewer Bind must precede Capture"
-    )
+spec = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+
+expected = {
+    "grill": {
+        "routes": [
+            ("grill-with-docs", ["wiki-research"]),
+            ("to-spec", ["source-truth-check"]),
+            ("to-tickets", ["wiki-research", "source-truth-check"]),
+            ("implement", ["wiki-readiness"]),
+            ("code-review (before reviewers)", ["wiki-readiness"]),
+            ("code-review (after accepted review)", ["update-wiki"]),
+            ("diagnosing-bugs (after evidence narrows the cause)", ["wiki-research"]),
+            ("diagnosing-bugs (after a verified fix)", ["break-loop"]),
+        ],
+        "crossStage": [
+            ("Any stage with a durable candidate", ["candidate-journal"]),
+            ("Explicit knowledge upkeep", ["wiki-maintenance"]),
+        ],
+    },
+    "plain": {
+        "routes": [
+            ("Before an approach", ["wiki-research"]),
+            ("Before finalizing a spec", ["source-truth-check"]),
+            ("Implementation plan", ["wiki-research", "source-truth-check"]),
+            ("Before code changes", ["wiki-readiness"]),
+            ("Before reviewers", ["wiki-readiness"]),
+            ("Accepted review", ["update-wiki"]),
+            ("After evidence narrows the debugging cause", ["wiki-research"]),
+            ("After a verified debugging fix", ["break-loop"]),
+        ],
+        "crossStage": [
+            ("Any stage with a durable candidate", ["candidate-journal"]),
+            ("Explicit knowledge upkeep", ["wiki-maintenance"]),
+        ],
+    },
+}
+
+actual = {
+    host: {
+        group: [(entry["moment"], entry["skills"]) for entry in spec["hosts"][host][group]]
+        for group in ("routes", "crossStage")
+    }
+    for host in expected
+}
+assert actual == expected, f"unexpected host routing: {actual!r}"
 PY
 
-# Neither block may carry an install path: they land outside plugin content, where
-# ${CLAUDE_PLUGIN_ROOT} is never substituted, and a baked absolute path would rot on the
-# next plugin update (the cache path is version-scoped).
+# #39 replaces #38's baseline-sized host payload with an approved fixed router budget.
+python3 - "$BUDGET" "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN" <<'PY'
+import json
+import pathlib
+import sys
+
+contract = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+limit = contract["limits"]["projectHostInstructions"]
+assert limit == 4096, f"unexpected host instruction budget: {limit}"
+for raw_path in sys.argv[2:]:
+    path = pathlib.Path(raw_path)
+    size = len(path.read_bytes())
+    assert size <= limit, f"{path} is {size} bytes; limit is {limit}"
+PY
+
+# The grill router must preserve the explicit-stage activation gate and map every existing
+# workflow touchpoint to its host-independent entry skill.
+need "$GRILL" 'Activation gate:'
+need "$GRILL" 'Do not infer a stage from an ordinary request.'
+need "$GRILL" 'When no matching stage is active, do not route adapter work.'
+need "$GRILL" "During a matching active stage, invoke every listed entry skill at its row's stated workflow moment; the route is mandatory, not advisory. Do not invoke a later-moment route early."
+need "$GRILL" 'An explicit adapter-skill invocation remains available outside a grill stage.'
+need "$CODEX_GRILL" 'Activation gate:'
+need "$CODEX_GRILL" 'Do not infer a stage from an ordinary request.'
+need "$CODEX_GRILL" 'When no matching stage is active, do not route adapter work.'
+need "$CODEX_GRILL" "During a matching active stage, invoke every listed entry skill at its row's stated workflow moment; the route is mandatory, not advisory. Do not invoke a later-moment route early."
+need "$CODEX_GRILL" 'An explicit adapter-skill invocation remains available outside a grill stage.'
+
+for stage in grill-with-docs to-spec to-tickets implement code-review diagnosing-bugs; do
+  need "$GRILL" "/$stage"
+  need "$CODEX_GRILL" "\$mattpocock-skills:$stage"
+done
+
+for skill in wiki-research source-truth-check wiki-readiness update-wiki candidate-journal break-loop wiki-maintenance; do
+  need "$GRILL" "/grill-adapter:$skill"
+  need "$PLAIN" "/grill-adapter:$skill"
+  need "$CODEX_GRILL" "\$grill-adapter:$skill"
+  need "$CODEX_PLAIN" "\$grill-adapter:$skill"
+done
+
+# Plain hosts keep manual timing, never infer a host workflow stage, and expose the same routes.
+for f in "$PLAIN" "$CODEX_PLAIN"; do
+  need "$f" 'Activation gate:'
+  need "$f" 'Plain workflows do not infer a host stage.'
+  need "$f" 'When an explicit workflow moment matches a row, invoke every listed entry skill at that moment; the route is mandatory, not advisory.'
+done
+
+# Capture and retrospective routes are mandatory only at their later workflow moments.
+python3 - "$GRILL" "$CODEX_GRILL" <<'PY'
+import pathlib
+import sys
+
+for raw_path in sys.argv[1:]:
+    text = pathlib.Path(raw_path).read_text(encoding="utf-8")
+    assert text.index("code-review (before reviewers)") < text.index("code-review (after accepted review)")
+    assert text.index("diagnosing-bugs (after evidence narrows the cause)") < text.index("diagnosing-bugs (after a verified fix)")
+PY
+
+# Task identity and local state are the only durable cross-stage facts a router carries.
+need "$GRILL" 'Roster boundary:'
+need "$GRILL" 'verbatim ticket text'
+need "$PLAIN" 'Roster boundary:'
+need "$PLAIN" 'one stable task id'
 for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
-  need "$f" 'resumable publisher'
-  need "$f" 'exact digest-bound'
-  need "$f" 'takes no feature slug'
-  need "$f" 'Open PR content remains unavailable to formal research'
-  need "$f" 'exactly one isolated `wiki-capture` agent'
-  need "$f" 'immediately waits on that same path'
-  need "$f" 'queued/skipped/needs-decision counts'
-  need "$f" 'machine-local'
-  need "$f" 'Formal'
-  need "$f" '`queued`, `pr-open`, and `active`'
-  need "$f" 'obsidian_wiki_maintenance_summary'
-  need "$f" 'non-authoritative, and never replaces task identity, readiness, Bind, proposal, or authorization'
-  need "$f" 'normalized UTC `asOf` timestamp'
-  need "$f" 'bounded identity/body-read limits'
-  need "$f" 'immediately waits on that same path'
-  need "$f" 'main session receives only a validated schema-v1 report path plus compact summary'
-  need "$f" 'Dispatch/transport/capacity/lifecycle failure'
-  need "$f" 'The role cannot call write/apply/publish'
+  need "$f" 'Each entry skill owns its detailed state machine, permissions, failures, and recovery.'
+  need "$f" 'State boundary:'
+  need "$f" '.grill-adapter/context/'
+  need "$f" "do not commit it or bypass an entry skill's documented workflow when changing it."
+  need "$f" '`.grill-adapter/settings.json` is project configuration.'
+  need "$f" 'never patches host skills'
+  deny "$f" 'do not hand-edit or commit it.'
   deny "$f" '__GRILL_ADAPTER_ROOT__'
   deny "$f" 'CLAUDE_PLUGIN_ROOT'
   deny "$f" 'PLUGIN_ROOT'
-  deny "$f" 'grill_context_to_candidates.py'
+  deny "$f" 'wiki_context_render.py'
+  deny "$f" 'wiki_readiness.py'
+  deny "$f" 'obsidian_wiki_'
+  deny "$f" 'wiki-materialize'
+  deny "$f" 'review-handoff'
+  deny "$f" 'wiki-implement.md'
+  deny "$f" 'wiki-review.md'
+  deny "$f" 'fork_turns'
 done
 
-# Removed capabilities must not remain in project instructions for either runtime.
-REMOVED_CAPABILITY='lan''hu'
-REMOVED_CAPABILITY_CN=$'\u84dd\u6e56'
-for f in "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; do
-  ! grep -Fiq "$REMOVED_CAPABILITY" "$f" || fail "$f still references a removed capability"
-  ! grep -Fq "$REMOVED_CAPABILITY_CN" "$f" || fail "$f still references a removed capability"
-done
+deny "$GRILL" '$grill-adapter:'
+deny "$PLAIN" '$grill-adapter:'
+deny "$CODEX_GRILL" '/grill-adapter:'
+deny "$CODEX_PLAIN" '/grill-adapter:'
 
-# ...and the grill->wiki bridge the blocks used to invoke now lives in the skill that
-# consumes its output, where the path does get substituted.
-need "$ROOT/skills/update-wiki/SKILL.md" 'grill_context_to_candidates.py'
-need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/scripts/grill_context_to_candidates.py'
-need "$ROOT/skills/update-wiki/SKILL.md" '${CLAUDE_PLUGIN_ROOT}/mcp/obsidian-wiki/dist/index.js outbox publish'
-need "$ROOT/skills/update-wiki/SKILL.md" '`Capture` is the default mode'
-need "$ROOT/skills/update-wiki/SKILL.md" 'Enter only when the user explicitly asks to publish'
-need "$ROOT/skills/update-wiki/SKILL.md" 'Spawn exactly one Capture agent'
-need "$ROOT/skills/update-wiki/SKILL.md" 'fork_turns: "none"'
+# Detailed operational behavior is still owned by the entry skills, rather than copied into
+# project instructions.
+need "$ROOT/skills/wiki-research/SKILL.md" 'ticket roster'
+need "$ROOT/skills/wiki-research/SKILL.md" 'grill-local-scratch'
+need "$ROOT/skills/wiki-research/SKILL.md" 'github-issues'
+need "$ROOT/docs/USER_FLOW_CN.md" 'roster 怎么填由 `wiki-research` skill 规定'
+deny "$ROOT/docs/USER_FLOW_CN.md" 'roster 怎么填由 host 约定块规定'
+need "$ROOT/skills/wiki-readiness/SKILL.md" 'review-handoff'
+need "$ROOT/skills/update-wiki/SKILL.md" 'Capture transaction'
+need "$ROOT/skills/source-truth-check/SKILL.md" 'truth/edit: never'
+need "$ROOT/skills/candidate-journal/SKILL.md" 'append-only'
+need "$ROOT/skills/wiki-maintenance/SKILL.md" 'Codex dispatch transaction'
+need "$ROOT/skills/break-loop/SKILL.md" 'Handoff Rules'
 
-# no residual Superpowers host references in the host blocks
-if grep -nE 'Superpowers' "$GRILL" "$PLAIN" | grep -vE '\.grill-adapter/'; then
+# No residual Superpowers host references in the router output.
+if grep -nE 'Superpowers' "$GRILL" "$PLAIN" "$CODEX_GRILL" "$CODEX_PLAIN"; then
   fail "host blocks still reference Superpowers"
 fi
 
-# plugin hooks.json wires the three hooks to the right events, rooted at the plugin
+# Plugin hooks remain host-independent and are registered from plugin content.
 python3 - "$HOOKS_JSON" <<'PY' || exit 1
-import json, sys
-h = json.load(open(sys.argv[1], encoding='utf-8'))["hooks"]
-def cmds(ev): return [x["command"] for g in h.get(ev, []) for x in g["hooks"]]
-assert not cmds("UserPromptSubmit"), "UserPromptSubmit must not reread wiki constraints"
-assert any("wiki-reread.sh" in c for c in cmds("SessionStart")), "wiki-reread not on SessionStart"
-assert any("source-truth-lint.sh" in c for c in cmds("PostToolUse")), "source-truth-lint not on PostToolUse"
-assert any("wiki-capture-suggest.sh" in c for c in cmds("Stop")), "wiki-capture-suggest not on Stop"
-every = [x["command"] for ev in h.values() for g in ev for x in g["hooks"]]
-assert all("${CLAUDE_PLUGIN_ROOT}/hooks/" in c for c in every), "hook command not plugin-rooted"
+import json
+import sys
+
+hooks = json.load(open(sys.argv[1], encoding="utf-8"))["hooks"]
+
+def commands(event):
+    return [entry["command"] for group in hooks.get(event, []) for entry in group["hooks"]]
+
+assert not commands("UserPromptSubmit"), "UserPromptSubmit must not reread wiki constraints"
+assert any("wiki-reread.sh" in command for command in commands("SessionStart"))
+assert any("source-truth-lint.sh" in command for command in commands("PostToolUse"))
+assert any("wiki-capture-suggest.sh" in command for command in commands("Stop"))
+every = [entry["command"] for groups in hooks.values() for group in groups for entry in group["hooks"]]
+assert all("${CLAUDE_PLUGIN_ROOT}/hooks/" in command for command in every)
 PY
 
 printf 'host conventions smoke OK\n'

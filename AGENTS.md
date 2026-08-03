@@ -67,7 +67,7 @@ bash tests/codex-plugin-smoke.sh "$PWD"             # 隔离 marketplace 安装�
 - 改插件布局后，跑 `bash tests/codex-plugin-smoke.sh "$PWD"`，并同步 `release-check.sh` 步骤 6 的期望值。
 - 改 `mcp/obsidian-wiki/src/` 后必须 `npm run build` 并**提交 `dist/index.js`**：插件缓存没有安装期构建，`.mcp.json` 直接启动提交进去的那份 bundle。`build` 是 esbuild 打包、不做类型检查——类型检查走 `npm run typecheck`。release-check 步骤 5 卡 dist 与 src 的漂移。
 - 占位符只用 `${CLAUDE_PLUGIN_ROOT}`，且**只在插件内容里**（`skills/`、`agents/`、`hooks/hooks.json`、`.mcp.json`）——Codex 在加载时做文本替换（反斜杠归一为正斜杠，故 PowerShell/bash 皆可）。只匹配裸 token `${CLAUDE_PLUGIN_ROOT}`，`${CLAUDE_PLUGIN_ROOT:-x}` 这类形式不会被替换。`host-adapters/*/AGENTS.md` 里**一个路径都不许有**。禁止残留 `__GRILL_ADAPTER_ROOT__` / `__SUPERPOWER_ADAPTER_*__`。
-- 改 Carry/Bind 数据流：引擎**不解析任何 plan/ticket 文档**——task 身份与指纹只来自 host 产出的 ticket roster（`contracts/ticket-roster-v1.example.jsonc`）。要支持新 host，写它的约定块说明 roster 怎么填，**别改引擎**。改完跑 `bash tests/ticket-roster-smoke.sh <root>` + `wiki-context-{scaffold,json-render}-smoke.sh`。
+- 改 Carry/Bind 数据流：引擎**不解析任何 plan/ticket 文档**——task 身份与指纹只来自 host 产出的 ticket roster（`contracts/ticket-roster-v1.example.jsonc`）。要支持新 host，在对应 planning entry skill（或等价 roster producer）里说明 roster 怎么填；薄 host 约定块只保留来源边界，**别改引擎**。改完跑 `bash tests/ticket-roster-smoke.sh <root>` + `wiki-context-{scaffold,json-render}-smoke.sh`。
 
 ## 不变式（改引擎时逐条别破）
 

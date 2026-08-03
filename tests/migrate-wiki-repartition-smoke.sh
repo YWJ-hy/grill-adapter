@@ -25,15 +25,11 @@ need "$REF" '## Atomicity decision'
 need "$REF" '## Confirmation gates'
 need "$REF" 'Never delete the manifests'
 
-for host in \
-  "$ROOT/host-adapters/grill/CLAUDE.md" \
-  "$ROOT/host-adapters/grill/AGENTS.md" \
-  "$ROOT/host-adapters/plain/CLAUDE.md" \
-  "$ROOT/host-adapters/plain/AGENTS.md"; do
-  need "$host" 'legacy section-repartition pass'
-  need "$host" 'Obsidian Note maintenance/repartition mode'
-  need "$host" 'proposal-driven'
-done
+# Host instructions only route to migrate-wiki. The migration skill and its reference own the
+# repartition state machine, confirmation gates, and maintenance details.
+need "$SKILL" 'Legacy section repartition pass'
+need "$SKILL" 'Obsidian Note maintenance/repartition'
+need "$SKILL" 'proposal-driven'
 
 python3 - "$SKILL" <<'PY'
 import sys
