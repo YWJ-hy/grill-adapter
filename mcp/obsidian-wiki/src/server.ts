@@ -11,13 +11,14 @@ import { maintenanceSummaryTool } from './tools/maintenance-summary.js';
 import { consolidationCandidatesTool } from './tools/consolidation-candidates.js';
 import { environmentForMcpRequest } from './bindings.js';
 import {
-  CapturePlanSchema,
-  OutboxCorrectionSchema,
+  CapturePlanEnvelopeSchema,
+  OutboxCorrectionEnvelopeSchema,
   captureDraftView,
-  correctOutbox,
+  correctOutboxEnvelope,
   outboxReview,
-  stageCapturePlan,
+  stageCapturePlanEnvelope,
 } from './outbox.js';
+import { profileHasTool, resolveMcpToolProfile, type McpToolProfile } from './tool-surface.js';
 
 function toResult(value: unknown) {
   return {
@@ -25,23 +26,27 @@ function toResult(value: unknown) {
     structuredContent: value as Record<string, unknown>,
   };
 }
-
-export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
+export function createServer(
+  env: NodeJS.ProcessEnv = process.env,
+  profile: McpToolProfile = resolveMcpToolProfile(env),
+): McpServer {
   const server = new McpServer({ name: 'obsidian-wiki-mcp', version: '0.1.1' });
+  const enabled = (toolName: string) => profileHasTool(profile, toolName);
   const requestEnv = (requestMeta: Record<string, unknown> | undefined) =>
     environmentForMcpRequest(env, requestMeta);
-  server.registerTool('obsidian_wiki_status', {
-    description: 'Report the current project’s resolved Obsidian Wiki Source binding health without reading unbound Vault content.',
+
+  if (enabled('obsidian_wiki_status')) server.registerTool('obsidian_wiki_status', {
+    description: 'Report bound Source health for the current project.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (_input, extra) => toResult(statusTool(requestEnv(extra._meta))));
-  server.registerTool('obsidian_wiki_sources', {
-    description: 'List only the healthy Obsidian Wiki Sources bound to the current project.',
+  if (enabled('obsidian_wiki_sources')) server.registerTool('obsidian_wiki_sources', {
+    description: 'List healthy Sources bound to the current project.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (_input, extra) => toResult(sourcesTool(requestEnv(extra._meta))));
-  server.registerTool('obsidian_wiki_search', {
-    description: 'Search active, agent-visible, non-expired atomic Notes within readable bound Sources, optionally scoped to one Source-relative directory; review-due Notes remain eligible with maintenance warnings.',
+  if (enabled('obsidian_wiki_search')) server.registerTool('obsidian_wiki_search', {
+    description: 'Search active, visible, non-expired Notes in bound Sources.',
     inputSchema: z.object({
       query: z.string().min(1),
       sourceId: z.string().min(1).optional(),
@@ -51,8 +56,8 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(searchTool(input, requestEnv(extra._meta))));
-  server.registerTool('obsidian_wiki_catalog', {
-    description: 'List a bounded metadata-only directory view of active, non-expired Notes for one readable bound Obsidian Wiki Source; it never returns Note bodies.',
+  if (enabled('obsidian_wiki_catalog')) server.registerTool('obsidian_wiki_catalog', {
+    description: 'List bounded metadata for one bound Source branch; never returns bodies.',
     inputSchema: z.object({
       sourceId: z.string().min(1),
       pathPrefix: z.string().optional(),
@@ -62,64 +67,63 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(catalogTool(input, requestEnv(extra._meta))));
-  server.registerTool('obsidian_wiki_maintenance_summary', {
-    description: 'Return a bounded, metadata-only, non-authoritative summary of bound Note freshness, contradiction edges, repository health, and canonical candidate lifecycle; it never returns Note bodies or journal prose.',
+  if (enabled('obsidian_wiki_maintenance_summary')) server.registerTool('obsidian_wiki_maintenance_summary', {
+    description: 'Return bounded metadata-only maintenance counts for bound Sources.',
     inputSchema: z.object({
       asOf: z.string().min(1),
       identityLimit: z.number().int().min(1).max(200).optional(),
     }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(maintenanceSummaryTool(input, requestEnv(extra._meta))));
-  server.registerTool('obsidian_wiki_consolidation_candidates', {
-    description: 'Return a bounded, read-only snapshot of unresolved canonical cross-feature candidates for private maintenance-agent consolidation; candidate prose must not be returned to the coordinator.',
-    inputSchema: z.object({
-      candidateLimit: z.number().int().min(1).max(200).optional(),
-    }),
+  if (enabled('obsidian_wiki_consolidation_candidates')) server.registerTool('obsidian_wiki_consolidation_candidates', {
+    description: 'Return bounded unresolved candidates for private consolidation.',
+    inputSchema: z.object({ candidateLimit: z.number().int().min(1).max(200).optional() }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(consolidationCandidatesTool(input, requestEnv(extra._meta))));
-  server.registerTool('obsidian_wiki_stage_capture_plan', {
-    description: 'Validate one snapshot-bound Wiki Capture Plan and atomically queue its non-authoritative drafts in the current project Outbox without modifying the formal Wiki base worktree.',
-    inputSchema: CapturePlanSchema,
+  if (enabled('obsidian_wiki_stage_capture_plan')) server.registerTool('obsidian_wiki_stage_capture_plan', {
+    description: 'Validate and queue one full versioned Capture Plan in the current project Outbox.',
+    inputSchema: CapturePlanEnvelopeSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-  }, async (input, extra) => toResult(stageCapturePlan(input, requestEnv(extra._meta))));
-  server.registerTool('obsidian_wiki_capture_draft_view', {
-    description: 'Return current-project Outbox draft metadata and, for at most 24 explicitly selected draft paths, private content for Capture targeting. This view is non-authoritative and must never be used by formal research or task binding.',
+  }, async (input, extra) => toResult(stageCapturePlanEnvelope(input, requestEnv(extra._meta))));
+  if (enabled('obsidian_wiki_capture_draft_view')) server.registerTool('obsidian_wiki_capture_draft_view', {
+    description: 'Read current-project Outbox metadata and explicitly selected draft bodies for Capture.',
     inputSchema: z.object({ paths: z.array(z.string().min(1)).max(24).optional() }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(captureDraftView(input, requestEnv(extra._meta))));
-  server.registerTool('obsidian_wiki_outbox_review', {
-    description: 'Return the current project\'s consolidated queued Outbox scope and full private Markdown diffs without publishing.',
+  if (enabled('obsidian_wiki_outbox_review')) server.registerTool('obsidian_wiki_outbox_review', {
+    description: 'Review the current project queued Outbox scope and diffs.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (_input, extra) => toResult(outboxReview(requestEnv(extra._meta))));
-  server.registerTool('obsidian_wiki_outbox_correct', {
-    description: 'Append an immutable superseding Outbox correction that excludes, defers, rejects, revises, or merges current-project draft entries without rewriting prior history.',
-    inputSchema: OutboxCorrectionSchema,
+  if (enabled('obsidian_wiki_outbox_correct')) server.registerTool('obsidian_wiki_outbox_correct', {
+    description: 'Append one immutable current-project Outbox correction.',
+    inputSchema: OutboxCorrectionEnvelopeSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-  }, async (input, extra) => toResult(correctOutbox(input, requestEnv(extra._meta))));
-  server.registerTool('obsidian_wiki_read_note', {
-    description: 'Read one active, agent-visible, non-expired atomic Note only when its Vault-relative path is under a readable bound Source.',
+  }, async (input, extra) => toResult(correctOutboxEnvelope(input, requestEnv(extra._meta))));
+  if (enabled('obsidian_wiki_read_note')) server.registerTool('obsidian_wiki_read_note', {
+    description: 'Read one active, visible, non-expired Note under a bound Source.',
     inputSchema: z.object({ path: z.string().min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(readNoteTool(input, requestEnv(extra._meta))));
-  server.registerTool('obsidian_wiki_read_notes', {
-    description: 'Batch read active, non-expired atomic Notes with stable content hashes and a snapshot hash, failing closed on inconsistency and surfacing review-due warnings.',
+  if (enabled('obsidian_wiki_read_notes')) server.registerTool('obsidian_wiki_read_notes', {
+    description: 'Batch-read Notes with authoritative content and snapshot hashes.',
     inputSchema: z.object({ paths: z.array(z.string().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(readNotesTool(input, requestEnv(extra._meta))));
-  server.registerTool('obsidian_wiki_read_notes_by_wiki_ids', {
-    description: 'Batch read atomic Notes by stable wiki_id, optionally within one readable bound Source, resolving exactly one active Note per ID.',
+  if (enabled('obsidian_wiki_read_notes_by_wiki_ids')) server.registerTool('obsidian_wiki_read_notes_by_wiki_ids', {
+    description: 'Batch-read Notes by stable wiki_id within bound Sources.',
     inputSchema: z.object({
       wikiIds: z.array(z.string().min(1)).min(1),
       sourceId: z.string().min(1).optional(),
     }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(readNotesByWikiIdsTool(input, requestEnv(extra._meta))));
-  server.registerTool('obsidian_wiki_graph_neighbors', {
-    description: 'Return de-duplicated direct typed neighbors for bound atomic Note wiki IDs without recursive traversal.',
+  if (enabled('obsidian_wiki_graph_neighbors')) server.registerTool('obsidian_wiki_graph_neighbors', {
+    description: 'Return direct typed neighbors for bound Note wiki IDs.',
     inputSchema: z.object({ wikiIds: z.array(z.string().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(graphNeighborsTool(input, requestEnv(extra._meta))));
+
   const noteChangeSchema = {
     sourceId: z.string().min(1),
     operation: z.enum(['create', 'update']),
@@ -127,13 +131,13 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     content: z.string().min(1),
     expectedHash: z.string().nullable(),
   };
-  server.registerTool('obsidian_wiki_propose_note_change', {
-    description: 'Validate a bound atomic Note create/update and return its structured diff without writing.',
+  if (enabled('obsidian_wiki_propose_note_change')) server.registerTool('obsidian_wiki_propose_note_change', {
+    description: 'Legacy/migration-only Note proposal; validates without writing.',
     inputSchema: z.object(noteChangeSchema),
     annotations: { readOnlyHint: true, idempotentHint: true },
   }, async (input, extra) => toResult(await proposeNoteChangeTool(input, requestEnv(extra._meta))));
-  server.registerTool('obsidian_wiki_apply_note_change', {
-    description: 'Apply an already reviewed bound atomic Note change through the authenticated loopback bridge with expected-hash CAS.',
+  if (enabled('obsidian_wiki_apply_note_change')) server.registerTool('obsidian_wiki_apply_note_change', {
+    description: 'Legacy/migration-only governed Note apply with CAS.',
     inputSchema: z.object({ ...noteChangeSchema, authorized: z.boolean().optional() }),
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
   }, async (input, extra) => toResult(await applyNoteChangeTool(input, requestEnv(extra._meta))));

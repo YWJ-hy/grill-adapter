@@ -51,12 +51,13 @@ drift, correction failure, or missing terminal output is `broken`.
    here.
 3. Leave independent contracts unchanged. For drafts proven semantically equivalent, call
    `obsidian_wiki_capture_draft_view` for only their exact paths, synthesize one complete atomic
-   target Note, and call `obsidian_wiki_outbox_correct` with `action: merge`, each change's current
-   `entryId` (not its provenance `entryIds`), one included target entry ID, the complete content, and
-   a bounded reason. Read at most 24 draft bodies total.
+   target Note, and call `obsidian_wiki_outbox_correct` with `{correction: {action: merge, ...}}`,
+   each change's current `entryId` (not its provenance `entryIds`), one included target entry ID, the
+   complete content, and a bounded reason. Read at most 24 draft bodies total.
 4. If two drafts contradict, or a merge target/content is ambiguous, call
-   `obsidian_wiki_outbox_correct` with `action: defer` and all affected current entry IDs. Never
-   choose project truth or silently drop one side. Insufficient evidence is also deferred.
+   `obsidian_wiki_outbox_correct` with `{correction: {action: defer, ...}}` and all affected current
+   entry IDs. Never choose project truth or silently drop one side. Insufficient evidence is also
+   deferred.
 5. Every correction must create a superseding immutable entry. Never exclude or delete automatically.
    Never revise an independent draft. Do not call Publish.
 6. After all corrections, call `obsidian_wiki_outbox_review` exactly once more and copy only its

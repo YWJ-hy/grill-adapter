@@ -25277,6 +25277,9 @@ var CapturePlanSchema = object({
   journalSnapshots: array(JournalSnapshotSchema),
   decisions: array(discriminatedUnion("outcome", [QueueDecisionSchema, TerminalDecisionSchema])).max(200)
 }).strict();
+var CapturePlanEnvelopeSchema = object({
+  plan: record(string2(), unknown())
+}).strict();
 var EntrySchema = object({
   entryId: HashSchema2,
   planId: HashSchema2,
@@ -25364,6 +25367,9 @@ var OutboxCorrectionSchema = discriminatedUnion("action", [
   ReviseCorrectionSchema,
   MergeCorrectionSchema
 ]);
+var OutboxCorrectionEnvelopeSchema = object({
+  correction: record(string2(), unknown())
+}).strict();
 function runCommand2(executable, args, env, workingDirectory) {
   try {
     return String(execFileSync6(executable, args, {
@@ -25933,8 +25939,8 @@ ${candidateId}`)) {
   return { status: "ok", planId, counts, caveats: [] };
 }
 function stageCapturePlan(input, env = process.env) {
-  const resolution = healthyResolution(env);
   const plan = CapturePlanSchema.parse(input);
+  const resolution = healthyResolution(env);
   if (plan.decisions.length === 0) {
     validateSnapshot(plan, env);
     return {
@@ -25945,6 +25951,10 @@ function stageCapturePlan(input, env = process.env) {
     };
   }
   return withOutboxLock(resolution, () => stageCapturePlanLocked(plan, resolution, env));
+}
+function stageCapturePlanEnvelope(input, env = process.env) {
+  const { plan } = CapturePlanEnvelopeSchema.parse(input);
+  return stageCapturePlan(plan, env);
 }
 function effectiveEntries(manifest) {
   const superseded = new Set(manifest.entries.flatMap((entry) => entry.supersedes ?? []));
@@ -26074,8 +26084,13 @@ function correctOutboxLocked(input, resolution, env) {
   };
 }
 function correctOutbox(input, env = process.env) {
+  const request = OutboxCorrectionSchema.parse(input);
   const resolution = healthyResolution(env);
-  return withOutboxLock(resolution, () => correctOutboxLocked(input, resolution, env));
+  return withOutboxLock(resolution, () => correctOutboxLocked(request, resolution, env));
+}
+function correctOutboxEnvelope(input, env = process.env) {
+  const { correction } = OutboxCorrectionEnvelopeSchema.parse(input);
+  return correctOutbox(correction, env);
 }
 function outboxStatusLocked(resolution, env) {
   const manifest = readManifest(resolution);
@@ -26473,6 +26488,83 @@ function publishOutbox(input, env = process.env) {
   return withOutboxLock(resolution, () => publishOutboxLocked(input, resolution, env));
 }
 
+// src/tool-surface.ts
+var DEFAULT_MCP_TOOL_PROFILE = "default";
+var profileTools = {
+  // The default server preserves the normal workflow surface but keeps legacy
+  // proposal/apply operations behind the explicit migration profile.
+  default: [
+    "obsidian_wiki_status",
+    "obsidian_wiki_sources",
+    "obsidian_wiki_search",
+    "obsidian_wiki_catalog",
+    "obsidian_wiki_maintenance_summary",
+    "obsidian_wiki_consolidation_candidates",
+    "obsidian_wiki_stage_capture_plan",
+    "obsidian_wiki_capture_draft_view",
+    "obsidian_wiki_outbox_review",
+    "obsidian_wiki_outbox_correct",
+    "obsidian_wiki_read_note",
+    "obsidian_wiki_read_notes",
+    "obsidian_wiki_read_notes_by_wiki_ids",
+    "obsidian_wiki_graph_neighbors"
+  ],
+  research: [
+    "obsidian_wiki_status",
+    "obsidian_wiki_sources",
+    "obsidian_wiki_search",
+    "obsidian_wiki_catalog",
+    "obsidian_wiki_read_note",
+    "obsidian_wiki_read_notes",
+    "obsidian_wiki_read_notes_by_wiki_ids",
+    "obsidian_wiki_graph_neighbors"
+  ],
+  capture: [
+    "obsidian_wiki_status",
+    "obsidian_wiki_sources",
+    "obsidian_wiki_search",
+    "obsidian_wiki_catalog",
+    "obsidian_wiki_read_notes_by_wiki_ids",
+    "obsidian_wiki_consolidation_candidates",
+    "obsidian_wiki_capture_draft_view",
+    "obsidian_wiki_stage_capture_plan"
+  ],
+  "maintenance-audit": [
+    "obsidian_wiki_status",
+    "obsidian_wiki_sources",
+    "obsidian_wiki_maintenance_summary",
+    "obsidian_wiki_read_notes_by_wiki_ids"
+  ],
+  "maintenance-consolidation": [
+    "obsidian_wiki_status",
+    "obsidian_wiki_sources",
+    "obsidian_wiki_consolidation_candidates"
+  ],
+  outbox: [
+    "obsidian_wiki_status",
+    "obsidian_wiki_sources",
+    "obsidian_wiki_capture_draft_view",
+    "obsidian_wiki_outbox_review",
+    "obsidian_wiki_outbox_correct"
+  ],
+  legacy: [
+    "obsidian_wiki_status",
+    "obsidian_wiki_sources",
+    "obsidian_wiki_propose_note_change",
+    "obsidian_wiki_apply_note_change"
+  ]
+};
+function resolveMcpToolProfile(env = process.env) {
+  const value = env.OBSIDIAN_WIKI_MCP_PROFILE;
+  if (value === void 0 || value === "") return DEFAULT_MCP_TOOL_PROFILE;
+  if (value === "migration") return "legacy";
+  if (Object.prototype.hasOwnProperty.call(profileTools, value)) return value;
+  throw new Error(`Unknown Obsidian Wiki MCP profile: ${value}`);
+}
+function profileHasTool(profile, toolName) {
+  return profileTools[profile].includes(toolName);
+}
+
 // src/server.ts
 function toResult(value) {
   return {
@@ -26480,21 +26572,22 @@ function toResult(value) {
     structuredContent: value
   };
 }
-function createServer(env = process.env) {
+function createServer(env = process.env, profile = resolveMcpToolProfile(env)) {
   const server = new McpServer({ name: "obsidian-wiki-mcp", version: "0.1.1" });
+  const enabled = (toolName) => profileHasTool(profile, toolName);
   const requestEnv = (requestMeta) => environmentForMcpRequest(env, requestMeta);
-  server.registerTool("obsidian_wiki_status", {
-    description: "Report the current project\u2019s resolved Obsidian Wiki Source binding health without reading unbound Vault content.",
+  if (enabled("obsidian_wiki_status")) server.registerTool("obsidian_wiki_status", {
+    description: "Report bound Source health for the current project.",
     inputSchema: object({}),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (_input, extra) => toResult(statusTool(requestEnv(extra._meta))));
-  server.registerTool("obsidian_wiki_sources", {
-    description: "List only the healthy Obsidian Wiki Sources bound to the current project.",
+  if (enabled("obsidian_wiki_sources")) server.registerTool("obsidian_wiki_sources", {
+    description: "List healthy Sources bound to the current project.",
     inputSchema: object({}),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (_input, extra) => toResult(sourcesTool(requestEnv(extra._meta))));
-  server.registerTool("obsidian_wiki_search", {
-    description: "Search active, agent-visible, non-expired atomic Notes within readable bound Sources, optionally scoped to one Source-relative directory; review-due Notes remain eligible with maintenance warnings.",
+  if (enabled("obsidian_wiki_search")) server.registerTool("obsidian_wiki_search", {
+    description: "Search active, visible, non-expired Notes in bound Sources.",
     inputSchema: object({
       query: string2().min(1),
       sourceId: string2().min(1).optional(),
@@ -26504,8 +26597,8 @@ function createServer(env = process.env) {
     }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(searchTool(input, requestEnv(extra._meta))));
-  server.registerTool("obsidian_wiki_catalog", {
-    description: "List a bounded metadata-only directory view of active, non-expired Notes for one readable bound Obsidian Wiki Source; it never returns Note bodies.",
+  if (enabled("obsidian_wiki_catalog")) server.registerTool("obsidian_wiki_catalog", {
+    description: "List bounded metadata for one bound Source branch; never returns bodies.",
     inputSchema: object({
       sourceId: string2().min(1),
       pathPrefix: string2().optional(),
@@ -26515,61 +26608,59 @@ function createServer(env = process.env) {
     }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(catalogTool(input, requestEnv(extra._meta))));
-  server.registerTool("obsidian_wiki_maintenance_summary", {
-    description: "Return a bounded, metadata-only, non-authoritative summary of bound Note freshness, contradiction edges, repository health, and canonical candidate lifecycle; it never returns Note bodies or journal prose.",
+  if (enabled("obsidian_wiki_maintenance_summary")) server.registerTool("obsidian_wiki_maintenance_summary", {
+    description: "Return bounded metadata-only maintenance counts for bound Sources.",
     inputSchema: object({
       asOf: string2().min(1),
       identityLimit: number2().int().min(1).max(200).optional()
     }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(maintenanceSummaryTool(input, requestEnv(extra._meta))));
-  server.registerTool("obsidian_wiki_consolidation_candidates", {
-    description: "Return a bounded, read-only snapshot of unresolved canonical cross-feature candidates for private maintenance-agent consolidation; candidate prose must not be returned to the coordinator.",
-    inputSchema: object({
-      candidateLimit: number2().int().min(1).max(200).optional()
-    }),
+  if (enabled("obsidian_wiki_consolidation_candidates")) server.registerTool("obsidian_wiki_consolidation_candidates", {
+    description: "Return bounded unresolved candidates for private consolidation.",
+    inputSchema: object({ candidateLimit: number2().int().min(1).max(200).optional() }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(consolidationCandidatesTool(input, requestEnv(extra._meta))));
-  server.registerTool("obsidian_wiki_stage_capture_plan", {
-    description: "Validate one snapshot-bound Wiki Capture Plan and atomically queue its non-authoritative drafts in the current project Outbox without modifying the formal Wiki base worktree.",
-    inputSchema: CapturePlanSchema,
+  if (enabled("obsidian_wiki_stage_capture_plan")) server.registerTool("obsidian_wiki_stage_capture_plan", {
+    description: "Validate and queue one full versioned Capture Plan in the current project Outbox.",
+    inputSchema: CapturePlanEnvelopeSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }
-  }, async (input, extra) => toResult(stageCapturePlan(input, requestEnv(extra._meta))));
-  server.registerTool("obsidian_wiki_capture_draft_view", {
-    description: "Return current-project Outbox draft metadata and, for at most 24 explicitly selected draft paths, private content for Capture targeting. This view is non-authoritative and must never be used by formal research or task binding.",
+  }, async (input, extra) => toResult(stageCapturePlanEnvelope(input, requestEnv(extra._meta))));
+  if (enabled("obsidian_wiki_capture_draft_view")) server.registerTool("obsidian_wiki_capture_draft_view", {
+    description: "Read current-project Outbox metadata and explicitly selected draft bodies for Capture.",
     inputSchema: object({ paths: array(string2().min(1)).max(24).optional() }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(captureDraftView(input, requestEnv(extra._meta))));
-  server.registerTool("obsidian_wiki_outbox_review", {
-    description: "Return the current project's consolidated queued Outbox scope and full private Markdown diffs without publishing.",
+  if (enabled("obsidian_wiki_outbox_review")) server.registerTool("obsidian_wiki_outbox_review", {
+    description: "Review the current project queued Outbox scope and diffs.",
     inputSchema: object({}),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (_input, extra) => toResult(outboxReview(requestEnv(extra._meta))));
-  server.registerTool("obsidian_wiki_outbox_correct", {
-    description: "Append an immutable superseding Outbox correction that excludes, defers, rejects, revises, or merges current-project draft entries without rewriting prior history.",
-    inputSchema: OutboxCorrectionSchema,
+  if (enabled("obsidian_wiki_outbox_correct")) server.registerTool("obsidian_wiki_outbox_correct", {
+    description: "Append one immutable current-project Outbox correction.",
+    inputSchema: OutboxCorrectionEnvelopeSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }
-  }, async (input, extra) => toResult(correctOutbox(input, requestEnv(extra._meta))));
-  server.registerTool("obsidian_wiki_read_note", {
-    description: "Read one active, agent-visible, non-expired atomic Note only when its Vault-relative path is under a readable bound Source.",
+  }, async (input, extra) => toResult(correctOutboxEnvelope(input, requestEnv(extra._meta))));
+  if (enabled("obsidian_wiki_read_note")) server.registerTool("obsidian_wiki_read_note", {
+    description: "Read one active, visible, non-expired Note under a bound Source.",
     inputSchema: object({ path: string2().min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(readNoteTool(input, requestEnv(extra._meta))));
-  server.registerTool("obsidian_wiki_read_notes", {
-    description: "Batch read active, non-expired atomic Notes with stable content hashes and a snapshot hash, failing closed on inconsistency and surfacing review-due warnings.",
+  if (enabled("obsidian_wiki_read_notes")) server.registerTool("obsidian_wiki_read_notes", {
+    description: "Batch-read Notes with authoritative content and snapshot hashes.",
     inputSchema: object({ paths: array(string2().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(readNotesTool(input, requestEnv(extra._meta))));
-  server.registerTool("obsidian_wiki_read_notes_by_wiki_ids", {
-    description: "Batch read atomic Notes by stable wiki_id, optionally within one readable bound Source, resolving exactly one active Note per ID.",
+  if (enabled("obsidian_wiki_read_notes_by_wiki_ids")) server.registerTool("obsidian_wiki_read_notes_by_wiki_ids", {
+    description: "Batch-read Notes by stable wiki_id within bound Sources.",
     inputSchema: object({
       wikiIds: array(string2().min(1)).min(1),
       sourceId: string2().min(1).optional()
     }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(readNotesByWikiIdsTool(input, requestEnv(extra._meta))));
-  server.registerTool("obsidian_wiki_graph_neighbors", {
-    description: "Return de-duplicated direct typed neighbors for bound atomic Note wiki IDs without recursive traversal.",
+  if (enabled("obsidian_wiki_graph_neighbors")) server.registerTool("obsidian_wiki_graph_neighbors", {
+    description: "Return direct typed neighbors for bound Note wiki IDs.",
     inputSchema: object({ wikiIds: array(string2().min(1)).min(1) }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(graphNeighborsTool(input, requestEnv(extra._meta))));
@@ -26580,13 +26671,13 @@ function createServer(env = process.env) {
     content: string2().min(1),
     expectedHash: string2().nullable()
   };
-  server.registerTool("obsidian_wiki_propose_note_change", {
-    description: "Validate a bound atomic Note create/update and return its structured diff without writing.",
+  if (enabled("obsidian_wiki_propose_note_change")) server.registerTool("obsidian_wiki_propose_note_change", {
+    description: "Legacy/migration-only Note proposal; validates without writing.",
     inputSchema: object(noteChangeSchema),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async (input, extra) => toResult(await proposeNoteChangeTool(input, requestEnv(extra._meta))));
-  server.registerTool("obsidian_wiki_apply_note_change", {
-    description: "Apply an already reviewed bound atomic Note change through the authenticated loopback bridge with expected-hash CAS.",
+  if (enabled("obsidian_wiki_apply_note_change")) server.registerTool("obsidian_wiki_apply_note_change", {
+    description: "Legacy/migration-only governed Note apply with CAS.",
     inputSchema: object({ ...noteChangeSchema, authorized: boolean2().optional() }),
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }
   }, async (input, extra) => toResult(await applyNoteChangeTool(input, requestEnv(extra._meta))));
@@ -27122,6 +27213,7 @@ function optionalNumberField(request, field) {
 function parseCliArguments(argv) {
   const args = [];
   let configPath;
+  let profile;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--config") {
@@ -27130,11 +27222,19 @@ function parseCliArguments(argv) {
     } else if (argument.startsWith("--config=")) {
       configPath = argument.slice("--config=".length);
       if (!configPath) throw new Error("--config requires a path");
+    } else if (argument === "--profile") {
+      const value = argv[++index];
+      if (!value) throw new Error("--profile requires a value");
+      profile = resolveMcpToolProfile({ OBSIDIAN_WIKI_MCP_PROFILE: value });
+    } else if (argument.startsWith("--profile=")) {
+      const value = argument.slice("--profile=".length);
+      if (!value) throw new Error("--profile requires a value");
+      profile = resolveMcpToolProfile({ OBSIDIAN_WIKI_MCP_PROFILE: value });
     } else {
       args.push(argument);
     }
   }
-  return { args, configPath };
+  return { args, configPath, profile };
 }
 function printJson(value) {
   process.stdout.write(`${JSON.stringify(value, null, 2)}
@@ -27226,6 +27326,7 @@ function printHelp() {
 
 Usage:
   obsidian-wiki [--config <path>]                 Start the MCP stdio server
+  obsidian-wiki --profile <name>                  Start a caller-scoped MCP surface
   obsidian-wiki init [--config <path>]            Create a commented JSONC config
   obsidian-wiki config path [--json]              Print the resolved config path
   obsidian-wiki config set-location <path>        Persist a custom config location
@@ -27458,7 +27559,7 @@ async function main() {
   if (subcommand !== void 0) {
     throw new Error("Unknown command. Run obsidian-wiki --help for available commands.");
   }
-  const server = createServer();
+  const server = createServer(process.env, parsed.profile);
   await server.connect(new StdioServerTransport());
 }
 main().catch((error2) => {

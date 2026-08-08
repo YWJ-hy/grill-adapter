@@ -1764,12 +1764,14 @@ if isinstance(stage_input, str):
     except json.JSONDecodeError:
         stage_input = None
 assert isinstance(stage_input, dict), capture_stage_call
-assert set(stage_input) == {"schemaVersion", "kind", "featureSlug", "journalSnapshots", "decisions"}, stage_input
-assert stage_input["schemaVersion"] == 1
-assert stage_input["kind"] == "grill-adapter.wiki-capture-plan"
-assert stage_input["featureSlug"] == "issue-35"
-assert isinstance(stage_input["journalSnapshots"], list)
-assert stage_input["decisions"] == []
+assert set(stage_input) == {"plan"}, stage_input
+stage_plan = stage_input["plan"]
+assert set(stage_plan) == {"schemaVersion", "kind", "featureSlug", "journalSnapshots", "decisions"}, stage_plan
+assert stage_plan["schemaVersion"] == 1
+assert stage_plan["kind"] == "grill-adapter.wiki-capture-plan"
+assert stage_plan["featureSlug"] == "issue-35"
+assert isinstance(stage_plan["journalSnapshots"], list)
+assert stage_plan["decisions"] == []
 capture_stage_text = event_text(review_capture_child_events)
 assert capture_stage_text.count("obsidian_wiki_stage_capture_plan") >= 1
 assert review_capture_result["planId"] in capture_stage_text

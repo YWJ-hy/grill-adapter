@@ -2,6 +2,8 @@
   "schemaVersion": 1,
   "measurementUnit": "utf8Bytes",
   "baselineCommit": "218453a",
+  "baselineMcpToolBytes": 10022,
+  "minimumMcpToolReductionPercent": 20,
   "stageResources": {
     "research": [
       "skills/wiki-research/SKILL.md"
@@ -22,7 +24,7 @@
   "limits": {
     "globalPluginSkillCatalog": 4500,
     "projectHostInstructions": 4096,
-    "mcpToolSchemas": 11500,
+    "mcpToolSchemas": 7500,
     "stages": {
       "research": 26500,
       "readiness": 52000,

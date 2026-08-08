@@ -68,6 +68,12 @@ export const CapturePlanSchema = z.object({
   decisions: z.array(z.discriminatedUnion('outcome', [QueueDecisionSchema, TerminalDecisionSchema])).max(200),
 }).strict();
 
+// Keep the public MCP schema shallow; staging still validates the complete
+// versioned plan at the deterministic execution boundary below.
+export const CapturePlanEnvelopeSchema = z.object({
+  plan: z.record(z.string(), z.unknown()),
+}).strict();
+
 const EntrySchema = z.object({
   entryId: HashSchema,
   planId: HashSchema,
@@ -162,6 +168,12 @@ export const OutboxCorrectionSchema = z.discriminatedUnion('action', [
   ReviseCorrectionSchema,
   MergeCorrectionSchema,
 ]);
+
+// The discriminated correction contract remains authoritative at execution
+// time while the MCP tools/list entry only exposes this small envelope.
+export const OutboxCorrectionEnvelopeSchema = z.object({
+  correction: z.record(z.string(), z.unknown()),
+}).strict();
 type StagedRepository = {
   entries: Entry[];
   binding: ResolvedBinding;
@@ -822,8 +834,8 @@ function stageCapturePlanLocked(
 }
 
 export function stageCapturePlan(input: unknown, env: NodeJS.ProcessEnv = process.env) {
-  const resolution = healthyResolution(env);
   const plan = CapturePlanSchema.parse(input);
+  const resolution = healthyResolution(env);
   if (plan.decisions.length === 0) {
     // A validated no-candidate Capture must not create an empty machine-local Outbox.
     validateSnapshot(plan, env);
@@ -835,6 +847,11 @@ export function stageCapturePlan(input: unknown, env: NodeJS.ProcessEnv = proces
     };
   }
   return withOutboxLock(resolution, () => stageCapturePlanLocked(plan, resolution, env));
+}
+
+export function stageCapturePlanEnvelope(input: unknown, env: NodeJS.ProcessEnv = process.env) {
+  const { plan } = CapturePlanEnvelopeSchema.parse(input);
+  return stageCapturePlan(plan, env);
 }
 
 function effectiveEntries(manifest: Manifest): Entry[] {
@@ -989,8 +1006,14 @@ function correctOutboxLocked(
 }
 
 export function correctOutbox(input: unknown, env: NodeJS.ProcessEnv = process.env) {
+  const request = OutboxCorrectionSchema.parse(input);
   const resolution = healthyResolution(env);
-  return withOutboxLock(resolution, () => correctOutboxLocked(input, resolution, env));
+  return withOutboxLock(resolution, () => correctOutboxLocked(request, resolution, env));
+}
+
+export function correctOutboxEnvelope(input: unknown, env: NodeJS.ProcessEnv = process.env) {
+  const { correction } = OutboxCorrectionEnvelopeSchema.parse(input);
+  return correctOutbox(correction, env);
 }
 
 function outboxStatusLocked(

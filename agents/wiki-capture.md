@@ -90,9 +90,11 @@ tool failure, snapshot drift, or staging failure is `broken`. Do not substitute 
    - merge semantically equivalent candidates into one queue decision only when final evidence proves
      one claim; preserve every contributing candidate identity;
    - never merge independent or contradictory contracts.
-9. Call `obsidian_wiki_stage_capture_plan` exactly once with the full plan. Do not print, persist, or
-   summarize the plan before or after that call. Snapshot, binding, policy, schema, identity, CAS,
-   lock, Git-object, hidden-ref, and atomic-manifest validation belong to the staging boundary.
+9. Call `obsidian_wiki_stage_capture_plan` exactly once with `{plan: <the full schema-v1 plan object>}`.
+   The public MCP envelope is intentionally shallow; do not omit, flatten, or summarize any plan
+   field. Do not print or persist the plan before or after that call. Snapshot, binding, policy,
+   schema, identity, CAS, lock, Git-object, hidden-ref, and atomic-manifest validation belong to the
+   staging boundary.
 
 ## Output
 

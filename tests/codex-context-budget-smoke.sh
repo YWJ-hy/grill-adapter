@@ -161,6 +161,9 @@ assert [tool["name"] for tool in report["fixedCosts"]["mcpToolSchemas"]["tools"]
     "obsidian_wiki_search",
     "obsidian_wiki_status",
 ]
+assert round(sum(tool["sharePercent"] for tool in report["fixedCosts"]["mcpToolSchemas"]["tools"]), 5) == 100
+assert report["fixedCosts"]["mcpToolSchemas"]["baselineBytes"] == contract.get("baselineMcpToolBytes")
+assert report["fixedCosts"]["mcpToolSchemas"]["reductionPercent"] > 0
 assert report["stages"]["research"]["resources"] == [
     "skills/wiki-research/SKILL.md",
 ]

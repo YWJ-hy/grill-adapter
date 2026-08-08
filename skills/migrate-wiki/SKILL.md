@@ -307,9 +307,20 @@ operations; the old identity remains addressable.
 
 1. Show the batch plan and exact Note operations; stop on unresolved identity, path, policy,
    neutrality, or backlink conflicts.
-2. For every confirmed operation, use `obsidian_wiki_propose_note_change`, show the structured
-   diff, obtain effective policy authorization, then call `obsidian_wiki_apply_note_change`.
-   Never edit the Vault repository directly.
+2. The default MCP surface intentionally omits legacy proposal/apply tools. For every confirmed
+   operation, use the governed bundled CLI entry instead, show the structured diff, obtain effective
+   policy authorization, then apply the exact request:
+
+   ```bash
+   printf '%s\n' '<request-json>' \
+   | node ${CLAUDE_PLUGIN_ROOT}/mcp/obsidian-wiki/dist/index.js propose-note-change
+
+   printf '%s\n' '<authorized-request-json>' \
+   | node ${CLAUDE_PLUGIN_ROOT}/mcp/obsidian-wiki/dist/index.js apply-note-change
+   ```
+
+   Never edit the Vault repository directly. MCP clients that need this compatibility surface must
+   launch the same bundle with `--profile legacy` (`migration` is an alias).
 3. Record each applied operation in a maintenance feature journal with the returned Source,
    repository, binding, `wiki_id`, path, and before/after hashes. Publish only the applied
    allowlist through the existing resumable publisher; Git publishing requires separate

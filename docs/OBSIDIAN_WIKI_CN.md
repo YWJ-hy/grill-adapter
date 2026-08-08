@@ -22,7 +22,7 @@ PR 由用户审查/合并且 configured base worktree 同步后，`verify` 才�
 
 ## 运行边界
 
-插件只发货一个 `obsidian-wiki` MCP：解析当前项目的 Obsidian Source bindings，并提供 formal Source/status/read/search/typed-neighbor、bounded Capture input、当前项目 draft view、受限 Capture Plan staging，以及仅限当前项目的 Outbox review/correct。CLI 提供 Outbox status/review/correct/publish；proposal/apply 仍在 bundle 中但不是正常 Capture 入口。legacy Wiki 不注册独立 MCP，也不参与正式 runtime。
+插件只发货一个 `obsidian-wiki` MCP：解析当前项目的 Obsidian Source bindings，并提供 formal Source/status/read/search/typed-neighbor、bounded Capture input、当前项目 draft view、受限 Capture Plan staging，以及仅限当前项目的 Outbox review/correct。默认 surface 不发布 proposal/apply 的 schema；CLI 提供 Outbox status/review/correct/publish，legacy/migration caller 可用 bundle 的 `--profile legacy`（`migration` 兼容别名）取得最小受治理 roster。Capture Plan 与 Outbox correction 的公开参数是浅层 envelope，执行层仍完整校验版本化 plan、identity、policy、authorization、CAS 与 atomicity。legacy Wiki 不注册独立 MCP，也不参与正式 runtime。
 
 `obsidian-wiki` 只从宿主确定的项目根下 `.grill-adapter/settings.json` 读取 bindings：Claude Code 使用 `CLAUDE_PROJECT_DIR`，Codex 使用受控 MCP request 的 Git workspace metadata，直接 CLI 可使用进程 cwd。工具不接受 Vault、Source 或 root 路径参数，因此调用方不能扩大到未绑定内容；多个 Codex workspace 同时声明 settings 时按歧义 fail-closed。
 
@@ -227,11 +227,11 @@ node mcp/obsidian-wiki/dist/index.js serve-write-bridge
 
 `PROJECT_DIRS` 是 bridge 启动时的项目白名单。每个 proposal/apply 都携带 MCP 已解析的当前项目根；bridge 只接受白名单成员，并在**每次请求**重新读取该项目 `.grill-adapter/settings.json` 与 Source manifest，重新计算 binding + manifest 的 effective policy 和 neutrality，运行中收紧治理无需重启。一个 bridge 可列出多个明确项目，但请求不能提供白名单之外的任意项目路径。
 
-正常 `update-wiki` 不调用 write bridge。协调器派生一个隔离 `wiki-capture` Agent，Agent 私下读取 bounded candidates/evidence/formal Notes 与当前项目 Outbox overlay，并把完整 schema-v1 Capture Plan 直接交给 `obsidian_wiki_stage_capture_plan`。staging 再机械校验 journal snapshot、binding/policy、stable identity、before/after hash、Note schema、ADR/Skill Card identity、typed links、root 与 Shared neutrality；任何漂移在 Outbox 变更前 fail-closed。
+正常 `update-wiki` 不调用 write bridge。协调器派生一个隔离 `wiki-capture` Agent，Agent 私下读取 bounded candidates/evidence/formal Notes 与当前项目 Outbox overlay，并把完整 schema-v1 Capture Plan 放进 `obsidian_wiki_stage_capture_plan` 的 `{plan: ...}` envelope。MCP 的公开 envelope 保持浅层，staging 再机械校验 journal snapshot、binding/policy、stable identity、before/after hash、Note schema、ADR/Skill Card identity、typed links、root 与 Shared neutrality；任何漂移在 Outbox 变更前 fail-closed。
 
 完整草稿写入对应 Wiki Git repository 的 immutable commit，并由 `refs/grill-adapter/outbox/<project-id>/<repository>` 保护；machine-local manifest 位于 active registry 相邻 state root，按 originating project identity 分区。构造只使用短生命周期临时 worktree，正式 base worktree不换分支、不变脏、不包含 queued 内容。ref 已推进但 manifest 尚未落盘的中断可由相同 plan retry 识别并恢复；不属于该 plan/parent 的 ref 仍按 drift 拒绝。root `updateAuthorization` 与 Source/binding policy 一并进入 binding digest：`refuse`/`deny` 硬拒绝，`ask`/`confirm` 进入 batch authorization，缺省 root 仍是 update=`skip`、create=`ask`。`obsidian_wiki_capture_draft_view` 只供 Capture targeting 与隔离 Outbox consolidation；formal catalog/search/read 永远忽略 queued 与开放 PR。
 
-JSON CLI/MCP 中的 `propose-note-change` / `apply-note-change` 与 loopback bridge 仍保留给 migration 和旧事务恢复。它们继续执行原有 token、binding、policy、CAS、identity 与原子交换校验，但不再是正常 Capture 用户路径。
+JSON CLI/MCP 中的 `propose-note-change` / `apply-note-change` 与 loopback bridge 仍保留给 migration 和旧事务恢复。它们继续执行原有 token、binding、policy、CAS、identity 与原子交换校验，但不再是默认 MCP surface 或正常 Capture 用户路径；需要 MCP 兼容时使用 `--profile legacy`（`migration` 是兼容别名）。
 
 ## GitHub draft-PR 发布
 

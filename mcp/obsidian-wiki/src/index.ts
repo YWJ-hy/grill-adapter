@@ -13,6 +13,7 @@ import { applyNoteChangeTool, proposeNoteChangeTool, type NoteChangeInput } from
 import { runWriteBridgeFromEnvironment } from './write-bridge.js';
 import { preparePublishBranches, publishFromFoldedJournal } from './publish.js';
 import { correctOutbox, outboxReview, outboxStatus, publishOutbox, stageCapturePlan } from './outbox.js';
+import { resolveMcpToolProfile, type McpToolProfile } from './tool-surface.js';
 import {
   initConfig,
   loadRegistry,
@@ -50,9 +51,10 @@ function optionalNumberField(request: Record<string, unknown>, field: string): n
   return value;
 }
 
-function parseCliArguments(argv: string[]): { args: string[]; configPath?: string } {
+function parseCliArguments(argv: string[]): { args: string[]; configPath?: string; profile?: McpToolProfile } {
   const args: string[] = [];
   let configPath: string | undefined;
+  let profile: McpToolProfile | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--config') {
@@ -61,11 +63,19 @@ function parseCliArguments(argv: string[]): { args: string[]; configPath?: strin
     } else if (argument.startsWith('--config=')) {
       configPath = argument.slice('--config='.length);
       if (!configPath) throw new Error('--config requires a path');
+    } else if (argument === '--profile') {
+      const value = argv[++index];
+      if (!value) throw new Error('--profile requires a value');
+      profile = resolveMcpToolProfile({ OBSIDIAN_WIKI_MCP_PROFILE: value });
+    } else if (argument.startsWith('--profile=')) {
+      const value = argument.slice('--profile='.length);
+      if (!value) throw new Error('--profile requires a value');
+      profile = resolveMcpToolProfile({ OBSIDIAN_WIKI_MCP_PROFILE: value });
     } else {
       args.push(argument);
     }
   }
-  return { args, configPath };
+  return { args, configPath, profile };
 }
 
 function printJson(value: unknown): void {
@@ -180,6 +190,7 @@ function printHelp(): void {
 
 Usage:
   obsidian-wiki [--config <path>]                 Start the MCP stdio server
+  obsidian-wiki --profile <name>                  Start a caller-scoped MCP surface
   obsidian-wiki init [--config <path>]            Create a commented JSONC config
   obsidian-wiki config path [--json]              Print the resolved config path
   obsidian-wiki config set-location <path>        Persist a custom config location
@@ -410,7 +421,7 @@ async function main(): Promise<void> {
   if (subcommand !== undefined) {
     throw new Error('Unknown command. Run obsidian-wiki --help for available commands.');
   }
-  const server = createServer();
+  const server = createServer(process.env, parsed.profile);
   await server.connect(new StdioServerTransport());
 }
 

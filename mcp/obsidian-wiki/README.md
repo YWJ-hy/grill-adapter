@@ -40,6 +40,14 @@ The MCP server uses the same configuration. Configuration discovery order is:
 4. `~/.config/grill-adapter/obsidian-wiki.jsonc`
 5. the legacy `OBSIDIAN_WIKI_REGISTRY` path and JSON filename
 
+The default MCP surface omits legacy Note proposal/apply tools and publishes
+shallow `{plan: ...}` and `{correction: ...}` envelopes for the two large
+structured mutations. The execution layer still validates the complete
+versioned contracts. Controlled callers may start a smaller roster with
+`--profile research`, `--profile capture`, `--profile maintenance-audit`,
+`--profile maintenance-consolidation`, `--profile outbox`, or
+`--profile legacy` (`migration` is an alias for `legacy`).
+
 ## Bounded retrieval
 
 `obsidian_wiki_search` accepts `limit` (1-50) and an opaque `cursor`. Results

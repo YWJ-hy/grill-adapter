@@ -4,11 +4,11 @@
   "roles": {
     "grill-adapter:wiki-researcher": {
       "source": "agents/wiki-researcher.md",
-      "digest": "sha256:aa92da6028c35bb42e3860a6401692eff445cbd5de78e4c5cac72d1eada1b5be"
+      "digest": "sha256:788e8f58ec3846d0224a409e04fd596203581ac5ee23cbc03285876862b3f5a2"
     },
     "grill-adapter:wiki-capture": {
       "source": "agents/wiki-capture.md",
-      "digest": "sha256:389bccbd43fcd968691a6035a873915c1f9fcf2a807d3883e2cc835048366185"
+      "digest": "sha256:c792ddad43a7de30e2718778b11909d7ece237b9c79d8fbef24a476669f02e7d"
     },
     "grill-adapter:wiki-maintenance-audit": {
       "source": "agents/wiki-maintenance-audit.md",
@@ -20,7 +20,7 @@
     },
     "grill-adapter:wiki-outbox-consolidation": {
       "source": "agents/wiki-outbox-consolidation.md",
-      "digest": "sha256:020025203c5f705c01334b7edeeb2cf3d30136326e9b22f38d9302bb3fe5a698"
+      "digest": "sha256:2811b7ed10d3bbe90463b28946f211703ec4537c46210e7f438780f65f0a4982"
     }
   }
 }

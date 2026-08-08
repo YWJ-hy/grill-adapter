@@ -166,6 +166,9 @@ for tool in tool_result["tools"]:
 tool_rows.sort(key=lambda item: item["name"])
 if not tool_rows:
     fail("MCP tools/list returned no tools")
+tool_total = sum(item["bytes"] for item in tool_rows)
+for item in tool_rows:
+    item["sharePercent"] = item["bytes"] / tool_total * 100
 
 raw_thresholds = load_json(threshold_path)
 if isinstance(raw_thresholds, dict) and "limits" in raw_thresholds:
@@ -243,12 +246,29 @@ fixed_measurements = {
         "source": "codex debug prompt-input (wired project host block)",
     },
     "mcpToolSchemas": {
-        "bytes": sum(item["bytes"] for item in tool_rows),
+        "bytes": tool_total,
         "source": "MCP tools/list",
         "toolCount": len(tool_rows),
         "tools": tool_rows,
     },
 }
+
+baseline_mcp_bytes = contract.get("baselineMcpToolBytes")
+if not isinstance(baseline_mcp_bytes, int) or baseline_mcp_bytes <= 0:
+    fail("default budget contract must declare a positive baselineMcpToolBytes")
+minimum_reduction = contract.get("minimumMcpToolReductionPercent", 0)
+if not isinstance(minimum_reduction, (int, float)) or minimum_reduction < 0 or minimum_reduction >= 100:
+    fail("minimumMcpToolReductionPercent must be between 0 and 100")
+fixed_measurements["mcpToolSchemas"]["baselineBytes"] = baseline_mcp_bytes
+fixed_measurements["mcpToolSchemas"]["reductionBytes"] = baseline_mcp_bytes - tool_total
+fixed_measurements["mcpToolSchemas"]["reductionPercent"] = (
+    (baseline_mcp_bytes - tool_total) / baseline_mcp_bytes * 100
+)
+if fixed_measurements["mcpToolSchemas"]["reductionPercent"] < minimum_reduction:
+    fail(
+        f"MCP tool schema reduction {fixed_measurements['mcpToolSchemas']['reductionPercent']:.2f}% "
+        f"is below minimum {minimum_reduction:.2f}%"
+    )
 
 violations = []
 for name, measurement in fixed_measurements.items():
