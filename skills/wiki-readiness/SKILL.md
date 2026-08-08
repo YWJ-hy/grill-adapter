@@ -27,8 +27,8 @@ It gives formal tickets, direct tracker issues, and confirmed conversational wor
 identity -> Carry -> role-specific task Wiki snapshot path. Do not patch a host skill; grill and
 plain hosts invoke this plugin skill by convention.
 
-This skill coordinates `wiki-research` and `wiki-materialize`; it does not replace either engine
-contract. Wiki validation remains fail-closed. Host implementation availability is fail-open:
+This skill coordinates `wiki-research` and the internal freeze/Bind reader; it does not replace
+either engine contract. Wiki validation remains fail-closed. Host implementation availability is fail-open:
 `no-relevant` and `disabled` continue without Wiki context, while `broken` must be explained to the
 user with a choice to stop or continue. If the user continues, discard all partial output and do not
 read, inject, or execute any unverified Wiki content.
@@ -113,7 +113,7 @@ those are execution-layer operations owned by this entry.
 
 ## 3. Perform late Carry for a direct task
 
-When no formal finalized context matches the task:
+When no formal finalized context matches the task, this is the only public late-Carry route:
 
 1. Check the configured Obsidian Wiki status before formal selection.
    - No enabled provider: record `disabled` and continue without Wiki context.
@@ -133,10 +133,23 @@ When no formal finalized context matches the task:
 4. If selection succeeds, follow `wiki-research` exactly: scaffold schema v6, mark unrelated
    candidates `not-applicable`, route each applicable Note/Card to this one task (or
    global/planning-only as appropriate), confirm routing, then `--finalize` using the single-task
-   roster. After the user approves the routed constraints, run `wiki_readiness.py freeze --all` to
-   generate both role-specific Markdown contracts. Do not place Note bodies in the sidecar.
-5. Run the fingerprint preflight and the readiness `bind` command above. Only its successful,
-   atomic snapshot Markdown may enter the implementation context.
+   roster. Do not place Note bodies in the sidecar.
+5. After the user approves the routed constraints, commit the whole late-Carry result through one
+   readiness operation. It stages both role contracts, the approval manifest, and the readiness
+   receipt before replacing any live artifact:
+
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py late-carry \
+     --project-root <project-root> \
+     --feature-slug <feature-slug> \
+     --task-id <taskId> \
+     --context .grill-adapter/context/<feature-slug>/wiki-context.json \
+     --roster .grill-adapter/context/<feature-slug>/ticket-roster.json
+   ```
+
+   Only its successful structured `ready` result permits the implementer contract into the
+   implementation context. The public workflow never asks the host to run a separate materialize
+   command.
 
 Record a non-ready result with:
 

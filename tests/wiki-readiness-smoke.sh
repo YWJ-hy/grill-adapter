@@ -88,6 +88,75 @@ assert roster["tickets"] == [{
 }]
 PY
 
+# Configured-but-ambiguous Wiki settings are broken, and a high-level direct/manual run removes
+# any transient Carry artifacts before recording that caveat.
+BROKEN_DIR="$CONTEXT_ROOT/broken-run"
+BROKEN_ROSTER="$BROKEN_DIR/ticket-roster.json"
+mkdir -p "$BROKEN_DIR"
+cp "$MANUAL_ROSTER" "$BROKEN_ROSTER"
+python3 - "$BROKEN_ROSTER" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+roster = json.load(open(path, encoding="utf-8"))
+roster["featureSlug"] = "broken-run"
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(roster, handle, indent=2)
+    handle.write("\n")
+PY
+printf '%s\n' '{"partial":"context"}' > "$BROKEN_DIR/wiki-context.json"
+printf '%s\n' '{"partial":"selection"}' > "$BROKEN_DIR/obsidian-wiki-selection.json"
+printf '%s\n' 'partial snapshot' > "$BROKEN_DIR/manual.wiki-implement.md"
+printf '%s\n' 'partial snapshot' > "$BROKEN_DIR/manual.wiki-review.md"
+mkdir -p "$TMP/project/.grill-adapter"
+printf '%s\n' '{"wiki":{"provider":"unknown-provider"}}' > "$TMP/project/.grill-adapter/settings.json"
+BROKEN_RESULT="$TMP/broken-run-result.json"
+python3 "$READINESS" run \
+  --project-root "$TMP/project" \
+  --feature-slug broken-run \
+  --task-id manual >"$BROKEN_RESULT"
+python3 - "$BROKEN_RESULT" "$BROKEN_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+directory = pathlib.Path(sys.argv[2])
+assert result["status"] == "broken", result
+for name in (
+    "wiki-context.json",
+    "obsidian-wiki-selection.json",
+    "manual.wiki-implement.md",
+    "manual.wiki-review.md",
+):
+    assert not (directory / name).exists(), (name, result)
+receipt = json.loads((directory / "wiki-readiness.json").read_text(encoding="utf-8"))
+assert receipt["tasks"][0]["status"] == "broken", receipt
+PY
+
+# A direct/manual high-level run with no configured provider is a clean disabled terminal state.
+# It keeps the single-task identity but does not invent a sidecar or attempt late Carry.
+rm -f "$TMP/project/.grill-adapter/settings.json"
+DISABLED_RESULT="$TMP/disabled-result.json"
+python3 "$READINESS" run \
+  --project-root "$TMP/project" \
+  --feature-slug manual-change \
+  --task-id manual >"$DISABLED_RESULT"
+python3 - "$DISABLED_RESULT" "$MANUAL_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+directory = pathlib.Path(sys.argv[2])
+assert result["status"] == "disabled", result
+assert result["contextDisposition"] == "none", result
+assert not (directory / "wiki-context.json").exists(), result
+assert not (directory / "manual.wiki-implement.md").exists(), result
+assert not (directory / "manual.wiki-review.md").exists(), result
+PY
+
 # Build a finalized context through the existing public Carry seam.
 SELECTION="$ISSUE_DIR/obsidian-wiki-selection.json"
 CONTEXT="$ISSUE_DIR/wiki-context.json"
@@ -318,6 +387,123 @@ else:
 PY
 chmod +x "$FAKE_OBSIDIAN"
 FAKE_OBSIDIAN_CMD="python3 $FAKE_OBSIDIAN"
+
+# Direct late Carry accepts only a finalized, user-routed single-task context. It stages the role
+# pair and receipt together, so a failed materialization leaves no partial late-task artifacts.
+LATE_DIR="$CONTEXT_ROOT/direct-late"
+LATE_ROSTER="$LATE_DIR/ticket-roster.json"
+LATE_CONTEXT="$LATE_DIR/wiki-context.json"
+mkdir -p "$LATE_DIR"
+cp "$FORMAL_CONTEXT" "$LATE_CONTEXT"
+cat > "$LATE_ROSTER" <<'JSON'
+{
+  "featureSlug": "direct-late",
+  "ticketSource": "github-issues",
+  "tickets": [
+    {
+      "taskId": "43",
+      "taskTitle": "Direct late Carry",
+      "text": "The direct issue body is fingerprinted verbatim."
+    }
+  ]
+}
+JSON
+python3 - "$LATE_CONTEXT" "$LATE_ROSTER" <<'PY'
+import json
+import sys
+
+context_path, roster_path = sys.argv[1:]
+context = json.load(open(context_path, encoding="utf-8"))
+roster = json.load(open(roster_path, encoding="utf-8"))
+context["featureSlug"] = roster["featureSlug"]
+context["ticketSource"] = roster["ticketSource"]
+for collection in ("wikiNotes", "requiredSkills"):
+    for note in context.get(collection, []):
+        destination = note["destination"]
+        if destination.get("kind") == "task-bound":
+            destination["tasks"] = ["43"]
+for ref in context["taskWikiRefs"]:
+    ref["taskId"] = "43"
+    ref["taskTitle"] = "Direct late Carry"
+    ref.pop("taskFingerprint", None)
+with open(context_path, "w", encoding="utf-8") as handle:
+    json.dump(context, handle, indent=2)
+    handle.write("\n")
+PY
+python3 "$RENDER" "$LATE_CONTEXT" --bind-fingerprints --execution-ready --strict --ticket-roster "$LATE_ROSTER" >/dev/null
+LATE_RESULT="$TMP/late-carry-result.json"
+python3 "$READINESS" late-carry \
+  --project-root "$TMP/project" \
+  --feature-slug direct-late \
+  --task-id 43 \
+  --context "$LATE_CONTEXT" \
+  --roster "$LATE_ROSTER" \
+  --obsidian-wiki-cmd "$FAKE_OBSIDIAN_CMD" >"$LATE_RESULT"
+python3 - "$LATE_RESULT" "$LATE_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+directory = pathlib.Path(sys.argv[2])
+assert result["status"] == "ready", result
+assert result["taskId"] == "43", result
+assert (directory / "43.wiki-implement.md").is_file(), result
+assert (directory / "43.wiki-review.md").is_file(), result
+assert (directory / "43.wiki-approval.json").is_file(), result
+assert (directory / "wiki-readiness.json").is_file(), result
+assert not (directory / "obsidian-wiki-selection.json").exists(), result
+PY
+
+rm -f "$LATE_DIR/43.wiki-implement.md" "$LATE_DIR/43.wiki-review.md" \
+  "$LATE_DIR/43.wiki-approval.json" "$LATE_DIR/wiki-readiness.json"
+cp "$FORMAL_CONTEXT" "$LATE_CONTEXT"
+python3 - "$LATE_CONTEXT" "$LATE_ROSTER" <<'PY'
+import json
+import sys
+
+context_path, roster_path = sys.argv[1:]
+context = json.load(open(context_path, encoding="utf-8"))
+roster = json.load(open(roster_path, encoding="utf-8"))
+context["featureSlug"] = roster["featureSlug"]
+context["ticketSource"] = roster["ticketSource"]
+for collection in ("wikiNotes", "requiredSkills"):
+    for note in context.get(collection, []):
+        destination = note["destination"]
+        if destination.get("kind") == "task-bound":
+            destination["tasks"] = ["43"]
+for ref in context["taskWikiRefs"]:
+    ref["taskId"] = "43"
+    ref["taskTitle"] = "Direct late Carry"
+    ref.pop("taskFingerprint", None)
+with open(context_path, "w", encoding="utf-8") as handle:
+    json.dump(context, handle, indent=2)
+    handle.write("\n")
+PY
+python3 "$RENDER" "$LATE_CONTEXT" --bind-fingerprints --execution-ready --strict --ticket-roster "$LATE_ROSTER" >/dev/null
+LATE_FAILURE="$TMP/late-carry-failure.json"
+python3 "$READINESS" late-carry \
+  --project-root "$TMP/project" \
+  --feature-slug direct-late \
+  --task-id 43 \
+  --context "$LATE_CONTEXT" \
+  --roster "$LATE_ROSTER" \
+  --obsidian-wiki-cmd "definitely-missing-obsidian-command" >"$LATE_FAILURE"
+python3 - "$LATE_FAILURE" "$LATE_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+directory = pathlib.Path(sys.argv[2])
+assert result["status"] == "broken", result
+assert not (directory / "wiki-context.json").exists(), result
+assert not (directory / "43.wiki-implement.md").exists(), result
+assert not (directory / "43.wiki-review.md").exists(), result
+assert not (directory / "43.wiki-approval.json").exists(), result
+receipt = json.loads((directory / "wiki-readiness.json").read_text(encoding="utf-8"))
+assert receipt["tasks"][0]["status"] == "broken", receipt
+PY
 
 # The high-level formal readiness entry resolves the canonical roster/context/receipt paths from
 # the project root, feature slug, and one stable task id. Its result is structured so the host does
@@ -1011,8 +1197,8 @@ need "$RESULT_CONTRACT" '"reviewer"'
 need "$RESULT_CONTRACT" '"status": "ready"'
 need "$SKILL" "before the first code edit"
 need "$SKILL" "wiki_readiness.py run"
+need "$SKILL" "late-carry"
 need "$SKILL" "wiki_readiness.py review"
-need "$SKILL" "freeze --all"
 need "$SKILL" "wiki-review-handoff.md"
 need "$SKILL" "gh issue view"
 need "$SKILL" "manual"

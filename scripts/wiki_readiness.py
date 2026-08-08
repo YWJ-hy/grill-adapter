@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -222,6 +223,29 @@ def prepare_manual(task_text_path: Path, roster_path: Path, feature_slug: str, t
     )
     _refresh_session_state(roster_path.parent, task_id="manual")
     return f"prepared manual task -> {roster_path}"
+
+
+def _wiki_provider_state(project_root: Path) -> str:
+    """Classify whether late Carry can be attempted without touching the Wiki runtime."""
+
+    settings_path = project_root / ".grill-adapter" / "settings.json"
+    if not settings_path.is_file():
+        return "disabled"
+    try:
+        payload = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "broken"
+    if not isinstance(payload, dict):
+        return "broken"
+    if "wiki" not in payload:
+        return "disabled"
+    wiki = payload.get("wiki")
+    if not isinstance(wiki, dict):
+        return "broken"
+    provider = wiki.get("provider")
+    if provider in {None, "", "disabled", "none"}:
+        return "disabled"
+    return "configured" if provider == "obsidian" else "broken"
 
 
 def _validate_context(
@@ -922,6 +946,156 @@ def bind_readiness(
     return body
 
 
+def _discard_late_carry_artifacts(feature_directory: Path, task_id: str) -> None:
+    """Remove unapproved late-Carry output while preserving the identity inputs."""
+
+    names = {
+        "obsidian-wiki-selection.json",
+        "wiki-context.json",
+        f"{task_id}.wiki-implement.md",
+        f"{task_id}.wiki-review.md",
+        f"{task_id}.wiki-approval.json",
+        f"{task_id}.wiki-review-handoff.md",
+    }
+    for name in names:
+        (feature_directory / name).unlink(missing_ok=True)
+
+
+def late_carry_readiness(
+    *,
+    project_root: Path,
+    feature_slug: str,
+    task_id: str,
+    context_path: Path,
+    roster_path: Path,
+    reason: str = "Late Carry readiness validated.",
+    obsidian_wiki_cmd: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Commit one direct/manual task's finalized late-Carry output atomically.
+
+    Research and semantic routing happen outside the execution layer. This seam accepts only the
+    resulting execution-ready context and the host-produced single-task roster, then stages the
+    two role contracts, approval manifest, and readiness receipt before replacing the approved set.
+    """
+
+    project_root = project_root.expanduser().resolve()
+    feature_slug = _feature_slug(feature_slug)
+    raw_task_id = _required_text(task_id, "taskId").strip()
+    try:
+        task_id = safe_task_id(raw_task_id)
+    except SnapshotError as exc:
+        return _result_base(feature_slug=feature_slug, task_id=raw_task_id, status="broken", reason=str(exc))
+    reason = _required_text(reason, "reason").strip()
+    if not project_root.is_dir():
+        raise ReadinessError(f"project root is not a directory: {project_root}")
+    _same_context_directory(context_path, roster_path, "ticket roster")
+    feature_directory = context_path.resolve().parent
+    if feature_directory != feature_context_dir(project_root, feature_slug).resolve():
+        raise ReadinessError("late Carry artifacts must be in the selected feature context directory")
+
+    ticket_source: str | None = None
+    task_title: str | None = None
+    try:
+        _, roster_feature, ticket_source, tasks = _roster_metadata(roster_path)
+        if roster_feature != feature_slug:
+            raise ReadinessError("ticket roster featureSlug does not match the selected feature")
+        if ticket_source not in {"github-issues", "manual"}:
+            raise ReadinessError("late Carry requires a direct tracker or manual single-task roster")
+        if len(tasks) != 1 or task_id not in tasks:
+            raise ReadinessError("late Carry requires exactly one roster task matching taskId")
+        task_title = tasks[task_id]["title"]
+        if not context_path.is_file():
+            raise ReadinessError("late Carry requires a finalized execution-ready Wiki context")
+
+        # Validate the caller's semantic routing before staging any execution artifacts. The
+        # staged copy is what freeze/bind read, so a failed materialization cannot mutate the live
+        # context or leave a one-role approval behind.
+        context = _validate_context(context_path, roster_path, project_root)
+        _validate_context_identity(context, feature_slug, ticket_source, task_id)
+        with tempfile.TemporaryDirectory(
+            dir=feature_directory,
+            prefix=f".{task_id}.late-carry-",
+        ) as staging:
+            stage_dir = Path(staging)
+            staged_context = stage_dir / context_path.name
+            staged_roster = stage_dir / roster_path.name
+            shutil.copyfile(context_path, staged_context)
+            shutil.copyfile(roster_path, staged_roster)
+            staged_implement, staged_review = _freeze_role_snapshots(
+                context_path=staged_context,
+                roster_path=staged_roster,
+                feature_slug=feature_slug,
+                ticket_source=ticket_source,
+                task_id=task_id,
+                task=tasks[task_id],
+                project_root=project_root,
+                obsidian_wiki_cmd=obsidian_wiki_cmd,
+                origin="late-carry",
+            )
+            staged_receipt = stage_dir / "wiki-readiness.json"
+            record_readiness(
+                staged_receipt,
+                staged_roster,
+                task_id,
+                "ready",
+                reason,
+                staged_context,
+                materialized=True,
+                project_root=project_root,
+                implement_wiki=staged_implement,
+                review_wiki=staged_review,
+            )
+            staged_result = _structured_readiness_result(
+                receipt_path=staged_receipt,
+                task_id=task_id,
+                project_root=project_root,
+                now=now,
+            )
+            _atomic_replace_files(
+                [
+                    (staged_implement[0], feature_directory / staged_implement[0].name),
+                    (staged_review[0], feature_directory / staged_review[0].name),
+                    (
+                        stage_dir / approval_path(staged_context, task_id).name,
+                        feature_directory / approval_path(context_path, task_id).name,
+                    ),
+                    (staged_receipt, feature_directory / "wiki-readiness.json"),
+                ]
+            )
+
+        # The selection is only a Carry input. A successful late commit leaves the finalized
+        # context and role contracts, never a second selection source for later execution.
+        (feature_directory / "obsidian-wiki-selection.json").unlink(missing_ok=True)
+        _refresh_session_state(feature_directory, task_id=task_id, readiness_status="ready")
+        return staged_result
+    except (ReadinessError, ValidationError, FingerprintError, SnapshotError, OSError) as exc:
+        # A direct/manual late-Carry attempt owns the transient context. Do not leave a partial
+        # sidecar, selection, role snapshot, or approval manifest after a broken transaction.
+        _discard_late_carry_artifacts(feature_directory, task_id)
+        receipt_path = feature_directory / "wiki-readiness.json"
+        if roster_path.is_file():
+            try:
+                record_readiness(
+                    receipt_path,
+                    roster_path,
+                    task_id,
+                    "broken",
+                    str(exc),
+                    None,
+                )
+            except (ReadinessError, OSError):
+                pass
+        return _result_base(
+            feature_slug=feature_slug,
+            task_id=task_id,
+            status="broken",
+            reason=str(exc),
+            ticket_source=ticket_source,
+            task_title=task_title,
+        )
+
+
 def freeze_task_snapshots(
     *,
     context_path: Path,
@@ -1244,24 +1418,18 @@ def review_handoff(
                 + materialized
             )
     else:
-        try:
-            _, materialized, _ = _render_and_materialize_context(
-                context_path=context_path,
+        # Review is an execution-time consumer of the approved role contract. Never fall back to
+        # a live Wiki read when a legacy/partial receipt has no frozen reviewer pair; the host can
+        # continue with a caveat and a later readiness repair can deliberately re-freeze it.
+        _write_text(
+            handoff_path,
+            _review_handoff_text(
+                status="materialize-failed",
                 task_id=normalized_task_id,
-                role="reviewer",
-                project_root=project_root,
-                obsidian_wiki_cmd=obsidian_wiki_cmd,
-            )
-        except ReadinessError as exc:
-            _write_text(
-                handoff_path,
-                _review_handoff_text(
-                    status="materialize-failed",
-                    task_id=normalized_task_id,
-                    detail=f"reviewer render/materialize validation failed: {exc}; partial and stale output was discarded.",
-                ),
-            )
-            return f"wrote fail-open materialize-failed reviewer handoff -> {handoff_path}"
+                detail="the approved reviewer snapshot is missing; rerun wiki-readiness before retrying the review.",
+            ),
+        )
+        return f"wrote fail-open materialize-failed reviewer handoff -> {handoff_path}"
 
     _write_text(
         handoff_path,
@@ -1411,6 +1579,36 @@ def readiness_entry(
             raise ReadinessError(f"ticket roster has no task {task_id}")
         task_title = tasks[task_id]["title"]
 
+        # Direct/manual tasks may arrive without a formal Carry context. An absent provider is a
+        # clean disabled terminal state; a configured provider still needs the model-driven
+        # researcher/routing step and is therefore a broken, fail-open readiness result here.
+        if not context_path.is_file() and not receipt_path.is_file():
+            provider_state = _wiki_provider_state(project_root)
+            if provider_state == "disabled":
+                reason_text = "No enabled Wiki provider is configured for this project."
+                _discard_late_carry_artifacts(directory, task_id)
+                record_readiness(
+                    receipt_path,
+                    roster_path,
+                    task_id,
+                    "disabled",
+                    reason_text,
+                    None,
+                )
+                return _result_base(
+                    feature_slug=feature_slug,
+                    task_id=task_id,
+                    status="disabled",
+                    reason=reason_text,
+                    ticket_source=ticket_source,
+                    task_title=task_title,
+                )
+            if provider_state == "broken":
+                raise ReadinessError("Project Wiki settings are malformed; late Carry cannot start")
+            raise ReadinessError(
+                "No finalized Wiki context exists; complete the single-task late Carry routing approval first"
+            )
+
         if receipt_path.is_file():
             raw_receipt = _load_json(receipt_path, "readiness receipt")
             _validate_receipt_shape(raw_receipt)
@@ -1506,6 +1704,9 @@ def readiness_entry(
             now=now,
         )
     except (ReadinessError, ValidationError, FingerprintError, SnapshotError, OSError) as exc:
+        if ticket_source in {"github-issues", "manual"}:
+            _discard_late_carry_artifacts(receipt_path.parent, task_id)
+            receipt_path.unlink(missing_ok=True)
         if not receipt_path.exists():
             try:
                 record_readiness(
@@ -1676,6 +1877,18 @@ def main() -> int:
     bind.add_argument("--reason", required=True)
     bind.add_argument("--obsidian-wiki-cmd")
 
+    late_carry = subparsers.add_parser(
+        "late-carry",
+        help="Atomically freeze and record one direct/manual task after routing approval",
+    )
+    late_carry.add_argument("--project-root", required=True)
+    late_carry.add_argument("--feature-slug", required=True)
+    late_carry.add_argument("--task-id", required=True)
+    late_carry.add_argument("--context", required=True)
+    late_carry.add_argument("--roster", required=True)
+    late_carry.add_argument("--reason", default="Late Carry readiness validated.")
+    late_carry.add_argument("--obsidian-wiki-cmd")
+
     freeze = subparsers.add_parser(
         "freeze",
         help="Generate approved role-specific task Wiki snapshots for one task or the full roster",
@@ -1762,6 +1975,23 @@ def main() -> int:
                     Path(args.project_root),
                     args.reason,
                     args.obsidian_wiki_cmd,
+                )
+            )
+        elif args.command == "late-carry":
+            print(
+                json.dumps(
+                    late_carry_readiness(
+                        project_root=Path(args.project_root),
+                        feature_slug=args.feature_slug,
+                        task_id=args.task_id,
+                        context_path=Path(args.context),
+                        roster_path=Path(args.roster),
+                        reason=args.reason,
+                        obsidian_wiki_cmd=args.obsidian_wiki_cmd,
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
                 )
             )
         elif args.command == "freeze":

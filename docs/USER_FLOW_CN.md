@@ -40,7 +40,7 @@ grill-adapter 把「wiki 如何进入并回流到工作流」抽象成四个触�
 | --- | --- | --- |
 | **Disclose（披露）** | 规划前轻量披露相关 wiki 作上下文 | `/grill-adapter:wiki-research` |
 | **Carry（携带）** | 把 bound Obsidian atomic Note/Skill Card 的 metadata 固化进 schema-v6 计划期 sidecar | `.wiki-context.json`（`wiki_context_render.py --scaffold` → `--finalize`，不含 Note body） |
-| **Bind（绑定）** | 规划审核后一次冻结 roster 内所有 task 的角色化 Markdown；implement/review 各自消费对应文件，包含角色所需 Skill Card 与 1 跳 `depends_on` 闭包 | `wiki_readiness.py freeze --all` → `<taskId>.wiki-implement.md` / `<taskId>.wiki-review.md`；`wiki-readiness` 校验并消费，SessionStart 只给最多三条非权威导航 action |
+| **Bind（绑定）** | formal 规划审核后一次冻结 roster 内所有 task 的角色化 Markdown；direct/manual 则在 routing approval 后由 readiness 原子提交单任务 pair；implement/review 各自消费对应文件，包含角色所需 Skill Card 与 1 跳 `depends_on` 闭包 | formal: `wiki_readiness.py freeze --all`；direct/manual: `wiki_readiness.py late-carry` → `<taskId>.wiki-implement.md` / `<taskId>.wiki-review.md`；`wiki-readiness` 校验并消费，SessionStart 只给最多三条非权威导航 action |
 | **Capture（捕获）** | 各阶段先经 `/grill-adapter:candidate-journal` 追加候选事件；review 后校验/折叠并回写 durable 知识 | `/grill-adapter:update-wiki`（逐条记录 keep/skip/defer；可选前置步骤把 grill 增量转成同款事件） |
 
 Candidate Journal 是贯穿四触点的横切契约：`grill-with-docs`、specification、tickets、implementation、review、debugging 发现的 Wiki Note / Skill Card 候选与 evidence-backed correction 都进入同一个 `.grill-adapter/context/<feature-slug>/wiki-candidates.jsonl`。correction 必须记录受影响的 bound `sourceId` + stable `wikiId`、修正主张、证据引用和 observed impact；pending/deferred correction 在 fold 中只投影为 metadata-only `unresolved_correction` maintenance signal，不自动隐藏、归档或改写 active Note。Skill Card 候选由 `scaffold-practice-skill stage-card` 在双运行时 pack 校验后追加，包含 name/version/contract hash/roles/triggers，并明确为 `pending`；中间阶段不写 Obsidian、不写 legacy discovery index。journal 只追加、不手改、不删除、不提交。
@@ -171,7 +171,8 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
 4. Wiki 已配置但 health/research/Carry/Bind 任一失败记为 `broken`。向用户说明影响并让其选择停止修复或继续；adapter 不把它升级成不可绕过的实现门。继续时丢弃全部不完整/陈旧输出，不读取、不注入 sidecar 摘要或部分 materialize 内容。
 5. `ready` 时，执行阶段以 task 为单位校验并消费已批准的 implementer Markdown。schema-v6 的 freeze 已通过绑定 Obsidian MCP 按 stable `wikiId` materialize 路由的 hard Note、当前角色所需 Skill Card 与直接 `depends_on` Note；sidecar 摘要永远不能替代已冻结的全文 task contract。
 
-   `wiki-readiness` 自己先做指纹预检，再复用或兼容 freeze、Bind 和 receipt；普通实现入口不需要再单独调一次 materialize：
+   `wiki-readiness` 自己先做指纹预检，再复用或兼容 freeze、Bind 和 receipt；direct/manual 的 late Carry
+   在 routing approval 后通过同一入口原子提交双角色 Markdown 与 readiness receipt。普通实现入口不需要再单独调一次 materialize：
 
    ```
    /wiki-readiness <ticket>
@@ -264,7 +265,7 @@ review 通过后，把本轮新沉淀的知识回写 wiki。约定块只让你�
 
 grill-adapter 明确承认自己不是无缝的，并把降级点讲清楚：
 
-- **Bind 靠约定 + SessionStart 提醒**：`wiki_readiness.py freeze --all` 是规划期唯一批量生成 task 正文的路径；`wiki-readiness` 是正常按 ticket/role 精确消费冻结 Markdown 的路径；`wiki-session-state.json` 只为 SessionStart 提供 digest-validated、metadata-only 的 recovery/maintenance/Capture/continuation 排序输入，最多三条 action，绝不建立 task authority。无有效 action 时才回退提醒已批准但尚无 readiness 结果的 task。两条路径都绝不在 `UserPromptSubmit` 或 SessionStart 注入 Note 全文，恢复时仍须执行显示的权威 skill，task 约束仍由 `wiki-readiness` 完整校验。
+- **Bind 靠约定 + SessionStart 提醒**：formal 规划期 `wiki_readiness.py freeze --all` 是批量生成 task 正文的路径；direct/manual 在 routing approval 后使用 `wiki_readiness.py late-carry` 原子生成 pair 与 receipt；`wiki-readiness` 是正常按 ticket/role 精确消费冻结 Markdown 的路径；`wiki-session-state.json` 只为 SessionStart 提供 digest-validated、metadata-only 的 recovery/maintenance/Capture/continuation 排序输入，最多三条 action，绝不建立 task authority。无有效 action 时才回退提醒已批准但尚无 readiness 结果的 task。两条路径都绝不在 `UserPromptSubmit` 或 SessionStart 注入 Note 全文，恢复时仍须执行显示的权威 skill，task 约束仍由 `wiki-readiness` 完整校验。
 - **中间阶段只 journal、不写 Obsidian**：所有 durable 候选先经机械 helper 追加；只有 review 后的 `/grill-adapter:update-wiki` 能做最终语义判断与后续回写。
 - **可恢复但非自动恢复**：journal 保留完整生命周期；损坏或非法转换 fail-closed，必须回到产生事件的 workflow 修复，不能手改 JSONL 绕过。
 
@@ -288,9 +289,9 @@ grill-adapter 同时以 **Claude Code plugin** 与 **Codex plugin** 形式发布
 
 唯一不由 plugin 承载的是目标项目的 host 约定块：Claude 写 `CLAUDE.md`，Codex 写 `AGENTS.md`。由 `./manage.sh install <project> --host grill|plain --runtime claude|codex|both` 写入；块里只点名 skill，不含任何安装路径，同时作为该项目的 workflow opt-in marker。四种运行时输出从 `contracts/host-conventions-v1.json` 统一生成，防止 Claude/Codex 语法或 host 路由独立漂移。
 
-**Skills（13）**：`wiki-readiness`、`wiki-research`、`wiki-materialize`、`wiki-maintenance`、`candidate-journal`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`setup-init-obsidian`、`scaffold-practice-skill`、`break-loop`、`source-truth-check`。
+**Skills（13）**：`wiki-readiness`、`wiki-research`、`wiki-materialize`（内部兼容工具）、`wiki-maintenance`、`candidate-journal`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`setup-init-obsidian`、`scaffold-practice-skill`、`break-loop`、`source-truth-check`。
 
-> 其中 `wiki-readiness` / `wiki-research` / `wiki-materialize` / `candidate-journal` / `update-wiki` / `source-truth-check` / `break-loop` 直接出现在上面的端到端流程；`wiki-maintenance` 是显式只读维护入口，只产出本地 proposal-only report；`setup-init-obsidian` 负责检查并复用两个 npm 包初始化 Obsidian、在必要时等待用户处理外部环境，并在获准后把旧 Wiki 路由给 `migrate-wiki`；`init-wiki` / `import-wiki` / `migrate-wiki` 是建库与 wiki 生命周期 skill，`migrate-wiki` 也承载 legacy → Obsidian 的 plan/apply/verify/cutover，并可从用户显式提供的 GitHub legacy 仓库读取迁移源；`scaffold-practice-skill` 负责把可复用实践固化成技能包。
+> 其中 `wiki-readiness` / `wiki-research` / `candidate-journal` / `update-wiki` / `source-truth-check` / `break-loop` 直接出现在上面的端到端流程；`wiki-materialize` 仅由 readiness 内部使用（显式恢复/诊断时才直接调用）；`wiki-maintenance` 是显式只读维护入口，只产出本地 proposal-only report；`setup-init-obsidian` 负责检查并复用两个 npm 包初始化 Obsidian、在必要时等待用户处理外部环境，并在获准后把旧 Wiki 路由给 `migrate-wiki`；`init-wiki` / `import-wiki` / `migrate-wiki` 是建库与 wiki 生命周期 skill，`migrate-wiki` 也承载 legacy → Obsidian 的 plan/apply/verify/cutover，并可从用户显式提供的 GitHub legacy 仓库读取迁移源；`scaffold-practice-skill` 负责把可复用实践固化成技能包。
 >
 > 约定块里对 grill-adapter 自己的 skill 一律带命名空间调用（`/grill-adapter:wiki-research` 等）；grill 自带的 `/grill-with-docs`、`/to-spec`、`/implement` 等不加。
 

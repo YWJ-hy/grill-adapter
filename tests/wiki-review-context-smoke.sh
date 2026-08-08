@@ -91,7 +91,7 @@ cat > "$CONTEXT" <<JSON
       "summary":"UNVERIFIED SOFT SUMMARY MUST NOT REACH REVIEWERS",
       "contentHash":"sha256:${SHA_C}",
       "bindingDigest":"${SHA_B}",
-      "destination":{"kind":"task-bound","reason":"Background only.","tasks":["21"]}
+      "destination":{"kind":"planning-only","reason":"Background only."}
     }
   ],
   "requiredSkills": [
@@ -214,6 +214,23 @@ notes = {
         "discoveryState": "discoverable",
         "content": "AUTHORITATIVE REVIEW SKILL CARD",
     },
+    "implementation-only-card": {
+        "sourceId": "project",
+        "role": "project",
+        "path": "Skills/implementation-only.md",
+        "wikiId": "implementation-only-card",
+        "type": "guide",
+        "summary": "Must stay out of review.",
+        "contentHash": "sha256:" + sha_c,
+        "bindingDigest": sha_b,
+        "skillRoles": ["implementer"],
+        "skillName": "implementation-only",
+        "skillVersion": "1.0.0",
+        "skillContractHash": "sha256:" + sha_c,
+        "skillTriggers": ["implementation"],
+        "discoveryState": "discoverable",
+        "content": "IMPLEMENTATION-ONLY SKILL CARD",
+    },
 }
 request = json.load(sys.stdin)
 if sys.argv[1] == "read-notes-by-wiki-ids":
@@ -227,6 +244,17 @@ else:
     raise SystemExit("unexpected command")
 PY
 FAKE_CMD="python3 $FAKE"
+
+# Readiness creates the approved role pair before review. Review must never use the live Wiki as a
+# fallback when that pair is absent or drifted.
+FAKE_CALL_LOG="$CALL_LOG" python3 "$READINESS" bind \
+  --receipt "$RECEIPT" \
+  --roster "$ROSTER" \
+  --context "$CONTEXT" \
+  --task-id 21 \
+  --project-root "$PROJECT" \
+  --obsidian-wiki-cmd "$FAKE_CMD" \
+  --reason "Approved reviewer context for issue 21." >/dev/null
 
 # A healthy implementation receipt produces one reviewer-role handoff. Both review axes read this
 # exact file; the handoff does not merge their responsibilities.
@@ -412,20 +440,23 @@ deny "$CTX_DIR/drift.wiki-review-handoff.md" "AUTHORITATIVE"
 [[ "$(wc -l < "$CALL_LOG")" == "$CALLS_BEFORE" ]] || fail "fingerprint drift must stop before Wiki access"
 mv "$TMP/roster.before-drift.json" "$ROSTER"
 
-# Any reviewer materialization failure replaces an old handoff with a caveat-only result, returns
-# success so code-review continues, and never leaks partial subprocess stdout.
+# Any missing/drifted reviewer snapshot replaces an old handoff with a caveat-only result, returns
+# success so code-review continues, and never falls back to a live Wiki read.
 printf 'STALE VERIFIED WIKI CONTENT\n' > "$HANDOFF"
+printf '\nEdited after approval.\n' >> "$CTX_DIR/21.wiki-review.md"
+CALLS_BEFORE="$(wc -l < "$CALL_LOG")"
 FAKE_CALL_LOG="$CALL_LOG" FAKE_FAIL=1 python3 "$READINESS" review-handoff \
   --receipt "$RECEIPT" \
   --task-id 21 \
   --project-root "$PROJECT" \
   --handoff "$HANDOFF" \
   --obsidian-wiki-cmd "$FAKE_CMD"
-need "$HANDOFF" "Status: materialize-failed"
+need "$HANDOFF" "Status: broken"
 need "$HANDOFF" "non-blocking caveat"
 deny "$HANDOFF" "STALE VERIFIED WIKI CONTENT"
 deny "$HANDOFF" "PARTIAL UNVERIFIED WIKI CONTENT"
 deny "$HANDOFF" "AUTHORITATIVE"
+[[ "$(wc -l < "$CALL_LOG")" == "$CALLS_BEFORE" ]] || fail "review must not fall back to a live Wiki read"
 
 # The skill and installed host conventions keep review context before subagents, preserve the two
 # axes, prohibit late research, and retain normal post-review Capture.

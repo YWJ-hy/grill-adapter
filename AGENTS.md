@@ -47,14 +47,14 @@ bash tests/codex-plugin-smoke.sh "$PWD"             # 隔离 marketplace 安装�
 三层：
 
 - **Host 适配器（薄、可插拔、零 skill patch）**：每个 host 同时有 `CLAUDE.md` 与 `AGENTS.md` 约定块；`install.py --runtime` 写入目标运行时的持久指令文件。约定块只点名 skill、不含安装路径。
-- **各子系统的 host 无关触点**：wiki 4 触点（Disclose `skills/wiki-research`、Carry `.wiki-context.json`、Bind `skills/wiki-materialize`、Capture `skills/update-wiki`）；source-truth Verify（`skills/source-truth-check`）+ Lint（`hooks/source-truth-lint.sh`）；break-loop（`skills/break-loop`）；`hooks/{wiki-reread,wiki-capture-suggest}.sh` 兜底，由 `hooks/hooks.json` 随插件自动注册。
+- **各子系统的 host 无关触点**：wiki 4 触点（Disclose `skills/wiki-research`、Carry `.wiki-context.json`、Bind 由 `skills/wiki-readiness` 编排并内部读取冻结合同、Capture `skills/update-wiki`）；source-truth Verify（`skills/source-truth-check`）+ Lint（`hooks/source-truth-lint.sh`）；break-loop（`skills/break-loop`）；`hooks/{wiki-reread,wiki-capture-suggest}.sh` 兜底，由 `hooks/hooks.json` 随插件自动注册。`skills/wiki-materialize` 仅保留为显式恢复/诊断工具。
 - **引擎（从旧 adapter 原样移植）**：`scripts/*.py`（wiki + source_truth 执行层）、`scripts/wiki_candidate_journal.py`（feature journal）、`scripts/grill_context_to_candidates.py`（grill→journal 桥，由 `skills/update-wiki` 调用）、`mcp/obsidian-wiki/`（唯一 Wiki MCP）、`.graph.json`（派生物）、`wiki-template/`、`wiki-repo-skills/`、`wiki-repo-ci/`、`contracts/`。
 
 `lib/`：`install.py`（只写 host 约定块）、`package_manifest.py`、`resolve_install_target.py`（只解析项目根）、`export_wiki_skills.py`、`subagent_models.py`。`manifest.json` 只剩 `projectLevel.hostConventions`——组件清单由插件布局声明，不再记账。
 
 ## 用户流程模型
 
-见 `docs/USER_FLOW_CN.md`。要点：grill 是主工作流，grill-adapter 只在 grill 各阶段旁挂触点（Disclose/Verify/Carry/Bind/Capture），全靠 AGENTS.md 约定 + hook，不动 grill 内部。规划确认后冻结 `<taskId>.wiki-implement.md` / `<taskId>.wiki-review.md`；执行与评审只消费各自角色文件，其中的 `depends-on` 闭包有界为 1 跳；任务完成后由 `update-wiki` 审查回写。
+见 `docs/USER_FLOW_CN.md`。要点：grill 是主工作流，grill-adapter 只在 grill 各阶段旁挂触点（Disclose/Verify/Carry/Bind/Capture），全靠 AGENTS.md 约定 + hook，不动 grill 内部。formal 规划确认后冻结 `<taskId>.wiki-implement.md` / `<taskId>.wiki-review.md`，direct/manual 则在 routing approval 后由 readiness 原子提交同一对角色文件；执行与评审只消费各自角色文件，其中的 `depends-on` 闭包有界为 1 跳；任务完成后由 `update-wiki` 审查回写。
 
 不要把 `python3 scripts/*.py` 描述成普通用户主要入口；它们是 skill/hook 的执行层。
 

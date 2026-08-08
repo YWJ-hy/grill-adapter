@@ -46,8 +46,8 @@
   "tickets": [
     {
       // Stable id, unique within the roster. It is what destination.tasks in the sidecar routes to,
-      // and what `/wiki-materialize <ticket-id>` is called with at execution time. Keep it exactly as
-      // the host names it (grill local: the NN prefix; a real tracker: the issue number).
+      // and what `wiki-readiness` binds before implementation/review. Keep it exactly as the host
+      // names it (grill local: the NN prefix; a real tracker: the issue number).
       "taskId": "01",
       "taskTitle": "Implement path-based form updates",
       // The full ticket text, verbatim. This is the fingerprint input: sha256 of the normalized text

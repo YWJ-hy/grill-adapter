@@ -22,19 +22,21 @@ installed `<!-- grill-adapter:host:...:start -->` marker in the project-root `AG
 workflow, and do not create `.grill-adapter/`, invoke another adapter skill, or emit adapter noise.
 A globally installed plugin is availability, not project opt-in.
 
-This is the host-agnostic **Bind** touchpoint for schema-v6 Obsidian sidecars. During planning,
+This is the internal host-agnostic **Bind** reader for schema-v6 Obsidian sidecars. During planning,
 the user-approved bound content is frozen into one Markdown task contract per role. During
 implementation or review this skill validates and consumes the matching role file:
 `<taskId>.wiki-implement.md` or `<taskId>.wiki-review.md`. The Markdown is both user-visible and
 agent-consumed; its embedded metadata protects the task fingerprint, context identity, and body
 digest. Sidecar summaries never substitute for the frozen task contract.
 
-It does not patch any host skill. `wiki-readiness` is the normal host-facing entry; it owns the
-one-time fingerprint preflight and invokes this reader internally. Use this skill directly only when
-an explicit standalone Bind is needed outside that readiness seam:
+It does not patch any host skill. `wiki-readiness` is the only normal host-facing entry; it owns
+the one-time fingerprint preflight, late-Carry transaction, and invokes this reader internally.
+Hosts must not route implementation or review through a separate materialization workflow. Use this
+skill directly only for explicit recovery or engine-level diagnostics:
 
 - **grill/plain implementation entry**: run `wiki-readiness` before the first code edit. It runs this Bind step after it has reused or late-finalized the current task's context, and records `ready` only after both role files validate.
-- **standalone Bind**: `/grill-adapter:wiki-materialize <ticket>` (or the Codex `$` form) remains available when an explicit host path requires it.
+- **compatibility utility**: `/grill-adapter:wiki-materialize <ticket>` (or the Codex `$` form) may
+  be used only when an explicit recovery or diagnostic path requires it; it is not a host stage.
 - The session-level `wiki-reread` hook may first report up to three digest-validated recovery, maintenance, incomplete Capture, or continuation actions, then falls back to approved snapshots that have no readiness result yet. These metadata-only actions are not task contracts and do not require a second direct materialization after `wiki-readiness` has run.
 
 The ticket id is the `taskId` from the feature's ticket roster — the same id the sidecar's `destination.tasks` routes to. `wiki-research` and `wiki-readiness` own the host-specific roster mapping; never derive an id from a plan heading or infer one from the current conversation. Resolve the sidecar and roster from the working tree (inside the final worktree if one is used).
