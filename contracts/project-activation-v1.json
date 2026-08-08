@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "kind": "grill-adapter.project-activation",
+  "preflightScript": "scripts/project_activation.py",
+  "preflightArgs": ["<project-root>", "[--explicit]"],
+  "preflightRoot": "installed plugin root",
+  "before": "any filesystem write or adapter workflow action",
+  "activeReasons": [
+    "explicit",
+    "settings",
+    "host-marker"
+  ],
+  "settingsPath": ".grill-adapter/settings.json",
+  "hostMarker": "<!-- grill-adapter:host:(grill|plain):start -->",
+  "standaloneExitCode": 3,
+  "standaloneBehavior": "Stop silently, do not create .grill-adapter state, invoke another adapter skill, or emit adapter noise.",
+  "explicitFlag": "Pass --explicit only when the user explicitly invoked the current grill-adapter skill."
+}

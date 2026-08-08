@@ -37,9 +37,15 @@ grill-with-docs -> to-spec -> to-tickets
 
 ## 4. installed Codex
 
-以 marketplace 安装 plugin、执行 `manage.sh install ... --runtime codex`，在 Codex 中走同一条完整路径。记录实际 `model` 和 `provider`，确认一个 Obsidian MCP server、13 skills、5 agents 和 host `AGENTS.md` 约定都来自安装后的 plugin。确认 `setup-init-obsidian` 先检查并使用 `grill-adapter` 与 `@grill-adapter/obsidian-wiki` 两个 npm 包；code-review 在两个 sub-agent 前复用 receipt，两个轴读取同一 reviewer Markdown；Wiki freeze/snapshot 故障只报告 caveat 且 review 仍完成。至少另跑一次跳过 formal to-tickets、从 direct issue/manual 进入 `$grill-adapter:wiki-readiness` 的单任务路径，并确认 `disabled`/`no-relevant` 可继续、`broken` 不注入部分内容。再分别运行 `$grill-adapter:wiki-maintenance audit <feature-slug>`、`consolidation <feature-slug>` 与 `update-wiki review`：三条路径分别确认唯一 digest-bound audit、candidate consolidation、Outbox consolidation child，coordinator 不读取或嵌入 role body，child 的第一个动作是 loader，并且只能使用该 mode 的工具与 compact schema。主 session 只能收到 metadata-only report 或 compact Outbox result。本仓提供 `GRILL_ADAPTER_RUN_CODEX_ACCEPTANCE=1 bash acceptance/codex-maintenance-installed.sh "$PWD"`，通过 PTY 顺序真跑三条交互式 Codex CLI 路径（禁止改回 `codex exec`），生成隔离 plugin cache、Source/Vault、`search`/`read` fake Obsidian CLI、私密正文/candidate marker 与 canonical journals，并机械验证每次唯一 spawn、合法 wait/terminal author、descriptor/digest/loader 顺序、语义分类、report/final response、事件流正文隔离、drift 失败保留旧报告及 Project/Vault/Git 不变性。该 fixture 不使用本机两个 npm 包，也不启动或要求 write bridge；该命令必须实际输出 `OK`，默认不纳入 smoke。隔离 `CODEX_HOME` 时只带入认证及 effective model/provider 最小配置；只验证 manifest 安装不算模型驱动集成验收。
+以 marketplace 安装 plugin、执行 `manage.sh install ... --runtime codex`，在 Codex 中走同一条完整路径。记录实际 `model` 和 `provider`，确认一个 Obsidian MCP server、12 skills、5 agents 和 host `AGENTS.md` 约定都来自安装后的 plugin。确认 `setup-init-obsidian` 先检查并使用 `grill-adapter` 与 `@grill-adapter/obsidian-wiki` 两个 npm 包；code-review 在两个 sub-agent 前复用 receipt，两个轴读取同一 reviewer Markdown；Wiki freeze/snapshot 故障只报告 caveat 且 review 仍完成。至少另跑一次跳过 formal to-tickets、从 direct issue/manual 进入 `$grill-adapter:wiki-readiness` 的单任务路径，并确认 `disabled`/`no-relevant` 可继续、`broken` 不注入部分内容。再分别运行 `$grill-adapter:wiki-maintenance audit <feature-slug>`、`consolidation <feature-slug>` 与 `update-wiki review`：三条路径分别确认唯一 digest-bound audit、candidate consolidation、Outbox consolidation child，coordinator 不读取或嵌入 role body，child 的第一个动作是 loader，并且只能使用该 mode 的工具与 compact schema。主 session 只能收到 metadata-only report 或 compact Outbox result。本仓提供 `GRILL_ADAPTER_RUN_CODEX_ACCEPTANCE=1 bash acceptance/codex-maintenance-installed.sh "$PWD"`，通过 PTY 顺序真跑三条交互式 Codex CLI 路径（禁止改回 `codex exec`），生成隔离 plugin cache、Source/Vault、`search`/`read` fake Obsidian CLI、私密正文/candidate marker 与 canonical journals，并机械验证每次唯一 spawn、合法 wait/terminal author、descriptor/digest/loader 顺序、语义分类、report/final response、事件流正文隔离、drift 失败保留旧报告及 Project/Vault/Git 不变性。该 fixture 不使用本机两个 npm 包，也不启动或要求 write bridge；该命令必须实际输出 `OK`，默认不纳入 smoke。隔离 `CODEX_HOME` 时只带入认证及 effective model/provider 最小配置；只验证 manifest 安装不算模型驱动集成验收。
 
 Issue #35 的完整上下文隔离验收运行：
+
+Issue #44 额外要求同一 installed Codex gate 覆盖三种 activation reason：无接线项目的显式
+`$grill-adapter:source-truth-check`（`--explicit`）、只有 `AGENTS.md` host marker 的
+`$mattpocock-skills:to-spec` 路由，以及没有 marker/settings 的 standalone grill 零状态、零
+adapter 调用。对应 fixture 在 `acceptance/codex-context-isolation-installed.sh` 的
+`ISSUE44_*` stages 中，默认随完整验收运行，不纳入普通 smoke。
 
 ```bash
 GRILL_ADAPTER_RUN_CODEX_ACCEPTANCE=1 \

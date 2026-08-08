@@ -99,7 +99,7 @@ Codex 当前没有 `--scope project|user`；插件安装是用户级的。项目
 先阻止未接线项目进入 adapter workflow，Wiki Source 读取再由目标项目 binding
 fail-closed。两层边界分别防止意外本地状态和跨项目 Source 暴露。
 
-一次装齐 13 skills + 5 agents + 3 hooks + 1 MCP server（Source-binding `obsidian-wiki`）。开发期不必安装：
+一次装齐 12 skills + 5 agents + 3 hooks + 1 MCP server（Source-binding `obsidian-wiki`）。`wiki-readiness` 内部持有 Bind 的 materialize reader，不单独进入 catalog。开发期不必安装：
 
 ```bash
 claude --plugin-dir "$PWD" plugin details grill-adapter   # 直接从磁盘加载 + 打印组件清单

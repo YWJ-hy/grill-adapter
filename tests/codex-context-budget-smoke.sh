@@ -58,7 +58,7 @@ PY
 # The runner accepts captured runtime discovery so its behavior can be tested without
 # depending on the developer machine's Codex defaults or credentials.
 mkdir -p "$TMP/captures" "$TMP/installed/skills/wiki-research" \
-  "$TMP/installed/skills/wiki-readiness" "$TMP/installed/skills/wiki-materialize" \
+  "$TMP/installed/skills/wiki-readiness" \
   "$TMP/installed/skills/update-wiki/references" \
   "$TMP/installed/skills/wiki-maintenance" "$TMP/installed/agents"
 
@@ -77,7 +77,6 @@ JSON
 
 printf 'RESEARCH-SKILL\n' >"$TMP/installed/skills/wiki-research/SKILL.md"
 printf 'READINESS-SKILL\n' >"$TMP/installed/skills/wiki-readiness/SKILL.md"
-printf 'MATERIALIZE-SKILL\n' >"$TMP/installed/skills/wiki-materialize/SKILL.md"
 printf 'CAPTURE-SKILL\n' >"$TMP/installed/skills/update-wiki/SKILL.md"
 printf 'TARGETING-REFERENCE\n' >"$TMP/installed/skills/update-wiki/references/targeting.md"
 printf 'TEMPLATE-REFERENCE\n' >"$TMP/installed/skills/update-wiki/references/content-templates.md"

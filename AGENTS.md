@@ -47,7 +47,7 @@ bash tests/codex-plugin-smoke.sh "$PWD"             # 隔离 marketplace 安装�
 三层：
 
 - **Host 适配器（薄、可插拔、零 skill patch）**：每个 host 同时有 `CLAUDE.md` 与 `AGENTS.md` 约定块；`install.py --runtime` 写入目标运行时的持久指令文件。约定块只点名 skill、不含安装路径。
-- **各子系统的 host 无关触点**：wiki 4 触点（Disclose `skills/wiki-research`、Carry `.wiki-context.json`、Bind 由 `skills/wiki-readiness` 编排并内部读取冻结合同、Capture `skills/update-wiki`）；source-truth Verify（`skills/source-truth-check`）+ Lint（`hooks/source-truth-lint.sh`）；break-loop（`skills/break-loop`）；`hooks/{wiki-reread,wiki-capture-suggest}.sh` 兜底，由 `hooks/hooks.json` 随插件自动注册。`skills/wiki-materialize` 仅保留为显式恢复/诊断工具。
+- **各子系统的 host 无关触点**：wiki 4 触点（Disclose `skills/wiki-research`、Carry `.wiki-context.json`、Bind 由 `skills/wiki-readiness` 编排并内部读取冻结合同、Capture `skills/update-wiki`）；source-truth Verify（`skills/source-truth-check`）+ Lint（`hooks/source-truth-lint.sh`）；break-loop（`skills/break-loop`）；`hooks/{wiki-reread,wiki-capture-suggest}.sh` 兜底，由 `hooks/hooks.json` 随插件自动注册。Bind 的 materialize reader 由 readiness 内部持有，不作为独立 skill 发布。
 - **引擎（从旧 adapter 原样移植）**：`scripts/*.py`（wiki + source_truth 执行层）、`scripts/wiki_candidate_journal.py`（feature journal）、`scripts/grill_context_to_candidates.py`（grill→journal 桥，由 `skills/update-wiki` 调用）、`mcp/obsidian-wiki/`（唯一 Wiki MCP）、`.graph.json`（派生物）、`wiki-template/`、`wiki-repo-skills/`、`wiki-repo-ci/`、`contracts/`。
 
 `lib/`：`install.py`（只写 host 约定块）、`package_manifest.py`、`resolve_install_target.py`（只解析项目根）、`export_wiki_skills.py`、`subagent_models.py`。`manifest.json` 只剩 `projectLevel.hostConventions`——组件清单由插件布局声明，不再记账。

@@ -166,6 +166,9 @@ RESEARCH_DISPATCH_FAILURE_LOG="$SANDBOX/codex-research-dispatch-failure.log"
 ROLE_LOAD_FAILURE_LOG="$SANDBOX/codex-research-role-load-failure.log"
 HOST_FAIL_OPEN_LOG="$SANDBOX/codex-host-fail-open.log"
 MAINTENANCE_DISPATCH_FAILURE_LOG="$SANDBOX/codex-maintenance-dispatch-failure.log"
+EXPLICIT_ACTIVATION_LOG="$SANDBOX/codex-explicit-activation.log"
+HOST_MARKER_ACTIVATION_LOG="$SANDBOX/codex-host-marker-activation.log"
+UNWIRED_STANDALONE_LOG="$SANDBOX/codex-unwired-standalone.log"
 
 SELECTED_MARKER='ISSUE_35_SELECTED_HARD_CONSTRAINT'
 UNSELECTED_MARKER='ISSUE_35_UNSELECTED_NOTE_BODY_MUST_NOT_ESCAPE'
@@ -456,6 +459,24 @@ git -C "$PROJECT" commit -qm fixture
 PROJECT_HEAD="$(git -C "$PROJECT" rev-parse HEAD)"
 VAULT_HEAD="$(git -C "$VAULT" rev-parse HEAD)"
 
+# These projects exercise the installed activation contract independently from the larger
+# issue-35 fixture. Keep the explicit and host-marker projects free of settings so each reason
+# is proven on its own; the standalone project has neither marker nor settings.
+EXPLICIT_PROJECT="$SANDBOX/explicit-project"
+HOST_MARKER_PROJECT="$SANDBOX/host-marker-project"
+UNWIRED_PROJECT="$SANDBOX/unwired-project"
+for activation_project in "$EXPLICIT_PROJECT" "$HOST_MARKER_PROJECT" "$UNWIRED_PROJECT"; do
+  mkdir -p "$activation_project"
+  git -C "$activation_project" init -q
+  git -C "$activation_project" config user.name 'Acceptance Test'
+  git -C "$activation_project" config user.email 'acceptance@example.invalid'
+done
+"$ROOT/manage.sh" install "$HOST_MARKER_PROJECT" --host grill --runtime codex >/dev/null
+grep -Fq '<!-- grill-adapter:host:grill:start -->' "$HOST_MARKER_PROJECT/AGENTS.md" || {
+  printf 'activation fixture host marker is missing\n' >&2
+  exit 1
+}
+
 SOURCE_CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
 MATTPOCOCK_SKILLS_ROOT="${GRILL_ADAPTER_MATTPOCOCK_SKILLS_ROOT:-}"
 is_plugin_root() {
@@ -687,6 +708,28 @@ if {!$child_closed} {
   expect eof
 }
 EXPECT
+}
+
+completed_parent_count() {
+  python3 - "$CODEX_SANDBOX_HOME/sessions" <<'PY'
+import json
+import pathlib
+import sys
+
+sessions = pathlib.Path(sys.argv[1])
+count = 0
+for path in sessions.rglob("rollout-*.jsonl"):
+    lines = [json.loads(line) for line in path.open(encoding="utf-8") if line.strip()]
+    if not lines or lines[0].get("payload", {}).get("thread_source") != "user":
+        continue
+    if any(
+        event.get("type") == "event_msg"
+        and event.get("payload", {}).get("type") == "task_complete"
+        for event in lines
+    ):
+        count += 1
+print(count)
+PY
 }
 
 export ACCEPTANCE_TERMINAL_LOG="$DISCOVERY_LOG"
@@ -1067,6 +1110,39 @@ unset ACCEPTANCE_DISABLE_MULTI_AGENT
   exit 1
 }
 
+# Issue #44 activation semantics are exercised through the installed Codex plugin. The explicit
+# call is allowed in an otherwise unwired project; the host-marker call is routed from AGENTS.md;
+# the standalone host workflow remains inert when neither marker nor settings is present.
+export ACCEPTANCE_COMPLETED_PARENTS="$(completed_parent_count)"
+export ACCEPTANCE_PROJECT="$EXPLICIT_PROJECT"
+export ACCEPTANCE_TERMINAL_LOG="$EXPLICIT_ACTIVATION_LOG"
+export ACCEPTANCE_PROMPT='ISSUE44_EXPLICIT_ACTIVATION. Explicitly invoke $grill-adapter:source-truth-check for this project. It has no host marker and no .grill-adapter/settings.json. Follow the installed activation contract before doing anything: run its project_activation.py preflight with --explicit, then find no configured source-of-truth policy and make no filesystem changes. Return only {"acceptanceStage":"explicit-activation","status":"pass"}.'
+run_codex_acceptance
+[[ ! -e "$EXPLICIT_PROJECT/.grill-adapter" ]] || {
+  printf 'explicit activation fixture created adapter state unexpectedly\n' >&2
+  exit 1
+}
+
+export ACCEPTANCE_COMPLETED_PARENTS="$(completed_parent_count)"
+export ACCEPTANCE_PROJECT="$HOST_MARKER_PROJECT"
+export ACCEPTANCE_TERMINAL_LOG="$HOST_MARKER_ACTIVATION_LOG"
+export ACCEPTANCE_PROMPT='ISSUE44_HOST_MARKER_ACTIVATION. Invoke $mattpocock-skills:to-spec for this empty project. Its installed Codex AGENTS.md contains only the grill-adapter host marker and it has no .grill-adapter/settings.json. Let the host router invoke source-truth-check at the to-spec moment; its activation must pass from the host marker, then find no configured policy and make no filesystem changes. Do not invoke any adapter skill by name. Return only {"acceptanceStage":"host-marker-activation","status":"pass"}.'
+run_codex_acceptance
+[[ ! -e "$HOST_MARKER_PROJECT/.grill-adapter" ]] || {
+  printf 'host-marker activation fixture created adapter state unexpectedly\n' >&2
+  exit 1
+}
+
+export ACCEPTANCE_COMPLETED_PARENTS="$(completed_parent_count)"
+export ACCEPTANCE_PROJECT="$UNWIRED_PROJECT"
+export ACCEPTANCE_TERMINAL_LOG="$UNWIRED_STANDALONE_LOG"
+export ACCEPTANCE_PROMPT='ISSUE44_UNWIRED_STANDALONE. Invoke $mattpocock-skills:to-spec for this empty standalone grill project. It intentionally has no AGENTS.md or CLAUDE.md host marker and no .grill-adapter/settings.json. Do not invoke any grill-adapter skill, do not create .grill-adapter state, and do not write product files. Return only {"acceptanceStage":"unwired-standalone","status":"pass"}.'
+run_codex_acceptance
+[[ ! -e "$UNWIRED_PROJECT/.grill-adapter" ]] || {
+  printf 'unwired standalone fixture created adapter state\n' >&2
+  exit 1
+}
+
 # The existing installed maintenance gate proves audit/consolidation isolation, proposal-only
 # behavior, stale-report preservation, and journal/binding drift handling with real Codex children.
 GRILL_ADAPTER_RUN_CODEX_ACCEPTANCE=1 \
@@ -1215,6 +1291,9 @@ host_fail_open_meta, host_fail_open_events = parent_for("ISSUE35_STAGE_HOST_FAIL
 maintenance_dispatch_meta, maintenance_dispatch_events = parent_for(
     "ISSUE35_STAGE_MAINTENANCE_DISPATCH_FAILURE"
 )
+explicit_activation_meta, explicit_activation_events = parent_for("ISSUE44_EXPLICIT_ACTIVATION")
+host_marker_activation_meta, host_marker_activation_events = parent_for("ISSUE44_HOST_MARKER_ACTIVATION")
+unwired_standalone_meta, unwired_standalone_events = parent_for("ISSUE44_UNWIRED_STANDALONE")
 
 def user_message(events):
     messages = [
@@ -1469,8 +1548,32 @@ for required in ("source_truth_settings.py", "--render-prompt", "plan-pre"):
     assert required in research_calls, (required, research_calls)
 
 spec_calls = "\n".join(json.dumps(call, ensure_ascii=False) for call in calls(spec_events))
-for required in ("source_truth_settings.py", "--render-prompt", "spec-pre"):
+for required in ("project_activation.py", "source_truth_settings.py", "--render-prompt", "spec-pre"):
     assert required in spec_calls, (required, spec_calls)
+
+explicit_activation_calls = event_text(explicit_activation_events)
+assert "project_activation.py" in explicit_activation_calls, explicit_activation_calls
+assert "--explicit" in explicit_activation_calls, explicit_activation_calls
+assert terminal_result(explicit_activation_events) == {
+    "acceptanceStage": "explicit-activation",
+    "status": "pass",
+}
+
+host_marker_activation_calls = event_text(host_marker_activation_events)
+assert "project_activation.py" in host_marker_activation_calls, host_marker_activation_calls
+assert "--explicit" not in host_marker_activation_calls, host_marker_activation_calls
+assert terminal_result(host_marker_activation_events) == {
+    "acceptanceStage": "host-marker-activation",
+    "status": "pass",
+}
+
+unwired_standalone_calls = event_text(unwired_standalone_events)
+assert "project_activation.py" not in unwired_standalone_calls, unwired_standalone_calls
+assert not re.search(r"(?:\$|/|<name>)grill-adapter:", unwired_standalone_calls), unwired_standalone_calls
+assert terminal_result(unwired_standalone_events) == {
+    "acceptanceStage": "unwired-standalone",
+    "status": "pass",
+}
 
 readiness_calls = "\n".join(json.dumps(call, ensure_ascii=False) for call in calls(readiness_events))
 for required in ("wiki_context_render.py", "--scaffold", "--finalize", "wiki_readiness.py", "freeze", "bind"):

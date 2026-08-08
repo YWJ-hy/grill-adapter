@@ -74,17 +74,17 @@
 |---|---|---|
 | **Disclose** 选 wiki | 独立 `/wiki-research` skill（包 `wiki-researcher` agent），任何 host 都能调 | grill-with-docs 质询期调它 |
 | **Carry** 带约束 | `.wiki-context.json` sidecar = 中立载体（记选中 section 的 source-aware 引用 + `sharedWiki` 身份） | to-spec / to-tickets 阶段据 selection 写它 |
-| **Bind** 角色化 task contract | ① 规划后 freeze 每 ticket 的 implement/review Markdown ② 每 ticket 调 `/wiki-materialize <ticket>` 校验并消费对应文件 ③ 粗兜底：hook 检测 active sidecar 提醒（会话级——hook 无原生 ticket 字段，§14） | implement/review 逐 task 跑，**不 patch implement** |
+| **Bind** 角色化 task contract | ① 规划后 freeze 每 ticket 的 implement/review Markdown ② 每 ticket 调 `/wiki-readiness <ticket>` 校验并消费对应文件 ③ 粗兜底：hook 检测 active sidecar 提醒（会话级——hook 无原生 ticket 字段，§14） | implement/review 逐 task 跑，**不 patch implement** |
 | **Capture** 回写 | `/update-wiki`（语义门一字不动）经 Stop hook / 约定触发 | code-review 后跑 update-wiki；grill 质询也经 §9 桥写进 wiki |
 
-`/wiki-materialize` 复用 `wiki_materialize_task.py`——本地 + `github_mcp` 两类 section 统一取，含**执行期有界 1 跳 `depends-on` 闭包**（不变式，§10）。source-truth / break-loop 的触点见 §8.5–8.6。
+`/wiki-readiness` 复用 `wiki_materialize_task.py`——本地 + `github_mcp` 两类 section 统一取，含**执行期有界 1 跳 `depends-on` 闭包**（不变式，§10）。source-truth / break-loop 的触点见 §8.5–8.6。
 
 ---
 
 ## 4. 项目边界：IN / OUT scope
 
 **IN（全部带进 grill-adapter）**：
-- **wiki**：引擎 + section 图 + shared MCP + 4 触点皮（`wiki-research`、`wiki-materialize`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`publish-shared-wiki`、`shared-wiki-mcp`）+ `scaffold-practice-skill`。
+- **wiki**：引擎 + section 图 + shared MCP + 4 触点皮（`wiki-research`、`wiki-readiness`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`publish-shared-wiki`、`shared-wiki-mcp`）+ `scaffold-practice-skill`。
 - **source-of-truth**：`source_truth_settings.py` + `source_truth_common.py` + 其 plan 校验 / 执行 lint 触点（§8.6）。
 - **break-loop**：调试复盘 → capture（§8.7）。
 - 支撑：`wiki-template/`、`wiki-repo-skills/`、`wiki-repo-ci/`、`contracts/`、install/manage/manifest/tests/docs。
@@ -110,7 +110,7 @@ grill-adapter/
 │   └── SETUP_AND_USAGE_CN.md · BUILD_PLAN_CN.md
 ├── skills/                       # host 无关 Claude Code skills
 │   ├── wiki-research/            # 【新建】Disclose 入口
-│   ├── wiki-materialize/         # 【新建】Bind 入口
+│   ├── wiki-readiness/         # 【新建】Bind 入口
 │   ├── update-wiki/ · init-wiki/ · import-wiki/ · migrate-wiki/          # 【移植】
 │   ├── publish-shared-wiki/ · shared-wiki-mcp/ · scaffold-practice-skill/# 【移植】
 │   ├── break-loop/               # 【移植】调试复盘→capture
@@ -192,7 +192,7 @@ grill-adapter/
 
 ### 8.1–8.4 wiki（同前）
 
-- **8.1 skills**：`wiki-research`（薄 router 调 wiki-researcher agent）、`wiki-materialize`（薄 router 跑 wiki_materialize_task.py，含有界 1 跳 depends-on 闭包）。
+- **8.1 skills**：`wiki-research`（薄 router 调 wiki-researcher agent）、`wiki-readiness`（薄 router 跑 wiki_materialize_task.py，含有界 1 跳 depends-on 闭包）。
 - **8.2 hooks**：`wiki-reread.sh`（UserPromptSubmit/SessionStart，`type: command`，检测 active `.wiki-context.json` → 跑 materialize → `hookSpecificOutput.additionalContext` 注入）、`wiki-capture-suggest.sh`（Stop → 提示 update-wiki）。
 - **8.3 host 适配器**：grill / plain 的 `CLAUDE.md` 约定块 + `settings.json` hook 片段，**零 skill patch**。
 - **8.4 install 模型（已定：用户级 skill + 项目级 config）**：`manage.sh install` 分两级——**用户级**（一次装、跨项目）：`skills/`+`agents/` → `~/.claude/skills`、shared-wiki MCP 通用注册（读 `CLAUDE_PROJECT_DIR` 自配置），替换占位符；**项目级**（每项目）：hook 片段写目标 `settings.json`（marker、幂等、只增）、选定 host 约定块写目标 `CLAUDE.md`、wiki 数据/绑定（`.grill-adapter/wiki/`、`.grill-adapter/settings.json`）。`manifest.json` 两级都记账。
@@ -237,7 +237,7 @@ grill 照常写 `CONTEXT.md` + `docs/adr/`，**不改 grill 任何 skill**。变
 
 ## 11. 诚实的降级（已定接受）
 
-1. **Bind 从「强制门」变「约定 + hook」**：hook 无原生 ticket 字段（§14），per-ticket 精度靠显式 `/wiki-materialize <ticket>` 约定，hook 作会话级粗兜底。airtight 略降，双保险补偿。
+1. **Bind 从「强制门」变「约定 + hook」**：hook 无原生 ticket 字段（§14），per-ticket 精度靠显式 `/wiki-readiness <ticket>` 约定，hook 作会话级粗兜底。airtight 略降，双保险补偿。
 2. **中途 capture 降级（✅ 已接受）**：无 executing/SDD 阶段可边跑边追加 → 退回「末尾一次」。补偿：grill 规划期质询当场写进 wiki；「编码中涌现」靠末尾 update-wiki 从 git diff 复盘。**不单造 hook。**
 
 ---
@@ -249,7 +249,7 @@ grill 照常写 `CONTEXT.md` + `docs/adr/`，**不改 grill 任何 skill**。变
 | 0. 骨架 | `../grill-adapter/` + §5 目录树空壳 + `.gitignore` + `git init` | 树就位 |
 | 1. 移植引擎 | `scripts/`（wiki+source_truth）、`mcp/`、`contracts/`、`wiki-template/`、`wiki-repo-*`；替换占位符 | 依赖闭包完整；MCP 独立可启；`wiki_*.py --wiki-dir` 跑通 |
 | 2. 移植 skills + agents | wiki 全套 + `break-loop` + scaffold + wiki researcher agent | 去 Superpowers 措辞后独立可跑 |
-| 3. 新建 wiki 4 触点皮 | `wiki-research`、`wiki-materialize` | Disclose/Bind 跑通 |
+| 3. 新建 wiki 4 触点皮 | `wiki-research`、`wiki-readiness` | Disclose/Bind 跑通 |
 | 4. 新建 hooks | `wiki-reread.sh`、`wiki-capture-suggest.sh`、`source-truth-lint.sh` | plain 下 hook 触发+注入正确 |
 | 5. 子系统触点 | source-truth `/source-truth-check` skill + lint hook(§8.5)；break-loop(§8.6) 约定；`grill_context_to_candidates.py` 桥(§9) | 约定块可粘进目标 CLAUDE.md；桥+skill 跑通 |
 | 6. host 适配器 + install | `host-adapters/{grill,plain}` + `lib/install.py` + `manage.sh` + `manifest.json` | install/verify/doctor 走通 |
@@ -287,7 +287,7 @@ grill 照常写 `CONTEXT.md` + `docs/adr/`，**不改 grill 任何 skill**。变
 ### 已查实（2026-07-15）
 
 - **✅ import-wiki 作 grill→wiki 桥**：不能一把梭（纯结构迁移）；语义升级归 `update-wiki`（增量）/ `migrate-wiki`（存量）。§9。
-- **✅ hook 无原生「当前 ticket」**：事件只给会话级 + 事件级字段。per-ticket 靠 ① 显式 `/wiki-materialize <ticket>` 消费对应角色 Markdown（首选）② `current-ticket` marker/env ③ 解析 tool_input/transcript。
+- **✅ hook 无原生「当前 ticket」**：事件只给会话级 + 事件级字段。per-ticket 靠 ① 显式 `/wiki-readiness <ticket>` 消费对应角色 Markdown（首选）② `current-ticket` marker/env ③ 解析 tool_input/transcript。
 - **✅ hook 能注入 context + shell 脚本**：可注入事件 = SessionStart/UserPromptSubmit/PostToolUse/Stop/PreCompact/PostCompact，经 `hookSpecificOutput.additionalContext`；`type: command` hook 可跑任意脚本（stdin 收事件 JSON、timeout 默认 600s、并行）。reread 用 UserPromptSubmit/SessionStart，capture 用 Stop，source-truth lint 用 PostToolUse/Stop。
 
 ### 已定决策

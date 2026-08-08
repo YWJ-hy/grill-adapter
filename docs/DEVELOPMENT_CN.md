@@ -35,6 +35,11 @@ grill-with-docs → to-spec / to-tickets → implement → code-review → updat
 
 ① 是回归网，②~⑤ 是安装/接线网，⑥ 是不可省的人工验收。**下四层全绿 ≠ 通过验收**，⑥ 必须真跑。
 
+公开 skill inventory 由 `tests/skill-catalog-smoke.sh` 固定为 12 个入口；Bind 的
+materialize reader 随 `wiki-readiness` 内部发货，不生成独立 catalog entry。所有公开入口共享
+`contracts/project-activation-v1.json`，描述只保留路由信息和短 availability suffix，实际 preflight、
+显式调用与 standalone 零噪声语义由该 contract 和 `scripts/project_activation.py` 共同保证。
+
 ### 2.1 ① 层引擎 smoke / regression 清单（按子系统分组）
 
 `tests/` 下近 40 个脚本，`self-test.sh` 一次跑全套。按子系统速查：
@@ -58,7 +63,7 @@ grill-adapter 同时提供 Claude Code 与 Codex plugin manifest。共享 skills
 开发期不必安装即可加载 plugin 并核对组件清单：
 
 ```bash
-claude --plugin-dir "$PWD" plugin details grill-adapter   # 应报 13 skills / 5 agents / 3 hooks / 1 MCP server
+claude --plugin-dir "$PWD" plugin details grill-adapter   # 应报 12 skills / 5 agents / 3 hooks / 1 MCP server
 codex plugin marketplace add "$PWD"                       # 开发期本地 marketplace
 codex plugin add grill-adapter@grill-adapter
 ```
@@ -129,7 +134,7 @@ bash tests/host-conventions-smoke.sh "$PWD"
   3. **占位符残留检查**：机械 `grep` `__SUPERPOWER_ADAPTER` 残留，以及 `skills/`、`agents/`、`host-adapters/` 里已作废的 `__GRILL_ADAPTER_ROOT__`。
   4. **所有 MCP typecheck + build + test**：每个 `mcp/*` 包运行 `npm install && npm run typecheck && npm run build && npm test`（无 npm 则 SKIP）。`build` 是 esbuild 打包、**不做类型检查**，所以 `typecheck` 必须单独跑。
   5. **MCP bundle 已提交且与 src 一致**：每个插件注册 MCP 的 `dist/index.js` 必须存在且在步骤 4 重新构建后无 git 漂移。
-  6. **plugin 组件清单**：Claude 必须报满 13 skills / 5 agents / 3 hooks / 1 MCP；`tests/codex-plugin-smoke.sh` 必须通过 manifest 校验、隔离 marketplace 安装，并从 `codex debug prompt-input` 验证安装后模型可见的 13 个 skills 与 5 个 role prompts。
+  6. **plugin 组件清单**：Claude 必须报满 12 skills / 5 agents / 3 hooks / 1 MCP；`tests/codex-plugin-smoke.sh` 必须通过 manifest 校验、隔离 marketplace 安装，并从 `codex debug prompt-input` 验证安装后模型可见的 12 个 skills 与 5 个 role prompts。
   6b. **安装后 Codex 上下文预算**：隔离安装后从真实 prompt/tool discovery 量化固定成本和四个关键阶段，按 `contracts/codex-context-budget-v1.json` 卡回归；不发模型请求，也不替代行为验收。
   7. **沙盒项目接线 + verify**：对临时项目 `install --host grill` 后 `verify`。
   8. **全套 smoke**：跑 `self-test.sh`。

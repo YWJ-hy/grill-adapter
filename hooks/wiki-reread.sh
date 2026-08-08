@@ -203,6 +203,6 @@ if [ "$SIDECAR_SCHEMA" = "6" ] && [ "$LEGACY_SIDECAR" != "1" ]; then
   [ -n "$PENDING_TASKS" ] || exit 0
   emit "Approved Wiki task snapshot(s) await their first readiness Bind in \`$REL_SIDECAR\`: \`$PENDING_TASKS\`. When the current ticket enters implementation, use the normal \`grill-adapter:wiki-readiness\` step; it validates and consumes the frozen implementer Markdown. Do not run a separate materialization solely because of this SessionStart reminder."
 else
-  emit "Active wiki constraints detected in \`$REL_SIDECAR\`. Before implementing or reviewing each ticket, run \`/grill-adapter:wiki-materialize <ticket-id>\` to consume the role-specific task contract."
+  emit "Active wiki constraints detected in \`$REL_SIDECAR\`. Before implementing or reviewing each ticket, run the normal \`/grill-adapter:wiki-readiness <ticket-id>\` step to validate and consume the role-specific task contract."
 fi
 exit 0

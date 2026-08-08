@@ -20,7 +20,6 @@ WORKFLOW_SKILLS=(
   setup-init-obsidian
   source-truth-check
   update-wiki
-  wiki-materialize
   wiki-maintenance
   wiki-readiness
   wiki-research
@@ -34,17 +33,16 @@ for skill in "${WORKFLOW_SKILLS[@]}"; do
   printf '%s' "$frontmatter" | grep -Fqi 'standalone grill' \
     || fail "$skill description can auto-activate in a standalone grill project"
 
-  grep -Fq '## Activation gate' "$file" \
-    || fail "$skill has no activation gate"
-  grep -Fq '<!-- grill-adapter:host:' "$file" \
-    || fail "$skill activation gate does not recognize installed host wiring"
-  grep -Fq '.grill-adapter/settings.json' "$file" \
-    || fail "$skill activation gate does not recognize explicit project settings"
+  grep -Fq '## Activation' "$file" \
+    || fail "$skill has no activation contract"
+  grep -Fq 'contracts/project-activation-v1.json' "$file" \
+    || fail "$skill does not reference the canonical activation contract"
   grep -Fqi 'before any filesystem write' "$file" \
-    || fail "$skill activation gate does not protect the filesystem"
-  grep -Fq 'scripts/project_activation.py' "$file" \
-    || fail "$skill activation gate does not run the mechanical preflight"
+    || fail "$skill activation contract does not protect the filesystem"
 done
+
+[[ -f "$ROOT/contracts/project-activation-v1.json" ]] \
+  || fail "canonical project activation contract is missing"
 
 python3 - "$ROOT/.codex-plugin/plugin.json" <<'PY'
 import json

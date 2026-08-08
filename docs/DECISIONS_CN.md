@@ -103,7 +103,7 @@ per-ticket（按工单）精度需要知道「当前 ticket 是哪个」。这�
 - 可注入的事件 = **SessionStart / UserPromptSubmit / PostToolUse / Stop / PreCompact / PostCompact**，都经 `hookSpecificOutput.additionalContext` 注入上下文。
 - `type: command` 的 hook 可以跑**任意脚本**（从 stdin 收事件 JSON）。
 - **hook 没有原生的「当前 ticket」字段**。因此 per-ticket 精度靠三级降级取得：
-  1. 显式 `/wiki-materialize <ticket>`（**首选**）。
+  1. 显式 `/wiki-readiness <ticket>`（**首选**）。
   2. `current-ticket` marker / 环境变量。
   3. 解析 `tool_input` / transcript。
 
@@ -323,7 +323,7 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 - 同一 feature identity 与 Carry/Bind sidecar 对齐，host 不需要暴露 plan 文档或引擎路径。
 
 **代价（已知并接受）**
-- 插件组件清单当前为 13 skills；release inventory 与双 runtime smoke 必须同步。
+- 插件组件清单当前为 12 public skills；Bind 的 materialize reader 随 readiness 内部发货。release inventory 与双 runtime smoke 必须同步。
 - 旧裸 candidate rows 不兼容新 journal，过渡中的活动 feature 必须重新经 skill 追加，不能混写或自动猜测迁移。
 
 ---
