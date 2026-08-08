@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "kind": "grill-adapter.developer-doc-routing",
+  "authority": {
+    "invariants": "docs/ARCHITECTURE_CN.md",
+    "hostIntegration": "docs/HOST_INTEGRATION_CN.md",
+    "hostConventionSource": "contracts/host-conventions-v1.json",
+    "ticketRoster": "contracts/ticket-roster-v1.example.jsonc",
+    "taskSnapshot": "contracts/wiki-task-snapshot-v2.example.jsonc",
+    "bindingAndAuthorization": "docs/ARCHITECTURE_CN.md",
+    "userFlow": "docs/USER_FLOW_CN.md",
+    "installedAcceptance": "docs/DEVELOPMENT_CN.md",
+    "historicalBuildPlan": "docs/BUILD_PLAN_CN.md",
+    "historicalDecisions": "docs/DECISIONS_CN.md"
+  },
+  "routes": [
+    {
+      "id": "documentation",
+      "changeType": "文档入口、索引或路由",
+      "docs": ["docs/DEVELOPMENT_CN.md", "docs/DOCUMENTATION_INDEX_CN.md"],
+      "checks": ["bash tests/documentation-index-smoke.sh <root>"]
+    },
+    {
+      "id": "host",
+      "changeType": "host 约定、install、激活或 hook 接线",
+      "docs": ["docs/HOST_INTEGRATION_CN.md", "contracts/host-conventions-v1.json", "host-adapters/<host>/{CLAUDE,AGENTS}.md"],
+      "checks": ["python3 scripts/render_host_conventions.py --check", "bash tests/install-project-wiring-smoke.sh <root>", "bash tests/host-conventions-smoke.sh <root>"]
+    },
+    {
+      "id": "workflow",
+      "changeType": "用户流程或入口 skill/agent",
+      "docs": ["docs/USER_FLOW_CN.md", "skills/<entry>/SKILL.md", "agents/<role>.md"],
+      "syncTargets": ["host-adapters/<host>/{CLAUDE,AGENTS}.md", "README.md"],
+      "checks": ["bash tests/skill-catalog-smoke.sh <root>", "bash tests/codex-plugin-smoke.sh <root>", "Codex installed acceptance"]
+    },
+    {
+      "id": "carry-bind",
+      "changeType": "Carry、ticket roster、Readiness、Bind 或角色 snapshot",
+      "docs": ["docs/ARCHITECTURE_CN.md", "contracts/ticket-roster-v1.example.jsonc", "contracts/wiki-context-v6.example.jsonc", "contracts/wiki-task-snapshot-v2.example.jsonc", "contracts/wiki-readiness-v1.example.jsonc"],
+      "checks": ["bash tests/ticket-roster-smoke.sh <root>", "bash tests/wiki-context-scaffold-smoke.sh <root>", "bash tests/wiki-readiness-smoke.sh <root>"]
+    },
+    {
+      "id": "obsidian",
+      "changeType": "Obsidian binding、授权、MCP 或运行时运维",
+      "docs": ["docs/OBSIDIAN_WIKI_CN.md", "docs/OBSIDIAN_ACCEPTANCE_CN.md", "mcp/obsidian-wiki/src/<module>.ts"],
+      "checks": ["npm run typecheck", "npm run build", "npm test", "bash tests/obsidian-runtime-operations-smoke.sh <root>"]
+    },
+    {
+      "id": "engine",
+      "changeType": "scripts/ 引擎、schema 或 section/graph 语义",
+      "docs": ["docs/ARCHITECTURE_CN.md", "contracts/<engine-contract>.jsonc", "scripts/<engine>.py"],
+      "checks": ["bash tests/<subsystem>-smoke.sh <root>", "bash self-test.sh <temporary-project>", "./manage.sh release-check <project>"]
+    },
+    {
+      "id": "tests",
+      "changeType": "测试实现、测试分层或验收清单",
+      "docs": ["docs/DEVELOPMENT_CN.md", "docs/DOCUMENTATION_INDEX_CN.md", "tests/<name>.sh"],
+      "checks": ["bash tests/<name>.sh <root>", "bash tests/documentation-index-smoke.sh <root>", "bash self-test.sh <temporary-project>"]
+    },
+    {
+      "id": "source-truth-debug",
+      "changeType": "source-truth 或 break-loop 触点",
+      "docs": ["docs/ARCHITECTURE_CN.md", "skills/source-truth-check/SKILL.md", "skills/break-loop/SKILL.md"],
+      "checks": ["bash tests/source-truth-settings-smoke.sh <root>", "bash tests/hooks-smoke.sh <root>", "bash tests/project-opt-in-smoke.sh <root>"]
+    },
+    {
+      "id": "release",
+      "changeType": "插件布局、组件清单或发布门",
+      "docs": ["docs/DOCUMENTATION_INDEX_CN.md", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "release-check.sh"],
+      "checks": ["bash tests/documentation-index-smoke.sh <root>", "bash tests/codex-plugin-smoke.sh <root>", "./manage.sh release-check <project>"]
+    }
+  ],
+  "requiredReadBaseline": {
+    "schemaVersion": 1,
+    "bytes": 56835,
+    "unit": "utf8Bytes",
+    "description": "pre-#46 mandatory DEVELOPMENT + HOST_INTEGRATION + ARCHITECTURE read"
+  }
+}

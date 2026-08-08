@@ -283,26 +283,6 @@ grill-adapter 明确承认自己不是无缝的，并把降级点讲清楚：
 
 ---
 
-## 附录 · plugin 组件一览
+## 维护者索引
 
-grill-adapter 同时以 **Claude Code plugin** 与 **Codex plugin** 形式发布。Claude 使用 `claude plugin install grill-adapter@grill-adapter --scope project|user`；Codex 使用 `codex plugin marketplace add YWJ-hy/grill-adapter` 后 `codex plugin add grill-adapter@grill-adapter`。
-
-唯一不由 plugin 承载的是目标项目的 host 约定块：Claude 写 `CLAUDE.md`，Codex 写 `AGENTS.md`。由 `./manage.sh install <project> --host grill|plain --runtime claude|codex|both` 写入；块里只点名 skill，不含任何安装路径，同时作为该项目的 workflow opt-in marker。四种运行时输出从 `contracts/host-conventions-v1.json` 统一生成，防止 Claude/Codex 语法或 host 路由独立漂移。
-
-**Skills（12）**：`wiki-readiness`、`wiki-research`、`wiki-maintenance`、`candidate-journal`、`update-wiki`、`init-wiki`、`import-wiki`、`migrate-wiki`、`setup-init-obsidian`、`scaffold-practice-skill`、`break-loop`、`source-truth-check`。
-
-> 其中 `wiki-readiness` / `wiki-research` / `candidate-journal` / `update-wiki` / `source-truth-check` / `break-loop` 直接出现在上面的端到端流程；Bind 的 materialize reader 仅由 readiness 内部使用，不再作为独立入口；`wiki-maintenance` 是显式只读维护入口，只产出本地 proposal-only report；`setup-init-obsidian` 负责检查并复用两个 npm 包初始化 Obsidian、在必要时等待用户处理外部环境，并在获准后把旧 Wiki 路由给 `migrate-wiki`；`init-wiki` / `import-wiki` / `migrate-wiki` 是建库与 wiki 生命周期 skill，`migrate-wiki` 也承载 legacy → Obsidian 的 plan/apply/verify/cutover，并可从用户显式提供的 GitHub legacy 仓库读取迁移源；`scaffold-practice-skill` 负责把可复用实践固化成技能包。
->
-> 约定块里对 grill-adapter 自己的 skill 一律带命名空间调用（`/grill-adapter:wiki-research` 等）；grill 自带的 `/grill-with-docs`、`/to-spec`、`/implement` 等不加。
-
-**Agent roles（5）**：`wiki-researcher`、`wiki-capture`、`wiki-maintenance-audit`、`wiki-maintenance-consolidation`、`wiki-outbox-consolidation`。Claude Code 直接注册；Codex 的 research、Capture 和每个 maintenance coordinator 只解析当前 role descriptor 并派生不继承上下文的 child，由 child 校验 digest 后只读取该 role。audit、candidate consolidation 和 Outbox consolidation 互不携带 mode selector、流程、工具权限或输出 schema。dispatch 返回句柄后，等待同一 agent path 是唯一允许的下一步；在终态前不得发送用户消息、提问、调用 MCP 或继续主流程，且有界等待超时要继续等待。dispatch/容量/transport/生命周期或 role load 失败走对应 `broken` 路径，不能降级为 `no-relevant` 或空维护结果。
-
-**MCP server（1）**：`obsidian-wiki` 解析受约束的 Obsidian Source binding，并提供状态、Source、读取、proposal 与 apply 工具。它随 plugin 自动启动，无需手工注册；只操作当前项目 `.grill-adapter/settings.json` 声明的 binding，未绑定、Vault/仓库不健康或 policy 不兼容时 fail-closed。实际写入由另行启动、只监听 loopback 的 write bridge 完成，MCP 自身不开放 HTTP 端口。
-
-**Hooks（3 个事件）**：随 plugin 启用自动注册，不往项目设置里并片段。
-
-| hook | 触发时机 | 作用 |
-| --- | --- | --- |
-| `wiki-reread.sh` | SessionStart | 最多显示三条 digest-validated recovery/maintenance/Capture/continuation action；否则提示已批准且尚无 readiness 结果的 task；不 reread Note |
-| `wiki-capture-suggest.sh` | Stop | Capture 兜底：pending/deferred 提醒、invalid 报错、全终态静默 |
-| `source-truth-lint.sh` | PostToolUse / Stop | 对真实改动文件做真实源 lint |
+本页只描述用户可见的阶段、触点和产物。host convention、插件组件清单、hook 事件和验证命令分别由 [`HOST_INTEGRATION_CN.md`](HOST_INTEGRATION_CN.md)、[`DOCUMENTATION_INDEX_CN.md`](DOCUMENTATION_INDEX_CN.md) 与 [`DEVELOPMENT_CN.md`](DEVELOPMENT_CN.md) 维护；不要在本页添加逐项 smoke 或完整约定块副本。

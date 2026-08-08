@@ -2,6 +2,8 @@
 
 本文记录 grill-adapter 的关键设计决策及其**理由**，是一份 rationale（取舍）文档，不是使用手册。
 
+> **历史决策记录，不是当前契约**：实现边界以 [`docs/ARCHITECTURE_CN.md`](ARCHITECTURE_CN.md)、[`docs/HOST_INTEGRATION_CN.md`](HOST_INTEGRATION_CN.md)、`contracts/` 和当前插件布局为准。已被后续决策取代的条目带有 `SUPERSEDED` 状态；搜索到历史条目时不要把它当作 required-read。
+
 grill-adapter 是一个 **host-agnostic 的 Claude Code 适配器**，由一个成熟但与 Superpowers 深度耦合的 adapter 解耦而来。当前产品边界包括项目 wiki、source-of-truth 真实源校验和 break-loop；原有的 `native_skill_patch.py` 机制（往 Superpowers 自己的 skill 里打 6-9 个锚点补丁）已被移除。默认前端宿主 = **grill**（mattpocock/skills），同时也支持裸 Claude Code。
 
 下面每条决策按 **背景 / 决策 / 理由** 三段展开。
@@ -138,9 +140,9 @@ per-ticket（按工单）精度需要知道「当前 ticket 是哪个」。这�
 
 ---
 
-## 决策 8：安装模型（**已被决策 12 取代**）
+## 决策 8：安装模型（SUPERSEDED）
 
-> 本节保留为历史记录。两级安装模型已整体废除，改为以 Claude Code 插件发货——见决策 12。
+> 状态：**SUPERSEDED**。本节保留为历史记录。两级安装模型已整体废除，改为以 Claude Code/Codex 插件发货——见决策 12。
 
 **背景**
 安装要同时满足两个诉求：skill「一次装、跨项目复用」，以及 hook / 约定 / 数据「每项目独立」。
@@ -176,7 +178,9 @@ per-ticket（按工单）精度需要知道「当前 ticket 是哪个」。这�
 
 ---
 
-## 决策 10：shared wiki 每项目绑定
+## 决策 10：shared wiki 每项目绑定（SUPERSEDED）
+
+> 状态：**SUPERSEDED**。本节的 `wiki.sharedMcp` / `CLAUDE_PROJECT_DIR` 模型由 Obsidian Source bindings 与双运行时 workspace 解析取代；当前 binding 与授权不变式只见 `docs/ARCHITECTURE_CN.md`。
 
 **背景**
 多项目共享 wiki 时，「哪个项目连哪个 shared wiki」的归属必须清晰、可 fail-closed。
@@ -306,7 +310,9 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 - append-only event history 同时保住原始候选、替代关系和 Capture 决策，不靠覆写恢复状态。
 - structured write receipt 把 candidate 和 staged Note identity 绑定，为中断恢复及后续按 repositoryRef 发布提供最小充分状态，同时不复制权威内容。
 
-## Obsidian 发布按 applied receipts 建可恢复 draft PR run（2026-07）
+## Obsidian 发布按 applied receipts 建可恢复 draft PR run（SUPERSEDED，2026-07）
+
+> 状态：**SUPERSEDED**。正常 Capture/publish 已由决策 18 的 machine-local Outbox 取代；本节只保留 legacy recovery rationale。
 
 ### 决策
 

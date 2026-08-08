@@ -181,16 +181,17 @@ grill (mattpocock/skills) is a read-only, versioned plugin bundle you subscribe 
 
 | Doc | For |
 |---|---|
+| [`docs/DEVELOPMENT_CN.md`](docs/DEVELOPMENT_CN.md) | 维护者入口：变更类型 → 最小必读文档 → 验证命令；Codex installed acceptance |
+| [`docs/DOCUMENTATION_INDEX_CN.md`](docs/DOCUMENTATION_INDEX_CN.md) | 权威边界、生成的组件/测试索引和 required-read 体积报告 |
 | [`docs/SETUP_AND_USAGE_CN.md`](docs/SETUP_AND_USAGE_CN.md) | 从未装过 grill 的用户：装 grill + 装 grill-adapter + 端到端走一遍 |
 | [`QUICKSTART_CN.md`](QUICKSTART_CN.md) | 已装过 grill：5 分钟跑通 |
-| [`docs/ARCHITECTURE_CN.md`](docs/ARCHITECTURE_CN.md) | 三层架构、4 触点、引擎、section 图、shared MCP、执行期闭包 |
+| [`docs/ARCHITECTURE_CN.md`](docs/ARCHITECTURE_CN.md) | 三层架构、4 触点、跨层不变式和权威 contract 边界 |
 | [`docs/OBSIDIAN_WIKI_CN.md`](docs/OBSIDIAN_WIKI_CN.md) | Obsidian Source binding、machine registry、manifest 与 fail-closed 诊断 |
 | [`docs/OBSIDIAN_ACCEPTANCE_CN.md`](docs/OBSIDIAN_ACCEPTANCE_CN.md) | Desktop + installed Claude Code/Codex 最终验收、shadow validation 与恢复演练 |
-| [`docs/HOST_INTEGRATION_CN.md`](docs/HOST_INTEGRATION_CN.md) | host 适配器模型、grill/plain 约定块全文、plugin 安装模型 |
-| [`docs/USER_FLOW_CN.md`](docs/USER_FLOW_CN.md) | 最终用户端到端流程 |
-| [`docs/DEVELOPMENT_CN.md`](docs/DEVELOPMENT_CN.md) | 开发与验收原则、测试分层 |
-| [`docs/DECISIONS_CN.md`](docs/DECISIONS_CN.md) | 为什么这么设计 |
-| [`docs/BUILD_PLAN_CN.md`](docs/BUILD_PLAN_CN.md) | 本项目的构建蓝图（存档） |
+| [`docs/HOST_INTEGRATION_CN.md`](docs/HOST_INTEGRATION_CN.md) | host 协议、install/activation 和路径替换边界；约定块由 contract 生成 |
+| [`docs/USER_FLOW_CN.md`](docs/USER_FLOW_CN.md) | 最终用户端到端流程、阶段产物和降级语义 |
+| [`docs/DECISIONS_CN.md`](docs/DECISIONS_CN.md) | 历史 rationale；`SUPERSEDED` 条目不是当前契约 |
+| [`docs/BUILD_PLAN_CN.md`](docs/BUILD_PLAN_CN.md) | 历史构建蓝图（ARCHIVED, NON-AUTHORITATIVE） |
 
 ## Requirements
 
