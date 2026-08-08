@@ -119,7 +119,7 @@ grill-adapter doctor /path/to/your/project
 | 1 质询/发现 | `/grill-with-docs` | Disclose：约定提示 `/grill-adapter:wiki-research`（brainstorm） | spec 草稿 |
 | 2 定 spec | `/to-spec` | source-truth Verify：`/grill-adapter:source-truth-check`（spec-pre） | spec |
 | 3 拆 ticket | `/to-tickets` | Disclose+Carry：`/grill-adapter:wiki-research`（plan）→ scaffold sidecar → 由真实 ticket 建 roster → `--finalize` → 用户批准后 `freeze` | `wiki-context.json`、`ticket-roster.json`、每 task 的 `wiki-implement.md` / `wiki-review.md` |
-| 4 实现 | `/implement` | Readiness+Bind：首次修改前 `/grill-adapter:wiki-readiness`；`ready` 消费角色化 implement Markdown；`source-truth-lint` hook | 稳定 task/receipt + 用户可见且 Agent 同步消费的硬约束全文 |
+| 4 实现 | `/implement` | Readiness+Bind：首次修改前 `/grill-adapter:wiki-readiness`；高层入口按稳定 task identity 返回结构化终态，`ready` 消费角色化 implement Markdown；`source-truth-lint` hook | 稳定 task/receipt + 用户可见且 Agent 同步消费的硬约束全文 |
 | 5 评审/入草稿箱 | `/code-review` → `/grill-adapter:update-wiki` | 两个 reviewer 前复用 readiness；评审后派生一个隔离 Capture Agent，确定性 staging 把值得保留的修改放入当前项目 machine-local Outbox，正式 base 不变。需要时用 `status`/`review`，显式无 feature slug `publish` 才按 repository 批量创建 draft PR | compact queued/skipped/needs-decision 计数；显式 publish 后为 draft PR |
 | 6 调试（如需） | `/diagnosing-bugs` → `/grill-adapter:break-loop` | debug Disclose + 复盘→Capture | 修复 + 复盘候选 |
 

@@ -85,33 +85,31 @@ mismatched, or malformed summary is ignored and is not a reason to repair it man
 normal readiness. Schema-v1 state remains continuation-only for compatibility. No action may carry
 Note body, candidate transcript, or maintenance reasoning.
 
-## 2. Reuse a formal finalized context
+## 2. Formal-ticket readiness entry
 
-When the current task already exists in a formal finalized context:
+For an already-finalized formal ticket, call one high-level operation. The caller supplies only the
+project root, feature slug, stable task id, and (optionally) the configured Obsidian command:
 
-1. Run the existing `wiki_context_render.py --fingerprint-preflight --strict --execution-ready
-   --project-root <project-root> --ticket-roster ...` command. Ticket text drift returns to Carry for deliberate rerouting and
-   re-finalization; never restamp merely to silence drift.
-2. Use the readiness `bind` command. It validates and consumes the frozen
-   `<taskId>.wiki-implement.md` task contract, and records `ready` only after both role-specific
-   snapshots and their embedded digests validate:
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py run \
+  --project-root <project-root> \
+  --feature-slug <feature-slug> \
+  --task-id <taskId> \
+  --obsidian-wiki-cmd "<configured command>"
+```
 
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py bind \
-     --receipt .grill-adapter/context/<feature-slug>/wiki-readiness.json \
-     --roster .grill-adapter/context/<feature-slug>/ticket-roster.json \
-     --context .grill-adapter/context/<feature-slug>/wiki-context.json \
-     --task-id <taskId> \
-     --project-root <project-root> \
-     --reason "Implementer constraints materialized successfully."
-   ```
+The JSON result is the terminal contract (`ready`, `no-relevant`, `disabled`, or `broken`). A
+`ready` result means the engine has already performed fingerprint preflight, execution-ready context
+validation, approval validation, both role snapshot checks, and body-digest checks. It returns only
+the canonical filenames and digests; consume the approved `implementer.file` Markdown, whose body is
+the user-visible implementation context. The receipt and roster remain local under the feature
+directory.
 
-Only inject this command's stdout after it exits successfully. It emits the exact Markdown file the
-user can inspect. On failure it discards all partial output and writes no `ready` receipt. The
-command revalidates execution readiness and the current fingerprint without rewriting the roster or
-context. If the pair of role files does not exist, `bind` performs an explicit implementation-entry
-freeze from the current bound Source as a compatibility fallback. Generic `record --status ready`
-is mechanically rejected.
+If a finalized context has no approved role pair (including a missing approval manifest), the entry
+performs the compatibility freeze and commits the implementer snapshot, reviewer snapshot, and
+approval manifest as one transaction. A failure leaves the previous artifact set untouched. Never
+sequence `wiki_context_render.py --fingerprint-preflight`, `bind`, or `record --status ready` by hand;
+those are execution-layer operations owned by this entry.
 
 ## 3. Perform late Carry for a direct task
 
@@ -163,45 +161,35 @@ Explain the failed validation and its impact before implementation, then ask whe
 repair Wiki or continue without Wiki context. The adapter has no mandatory implementation block.
 
 - If the user stops, make no code changes.
-- If the user chooses to continue, record `broken`, discard all research/render/materialize/snapshot output,
-  and implement using only the task/spec and repository evidence.
+- The high-level `run` entry records an initial `broken` result as metadata-only so later review can
+  remain caveat-only. If the user chooses to continue, discard all research/render/materialize/
+  snapshot output and implement using only the task/spec and repository evidence; never consume the
+  broken receipt as Wiki context.
 - Never downgrade the failing Wiki validation, hand-fetch a Note, keep a partial snapshot, or inject
   sidecar summaries as a substitute.
 
 Do not modify an ADR, Wiki Note, candidate journal, Vault worktree, or publishing branch while
 establishing readiness. Do not invoke late research when a formal finalized context already exists.
 
-## 5. Reuse for reviewer Bind
+## 5. Reviewer handoff
 
-When code-review starts, reuse the implementation result **before spawning** the isolated Standards
-and Spec review subagents. Identify the one current `taskId` and its existing readiness receipt; do
-not create a task, repair Carry, or perform late research during review. If the review is independent
-and no exact task/receipt can be identified, use the unknown form below.
-
-For a known task, write one all-or-nothing reviewer handoff:
+Before spawning the isolated Standards and Spec reviewers, reuse the same implementation receipt
+through the canonical reviewer operation:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py review-handoff \
-  --receipt .grill-adapter/context/<feature-slug>/wiki-readiness.json \
-  --task-id <taskId> \
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py review \
   --project-root <project-root> \
-  --handoff .grill-adapter/context/<feature-slug>/<taskId>.wiki-review-handoff.md
+  --feature-slug <feature-slug> \
+  --task-id <taskId>
 ```
 
-For an independent review with no exact task/receipt:
-
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wiki_readiness.py review-handoff \
-  --project-root <project-root> \
-  --handoff .grill-adapter/context/independent.wiki-review-handoff.md
-```
-
-The command revalidates the receipt, roster, fingerprint, bound context, and the frozen reviewer
-snapshot digest. It never overwrites the approved `<taskId>.wiki-review.md`; instead it derives one
-read-only handoff containing the approved current-task hard constraints, direct `depends_on`
-closure, reviewer-required Skill Cards, and any warnings whose `reviewAfter` boundary passed after
-freeze. Follow every materialized Card's `MUST invoke` directive by invoking the verified project
-skill before reviewing.
+The structured result names `<taskId>.wiki-review-handoff.md`. Internally this is the existing
+`review-handoff` operation: it revalidates roster, fingerprint, context, approval, both snapshot
+digests, and freshness, then derives one read-only reviewer contract without overwriting the
+approved `<taskId>.wiki-review.md`. Both reviewers read that same handoff and retain independent
+Standards/Spec output responsibilities. Unknown, non-ready, malformed, or drifted inputs produce a
+caveat-only handoff and return successfully; review never performs late research or becomes blocked
+on Wiki health.
 
 Executable task snapshots are schema v2 and require `freshnessEntries` for every role-visible
 Note/Card plus the one-hop closure. A legacy schema-v1 snapshot is invalid and must be deliberately

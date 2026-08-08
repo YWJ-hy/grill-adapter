@@ -161,7 +161,9 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
 
 ### 步骤 4 · `/implement`（每 ticket/direct task）— Readiness + Bind
 
-首次代码修改前先调用 `/grill-adapter:wiki-readiness`，把所有入口统一成一个稳定执行任务：
+首次代码修改前先调用 `/grill-adapter:wiki-readiness`，把所有入口统一成一个稳定执行任务。formal ticket
+只需要把 `project-root`、`featureSlug` 和 `taskId` 交给高层 readiness 入口；它返回结构化的
+`ready` / `no-relevant` / `disabled` / `broken` 终态，调用者不再手工拼接内部脚本顺序：
 
 1. 正式拆票流程复用已有 finalized context、ticket roster、路由和 fingerprint，不做 late research，也不改写这些产物。
 2. 直接实现 tracker issue 时，以真实 issue 编号为 `taskId`、完整 issue body 为 `text`，机械生成单任务 roster；已确认的对话需求使用 `ticketSource: manual` + 固定 `taskId: manual`，完整实现简报是 fingerprint 输入，不隐式拆任务。
@@ -169,12 +171,16 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
 4. Wiki 已配置但 health/research/Carry/Bind 任一失败记为 `broken`。向用户说明影响并让其选择停止修复或继续；adapter 不把它升级成不可绕过的实现门。继续时丢弃全部不完整/陈旧输出，不读取、不注入 sidecar 摘要或部分 materialize 内容。
 5. `ready` 时，执行阶段以 task 为单位校验并消费已批准的 implementer Markdown。schema-v6 的 freeze 已通过绑定 Obsidian MCP 按 stable `wikiId` materialize 路由的 hard Note、当前角色所需 Skill Card 与直接 `depends_on` Note；sidecar 摘要永远不能替代已冻结的全文 task contract。
 
-   `wiki-readiness` 自己先做指纹预检，再 Bind；普通实现入口不需要再单独调一次 materialize：
+   `wiki-readiness` 自己先做指纹预检，再复用或兼容 freeze、Bind 和 receipt；普通实现入口不需要再单独调一次 materialize：
 
    ```
    /wiki-readiness <ticket>
    ```
 
+   执行层等价调用为 `wiki_readiness.py run --project-root <root> --feature-slug <slug> --task-id <id>`。
+   `ready` 结果只返回批准的 implementer/reviewer 文件名和正文 digest；正文仍从对应 Markdown
+   文件读取，不进入 JSON receipt。缺少批准 pair（包括 approval manifest）时，三份文件以一次
+   all-or-nothing compatibility freeze 写入，失败不会留下单角色或部分批准状态。
    Freeze 阶段由 `wiki_materialize_task.py` 经绑定 Obsidian MCP 读取权威全文，并做有界、去重 1 跳闭包；生成的 schema-v2 `<taskId>.wiki-implement.md` 与 `<taskId>.wiki-review.md` 在实现和评审阶段固定消费，其 `freshnessEntries` 覆盖所有角色可见 Note/Card 与闭包。缺少清单的 schema-v1 快照不可执行，必须重新 freeze。ADR-backed projection 仍会在 freeze 时重算 `adrSourceId`、路径和 `adrSourceContentHash`；缺失、越界、格式错误或内容漂移都让 freeze fail-closed，不生成可消费快照。binding/Note/Card/base/pack 任一漂移都要求重新审核并 freeze；宿主是否停止实现则由 readiness 的用户选择决定。
 
 6. readiness 结果写入 `.grill-adapter/context/<feature-slug>/wiki-readiness.json`，保存 task identity、fingerprint、状态、context 文件名和两份 role Markdown 的 digest；readiness、candidate journal 与成功校验落盘的 audit report 都会 best-effort 刷新 schema-v2 `wiki-session-state.json`。它只记录 featureSlug、最后显式 task、roster/context/snapshot/readiness/journal/report digest、readiness、canonical pending/deferred/Capture/correction counts、validated active/review-due/expired/contradictory counts 和重入命令。SessionStart 重新 fold/校验当前 artifact，忽略 malformed/drifted/mismatched state，按 recovery、maintenance、未完成 Capture、普通 continuation 的固定优先级和最近活动排序，最多输出三条 action；schema-v1 只保留原 nextCommand 的 continuation 兼容。它不含 Note body/candidate transcript/maintenance reasoning，也不参与执行期校验或授权。Note body 只存在于用户可见的 task Markdown，不复制进 JSON receipt。roster/context/snapshot/receipt 都是本地工作态，不提交。
@@ -183,7 +189,12 @@ specification 阶段若形成 durable contract/decision，经 `/candidate-journa
 
 ### 步骤 5 · `/code-review` — Reviewer Bind + Capture
 
-code-review 确定当前任务后、启动 Standards/Spec 两个隔离 reviewer 前，复用 implement 阶段的 readiness receipt 运行 `review-handoff`。`ready` 会重新校验 roster/fingerprint/context、`<taskId>.wiki-review.md` digest 以及快照中直接/闭包 Note 的 freshness；批准 snapshot 保持不变，运行时 warning 与正文共同派生为 `<taskId>.wiki-review-handoff.md`。两轴读取同一个 handoff，但各自职责和输出结构不变。Card 到达实际 reviewer 后，其 `MUST invoke` project skill 要求必须执行。
+code-review 确定当前任务后、启动 Standards/Spec 两个隔离 reviewer 前，复用 implement 阶段的 readiness receipt
+运行同一入口的 `review` 操作（`/grill-adapter:wiki-readiness` 内部调用 `wiki_readiness.py review`）。
+`ready` 会重新校验 roster/fingerprint/context、`<taskId>.wiki-review.md` digest 以及快照中直接/闭包 Note
+的 freshness；批准 snapshot 保持不变，运行时 warning 与正文共同派生为 `<taskId>.wiki-review-handoff.md`。
+两轴读取同一个 handoff，但各自职责和输出结构不变。Card 到达实际 reviewer 后，其 `MUST invoke`
+project skill 要求必须执行。
 
    `no-relevant`、`disabled`、`broken`、无法确定 task 的 `unknown`，以及 receipt/context/snapshot 任一失败，都只生成不含 Wiki 正文的非阻塞 caveat。评审继续，不做 late research、不要求先修 Wiki；失败路径只覆盖派生 handoff，永不覆盖批准的 reviewer snapshot，并丢弃所有部分输出。这里是“Wiki 内容验证 fail-closed、宿主 review 可用性 fail-open”。
 

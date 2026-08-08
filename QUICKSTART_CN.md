@@ -59,8 +59,8 @@ grill-adapter doctor /path/to/your/project
 
 1. `/grill-with-docs`：描述需求。约定会在质询期自动提示调 `/grill-adapter:wiki-research` 披露相关 wiki。
 2. `/to-tickets`：规划期 `/grill-adapter:wiki-research`（plan）正式选 bound atomic Notes/Skill Cards → 生成 schema-v6 `.grill-adapter/context/<feature-slug>/wiki-context.json` sidecar；ticket 发布后由真实 ticket 建 roster，再 `--finalize` 盖指纹。
-3. `/implement`：首次代码修改前跑 `/grill-adapter:wiki-readiness`。formal ticket 复用已有 context；direct issue/manual 建单任务 roster 并按需 late Carry；`ready` 才 materialize，`no-relevant`/`disabled` 直接继续，`broken` 由用户选择停止或无 Wiki 继续。改到 source-of-truth 保护路径时 `source-truth-lint` hook 会提醒。
-4. `/code-review`：启动 Standards/Spec 两个 review agent 前，`/grill-adapter:wiki-readiness` 复用 implement receipt 生成同一个 reviewer handoff；只有 `ready` 才按 reviewer 角色 materialize，其他状态或失败只给非阻塞 caveat，不补 research、不阻止评审。
+3. `/implement`：首次代码修改前跑 `/grill-adapter:wiki-readiness`。formal ticket 只选择稳定 `featureSlug + taskId`，高层入口会复用或原子兼容 freeze 双角色快照、校验 fingerprint/approval/digest，并返回结构化 `ready`、`no-relevant`、`disabled` 或 `broken` 终态；`ready` 才消费 implementer Markdown。改到 source-of-truth 保护路径时 `source-truth-lint` hook 会提醒。
+4. `/code-review`：启动 Standards/Spec 两个 review agent 前，`/grill-adapter:wiki-readiness` 的 reviewer 路径复用 implement receipt 生成同一个只读 handoff；只有 `ready` 才按 reviewer 角色 materialize，其他状态或失败只给非阻塞 caveat，不补 research、不阻止评审。
 5. 各阶段发现 durable 候选时跑 `/grill-adapter:candidate-journal` 追加到同一 feature journal；`/code-review` 后跑 `/grill-adapter:update-wiki`，先校验/折叠 journal，再记录 keep/skip/defer 并处理回写。
 
 ## 4. 验证

@@ -14,9 +14,10 @@ MATERIALIZE="${TARGET_INPUT}/scripts/wiki_materialize_task.py"
 CONTRACT="${TARGET_INPUT}/contracts/wiki-readiness-v1.example.jsonc"
 SNAPSHOT_CONTRACT="${TARGET_INPUT}/contracts/wiki-task-snapshot-v2.example.jsonc"
 APPROVAL_CONTRACT="${TARGET_INPUT}/contracts/wiki-task-approval-v1.example.jsonc"
+RESULT_CONTRACT="${TARGET_INPUT}/contracts/wiki-readiness-result-v1.example.jsonc"
 SKILL="${TARGET_INPUT}/skills/wiki-readiness/SKILL.md"
 
-for file in "$READINESS" "$RENDER" "$MATERIALIZE" "$CONTRACT" "$SNAPSHOT_CONTRACT" "$APPROVAL_CONTRACT" "$SKILL"; do
+for file in "$READINESS" "$RENDER" "$MATERIALIZE" "$CONTRACT" "$SNAPSHOT_CONTRACT" "$APPROVAL_CONTRACT" "$RESULT_CONTRACT" "$SKILL"; do
   if [[ ! -f "$file" ]]; then
     printf 'Missing readiness surface: %s\n' "$file" >&2
     exit 1
@@ -317,6 +318,222 @@ else:
 PY
 chmod +x "$FAKE_OBSIDIAN"
 FAKE_OBSIDIAN_CMD="python3 $FAKE_OBSIDIAN"
+
+# The high-level formal readiness entry resolves the canonical roster/context/receipt paths from
+# the project root, feature slug, and one stable task id. Its result is structured so the host does
+# not need to sequence fingerprint preflight, compatibility freeze, Bind, and receipt validation.
+HIGH_LEVEL_RESULT="$TMP/formal-readiness-result.json"
+python3 "$READINESS" run \
+  --project-root "$TMP/project" \
+  --feature-slug formal-feature \
+  --task-id 01 \
+  --obsidian-wiki-cmd "$FAKE_OBSIDIAN_CMD" \
+  --reason "High-level formal readiness entry." >"$HIGH_LEVEL_RESULT"
+python3 - "$HIGH_LEVEL_RESULT" "$FORMAL_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+directory = pathlib.Path(sys.argv[2])
+assert result["schemaVersion"] == 1, result
+assert result["kind"] == "grill-adapter.wiki-readiness-result", result
+assert result["status"] == "ready", result
+assert result["taskId"] == "01", result
+assert result["featureSlug"] == "formal-feature", result
+assert result["rosterFile"] == "ticket-roster.json", result
+assert result["receiptFile"] == "wiki-readiness.json", result
+assert result["implementer"]["file"] == "01.wiki-implement.md", result
+assert result["reviewer"]["file"] == "01.wiki-review.md", result
+assert result["implementer"]["digest"].startswith("sha256:"), result
+assert result["reviewer"]["digest"].startswith("sha256:"), result
+assert (directory / result["implementer"]["file"]).is_file(), result
+assert (directory / result["reviewer"]["file"]).is_file(), result
+assert not any(key in result for key in ("content", "noteBody", "selection")), result
+PY
+
+# A legacy ready receipt with an already-approved pair is upgraded with both role digests without
+# contacting the current Wiki runtime.
+python3 - "$FORMAL_RECEIPT" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+receipt = json.load(open(path, encoding="utf-8"))
+for field in ("implementWikiFile", "implementWikiDigest", "reviewWikiFile", "reviewWikiDigest"):
+    receipt["tasks"][0].pop(field, None)
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(receipt, handle, indent=2)
+    handle.write("\n")
+PY
+LEGACY_UPGRADE_RESULT="$TMP/legacy-upgrade-result.json"
+python3 "$READINESS" run \
+  --project-root "$TMP/project" \
+  --feature-slug formal-feature \
+  --task-id 01 \
+  --obsidian-wiki-cmd "definitely-missing-obsidian-command" >"$LEGACY_UPGRADE_RESULT"
+python3 - "$LEGACY_UPGRADE_RESULT" "$FORMAL_RECEIPT" <<'PY'
+import json
+import pathlib
+import sys
+
+result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+receipt = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
+assert result["status"] == "ready", result
+task = receipt["tasks"][0]
+for field in ("implementWikiFile", "implementWikiDigest", "reviewWikiFile", "reviewWikiDigest"):
+    assert field in task, (field, task)
+PY
+
+# An existing ready receipt with one missing approved artifact takes the compatibility freeze path
+# and restores the complete pair plus approval manifest before returning ready.
+rm -f "$FORMAL_DIR/01.wiki-review.md" "$FORMAL_DIR/01.wiki-approval.json"
+MISSING_PAIR_RESULT="$TMP/missing-approved-pair-result.json"
+python3 "$READINESS" run \
+  --project-root "$TMP/project" \
+  --feature-slug formal-feature \
+  --task-id 01 \
+  --obsidian-wiki-cmd "$FAKE_OBSIDIAN_CMD" >"$MISSING_PAIR_RESULT"
+python3 - "$MISSING_PAIR_RESULT" "$FORMAL_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+directory = pathlib.Path(sys.argv[2])
+assert result["status"] == "ready", result
+for filename in ("01.wiki-implement.md", "01.wiki-review.md", "01.wiki-approval.json"):
+    assert (directory / filename).is_file(), filename
+PY
+
+# The same canonical seam reuses a non-ready receipt without touching context or snapshots.
+python3 "$READINESS" record \
+  --receipt "$MANUAL_DIR/wiki-readiness.json" \
+  --roster "$MANUAL_ROSTER" \
+  --task-id manual \
+  --status disabled \
+  --reason "Wiki provider is disabled for this project." >/dev/null
+DISABLED_RESULT="$TMP/disabled-readiness-result.json"
+python3 "$READINESS" run \
+  --project-root "$TMP/project" \
+  --feature-slug manual-change \
+  --task-id manual \
+  --reason "Reuse disabled readiness." >"$DISABLED_RESULT"
+python3 - "$DISABLED_RESULT" <<'PY'
+import json
+import pathlib
+import sys
+
+result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert result["status"] == "disabled", result
+assert "contextFile" not in result, result
+assert "implementer" not in result and "reviewer" not in result, result
+PY
+
+# Review uses the same canonical identity and derives a separate handoff without overwriting the
+# approved reviewer snapshot.
+REVIEW_RESULT="$TMP/formal-review-result.json"
+python3 "$READINESS" review \
+  --project-root "$TMP/project" \
+  --feature-slug formal-feature \
+  --task-id 01 \
+  --obsidian-wiki-cmd "definitely-missing-obsidian-command" >"$REVIEW_RESULT"
+python3 - "$REVIEW_RESULT" "$FORMAL_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+directory = pathlib.Path(sys.argv[2])
+assert result["status"] == "ready", result
+assert result["handoff"]["file"] == "01.wiki-review-handoff.md", result
+assert (directory / result["handoff"]["file"]).is_file(), result
+PY
+
+# Traversal-shaped task IDs fail before task-specific paths are constructed.
+INVALID_TASK_RESULT="$TMP/invalid-task-result.json"
+python3 "$READINESS" run \
+  --project-root "$TMP/project" \
+  --feature-slug formal-feature \
+  --task-id ../escape >"$INVALID_TASK_RESULT"
+python3 - "$INVALID_TASK_RESULT" "$FORMAL_DIR/../escape.wiki-review-handoff.md" <<'PY'
+import json
+import pathlib
+import sys
+
+result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert result["status"] == "broken", result
+assert "path separators" in result["reason"], result
+assert not pathlib.Path(sys.argv[2]).exists(), sys.argv[2]
+PY
+INVALID_REVIEW_RESULT="$TMP/invalid-review-task-result.json"
+python3 "$READINESS" review \
+  --project-root "$TMP/project" \
+  --feature-slug formal-feature \
+  --task-id ../escape >"$INVALID_REVIEW_RESULT"
+python3 - "$INVALID_REVIEW_RESULT" "$FORMAL_DIR/../escape.wiki-review-handoff.md" <<'PY'
+import json
+import pathlib
+import sys
+
+result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert result["status"] == "broken", result
+assert "path separators" in result["reason"], result
+assert not pathlib.Path(sys.argv[2]).exists(), sys.argv[2]
+PY
+
+# A malformed implementation receipt still yields a caveat-only reviewer handoff rather than a
+# command failure or stale reviewer context.
+cp "$FORMAL_RECEIPT" "$TMP/formal-receipt.before-malformed-review.json"
+printf '{ malformed receipt\n' >"$FORMAL_RECEIPT"
+MALFORMED_REVIEW_RESULT="$TMP/malformed-review-result.json"
+python3 "$READINESS" review \
+  --project-root "$TMP/project" \
+  --feature-slug formal-feature \
+  --task-id 01 >"$MALFORMED_REVIEW_RESULT"
+python3 - "$MALFORMED_REVIEW_RESULT" "$FORMAL_DIR/01.wiki-review-handoff.md" <<'PY'
+import json
+import pathlib
+import sys
+
+result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+handoff = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
+assert result["status"] == "broken", result
+assert "Non-blocking caveat" in handoff, handoff
+assert "No verified Wiki reviewer context" in handoff, handoff
+PY
+mv "$TMP/formal-receipt.before-malformed-review.json" "$FORMAL_RECEIPT"
+
+# A valid artifact pair from another feature cannot be rebound through the requested feature slug.
+cp "$FORMAL_RECEIPT" "$TMP/formal-receipt.before-feature-drift.json"
+python3 - "$FORMAL_RECEIPT" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+receipt = json.load(open(path, encoding="utf-8"))
+receipt["featureSlug"] = "other-feature"
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(receipt, handle, indent=2)
+    handle.write("\n")
+PY
+FEATURE_DRIFT_REVIEW_RESULT="$TMP/feature-drift-review-result.json"
+python3 "$READINESS" review \
+  --project-root "$TMP/project" \
+  --feature-slug formal-feature \
+  --task-id 01 >"$FEATURE_DRIFT_REVIEW_RESULT"
+python3 - "$FEATURE_DRIFT_REVIEW_RESULT" "$FORMAL_DIR/01.wiki-review-handoff.md" <<'PY'
+import json
+import pathlib
+import sys
+
+result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+handoff = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
+assert result["status"] == "broken", result
+assert "selected feature" in result["reason"], result
+assert "Non-blocking caveat" in handoff, handoff
+PY
+mv "$TMP/formal-receipt.before-feature-drift.json" "$FORMAL_RECEIPT"
 
 EXPIRED_DIR="$TMP/expired-formal"
 mkdir -p "$EXPIRED_DIR"
@@ -788,7 +1005,13 @@ need "$SNAPSHOT_CONTRACT" "role"
 need "$SNAPSHOT_CONTRACT" "freshnessEntries"
 need "$APPROVAL_CONTRACT" "implementWikiDigest"
 need "$APPROVAL_CONTRACT" "reviewWikiDigest"
+need "$RESULT_CONTRACT" "grill-adapter.wiki-readiness-result"
+need "$RESULT_CONTRACT" '"implementer"'
+need "$RESULT_CONTRACT" '"reviewer"'
+need "$RESULT_CONTRACT" '"status": "ready"'
 need "$SKILL" "before the first code edit"
+need "$SKILL" "wiki_readiness.py run"
+need "$SKILL" "wiki_readiness.py review"
 need "$SKILL" "freeze --all"
 need "$SKILL" "wiki-review-handoff.md"
 need "$SKILL" "gh issue view"

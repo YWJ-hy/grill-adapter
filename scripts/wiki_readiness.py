@@ -13,7 +13,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from feature_context import context_root, infer_project_root, is_feature_context_dir
+from feature_context import (
+    context_root,
+    feature_context_dir,
+    infer_project_root,
+    is_feature_context_dir,
+)
 from wiki_context_render import (
     FingerprintError,
     ValidationError,
@@ -26,6 +31,7 @@ from wiki_task_snapshot import (
     evaluate_snapshot_freshness,
     file_digest,
     render_snapshot,
+    safe_task_id,
     snapshot_path,
     validate_approval,
     validate_snapshot,
@@ -38,6 +44,8 @@ from wiki_session_state import SessionStateError, update_session_state
 KIND = "grill-adapter.wiki-readiness"
 SCHEMA_VERSION = 1
 GENERATED_BY = "grill-adapter"
+RESULT_KIND = "grill-adapter.wiki-readiness-result"
+RESULT_SCHEMA_VERSION = 1
 STATUS_DISPOSITIONS = {
     "ready": "materialized",
     "no-relevant": "none",
@@ -511,18 +519,88 @@ def _write_role_snapshots(
     review_text: str,
 ) -> tuple[tuple[Path, str], tuple[Path, str]]:
     implement_path, review_path = _snapshot_paths(context_path, task_id)
-    implement_digest = write_snapshot(implement_path, implement_text)
-    review_digest = write_snapshot(review_path, review_text)
-    write_approval(
-        approval_path(context_path, task_id),
-        context_path=context_path,
-        context=context,
-        task=task,
-        task_id=task_id,
-        implement_digest=implement_digest,
-        review_digest=review_digest,
-    )
+    approval_file = approval_path(context_path, task_id)
+
+    # Materialize the complete role pair and its approval manifest before replacing any existing
+    # artifact. A compatibility freeze is allowed to replace an incomplete/legacy set, but a
+    # renderer or filesystem failure must preserve the previous set byte-for-byte.
+    with tempfile.TemporaryDirectory(
+        dir=context_path.resolve().parent,
+        prefix=f".{task_id}.wiki-readiness-",
+    ) as staging:
+        staging_dir = Path(staging)
+        staged_implement = staging_dir / implement_path.name
+        staged_review = staging_dir / review_path.name
+        staged_approval = staging_dir / approval_file.name
+        implement_digest = write_snapshot(staged_implement, implement_text)
+        review_digest = write_snapshot(staged_review, review_text)
+        write_approval(
+            staged_approval,
+            context_path=context_path,
+            context=context,
+            task=task,
+            task_id=task_id,
+            implement_digest=implement_digest,
+            review_digest=review_digest,
+        )
+        _atomic_replace_files(
+            [
+                (staged_implement, implement_path),
+                (staged_review, review_path),
+                (staged_approval, approval_file),
+            ]
+        )
     return (implement_path, implement_digest), (review_path, review_digest)
+
+
+def _atomic_replace_files(files: list[tuple[Path, Path]]) -> None:
+    """Replace a related set of files together, restoring old files if a rename fails."""
+
+    backups: list[tuple[Path, Path]] = []
+    installed: list[Path] = []
+    try:
+        for _, target in files:
+            if not target.exists():
+                continue
+            fd, backup_name = tempfile.mkstemp(
+                dir=target.parent,
+                prefix=f".{target.name}.",
+                suffix=".bak",
+            )
+            os.close(fd)
+            backup = Path(backup_name)
+            backup.unlink(missing_ok=True)
+            target.replace(backup)
+            backups.append((target, backup))
+        for staged, target in files:
+            staged.replace(target)
+            installed.append(target)
+    except BaseException as install_error:
+        rollback_errors: list[OSError] = []
+        for target in reversed(installed):
+            try:
+                target.unlink(missing_ok=True)
+            except OSError as exc:
+                rollback_errors.append(exc)
+        for target, backup in reversed(backups):
+            if backup.exists():
+                try:
+                    target.unlink(missing_ok=True)
+                    backup.replace(target)
+                except OSError as exc:
+                    rollback_errors.append(exc)
+        if rollback_errors:
+            detail = "; ".join(str(error) for error in rollback_errors)
+            raise OSError(f"could not restore prior task Wiki artifacts: {detail}") from install_error
+        raise
+    else:
+        for _, backup in backups:
+            try:
+                backup.unlink(missing_ok=True)
+            except OSError:
+                # The target set is already complete; an orphaned hidden backup is not consumed
+                # by any readiness path and can be cleaned up separately.
+                pass
 
 
 def _freeze_role_snapshots(
@@ -672,7 +750,7 @@ def record_readiness(
 ) -> str:
     _same_context_directory(receipt_path, roster_path, "ticket roster")
     raw_roster, feature_slug, ticket_source, tasks = _roster_metadata(roster_path)
-    task_id = _required_text(task_id, "taskId").strip()
+    task_id = safe_task_id(_required_text(task_id, "taskId").strip())
     if task_id not in tasks:
         raise ReadinessError(f"ticket roster has no task {task_id}")
     if status not in STATUS_DISPOSITIONS:
@@ -766,20 +844,19 @@ def bind_readiness(
         raise ReadinessError(f"project root is not a directory: {project_root}")
 
     _, feature_slug, ticket_source, tasks = _roster_metadata(roster_path)
-    task_id = _required_text(task_id, "taskId").strip()
+    task_id = safe_task_id(_required_text(task_id, "taskId").strip())
     if task_id not in tasks:
         raise ReadinessError(f"ticket roster has no task {task_id}")
     context = _validate_context(context_path, roster_path, project_root)
     _validate_context_identity(context, feature_slug, ticket_source, task_id)
 
     implement_path, review_path = _snapshot_paths(context_path, task_id)
+    approval_file = approval_path(context_path, task_id)
     have_implement = implement_path.is_file()
     have_review = review_path.is_file()
-    if have_implement != have_review:
-        raise ReadinessError(
-            f"task Wiki snapshots are incomplete; expected both {implement_path.name} and {review_path.name}"
-        )
-    if have_implement:
+    have_approval = approval_file.is_file()
+    have_complete_approval = have_implement and have_review and have_approval
+    if have_complete_approval:
         implement_info = (implement_path, file_digest(implement_path))
         review_info = (review_path, file_digest(review_path))
         snapshots = _load_role_snapshots(
@@ -794,6 +871,10 @@ def bind_readiness(
             now=now,
         )
     else:
+        # A finalized context may predate role-specific snapshots, or may have an incomplete
+        # unapproved pair left by an interrupted/legacy attempt. Re-freeze the complete pair as
+        # one transaction; do not reject the compatibility path merely because one old artifact
+        # is present.
         implement_info, review_info = _freeze_role_snapshots(
             context_path=context_path,
             roster_path=roster_path,
@@ -853,7 +934,7 @@ def freeze_task_snapshots(
     if not project_root.is_dir():
         raise ReadinessError(f"project root is not a directory: {project_root}")
     _, feature_slug, ticket_source, tasks = _roster_metadata(roster_path)
-    task_id = _required_text(task_id, "taskId").strip()
+    task_id = safe_task_id(_required_text(task_id, "taskId").strip())
     if task_id not in tasks:
         raise ReadinessError(f"ticket roster has no task {task_id}")
     implement_info, review_info = _freeze_role_snapshots(
@@ -965,7 +1046,7 @@ def _validated_readiness_task(
         seen.add(entry_id)
         task_entries[entry_id] = task
 
-    task_id = _required_text(task_id, "taskId").strip()
+    task_id = safe_task_id(_required_text(task_id, "taskId").strip())
     if task_id not in task_entries:
         raise ReadinessError(f"readiness receipt has no result for task {task_id}")
     if task_id not in roster_tasks:
@@ -993,8 +1074,8 @@ def _validated_readiness_task(
                 ticket_source=ticket_source,
                 task_id=task_id,
                 task=roster_task,
-                implement_digest=entry["implementWikiDigest"],
-                review_digest=entry["reviewWikiDigest"],
+                implement_digest=entry.get("implementWikiDigest"),
+                review_digest=entry.get("reviewWikiDigest"),
             )
     else:
         context_path = None
@@ -1115,7 +1196,14 @@ def review_handoff(
     if context_path is None:
         raise ReadinessError("ready readiness did not resolve a Wiki context")
 
-    if "reviewWikiFile" in entry:
+    reviewer_snapshot = snapshot_path(context_path, normalized_task_id, "reviewer")
+    implementer_snapshot = snapshot_path(context_path, normalized_task_id, "implementer")
+    approved_pair_exists = (
+        reviewer_snapshot.is_file()
+        and implementer_snapshot.is_file()
+        and approval_path(context_path, normalized_task_id).is_file()
+    )
+    if "reviewWikiFile" in entry or approved_pair_exists:
         try:
             _, feature_slug, ticket_source, tasks = _roster_metadata(roster_path)
             _, review_snapshot = _load_role_snapshots(
@@ -1131,8 +1219,12 @@ def review_handoff(
             )
             materialized = review_snapshot[1]
             warnings = review_snapshot[2]
-            review_path = context_path.parent / _safe_context_filename(entry["reviewWikiFile"], "reviewWikiFile")
-            if review_path.name != snapshot_path(context_path, normalized_task_id, "reviewer").name:
+            review_path = (
+                context_path.parent / _safe_context_filename(entry["reviewWikiFile"], "reviewWikiFile")
+                if "reviewWikiFile" in entry
+                else reviewer_snapshot
+            )
+            if review_path.name != reviewer_snapshot.name:
                 raise ReadinessError("reviewWikiFile does not match the task-specific reviewer snapshot name")
         except (ReadinessError, SnapshotError, KeyError) as exc:
             _write_text(
@@ -1181,6 +1273,369 @@ def review_handoff(
         ),
     )
     return f"wrote ready reviewer handoff -> {handoff_path}"
+
+
+def _result_base(
+    *,
+    feature_slug: str,
+    task_id: str,
+    status: str,
+    reason: str,
+    ticket_source: str | None = None,
+    task_title: str | None = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "schemaVersion": RESULT_SCHEMA_VERSION,
+        "kind": RESULT_KIND,
+        "generatedBy": GENERATED_BY,
+        "featureSlug": feature_slug,
+        "taskId": task_id,
+        "status": status,
+        "reason": reason,
+        "rosterFile": "ticket-roster.json",
+        "receiptFile": "wiki-readiness.json",
+    }
+    if ticket_source is not None:
+        result["ticketSource"] = ticket_source
+    if task_title is not None:
+        result["taskTitle"] = task_title
+    if status in STATUS_DISPOSITIONS:
+        result["contextDisposition"] = STATUS_DISPOSITIONS[status]
+    return result
+
+
+def _structured_readiness_result(
+    *,
+    receipt_path: Path,
+    task_id: str,
+    project_root: Path,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    receipt, roster_path, entry, context_path = _validated_readiness_task(
+        receipt_path,
+        task_id,
+        project_root,
+    )
+    result = _result_base(
+        feature_slug=receipt["featureSlug"],
+        task_id=entry["taskId"],
+        status=entry["status"],
+        reason=entry["reason"],
+        ticket_source=receipt["ticketSource"],
+        task_title=entry["taskTitle"],
+    )
+    if entry["status"] != "ready":
+        return result
+    if context_path is None:
+        raise ReadinessError("ready readiness did not resolve a Wiki context")
+
+    _, feature_slug, ticket_source, tasks = _roster_metadata(roster_path)
+    snapshots = _load_role_snapshots(
+        context_path=context_path,
+        context=_load_json(context_path, "wiki context"),
+        feature_slug=feature_slug,
+        ticket_source=ticket_source,
+        task_id=task_id,
+        task=tasks[task_id],
+        implement_digest=entry.get("implementWikiDigest"),
+        review_digest=entry.get("reviewWikiDigest"),
+        now=now,
+    )
+    implement_path, _, implement_warnings = snapshots[0]
+    review_path, _, review_warnings = snapshots[1]
+    result["contextFile"] = context_path.name
+    result["implementer"] = {
+        "file": implement_path.name,
+        "digest": file_digest(implement_path),
+    }
+    result["reviewer"] = {
+        "file": review_path.name,
+        "digest": file_digest(review_path),
+    }
+    warnings = []
+    for warning in [*implement_warnings, *review_warnings]:
+        if warning not in warnings:
+            warnings.append(warning)
+    if warnings:
+        result["warnings"] = warnings
+    # The task body remains in the role Markdown file. Returning only filenames/digests keeps this
+    # coordinator result metadata-only and lets the host consume the approved file explicitly.
+    return result
+
+
+def readiness_entry(
+    *,
+    project_root: Path,
+    feature_slug: str,
+    task_id: str,
+    reason: str = "Implementation readiness validated.",
+    obsidian_wiki_cmd: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Run one formal-ticket readiness transaction from a stable task identity.
+
+    This is the host-facing seam. It resolves local artifacts, validates ticket/context
+    fingerprints, reuses an approved role pair when present, and performs the compatibility freeze
+    only when the pair is absent or incomplete. Failures become a structured ``broken`` result
+    without retaining partial Wiki output; existing non-ready receipts are returned unchanged.
+    """
+
+    project_root = project_root.expanduser().resolve()
+    feature_slug = _feature_slug(feature_slug)
+    raw_task_id = _required_text(task_id, "taskId").strip()
+    try:
+        task_id = safe_task_id(raw_task_id)
+    except SnapshotError as exc:
+        return _result_base(
+            feature_slug=feature_slug,
+            task_id=raw_task_id,
+            status="broken",
+            reason=str(exc),
+        )
+    reason = _required_text(reason, "reason").strip()
+    if not project_root.is_dir():
+        raise ReadinessError(f"project root is not a directory: {project_root}")
+
+    directory = feature_context_dir(project_root, feature_slug)
+    roster_path = directory / "ticket-roster.json"
+    context_path = directory / "wiki-context.json"
+    receipt_path = directory / "wiki-readiness.json"
+    ticket_source: str | None = None
+    task_title: str | None = None
+
+    try:
+        _, roster_feature, ticket_source, tasks = _roster_metadata(roster_path)
+        if roster_feature != feature_slug:
+            raise ReadinessError("ticket roster featureSlug does not match the selected feature")
+        if task_id not in tasks:
+            raise ReadinessError(f"ticket roster has no task {task_id}")
+        task_title = tasks[task_id]["title"]
+
+        if receipt_path.is_file():
+            raw_receipt = _load_json(receipt_path, "readiness receipt")
+            _validate_receipt_shape(raw_receipt)
+            if (
+                raw_receipt["featureSlug"] != feature_slug
+                or raw_receipt["ticketSource"] != ticket_source
+                or raw_receipt["rosterFile"] != roster_path.name
+            ):
+                raise ReadinessError("existing readiness artifact does not match the selected ticket roster")
+            raw_entry = next(
+                (
+                    item for item in raw_receipt["tasks"]
+                    if isinstance(item, dict) and item.get("taskId") == task_id
+                ),
+                None,
+            )
+            if raw_entry is None:
+                raise ReadinessError(f"readiness receipt has no result for task {task_id}")
+            raw_entry = _validate_task_entry(raw_entry)
+            receipt = raw_receipt
+            entry = raw_entry
+            snapshot_fields = {
+                "implementWikiFile",
+                "implementWikiDigest",
+                "reviewWikiFile",
+                "reviewWikiDigest",
+            }
+            implement_path, review_path = _snapshot_paths(context_path, task_id)
+            approved_pair_missing = (
+                raw_entry["status"] == "ready"
+                and snapshot_fields.issubset(raw_entry)
+                and not (
+                    implement_path.is_file()
+                    and review_path.is_file()
+                    and approval_path(context_path, task_id).is_file()
+                )
+            )
+            if not approved_pair_missing:
+                try:
+                    receipt, _, entry, _ = _validated_readiness_task(
+                        receipt_path,
+                        task_id,
+                        project_root,
+                    )
+                except (ReadinessError, ValidationError, FingerprintError, SnapshotError) as exc:
+                    raise ReadinessError(f"existing readiness artifact failed validation: {exc}") from exc
+                if entry["status"] != "ready":
+                    _refresh_session_state(
+                        receipt_path.parent,
+                        task_id=task_id,
+                        readiness_status=entry["status"],
+                    )
+                    return _result_base(
+                        feature_slug=feature_slug,
+                        task_id=task_id,
+                        status=entry["status"],
+                        reason=entry["reason"],
+                        ticket_source=receipt["ticketSource"],
+                        task_title=task_title,
+                    )
+
+            # A legacy ready receipt may not have recorded role digests. If the complete approved
+            # pair exists, the structured result still validates it; otherwise bind performs the
+            # compatibility freeze and upgrades the receipt atomically.
+            if (
+                snapshot_fields.issubset(entry)
+                and implement_path.is_file()
+                and review_path.is_file()
+                and approval_path(context_path, task_id).is_file()
+            ):
+                _refresh_session_state(receipt_path.parent, task_id=task_id, readiness_status="ready")
+                return _structured_readiness_result(
+                    receipt_path=receipt_path,
+                    task_id=task_id,
+                    project_root=project_root,
+                    now=now,
+                )
+
+        bind_readiness(
+            receipt_path,
+            roster_path,
+            context_path,
+            task_id,
+            project_root,
+            reason,
+            obsidian_wiki_cmd,
+            now=now,
+        )
+        return _structured_readiness_result(
+            receipt_path=receipt_path,
+            task_id=task_id,
+            project_root=project_root,
+            now=now,
+        )
+    except (ReadinessError, ValidationError, FingerprintError, SnapshotError, OSError) as exc:
+        if not receipt_path.exists():
+            try:
+                record_readiness(
+                    receipt_path,
+                    roster_path,
+                    task_id,
+                    "broken",
+                    str(exc),
+                    None,
+                )
+            except (ReadinessError, OSError):
+                pass
+        return _result_base(
+            feature_slug=feature_slug,
+            task_id=task_id,
+            status="broken",
+            reason=str(exc),
+            ticket_source=ticket_source,
+            task_title=task_title,
+        )
+
+
+def review_entry(
+    *,
+    project_root: Path,
+    feature_slug: str,
+    task_id: str,
+    obsidian_wiki_cmd: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Derive one read-only reviewer handoff from the canonical implementation receipt."""
+
+    project_root = project_root.expanduser().resolve()
+    feature_slug = _feature_slug(feature_slug)
+    raw_task_id = _required_text(task_id, "taskId").strip()
+    try:
+        task_id = safe_task_id(raw_task_id)
+    except SnapshotError as exc:
+        return _result_base(
+            feature_slug=feature_slug,
+            task_id=raw_task_id,
+            status="broken",
+            reason=str(exc),
+        )
+    if not project_root.is_dir():
+        raise ReadinessError(f"project root is not a directory: {project_root}")
+    directory = feature_context_dir(project_root, feature_slug)
+    receipt_path = directory / "wiki-readiness.json"
+    handoff_path = directory / f"{task_id}.wiki-review-handoff.md"
+
+    result = _result_base(
+        feature_slug=feature_slug,
+        task_id=task_id,
+        status="broken",
+        reason="The implementation readiness receipt could not be identified.",
+    )
+    try:
+        identity_error: str | None = None
+        # Read identity metadata on a best-effort basis. The handoff helper below owns the
+        # fail-open validation path and must still write a caveat handoff for malformed receipts.
+        if receipt_path.is_file():
+            try:
+                receipt = _load_json(receipt_path, "readiness receipt")
+                if receipt.get("featureSlug") != feature_slug:
+                    identity_error = "readiness receipt featureSlug does not match the selected feature"
+                elif isinstance(receipt.get("rosterFile"), str):
+                    roster_path = receipt_path.parent / _safe_context_filename(receipt["rosterFile"], "rosterFile")
+                    _, roster_feature, _, _ = _roster_metadata(roster_path)
+                    if roster_feature != feature_slug:
+                        identity_error = "ticket roster featureSlug does not match the selected feature"
+                    else:
+                        raw_entry = next(
+                            item for item in receipt.get("tasks", [])
+                            if isinstance(item, dict) and item.get("taskId") == task_id
+                        )
+                        entry = _validate_task_entry(raw_entry)
+                        result = _result_base(
+                            feature_slug=feature_slug,
+                            task_id=task_id,
+                            status=entry["status"],
+                            reason=entry["reason"],
+                            ticket_source=receipt.get("ticketSource"),
+                            task_title=entry["taskTitle"],
+                        )
+            except (ReadinessError, ValidationError, FingerprintError, SnapshotError, StopIteration, KeyError):
+                pass
+        if identity_error:
+            _write_text(
+                handoff_path,
+                _review_handoff_text(
+                    status="broken",
+                    task_id=task_id,
+                    detail=identity_error,
+                ),
+            )
+            result["status"] = "broken"
+            result["reason"] = identity_error
+            result["handoff"] = {
+                "file": handoff_path.name,
+                "digest": file_digest(handoff_path),
+            }
+            return result
+        review_handoff(
+            receipt_path=receipt_path if receipt_path.is_file() else None,
+            task_id=task_id,
+            project_root=project_root,
+            handoff_path=handoff_path,
+            obsidian_wiki_cmd=obsidian_wiki_cmd,
+            now=now,
+        )
+        handoff_text = handoff_path.read_text(encoding="utf-8")
+        status_line = next(
+            (line.split(":", 1)[1].strip() for line in handoff_text.splitlines() if line.startswith("- Status:")),
+            "unknown",
+        )
+        status = status_line if status_line in {"ready", "no-relevant", "disabled", "broken"} else "broken"
+        result["status"] = status
+        result["handoff"] = {
+            "file": handoff_path.name,
+            "digest": file_digest(handoff_path),
+        }
+        if status == "ready":
+            result["reason"] = "Reviewer handoff validated from the implementation readiness receipt."
+        elif status == "broken":
+            result["reason"] = "Reviewer handoff is caveat-only because readiness validation failed."
+        return result
+    except (ReadinessError, ValidationError, FingerprintError, SnapshotError, OSError) as exc:
+        result["status"] = "broken"
+        result["reason"] = str(exc)
+        return result
 
 
 def main() -> int:
@@ -1247,6 +1702,25 @@ def main() -> int:
     review.add_argument("--project-root", required=True)
     review.add_argument("--handoff", required=True)
     review.add_argument("--obsidian-wiki-cmd")
+
+    run = subparsers.add_parser(
+        "run",
+        help="Run one formal-ticket readiness transaction from canonical project artifacts",
+    )
+    run.add_argument("--project-root", required=True)
+    run.add_argument("--feature-slug", required=True)
+    run.add_argument("--task-id", required=True)
+    run.add_argument("--reason", default="Implementation readiness validated.")
+    run.add_argument("--obsidian-wiki-cmd")
+
+    review_entry_parser = subparsers.add_parser(
+        "review",
+        help="Derive one canonical reviewer handoff from implementation readiness",
+    )
+    review_entry_parser.add_argument("--project-root", required=True)
+    review_entry_parser.add_argument("--feature-slug", required=True)
+    review_entry_parser.add_argument("--task-id", required=True)
+    review_entry_parser.add_argument("--obsidian-wiki-cmd")
 
     args = parser.parse_args()
     try:
@@ -1319,15 +1793,45 @@ def main() -> int:
                 )
             )
         else:
-            print(
-                review_handoff(
-                    receipt_path=Path(args.receipt) if args.receipt else None,
-                    task_id=args.task_id,
-                    project_root=Path(args.project_root),
-                    handoff_path=Path(args.handoff),
-                    obsidian_wiki_cmd=args.obsidian_wiki_cmd,
+            if args.command == "run":
+                print(
+                    json.dumps(
+                        readiness_entry(
+                            project_root=Path(args.project_root),
+                            feature_slug=args.feature_slug,
+                            task_id=args.task_id,
+                            reason=args.reason,
+                            obsidian_wiki_cmd=args.obsidian_wiki_cmd,
+                        ),
+                        ensure_ascii=False,
+                        indent=2,
+                        sort_keys=True,
+                    )
                 )
-            )
+            elif args.command == "review":
+                print(
+                    json.dumps(
+                        review_entry(
+                            project_root=Path(args.project_root),
+                            feature_slug=args.feature_slug,
+                            task_id=args.task_id,
+                            obsidian_wiki_cmd=args.obsidian_wiki_cmd,
+                        ),
+                        ensure_ascii=False,
+                        indent=2,
+                        sort_keys=True,
+                    )
+                )
+            else:
+                print(
+                    review_handoff(
+                        receipt_path=Path(args.receipt) if args.receipt else None,
+                        task_id=args.task_id,
+                        project_root=Path(args.project_root),
+                        handoff_path=Path(args.handoff),
+                        obsidian_wiki_cmd=args.obsidian_wiki_cmd,
+                    )
+                )
         return 0
     except (ReadinessError, ValidationError, FingerprintError, SnapshotError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
