@@ -235,7 +235,7 @@ JSON CLI/MCP 中的 `propose-note-change` / `apply-note-change` 与 loopback bri
 
 ## GitHub draft-PR 发布
 
-日常 Capture 只返回 queued/skipped/needs-decision 计数。`SessionStart` 至多给一条当前项目 queued/conflicted 计数提醒。用户可选运行 `update-wiki status`，或 `update-wiki review` 查看跨 feature、按 repository 聚合的完整 diff。review/publish 先派生隔离 maintenance role：等价 durable claim 合并，矛盾/证据不足 defer，独立 contract 保持分离。用户可 exclude、defer、delete、revise 或 merge 指定 entry；每次都追加 superseding immutable entry，不重写旧 receipt/object。只有用户明确请求**无 feature slug**的 `update-wiki publish` 时才发布 eligible entries。顺序更新同一路径只发布最终内容，同时保留全部 entry/feature provenance。确认绑定不可变 `planDigest`，任何 scope、correction、policy 或 binding 变化都必须刷新 review。
+日常 Capture 只返回 queued/skipped/needs-decision 计数。`SessionStart` 至多给一条当前项目 queued/conflicted 计数提醒。用户可选运行 `update-wiki status`，或 `update-wiki review` 查看跨 feature、按 repository 聚合的完整 diff。Capture coordinator 与 review/publish 的 Outbox coordinator 都只传受信 descriptor；`wiki-capture` 和 `wiki-outbox-consolidation` child 分别校验并装载自己的 digest-bound role，前者只允许一次 staging，后者只允许等价 durable claim 合并、矛盾/证据不足 defer，独立 contract 保持分离。用户可 exclude、defer、delete、revise 或 merge 指定 entry；每次都追加 superseding immutable entry，不重写旧 receipt/object。只有用户明确请求**无 feature slug**的 `update-wiki publish` 时才发布 eligible entries。顺序更新同一路径只发布最终内容，同时保留全部 entry/feature provenance。确认绑定不可变 `planDigest`，任何 scope、correction、policy 或 binding 变化都必须刷新 review。
 
 ```bash
 node <plugin-root>/mcp/obsidian-wiki/dist/index.js outbox review

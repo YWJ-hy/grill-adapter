@@ -66,7 +66,7 @@ grill 的 roster 边界仍由该 router 保留：local scratch ticket 用文件�
 
 ### Agent 角色在两种运行时的差异
 
-Claude Code 会直接注册 `agents/wiki-researcher.md`、`agents/wiki-maintenance.md` 与 `agents/wiki-capture.md`。Codex 对 research 先只解析带 role identity、已解析只读 source 与 expected digest 的 metadata descriptor，再以 `fork_turns: none` 派生通用 child；child 在任何 Wiki 调用前自行读取并校验完整 researcher role，父 session 不摄入或内嵌 role 正文。其他 role 保持各自入口 skill 的既有 dispatch contract。dispatch 返回的是句柄；必须把等待精确 child 终态作为下一步。research/maintenance/Capture 的 dispatch、容量、transport 或 lifecycle 失败都进入各自 `broken` 路径；research role 的 source/digest/load 失败也直接 `broken`。Capture 尤其不得 inline fallback、派生第二个 child 或把候选正文带回主 session。
+Claude Code 会直接注册 `agents/wiki-researcher.md`、`agents/wiki-capture.md`、`agents/wiki-maintenance-audit.md`、`agents/wiki-maintenance-consolidation.md` 与 `agents/wiki-outbox-consolidation.md`。Codex 对 research、Capture 与每种 maintenance mode 都只解析带 role identity、已解析只读 source 与 expected digest 的 metadata descriptor，再以 `fork_turns: none` 派生通用 child；child 在任何 Wiki 调用前自行读取并校验当前唯一 role，父 session 不摄入或内嵌 role 正文，也不传其他 mode 的 input。dispatch 返回的是句柄；必须把等待精确 child 终态作为下一步。research/maintenance/Capture 的 dispatch、容量、transport、lifecycle 或 role source/digest/load 失败都进入各自 `broken` 路径。Capture 尤其不得 inline fallback、派生第二个 child 或把候选正文带回主 session。
 
 ## hook 配置（`hooks/hooks.json`）
 
@@ -99,7 +99,7 @@ Codex 当前没有 `--scope project|user`；插件安装是用户级的。项目
 先阻止未接线项目进入 adapter workflow，Wiki Source 读取再由目标项目 binding
 fail-closed。两层边界分别防止意外本地状态和跨项目 Source 暴露。
 
-一次装齐 13 skills + 3 agents + 3 hooks + 1 MCP server（Source-binding `obsidian-wiki`）。开发期不必安装：
+一次装齐 13 skills + 5 agents + 3 hooks + 1 MCP server（Source-binding `obsidian-wiki`）。开发期不必安装：
 
 ```bash
 claude --plugin-dir "$PWD" plugin details grill-adapter   # 直接从磁盘加载 + 打印组件清单

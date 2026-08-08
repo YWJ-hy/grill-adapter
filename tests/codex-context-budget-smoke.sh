@@ -132,12 +132,13 @@ JSON
   --installed-root "$TMP/installed" --thresholds "$TMP/thresholds.json" \
   --output "$TMP/report.json"
 
-python3 - "$TMP/report.json" "$TMP/installed" <<'PY'
+python3 - "$TMP/report.json" "$TMP/installed" "$ROOT/contracts/codex-context-budget-v1.json" <<'PY'
 import json
 import pathlib
 import sys
 
 report = json.load(open(sys.argv[1], encoding="utf-8"))
+contract = json.load(open(sys.argv[3], encoding="utf-8"))
 assert report["schemaVersion"] == 1
 assert report["kind"] == "grill-adapter.codex-context-budget"
 assert report["status"] == "pass"
@@ -167,6 +168,23 @@ assert report["stages"]["research"]["resources"] == [
 assert "skills/wiki-research/SKILL.md" in report["stages"]["readiness"]["resources"]
 assert "agents/wiki-researcher.md" not in report["stages"]["research"]["resources"]
 assert "agents/wiki-researcher.md" not in report["stages"]["readiness"]["resources"]
+assert report["stages"]["capture"]["resources"] == [
+    "skills/update-wiki/SKILL.md",
+    "skills/update-wiki/references/targeting.md",
+    "skills/update-wiki/references/content-templates.md",
+]
+assert report["stages"]["maintenance"]["resources"] == [
+    "skills/wiki-maintenance/SKILL.md",
+]
+assert report["stages"]["capture"]["baselineCommit"] == contract["baselineCommit"]
+assert report["stages"]["maintenance"]["baselineCommit"] == contract["baselineCommit"]
+assert report["stages"]["capture"]["reductionBytes"] > 0
+assert report["stages"]["maintenance"]["reductionBytes"] > 0
+assert not any(
+    resource.startswith("agents/")
+    for stage in report["stages"].values()
+    for resource in stage["resources"]
+)
 installed = pathlib.Path(sys.argv[2])
 source_bytes = sum(
     (installed / relative).stat().st_size

@@ -32,8 +32,8 @@ Optional user modes are:
 - `publish`: no feature slug. Build the same consolidated review, obtain one exact digest-bound
   confirmation, then create one allowlisted draft PR per affected Wiki repository.
 
-Before either `review` or `publish`, dispatch one isolated `wiki-maintenance` role in
-`outbox-consolidation` mode. It privately merges only proven semantically equivalent drafts,
+Before either `review` or `publish`, dispatch one isolated `wiki-outbox-consolidation` role. It
+privately merges only proven semantically equivalent drafts,
 defers contradictory or ambiguous drafts for a user decision, and leaves independent contracts
 separate. It never publishes or modifies formal base.
 
@@ -49,11 +49,17 @@ refs, object commits, locks, and recovery manifests are diagnostic implementatio
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/grill_context_to_candidates.py <repo-root> --feature-slug <feature-slug> --since <branch-point>
 ```
 
-2. Read the complete self-contained role file at
-   `${CLAUDE_PLUGIN_ROOT}/agents/wiki-capture.md`. Reading it does not adopt the child role in the
-   coordinator. Supply the exact feature slug, bounded limits (`candidateLimit <= 200`,
-   `noteReadLimit <= 24`, `evidenceReadLimit <= 32`), explicit final evidence refs, and these plugin
-   references:
+2. Resolve the trusted metadata-only descriptor for `grill-adapter:wiki-capture` before dispatch:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/child_role_loader.py resolve \
+  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
+  --role grill-adapter:wiki-capture
+```
+
+   The coordinator must not read, echo, or inline the Capture role body. Supply the exact feature
+   slug, bounded limits (`candidateLimit <= 200`, `noteReadLimit <= 24`,
+   `evidenceReadLimit <= 32`), explicit final evidence refs, and these plugin references:
    `${CLAUDE_PLUGIN_ROOT}/skills/update-wiki/references/targeting.md` and
    `${CLAUDE_PLUGIN_ROOT}/skills/update-wiki/references/content-templates.md`.
 3. Spawn exactly one Capture agent. Do not analyze candidates inline, dispatch per candidate, or
@@ -69,12 +75,24 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/grill_context_to_candidates.py <repo-root>
 
 ### Codex dispatch transaction
 
-Use `collaboration.spawn_agent` with `fork_turns: "none"`; its `message` must literally contain the
-complete role file plus the bounded input above. Do not rely on inherited conversation or tool
-output. After spawn returns a path, use the separate `collaboration.wait_agent` operation. That wait
-does not accept a target, so verify the terminal message author against the saved path. Use bounded
-waits of up to `300000` milliseconds and repeat on non-terminal status. Never call the generic
-`functions.wait`, never send commentary between spawn and terminal, and never spawn a second child.
+Use `collaboration.spawn_agent` with `fork_turns: "none"`; its `message` contains the exact resolved
+`roleDescriptor` and bounded Capture input above, never a role body, excerpt, transcript, or other
+operation's input. The bootstrap instruction requires the child to run:
+
+```bash
+python3 <derived-plugin-root>/scripts/child_role_loader.py load \
+  --role grill-adapter:wiki-capture \
+  --source <roleDescriptor.source> \
+  --expected-digest <roleDescriptor.expectedDigest>
+```
+
+before any Wiki call. The child derives its plugin root only from `roleDescriptor.source`. Descriptor
+resolution, source containment, digest mismatch, content drift, unreadable role, or loader failure
+is `broken` with `role-load-failed`; do not fall back to an inline Capture. After spawn returns a
+path, use the separate `collaboration.wait_agent` operation. That wait does not accept a target, so
+verify the terminal message author against the saved path. Use bounded waits of up to `300000`
+milliseconds and repeat on non-terminal status. Never call the generic `functions.wait`, never send
+commentary between spawn and terminal, and never spawn a second child.
 
 Claude Code invokes the registered `grill-adapter:wiki-capture` role directly with the same complete
 input and exact-handle wait discipline. Runtime mechanics differ; role, permissions, plan, staging,
@@ -94,11 +112,13 @@ identity is present on the synchronized configured base.
 
 ## Batch consolidation
 
-For `review` and `publish`, read the complete `${CLAUDE_PLUGIN_ROOT}/agents/wiki-maintenance.md`
-role and dispatch exactly one child with `mode: outbox-consolidation` and `changeLimit: 200`.
+For `review` and `publish`, resolve the trusted descriptor for
+`grill-adapter:wiki-outbox-consolidation` and dispatch exactly one child with only
+`changeLimit: 200`. The coordinator must not read, echo, or inline this role, and the child must
+load the descriptor's exact source/digest through `child_role_loader.py load` before any Wiki call.
 Use the same Codex `fork_turns: "none"`, exact-handle, wait-only-next-operation, repeated bounded
 wait, author verification, and `broken` failure discipline as Capture. Claude Code invokes the
-registered role directly. Do not inspect Outbox bodies or perform semantic grouping inline.
+registered Outbox role directly. Do not inspect Outbox bodies or perform semantic grouping inline.
 
 The child may call only current-project Outbox review/draft-view/correction tools. It appends merge
 successors for proven equivalents and deferred successors for contradictions or ambiguity; it does

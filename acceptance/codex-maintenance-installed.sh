@@ -40,6 +40,7 @@ OBSIDIAN_CLI="$SANDBOX/obsidian"
 TERMINAL_LOG="$SANDBOX/codex-audit-terminal.log"
 CONSOLIDATION_TERMINAL_LOG="$SANDBOX/codex-consolidation-terminal.log"
 STALE_REPORT_TERMINAL_LOG="$SANDBOX/codex-stale-report-terminal.log"
+OUTBOX_TERMINAL_LOG="$SANDBOX/codex-outbox-consolidation-terminal.log"
 PRIVATE_MARKER='ISSUE_32_PRIVATE_NOTE_BODY_MUST_NOT_ESCAPE'
 UNSELECTED_MARKER='ISSUE_32_UNSELECTED_NOTE_BODY_MUST_NOT_ESCAPE'
 EQUIVALENT_MARKER='ISSUE_33_EQUIVALENT_CANDIDATE_PROSE_MUST_NOT_ESCAPE'
@@ -91,12 +92,12 @@ wiki_schema: grill-adapter.obsidian-note/v1
 wiki_id: project/stable
 type: constraint
 status: active
-agent_visible: true
+agent_visible: false
 summary: Stable build rule
 constraint_strength: hard
 verified_at: 2026-07-01T00:00:00Z
-review_after: 2026-12-01T00:00:00Z
-expires_at: 2027-01-01T00:00:00Z
+review_after: 2026-07-15T00:00:00Z
+expires_at: 2026-07-30T00:00:00Z
 ---
 
 # Stable
@@ -237,9 +238,25 @@ export CODEX_HOME="$CODEX_SANDBOX_HOME"
 "$CODEX_BIN" plugin marketplace add "$ROOT" --json >/dev/null
 "$CODEX_BIN" plugin add grill-adapter@grill-adapter --json >/dev/null
 
-MCP_BUNDLE="$(find "$CODEX_SANDBOX_HOME/plugins/cache/grill-adapter/grill-adapter" \
-  -path '*/mcp/obsidian-wiki/dist/index.js' -type f -print -quit)"
-[[ -n "$MCP_BUNDLE" ]] || { printf 'installed Obsidian MCP bundle not found\n' >&2; exit 1; }
+PLUGIN_ROOT="$(find "$CODEX_SANDBOX_HOME/plugins/cache/grill-adapter/grill-adapter" \
+  -path '*/.codex-plugin/plugin.json' -type f -print -quit | xargs dirname | xargs dirname)"
+[[ -n "$PLUGIN_ROOT" && -d "$PLUGIN_ROOT" ]] || {
+  printf 'installed grill-adapter plugin root not found\n' >&2
+  exit 1
+}
+MCP_BUNDLE="$PLUGIN_ROOT/mcp/obsidian-wiki/dist/index.js"
+INSTALLED_ROLE_LOADER="$PLUGIN_ROOT/scripts/child_role_loader.py"
+INSTALLED_AUDIT_ROLE="$PLUGIN_ROOT/agents/wiki-maintenance-audit.md"
+INSTALLED_CONSOLIDATION_ROLE="$PLUGIN_ROOT/agents/wiki-maintenance-consolidation.md"
+INSTALLED_OUTBOX_ROLE="$PLUGIN_ROOT/agents/wiki-outbox-consolidation.md"
+for installed_file in "$MCP_BUNDLE" "$INSTALLED_ROLE_LOADER" "$INSTALLED_AUDIT_ROLE" \
+  "$INSTALLED_CONSOLIDATION_ROLE" "$INSTALLED_OUTBOX_ROLE"; do
+  [[ -f "$installed_file" ]] || {
+    printf 'installed maintenance acceptance dependency missing: %s\n' "$installed_file" >&2
+    exit 1
+  }
+done
+export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 
 export ACCEPTANCE_CODEX_BIN="$CODEX_BIN"
 export ACCEPTANCE_CODEX_MODEL="$CODEX_MODEL"
@@ -336,7 +353,7 @@ EXPECT
 
 export ACCEPTANCE_TERMINAL_LOG="$TERMINAL_LOG"
 export ACCEPTANCE_COMPLETED_PARENTS=0
-export ACCEPTANCE_PROMPT='Invoke $grill-adapter:wiki-maintenance audit issue-32 with asOf 2026-07-31T12:00:00Z, identityLimit 10, and noteReadLimit 1. Follow the installed skill exactly: spawn with fork_turns none and embed the complete role file contents verbatim in the spawn message. The immediate next tool call after spawn must be collaboration.wait_agent (tool name wait_agent) with timeout_ms 300000; never call functions.wait. Use only another collaboration.wait_agent after any timeout. Do not implement or modify product code. Return only its compact summary.'
+export ACCEPTANCE_PROMPT='ISSUE41_STAGE_MAINTENANCE_AUDIT_ROLE_LOAD. Invoke $grill-adapter:wiki-maintenance audit issue-32 with asOf 2026-07-31T12:00:00Z, identityLimit 10, and noteReadLimit 1. Follow the installed skill exactly: resolve only the trusted audit role descriptor, then spawn with fork_turns none using that descriptor and the exact audit input, never a role body. The child must load and verify its role before any Wiki call. The immediate next tool call after spawn must be collaboration.wait_agent (tool name wait_agent) with timeout_ms 300000; never call functions.wait. Use only another collaboration.wait_agent after any timeout. Do not implement or modify product code. Return only the successful validator compact JSON object verbatim, with no prose.'
 run_codex_acceptance
 
 REPORT="$PROJECT/.grill-adapter/context/issue-32/wiki-maintenance-audit.json"
@@ -361,14 +378,20 @@ expected_status=$'?? .grill-adapter/context/issue-32/wiki-maintenance-audit.json
   exit 1
 }
 
-python3 - "$REPORT" "$CODEX_SANDBOX_HOME/sessions" "$PRIVATE_MARKER" "$UNSELECTED_MARKER" <<'PY'
+python3 - "$REPORT" "$CODEX_SANDBOX_HOME/sessions" "$PRIVATE_MARKER" "$UNSELECTED_MARKER" "$PLUGIN_ROOT" <<'PY'
 import json
 import pathlib
 import re
 import sys
 
-report_path, sessions_path, private_marker, unselected_marker = sys.argv[1:]
+report_path, sessions_path, private_marker, unselected_marker, plugin_root_arg = sys.argv[1:]
 report = json.load(open(report_path, encoding='utf-8'))
+plugin_root = pathlib.Path(plugin_root_arg)
+manifest = json.loads((plugin_root / 'contracts/child-role-loader-v1.json').read_text(encoding='utf-8'))
+audit_role = plugin_root / 'agents/wiki-maintenance-audit.md'
+audit_digest = manifest['roles']['grill-adapter:wiki-maintenance-audit']['digest']
+audit_marker = 'MAINTENANCE-AUDIT-ROLE-LOADER-PRIVATE-MARKER'
+assert audit_marker in audit_role.read_text(encoding='utf-8')
 assert report['kind'] == 'grill-adapter.wiki-maintenance-report'
 assert report['mode'] == 'audit'
 assert report['authoritative'] is False
@@ -416,6 +439,7 @@ child_path = child_meta['agent_path']
 parent_text = '\n'.join(json.dumps(event, ensure_ascii=False) for event in parent_events)
 assert private_marker not in parent_text
 assert unselected_marker not in parent_text
+assert audit_marker not in parent_text
 
 task_completions = [
     event['payload'] for event in parent_events
@@ -423,7 +447,50 @@ task_completions = [
     and event.get('payload', {}).get('type') == 'task_complete'
 ]
 assert len(task_completions) == 1
-assert json.loads(task_completions[0]['last_agent_message']) == expected_summary
+
+
+def assert_compact_audit_summary(message):
+    try:
+        assert json.loads(message) == expected_summary
+        return
+    except json.JSONDecodeError:
+        pass
+
+    findings = len(report['findings'])
+    note_bodies = report['scanned']['noteBodiesRead']
+    caveat_labels = {
+        'identity-limit-reached': 'identity limit reached',
+        'note-read-limit-reached': 'note-read limit reached',
+        'repository-base-unverified': 'repository base unverified',
+        'maintenance-summary-warning': 'maintenance summary warning',
+    }
+    assert len(message) <= 512
+    assert re.fullmatch(r'[A-Za-z0-9 \t\r\n:;,.()`/_-]*', message)
+    assert expected_summary['reportPath'] not in message or message.count(expected_summary['reportPath']) == 1
+
+    normalized = message.replace(expected_summary['reportPath'], '')
+    tokens = re.findall(r'[A-Za-z0-9][A-Za-z0-9_/-]*', normalized.lower())
+    allowed = {
+        'audit', 'finding', 'findings', 'note', 'body', 'bodies', 'read', 'caveat', 'caveats',
+        'report', 'written', 'to', 'across', 'source', 'sources', 'complete', 'completed', 'with', report['status'],
+        str(findings), str(note_bodies), str(report['scanned']['sources']),
+    }
+    for category in {finding['category'] for finding in report['findings']}:
+        allowed.add(category)
+        allowed.update(category.split('-'))
+        allowed.add(str(sum(finding['category'] == category for finding in report['findings'])))
+    for caveat in report['caveats']:
+        allowed.update(re.findall(r'[A-Za-z0-9][A-Za-z0-9_/-]*', caveat.lower()))
+        allowed.update(re.findall(r'[A-Za-z0-9][A-Za-z0-9_/-]*', caveat_labels[caveat]))
+        assert caveat in message or caveat_labels[caveat] in message
+    assert 'audit' in tokens and report['status'] in tokens
+    assert str(findings) in tokens and str(note_bodies) in tokens
+    assert 'finding' in tokens or 'findings' in tokens
+    assert 'note' in tokens and 'read' in tokens
+    assert all(token in allowed for token in tokens), tokens
+
+
+assert_compact_audit_summary(task_completions[0]['last_agent_message'])
 
 parent_calls = [
     (index, event['payload']) for index, event in enumerate(parent_events)
@@ -435,6 +502,12 @@ wait_calls = [(index, call) for index, call in parent_calls if call.get('name') 
 assert len(spawn_calls) == 1
 assert wait_calls and all(index > spawn_calls[0][0] for index, _ in wait_calls)
 assert parent_calls[parent_calls.index(spawn_calls[0]) + 1][1]['name'] == 'wait_agent'
+loader_calls = [call for _, call in parent_calls if 'child_role_loader.py resolve' in json.dumps(call, ensure_ascii=False)]
+assert len(loader_calls) == 1
+loader_input = str(loader_calls[0].get('input') or loader_calls[0].get('arguments') or '')
+assert re.search(r'child_role_loader\.py(?:\\\\?["\'])?\s+resolve', loader_input)
+assert re.search(r'--role\s+(?:\\\\?["\'])?grill-adapter:wiki-maintenance-audit', loader_input)
+assert audit_digest in parent_text
 
 spawn_call_id = spawn_calls[0][1]['call_id']
 spawn_outputs = [
@@ -445,12 +518,15 @@ spawn_outputs = [
 ]
 assert len(spawn_outputs) == 1
 assert json.loads(spawn_outputs[0]['output'])['task_name'] == child_path
-terminal_child_messages = [
-    event['payload'] for event in parent_events
-    if event.get('type') == 'response_item'
-    and event.get('payload', {}).get('type') == 'agent_message'
-    and event['payload'].get('author') == child_path
-]
+terminal_child_messages = []
+for event in parent_events:
+    payload = event.get('payload', {})
+    if event.get('type') == 'response_item' and payload.get('type') == 'agent_message':
+        if payload.get('author') == child_path and 'Message Type: FINAL_ANSWER' in json.dumps(event, ensure_ascii=False):
+            terminal_child_messages.append(payload)
+    elif event.get('type') == 'event_msg' and payload.get('type') == 'agent_message':
+        if payload.get('phase') == 'final_answer' and 'grill-adapter.wiki-maintenance-report' in payload.get('message', ''):
+            terminal_child_messages.append(payload)
 assert len(terminal_child_messages) == 1
 
 child_calls = [
@@ -458,6 +534,14 @@ child_calls = [
     if event.get('type') == 'response_item'
     and event.get('payload', {}).get('type') in {'function_call', 'custom_tool_call'}
 ]
+assert child_calls
+first_child_input = str(child_calls[0].get('input') or child_calls[0].get('arguments') or '')
+assert re.search(r'child_role_loader\.py(?:\\\\?["\'])?\s+load', first_child_input)
+assert re.search(r'--role\s+(?:\\\\?["\'])?grill-adapter:wiki-maintenance-audit', first_child_input)
+assert audit_digest in first_child_input
+assert '/agents/wiki-maintenance-audit.md' in first_child_input
+child_text = '\n'.join(json.dumps(event, ensure_ascii=False) for event in child_events)
+assert audit_marker in child_text
 child_tool_code = '\n'.join(str(call.get('input') or call.get('arguments') or '') for call in child_calls)
 read_calls = [
     code for code in re.findall(
@@ -487,7 +571,7 @@ PY
 
 export ACCEPTANCE_TERMINAL_LOG="$CONSOLIDATION_TERMINAL_LOG"
 export ACCEPTANCE_COMPLETED_PARENTS=1
-export ACCEPTANCE_PROMPT='Invoke $grill-adapter:wiki-maintenance consolidation issue-33 with asOf 2026-08-01T12:00:00Z and candidateLimit 20. Follow the installed skill exactly: spawn with fork_turns none and embed the complete role file contents verbatim in the spawn message. The immediate next tool call after spawn must be collaboration.wait_agent (tool name wait_agent) with timeout_ms 300000; never call functions.wait. Use only another collaboration.wait_agent after any timeout. Do not implement or modify product code. Return only the validator compact summary.'
+export ACCEPTANCE_PROMPT='ISSUE41_STAGE_MAINTENANCE_CONSOLIDATION_ROLE_LOAD. Invoke $grill-adapter:wiki-maintenance consolidation issue-33 with asOf 2026-08-01T12:00:00Z and candidateLimit 20. Follow the installed skill exactly: resolve only the trusted consolidation role descriptor, then spawn with fork_turns none using that descriptor and the exact consolidation input, never a role body. The child must load and verify its role before any Wiki call. The immediate next tool call after spawn must be collaboration.wait_agent (tool name wait_agent) with timeout_ms 300000; never call functions.wait. Use only another collaboration.wait_agent after any timeout. Do not implement or modify product code. For validator stdin, construct a structured report value and send JSON.stringify(report) plus a newline through the live validator session; do not hand-quote a large JavaScript string. If a local exec syntax/serialization error occurs, retry the same validator operation with the unchanged child result. Return only the validator compact summary.'
 run_codex_acceptance
 
 CONSOLIDATION_REPORT="$PROJECT/.grill-adapter/context/issue-33/wiki-maintenance-consolidation.json"
@@ -550,7 +634,7 @@ expected_status=$'?? .grill-adapter/context/issue-32/wiki-maintenance-audit.json
 
 python3 - "$CONSOLIDATION_REPORT" "$CODEX_SANDBOX_HOME/sessions" \
   "$EQUIVALENT_MARKER" "$CONTRADICTORY_MARKER" \
-  "$INDEPENDENT_MARKER" "$EXPECTED_MODEL" "$EXPECTED_PROVIDER" <<'PY'
+  "$INDEPENDENT_MARKER" "$EXPECTED_MODEL" "$EXPECTED_PROVIDER" "$PLUGIN_ROOT" <<'PY'
 import json
 import pathlib
 import re
@@ -564,8 +648,15 @@ import sys
     independent_marker,
     expected_model,
     expected_provider,
+    plugin_root_arg,
 ) = sys.argv[1:]
 report = json.load(open(report_path, encoding='utf-8'))
+plugin_root = pathlib.Path(plugin_root_arg)
+manifest = json.loads((plugin_root / 'contracts/child-role-loader-v1.json').read_text(encoding='utf-8'))
+consolidation_role = plugin_root / 'agents/wiki-maintenance-consolidation.md'
+consolidation_digest = manifest['roles']['grill-adapter:wiki-maintenance-consolidation']['digest']
+consolidation_marker = 'MAINTENANCE-CONSOLIDATION-ROLE-LOADER-PRIVATE-MARKER'
+assert consolidation_marker in consolidation_role.read_text(encoding='utf-8')
 assert report['kind'] == 'grill-adapter.wiki-maintenance-report'
 assert report['mode'] == 'consolidation'
 assert report['authoritative'] is False
@@ -693,7 +784,17 @@ for required in (
     assert required in stale_tool_code, (required, stale_tool_code)
 
 
-matches = [(meta, events) for meta, events in parents if completion(events).get('mode') == 'consolidation']
+matches = [
+    (meta, events) for meta, events in parents
+    if any(
+        'ISSUE41_STAGE_MAINTENANCE_CONSOLIDATION_ROLE_LOAD' in str(
+            event.get('payload', {}).get('message', '')
+        )
+        for event in events
+        if event.get('type') == 'event_msg'
+        and event.get('payload', {}).get('type') == 'user_message'
+    )
+]
 assert len(matches) == 1
 parent_meta, parent_events = matches[0]
 assert completion(parent_events) == expected_summary
@@ -705,6 +806,7 @@ child_path = child_meta['agent_path']
 parent_text = '\n'.join(json.dumps(event, ensure_ascii=False) for event in parent_events)
 for marker in (equivalent_marker, contradictory_marker, independent_marker):
     assert marker not in parent_text
+assert consolidation_marker not in parent_text
 
 parent_calls = [
     (index, event['payload']) for index, event in enumerate(parent_events)
@@ -716,6 +818,12 @@ wait_calls = [(index, call) for index, call in parent_calls if call.get('name') 
 assert len(spawn_calls) == 1
 assert wait_calls and all(index > spawn_calls[0][0] for index, _ in wait_calls)
 assert parent_calls[parent_calls.index(spawn_calls[0]) + 1][1]['name'] == 'wait_agent'
+loader_calls = [call for _, call in parent_calls if 'child_role_loader.py resolve' in json.dumps(call, ensure_ascii=False)]
+assert len(loader_calls) == 1
+loader_input = str(loader_calls[0].get('input') or loader_calls[0].get('arguments') or '')
+assert re.search(r'child_role_loader\.py(?:\\\\?["\'])?\s+resolve', loader_input)
+assert re.search(r'--role\s+(?:\\\\?["\'])?grill-adapter:wiki-maintenance-consolidation', loader_input)
+assert consolidation_digest in parent_text
 
 spawn_call_id = spawn_calls[0][1]['call_id']
 spawn_outputs = [
@@ -726,12 +834,15 @@ spawn_outputs = [
 ]
 assert len(spawn_outputs) == 1
 assert json.loads(spawn_outputs[0]['output'])['task_name'] == child_path
-terminal_child_messages = [
-    event['payload'] for event in parent_events
-    if event.get('type') == 'response_item'
-    and event.get('payload', {}).get('type') == 'agent_message'
-    and event['payload'].get('author') == child_path
-]
+terminal_child_messages = []
+for event in parent_events:
+    payload = event.get('payload', {})
+    if event.get('type') == 'response_item' and payload.get('type') == 'agent_message':
+        if payload.get('author') == child_path and 'Message Type: FINAL_ANSWER' in json.dumps(event, ensure_ascii=False):
+            terminal_child_messages.append(payload)
+    elif event.get('type') == 'event_msg' and payload.get('type') == 'agent_message':
+        if payload.get('phase') == 'final_answer' and 'grill-adapter.wiki-maintenance-report' in payload.get('message', ''):
+            terminal_child_messages.append(payload)
 assert len(terminal_child_messages) == 1
 
 child_calls = [
@@ -739,6 +850,14 @@ child_calls = [
     if event.get('type') == 'response_item'
     and event.get('payload', {}).get('type') in {'function_call', 'custom_tool_call'}
 ]
+assert child_calls
+first_child_input = str(child_calls[0].get('input') or child_calls[0].get('arguments') or '')
+assert re.search(r'child_role_loader\.py(?:\\\\?["\'])?\s+load', first_child_input)
+assert re.search(r'--role\s+(?:\\\\?["\'])?grill-adapter:wiki-maintenance-consolidation', first_child_input)
+assert consolidation_digest in first_child_input
+assert '/agents/wiki-maintenance-consolidation.md' in first_child_input
+child_text = '\n'.join(json.dumps(event, ensure_ascii=False) for event in child_events)
+assert consolidation_marker in child_text
 child_tool_code = '\n'.join(
     str(call.get('name') or '') + '\n' + str(call.get('input') or call.get('arguments') or '')
     for call in child_calls
@@ -759,5 +878,280 @@ for forbidden in (
 ):
     assert forbidden not in child_tool_code.lower()
 PY
+
+ # Seed two contradictory queued drafts after candidate consolidation so the Outbox acceptance
+ # exercises review, immutable defer, and deterministic re-review.
+OUTBOX_FIXTURE_DIR="$PROJECT/.grill-adapter/context/outbox-fixture"
+mkdir -p "$OUTBOX_FIXTURE_DIR"
+cat > "$OUTBOX_FIXTURE_DIR/wiki-candidates.jsonl" <<'EOF'
+{"schemaVersion":1,"eventType":"candidate","eventId":"outbox-event-a","featureSlug":"outbox-fixture","recordedAt":"2026-08-01T12:00:00Z","candidateId":"outbox-candidate-a","stage":"implementation","candidateType":"wiki_note","kind":"constraint","claim":"Runtime startup must use the blue transport.","why":"ISSUE41_OUTBOX_CONTRADICTORY_DRAFT_A","sourceRefs":["tests/outbox-a"]}
+{"schemaVersion":1,"eventType":"candidate","eventId":"outbox-event-b","featureSlug":"outbox-fixture","recordedAt":"2026-08-01T12:01:00Z","candidateId":"outbox-candidate-b","stage":"implementation","candidateType":"wiki_note","kind":"constraint","claim":"Runtime startup must use the red transport.","why":"ISSUE41_OUTBOX_CONTRADICTORY_DRAFT_B","sourceRefs":["tests/outbox-b"]}
+EOF
+
+OUTBOX_CANDIDATES_JSON="$SANDBOX/outbox-candidates.json"
+(cd "$PROJECT" && \
+  OBSIDIAN_WIKI_CONFIG="$REGISTRY" \
+  OBSIDIAN_WIKI_OBSIDIAN_CLI="$OBSIDIAN_CLI" \
+  FAKE_OBSIDIAN_VAULT_ROOT="$VAULT" \
+  node "$MCP_BUNDLE" consolidation-candidates <<< '{"candidateLimit":200}') >"$OUTBOX_CANDIDATES_JSON"
+OUTBOX_PLAN_JSON="$SANDBOX/outbox-plan.json"
+python3 - "$OUTBOX_CANDIDATES_JSON" "$OUTBOX_PLAN_JSON" <<'PY'
+import json
+import pathlib
+import sys
+
+source = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+selected = [candidate for candidate in source["candidates"] if candidate["featureSlug"] == "outbox-fixture"]
+assert len(selected) == 2, selected
+
+def note(wiki_id, color):
+    return "\n".join([
+        "---",
+        "wiki_schema: grill-adapter.obsidian-note/v1",
+        f"wiki_id: {wiki_id}",
+        "type: constraint",
+        "status: active",
+        "agent_visible: true",
+        "summary: Runtime transport policy",
+        "constraint_strength: hard",
+        "verified_at: 2026-08-01T12:00:00Z",
+        "---", "", "# Runtime transport", "",
+        f"Runtime startup must use the {color} transport.", "",
+    ])
+
+decisions = []
+for candidate, wiki_id, path, color in zip(
+    selected,
+    ("project/outbox-blue", "project/outbox-red"),
+    ("Projects/example/OutboxBlue.md", "Projects/example/OutboxRed.md"),
+    ("blue", "red"),
+):
+    decisions.append({
+        "candidateIds": [candidate["candidateId"]],
+        "candidateDigests": [candidate["candidateDigest"]],
+        "outcome": "queue",
+        "reason": "ISSUE41_OUTBOX_QUEUE_FIXTURE",
+        "sourceId": "project",
+        "operation": "create",
+        "path": path,
+        "expectedHash": None,
+        "content": note(wiki_id, color),
+    })
+plan = {
+    "schemaVersion": 1,
+    "kind": "grill-adapter.wiki-capture-plan",
+    "featureSlug": "outbox-fixture",
+    "journalSnapshots": source["journalSnapshots"],
+    "decisions": decisions,
+}
+pathlib.Path(sys.argv[2]).write_text(json.dumps(plan, separators=(",", ":")), encoding="utf-8")
+PY
+(cd "$PROJECT" && \
+  OBSIDIAN_WIKI_CONFIG="$REGISTRY" \
+  OBSIDIAN_WIKI_OBSIDIAN_CLI="$OBSIDIAN_CLI" \
+  FAKE_OBSIDIAN_VAULT_ROOT="$VAULT" \
+  node "$MCP_BUNDLE" outbox stage <"$OUTBOX_PLAN_JSON") >"$SANDBOX/outbox-stage-result.json"
+python3 - "$SANDBOX/outbox-stage-result.json" <<'PY'
+import json
+import sys
+
+result = json.load(open(sys.argv[1], encoding="utf-8"))
+assert result["status"] == "ok", result
+assert result["counts"] == {"queued": 2, "skipped": 0, "needsDecision": 0}, result
+assert isinstance(result["planId"], str) and result["planId"].startswith("sha256:"), result
+PY
+
+export ACCEPTANCE_TERMINAL_LOG="$OUTBOX_TERMINAL_LOG"
+export ACCEPTANCE_COMPLETED_PARENTS=3
+export ACCEPTANCE_PROMPT='ISSUE41_STAGE_OUTBOX_CONSOLIDATION_ROLE_LOAD. Invoke $grill-adapter:update-wiki review. The current project has exactly two newly queued contradictory drafts in Projects/example/OutboxBlue.md and Projects/example/OutboxRed.md. Follow the installed skill exactly: resolve only the trusted Outbox consolidation role descriptor, then spawn with fork_turns none using that descriptor and only changeLimit 200, never a role body or another maintenance input. The child must load and verify its role before any Wiki call, call outbox_review twice with exactly one outbox_correct defer for the contradictory drafts, and return the final planDigest. The coordinator must run a deterministic outbox review after the child and verify that digest before returning. The immediate next tool call after spawn must be collaboration.wait_agent (tool name wait_agent) with timeout_ms 300000; never call functions.wait. Use only another collaboration.wait_agent after any timeout. Do not publish or modify product code. Return only the resulting compact review summary.'
+run_codex_acceptance
+
+python3 - "$CODEX_SANDBOX_HOME/sessions" "$PLUGIN_ROOT" "$MCP_BUNDLE" "$REGISTRY" "$OBSIDIAN_CLI" "$VAULT" "$PROJECT" <<'PY'
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+
+sessions = pathlib.Path(sys.argv[1])
+plugin_root = pathlib.Path(sys.argv[2])
+bundle, registry, obsidian_cli, vault, project = sys.argv[3:]
+manifest = json.loads((plugin_root / 'contracts/child-role-loader-v1.json').read_text(encoding='utf-8'))
+role = plugin_root / 'agents/wiki-outbox-consolidation.md'
+digest = manifest['roles']['grill-adapter:wiki-outbox-consolidation']['digest']
+marker = 'OUTBOX-CONSOLIDATION-ROLE-LOADER-PRIVATE-MARKER'
+assert marker in role.read_text(encoding='utf-8')
+
+
+def load_rollout(path):
+    events = [json.loads(line) for line in path.open(encoding='utf-8') if line.strip()]
+    assert events and events[0]['type'] == 'session_meta', path
+    return events[0]['payload'], events
+
+
+rollouts = [load_rollout(path) for path in sessions.rglob('rollout-*.jsonl')]
+parents = [item for item in rollouts if item[0].get('thread_source') == 'user']
+matches = [
+    item for item in parents
+    if 'ISSUE41_STAGE_OUTBOX_CONSOLIDATION_ROLE_LOAD' in '\n'.join(
+        str(event.get('payload', {}).get('message', '')) for event in item[1]
+    )
+]
+assert len(matches) == 1
+parent_meta, parent_events = matches[0]
+children = [
+    item for item in rollouts
+    if item[0].get('thread_source') == 'subagent'
+    and item[0].get('parent_thread_id') == parent_meta['id']
+]
+assert len(children) == 1
+child_meta, child_events = children[0]
+parent_text = '\n'.join(json.dumps(event, ensure_ascii=False) for event in parent_events)
+assert marker not in parent_text
+assert digest in parent_text
+
+terminal_messages = [
+    event['payload']['last_agent_message'] for event in parent_events
+    if event.get('type') == 'event_msg'
+    and event.get('payload', {}).get('type') == 'task_complete'
+]
+assert len(terminal_messages) == 1, terminal_messages
+result = json.loads(terminal_messages[0])
+assert set(result) == {'schemaVersion', 'kind', 'status', 'planDigest', 'counts', 'caveats'}, result
+assert result['schemaVersion'] == 1
+assert result['kind'] == 'grill-adapter.wiki-outbox-consolidation-result'
+assert result['status'] in {'ok', 'partial'}
+assert re.fullmatch(r'sha256:[0-9a-f]{64}', result['planDigest'])
+assert result['counts']['mergedGroups'] == 0
+assert result['counts']['deferredChanges'] >= 1
+assert result['counts']['independentChanges'] == 0
+assert all(caveat in {'change-limit-reached', 'draft-read-limit-reached', 'user-decision-required'}
+           for caveat in result['caveats'])
+parent_calls = [
+    (index, event['payload']) for index, event in enumerate(parent_events)
+    if event.get('type') == 'response_item'
+    and event.get('payload', {}).get('type') in {'function_call', 'custom_tool_call'}
+]
+spawn_calls = [(index, call) for index, call in parent_calls if call.get('name') == 'spawn_agent']
+wait_calls = [(index, call) for index, call in parent_calls if call.get('name') == 'wait_agent']
+assert len(spawn_calls) == 1
+assert wait_calls and parent_calls[parent_calls.index(spawn_calls[0]) + 1][1]['name'] == 'wait_agent'
+loader_calls = [call for _, call in parent_calls if 'child_role_loader.py resolve' in json.dumps(call, ensure_ascii=False)]
+assert len(loader_calls) == 1
+loader_input = str(loader_calls[0].get('input') or loader_calls[0].get('arguments') or '')
+assert re.search(r'child_role_loader\.py(?:\\\\?["\'])?\s+resolve', loader_input)
+assert re.search(r'--role\s+(?:\\\\?["\'])?grill-adapter:wiki-outbox-consolidation', loader_input)
+child_calls = [
+    event['payload'] for event in child_events
+    if event.get('type') == 'response_item'
+    and event.get('payload', {}).get('type') in {'function_call', 'custom_tool_call'}
+]
+assert child_calls
+first_child_input = str(child_calls[0].get('input') or child_calls[0].get('arguments') or '')
+assert re.search(r'child_role_loader\.py(?:\\\\?["\'])?\s+load', first_child_input)
+assert re.search(r'--role\s+(?:\\\\?["\'])?grill-adapter:wiki-outbox-consolidation', first_child_input)
+assert digest in first_child_input
+assert '/agents/wiki-outbox-consolidation.md' in first_child_input
+child_text = '\n'.join(json.dumps(event, ensure_ascii=False) for event in child_events)
+assert marker in child_text
+forbidden = (
+    'obsidian_wiki_maintenance_summary',
+    'obsidian_wiki_consolidation_candidates',
+    'obsidian_wiki_read_notes_by_wiki_ids',
+    'obsidian_wiki_stage_capture_plan',
+    'obsidian_wiki_propose_note_change',
+    'obsidian_wiki_apply_note_change',
+    'outbox publish',
+    'git commit',
+    'git push',
+)
+child_tool_code = '\n'.join(
+    str(call.get('name') or '') + '\n' + str(call.get('input') or call.get('arguments') or '')
+    for call in child_calls
+).lower()
+for required in (
+    'obsidian_wiki_status',
+    'obsidian_wiki_sources',
+    'obsidian_wiki_outbox_review',
+    'obsidian_wiki_capture_draft_view',
+    'obsidian_wiki_outbox_correct',
+):
+    assert required in child_tool_code, (required, child_tool_code)
+assert len(re.findall(r'obsidian_wiki_outbox_review', child_tool_code)) == 2
+assert len(re.findall(r'obsidian_wiki_outbox_correct', child_tool_code)) == 1
+assert '"action":"defer"' in child_tool_code.replace(' ', '')
+parent_tool_code = '\n'.join(
+    str(call.get('name') or '') + '\n' + str(call.get('input') or call.get('arguments') or '')
+    for _, call in parent_calls
+).lower()
+assert 'outbox review' in parent_tool_code or 'obsidian_wiki_outbox_review' in parent_tool_code
+review = json.loads(subprocess.check_output(
+    ['node', bundle, 'outbox', 'review'],
+    env={**os.environ, 'OBSIDIAN_WIKI_CONFIG': registry,
+         'OBSIDIAN_WIKI_OBSIDIAN_CLI': obsidian_cli, 'FAKE_OBSIDIAN_VAULT_ROOT': vault},
+    cwd=project,
+    text=True,
+))
+assert review['planDigest'] == result['planDigest'], (review, result)
+assert review['repositories'] == [], review
+for value in forbidden:
+    assert value not in child_tool_code
+PY
+
+# Exercise the maintenance role fail-closed path after the successful roles have completed. The
+# installed descriptor remains trusted while the audit source is deliberately drifted.
+AUDIT_ROLE_BACKUP="$SANDBOX/wiki-maintenance-audit.md"
+cp "$INSTALLED_AUDIT_ROLE" "$AUDIT_ROLE_BACKUP"
+printf '\nacceptance role content drift\n' >> "$INSTALLED_AUDIT_ROLE"
+export ACCEPTANCE_TERMINAL_LOG="$STALE_REPORT_TERMINAL_LOG"
+export ACCEPTANCE_COMPLETED_PARENTS=4
+export ACCEPTANCE_PROMPT='ISSUE41_STAGE_MAINTENANCE_ROLE_LOAD_FAILURE. Invoke $grill-adapter:wiki-maintenance audit role-load-failure with asOf 2026-08-01T12:00:00Z, identityLimit 10, and noteReadLimit 1. The installed audit role was changed after its trusted descriptor was shipped. The child must reject the digest mismatch before any Wiki call or report write. Return only {"status":"broken","mode":"audit","caveats":["role-load-failed"]}.'
+run_codex_acceptance
+mv "$AUDIT_ROLE_BACKUP" "$INSTALLED_AUDIT_ROLE"
+
+python3 - "$CODEX_SANDBOX_HOME/sessions" <<'PY'
+import json
+import pathlib
+
+sessions = pathlib.Path(__import__('sys').argv[1])
+rollouts = []
+for path in sessions.rglob('rollout-*.jsonl'):
+    events = [json.loads(line) for line in path.open(encoding='utf-8') if line.strip()]
+    if events and events[0]['type'] == 'session_meta':
+        rollouts.append((events[0]['payload'], events))
+parents = [item for item in rollouts if item[0].get('thread_source') == 'user']
+matches = [
+    item for item in parents
+    if 'ISSUE41_STAGE_MAINTENANCE_ROLE_LOAD_FAILURE' in '\n'.join(
+        str(event.get('payload', {}).get('message', '')) for event in item[1]
+    )
+]
+assert len(matches) == 1
+parent_meta, parent_events = matches[0]
+completions = [
+    event['payload']['last_agent_message'] for event in parent_events
+    if event.get('type') == 'event_msg'
+    and event.get('payload', {}).get('type') == 'task_complete'
+]
+assert len(completions) == 1
+assert json.loads(completions[0]) == {
+    'status': 'broken', 'mode': 'audit', 'caveats': ['role-load-failed']
+}
+children = [
+    item for item in rollouts
+    if item[0].get('thread_source') == 'subagent'
+    and item[0].get('parent_thread_id') == parent_meta['id']
+]
+assert len(children) == 1
+child_text = '\n'.join(json.dumps(event, ensure_ascii=False) for event in children[0][1])
+assert 'child_role_loader.py load' in child_text
+assert 'obsidian_wiki_' not in child_text.lower()
+PY
+
+[[ "$(git -C "$PROJECT" rev-parse HEAD)" == "$PROJECT_HEAD" ]]
+[[ "$(git -C "$VAULT" rev-parse HEAD)" == "$VAULT_HEAD" ]]
+git -C "$PROJECT" diff --quiet
+git -C "$VAULT" diff --quiet
 
 printf 'codex maintenance installed acceptance OK\n'

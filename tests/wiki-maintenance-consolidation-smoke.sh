@@ -23,14 +23,15 @@ registry = sandbox / "registry.json"
 obsidian_cli = sandbox / "obsidian"
 validator = root / "scripts" / "wiki_maintenance_consolidation_report.py"
 bundle = root / "mcp" / "obsidian-wiki" / "dist" / "index.js"
-agent = (root / "agents" / "wiki-maintenance.md").read_text(encoding="utf-8")
+agent = (root / "agents" / "wiki-maintenance-consolidation.md").read_text(encoding="utf-8")
 skill = (root / "skills" / "wiki-maintenance" / "SKILL.md").read_text(encoding="utf-8")
 contract = (root / "contracts" / "wiki-maintenance-consolidation-report-v1.example.jsonc").read_text(
     encoding="utf-8"
 )
 
 for required in (
-    "mode: consolidation",
+    "name: wiki-maintenance-consolidation",
+    '"mode": "consolidation"',
     "obsidian_wiki_consolidation_candidates",
     "equivalent-durable-claim",
     "contradictory-durable-claims",
@@ -53,6 +54,9 @@ for required in (
     "journal drift",
     "same agent path",
     "proposal-only",
+    "yield of at least `1000`",
+    "write_stdin",
+    "Do not use `tty: false`",
 ):
     assert required in skill, required
 

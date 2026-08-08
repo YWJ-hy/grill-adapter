@@ -16,7 +16,7 @@ import sys
 
 root = pathlib.Path(sys.argv[1])
 sandbox = pathlib.Path(sys.argv[2])
-agent = (root / "agents" / "wiki-maintenance.md").read_text(encoding="utf-8")
+agent = (root / "agents" / "wiki-maintenance-audit.md").read_text(encoding="utf-8")
 skill = (root / "skills" / "wiki-maintenance" / "SKILL.md").read_text(encoding="utf-8")
 contract = (root / "contracts" / "wiki-maintenance-report-v1.example.jsonc").read_text(
     encoding="utf-8"
@@ -91,8 +91,8 @@ for invalid_trace in (
         raise AssertionError("dispatch recovery accepted a replacement or wrong child")
 
 for required in (
-    "name: wiki-maintenance",
-    "mode: audit",
+    "name: wiki-maintenance-audit",
+    '"mode": "audit"',
     "obsidian_wiki_maintenance_summary",
     "obsidian_wiki_read_notes_by_wiki_ids",
     "at most 24",
@@ -108,6 +108,13 @@ for required in (
     "auditedNoteSnapshots.wikiIds",
     "byte-for-byte",
     "Do not strip, shorten, relativize, or otherwise rewrite a `wikiId`",
+    "total number of requested `wikiIds` no greater than `noteReadLimit`",
+    "`noteReadLimit: 1` permits exactly",
+    "one `wikiId` across every read call",
+    "result is `partial` and must include `note-read-limit-reached`",
+    "contains only `a-z`, `0-9`, `.`, `_`, and `-`",
+    "`freshness-project-runtime`",
+    "never `:` or `/`",
     "affectedWikiIdentities",
     "recommendedAction",
     '"critical"',
@@ -138,8 +145,11 @@ for required in (
 
 for required in (
     "Codex dispatch transaction",
-    "Reading the file does not adopt that child role in the coordinator",
-    "its next operation is spawn",
+    "roleDescriptor",
+    "expectedDigest",
+    "child_role_loader.py resolve",
+    "child_role_loader.py load",
+    "role-load-failed",
     "Spawn exactly one maintenance agent",
     "call its `spawn` operation first",
     "call `spawn_agent`",
@@ -152,8 +162,6 @@ for required in (
     "Never call the generic `functions.wait`",
     "`collaboration.wait_agent`",
     "use `300000` milliseconds (five minutes)",
-    "message` literally contains the complete role file",
-    "Do not rely on inherited tool output",
     "set it to `\"none\"`",
     "Do not perform inline Wiki maintenance",
     "dispatch, transport, capacity, or lifecycle failure",
@@ -167,11 +175,21 @@ for required in (
     "`write_stdin`",
     "report JSON plus one newline",
     "Do not start this stdin-consuming command with `tty: false`",
+    "yield of at least `1000` milliseconds",
     "wiki-maintenance-audit.json",
     "compact summary",
     "non-authoritative",
 ):
     assert required in skill, required
+
+for forbidden in (
+    "obsidian_wiki_consolidation_candidates",
+    "obsidian_wiki_outbox_review",
+    "obsidian_wiki_outbox_correct",
+    "mode: consolidation",
+    "mode: outbox-consolidation",
+):
+    assert forbidden not in agent, forbidden
 
 for required in (
     '"kind": "grill-adapter.wiki-maintenance-report"',

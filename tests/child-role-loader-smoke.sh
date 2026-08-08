@@ -11,6 +11,52 @@ trap 'rm -rf "$TMP"' EXIT
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
+python3 - "$ROOT" "$LOADER" <<'PY'
+import hashlib
+import json
+import pathlib
+import subprocess
+import sys
+
+root = pathlib.Path(sys.argv[1])
+loader = pathlib.Path(sys.argv[2])
+expected_roles = {
+    "grill-adapter:wiki-researcher": "agents/wiki-researcher.md",
+    "grill-adapter:wiki-capture": "agents/wiki-capture.md",
+    "grill-adapter:wiki-maintenance-audit": "agents/wiki-maintenance-audit.md",
+    "grill-adapter:wiki-maintenance-consolidation": "agents/wiki-maintenance-consolidation.md",
+    "grill-adapter:wiki-outbox-consolidation": "agents/wiki-outbox-consolidation.md",
+}
+
+manifest = json.loads((root / "contracts/child-role-loader-v1.json").read_text(encoding="utf-8"))
+assert set(manifest["roles"]) == set(expected_roles)
+for identity, relative_source in expected_roles.items():
+    role_path = root / relative_source
+    descriptor = json.loads(
+        subprocess.check_output(
+            [sys.executable, str(loader), "resolve", "--plugin-root", str(root), "--role", identity],
+            text=True,
+        )
+    )
+    assert descriptor["role"] == identity
+    assert pathlib.Path(descriptor["source"]) == role_path.resolve()
+    assert descriptor["expectedDigest"] == "sha256:" + hashlib.sha256(role_path.read_bytes()).hexdigest()
+    loaded = subprocess.check_output(
+        [
+            sys.executable,
+            str(loader),
+            "load",
+            "--role",
+            identity,
+            "--source",
+            descriptor["source"],
+            "--expected-digest",
+            descriptor["expectedDigest"],
+        ]
+    )
+    assert loaded == role_path.read_bytes()
+PY
+
 descriptor="$(python3 "$LOADER" resolve --plugin-root "$ROOT" --role grill-adapter:wiki-researcher)"
 printf '%s\n' "$descriptor" > "$TMP/descriptor.json"
 

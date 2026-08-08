@@ -17,8 +17,20 @@ SHORT_MODEL_NAMES = AGENT_STANDARD_MODEL_NAMES
 
 ADAPTER_AGENT_IDS = frozenset(
     {
-        'wiki-maintenance',
+        'wiki-capture',
+        'wiki-maintenance-audit',
+        'wiki-maintenance-consolidation',
+        'wiki-outbox-consolidation',
         'wiki-researcher',
+    }
+)
+LEGACY_AGENT_IDS = frozenset({'wiki-maintenance'})
+CONFIGURABLE_AGENT_IDS = ADAPTER_AGENT_IDS | LEGACY_AGENT_IDS
+LEGACY_MAINTENANCE_ROLES = frozenset(
+    {
+        'wiki-maintenance-audit',
+        'wiki-maintenance-consolidation',
+        'wiki-outbox-consolidation',
     }
 )
 
@@ -115,7 +127,11 @@ def load_subagent_model_config(root: Path) -> SubagentModelConfig:
             'Valid keys: agents'
         )
 
-    agents = _normalize_section(raw.get('agents', {}), ADAPTER_AGENT_IDS, 'agents', allow_inherit=True)
+    agents = _normalize_section(raw.get('agents', {}), CONFIGURABLE_AGENT_IDS, 'agents', allow_inherit=True)
+    legacy_maintenance_model = agents.pop('wiki-maintenance', None)
+    if legacy_maintenance_model:
+        for role in LEGACY_MAINTENANCE_ROLES:
+            agents.setdefault(role, legacy_maintenance_model)
     return SubagentModelConfig(agents=agents)
 
 

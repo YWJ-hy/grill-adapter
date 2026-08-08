@@ -33,9 +33,12 @@ assert contract == {
         "capture",
         "maintenance-audit",
         "maintenance-consolidation",
+        "maintenance-outbox-consolidation",
     ],
     "roleContracts": [
         "researcher-child-side-loader",
+        "capture-child-side-loader",
+        "maintenance-child-side-loader",
         "implementer",
         "reviewer-standards",
         "reviewer-spec",
@@ -44,6 +47,8 @@ assert contract == {
     "failurePaths": [
         "researcher-dispatch",
         "researcher-role-load",
+        "capture-role-load",
+        "maintenance-role-load",
         "maintenance-dispatch",
         "researcher-malformed-output",
         "maintenance-stale-report",
@@ -59,6 +64,10 @@ assert contract == {
         "parent-transcript-inheritance",
         "researcher-role-private-in-coordinator",
         "researcher-role-loaded-by-child",
+        "capture-role-private-in-coordinator",
+        "capture-role-loaded-by-child",
+        "maintenance-roles-private-in-coordinator",
+        "maintenance-roles-loaded-by-children",
         "role-contract-mismatch",
         "proposal-side-effects",
     ],
@@ -93,6 +102,14 @@ grep -Fq 'research_loader_first_call' "$ACCEPTANCE"
 grep -Fq 'research_waits_until_terminal' "$ACCEPTANCE"
 grep -Fq 'ISSUE40_STAGE_RESEARCH_ROLE_LOAD_FAILURE' "$ACCEPTANCE"
 grep -Fq 'role_load_failure_child_calls' "$ACCEPTANCE"
+grep -Fq 'CAPTURE-ROLE-LOADER-PRIVATE-MARKER' "$ACCEPTANCE"
+grep -Fq 'MAINTENANCE-AUDIT-ROLE-LOADER-PRIVATE-MARKER' "$ROOT/acceptance/codex-maintenance-installed.sh"
+grep -Fq 'MAINTENANCE-CONSOLIDATION-ROLE-LOADER-PRIVATE-MARKER' "$ROOT/acceptance/codex-maintenance-installed.sh"
+grep -Fq 'grill-adapter:wiki-outbox-consolidation' "$ROOT/skills/update-wiki/SKILL.md"
+if grep -Fq 'embed the complete role file contents' "$ROOT/acceptance/codex-maintenance-installed.sh"; then
+  printf 'maintenance acceptance must not embed role bodies in the coordinator\n' >&2
+  exit 1
+fi
 grep -Fq 'GRILL_ADAPTER_CODEX_ACCEPTANCE_REPORT' "$ACCEPTANCE"
 grep -Fq '\x1b\[6n' "$ACCEPTANCE"
 grep -Fq '\x1b\[6n' "$ROOT/acceptance/codex-maintenance-installed.sh"

@@ -10,10 +10,11 @@ import sys
 
 root = pathlib.Path(sys.argv[1])
 agent = (root / "agents" / "wiki-capture.md").read_text(encoding="utf-8")
-maintenance_agent = (root / "agents" / "wiki-maintenance.md").read_text(encoding="utf-8")
+outbox_agent = (root / "agents" / "wiki-outbox-consolidation.md").read_text(encoding="utf-8")
 skill = (root / "skills" / "update-wiki" / "SKILL.md").read_text(encoding="utf-8")
 server = (root / "mcp" / "obsidian-wiki" / "src" / "server.ts").read_text(encoding="utf-8")
 outbox = (root / "mcp" / "obsidian-wiki" / "src" / "outbox.ts").read_text(encoding="utf-8")
+role_manifest = (root / "contracts" / "child-role-loader-v1.json").read_text(encoding="utf-8")
 
 for required in (
     "name: wiki-capture",
@@ -46,6 +47,10 @@ for required in (
     "collaboration.wait_agent",
     "300000",
     "Never call the generic",
+    "roleDescriptor",
+    "expectedDigest",
+    "child_role_loader.py load",
+    "role-load-failed",
     "no feature slug",
     "outbox status",
     "outbox review",
@@ -70,7 +75,8 @@ for required in (
     assert required in server, required
 
 for required in (
-    "mode: <audit, consolidation, or outbox-consolidation>",
+    "name: wiki-outbox-consolidation",
+    '"mode":"outbox-consolidation"',
     "obsidian_wiki_outbox_review",
     "obsidian_wiki_outbox_correct",
     "action: merge",
@@ -78,7 +84,23 @@ for required in (
     "Leave independent contracts unchanged",
     "Never exclude or delete automatically",
 ):
-    assert required in maintenance_agent, required
+    assert required in outbox_agent, required
+
+for forbidden in (
+    "obsidian_wiki_maintenance_summary",
+    "obsidian_wiki_consolidation_candidates",
+    "mode: audit",
+    "mode: consolidation",
+):
+    assert forbidden not in outbox_agent, forbidden
+
+for required in (
+    "grill-adapter:wiki-capture",
+    "grill-adapter:wiki-maintenance-audit",
+    "grill-adapter:wiki-maintenance-consolidation",
+    "grill-adapter:wiki-outbox-consolidation",
+):
+    assert required in role_manifest, required
 
 for required in (
     "refs/grill-adapter/outbox/",

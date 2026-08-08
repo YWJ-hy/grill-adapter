@@ -32,9 +32,17 @@ config_path.write_text(
     encoding="utf-8",
 )
 assert load_subagent_model_config(sandbox).agents == {
-    "wiki-maintenance": "haiku",
+    "wiki-maintenance-audit": "haiku",
+    "wiki-maintenance-consolidation": "haiku",
+    "wiki-outbox-consolidation": "haiku",
     "wiki-researcher": "inherit",
 }
+
+config_path.write_text(
+    json.dumps({"subagentModels": {"agents": {"wiki-maintenance-audit": "sonnet"}}}),
+    encoding="utf-8",
+)
+assert load_subagent_model_config(sandbox).agents == {"wiki-maintenance-audit": "sonnet"}
 
 removed_ids = [
     "lan" + "hu-frontend-requirements-analyst",

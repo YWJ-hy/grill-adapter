@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "measurementUnit": "utf8Bytes",
+  "baselineCommit": "ad37625",
   "stageResources": {
     "research": [
       "skills/wiki-research/SKILL.md"
@@ -13,12 +14,10 @@
     "capture": [
       "skills/update-wiki/SKILL.md",
       "skills/update-wiki/references/targeting.md",
-      "skills/update-wiki/references/content-templates.md",
-      "agents/wiki-capture.md"
+      "skills/update-wiki/references/content-templates.md"
     ],
     "maintenance": [
-      "skills/wiki-maintenance/SKILL.md",
-      "agents/wiki-maintenance.md"
+      "skills/wiki-maintenance/SKILL.md"
     ]
   },
   "limits": {
@@ -28,8 +27,8 @@
     "stages": {
       "research": 26500,
       "readiness": 52000,
-      "capture": 28500,
-      "maintenance": 28500
+      "capture": 20000,
+      "maintenance": 19000
     }
   }
 }

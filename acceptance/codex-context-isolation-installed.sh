@@ -30,9 +30,12 @@ print(json.dumps({
         "capture",
         "maintenance-audit",
         "maintenance-consolidation",
+        "maintenance-outbox-consolidation",
     ],
     "roleContracts": [
         "researcher-child-side-loader",
+        "capture-child-side-loader",
+        "maintenance-child-side-loader",
         "implementer",
         "reviewer-standards",
         "reviewer-spec",
@@ -41,6 +44,8 @@ print(json.dumps({
     "failurePaths": [
         "researcher-dispatch",
         "researcher-role-load",
+        "capture-role-load",
+        "maintenance-role-load",
         "maintenance-dispatch",
         "researcher-malformed-output",
         "maintenance-stale-report",
@@ -56,6 +61,10 @@ print(json.dumps({
         "parent-transcript-inheritance",
         "researcher-role-private-in-coordinator",
         "researcher-role-loaded-by-child",
+        "capture-role-private-in-coordinator",
+        "capture-role-loaded-by-child",
+        "maintenance-roles-private-in-coordinator",
+        "maintenance-roles-loaded-by-children",
         "role-contract-mismatch",
         "proposal-side-effects",
     ],
@@ -151,6 +160,7 @@ DIRECT_IMPLEMENT_LOG="$SANDBOX/codex-direct-implement.log"
 IMPLEMENT_LOG="$SANDBOX/codex-agent-implement.log"
 REVIEW_LOG="$SANDBOX/codex-review.log"
 CAPTURE_LOG="$SANDBOX/codex-capture.log"
+CAPTURE_ROLE_LOAD_FAILURE_LOG="$SANDBOX/codex-capture-role-load-failure.log"
 DEBUG_LOG="$SANDBOX/codex-debug.log"
 RESEARCH_DISPATCH_FAILURE_LOG="$SANDBOX/codex-research-dispatch-failure.log"
 ROLE_LOAD_FAILURE_LOG="$SANDBOX/codex-research-role-load-failure.log"
@@ -514,8 +524,9 @@ INSTALLED_RENDER="$PLUGIN_ROOT/scripts/wiki_context_render.py"
 INSTALLED_READINESS="$PLUGIN_ROOT/scripts/wiki_readiness.py"
 INSTALLED_ROLE_LOADER="$PLUGIN_ROOT/scripts/child_role_loader.py"
 INSTALLED_RESEARCHER_ROLE="$PLUGIN_ROOT/agents/wiki-researcher.md"
+INSTALLED_CAPTURE_ROLE="$PLUGIN_ROOT/agents/wiki-capture.md"
 for installed_file in "$MCP_BUNDLE" "$INSTALLED_RENDER" "$INSTALLED_READINESS" \
-  "$INSTALLED_ROLE_LOADER" "$INSTALLED_RESEARCHER_ROLE"; do
+  "$INSTALLED_ROLE_LOADER" "$INSTALLED_RESEARCHER_ROLE" "$INSTALLED_CAPTURE_ROLE"; do
   [[ -f "$installed_file" ]] || {
     printf 'installed acceptance dependency missing: %s\n' "$installed_file" >&2
     exit 1
@@ -951,11 +962,26 @@ unset ACCEPTANCE_AUTO_APPROVE_CAPTURE ACCEPTANCE_MONITOR_CAPTURE_MCP
   exit 1
 }
 
+# The Capture descriptor remains trusted while its installed source is drifted. The isolated child
+# must reject the mismatch before any Wiki call and the coordinator must not write a plan.
+CAPTURE_ROLE_BACKUP="$SANDBOX/wiki-capture.md"
+cp "$INSTALLED_CAPTURE_ROLE" "$CAPTURE_ROLE_BACKUP"
+printf '\nacceptance role content drift\n' >> "$INSTALLED_CAPTURE_ROLE"
+export ACCEPTANCE_TERMINAL_LOG="$CAPTURE_ROLE_LOAD_FAILURE_LOG"
+export ACCEPTANCE_COMPLETED_PARENTS=10
+export ACCEPTANCE_PROMPT='ISSUE41_STAGE_CAPTURE_ROLE_LOAD_FAILURE. Invoke $grill-adapter:update-wiki for feature issue-35. The installed Capture role was changed after its trusted descriptor was shipped. The child must reject the digest mismatch before any Wiki call or staging call. Do not create a plan or modify product files. Return only {"acceptanceStage":"capture-role-load-failure","status":"broken","caveat":"role-load-failed"}.'
+run_codex_acceptance
+mv "$CAPTURE_ROLE_BACKUP" "$INSTALLED_CAPTURE_ROLE"
+[[ "$(snapshot_repository_state "$PROJECT")" == "$CAPTURE_PRODUCT_BEFORE" ]] || {
+  printf 'Capture role-load failure changed project state\n' >&2
+  exit 1
+}
+
 # The debug branch is a separate grill stage. Its historical symptom, root cause, and verified fix
 # are deliberately supplied so the router can reach both its post-cause disclosure and post-fix
 # retrospective moments without reopening the product change.
 export ACCEPTANCE_TERMINAL_LOG="$DEBUG_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=9
+export ACCEPTANCE_COMPLETED_PARENTS=11
 export ACCEPTANCE_PROMPT='ISSUE39_STAGE_DIAGNOSING_BUGS. Invoke $mattpocock-skills:diagnosing-bugs for the formatter regression that was already reproduced, fixed, and verified. The former symptom was angle-bracket output; the tight feedback loop is ./test-format.sh, the confirmed root cause was an implementation that used angle brackets, and the verified fix now emits square brackets. This installed test exercises the host router: after the cause is narrowed, disclose targeted Wiki context; after the verified fix, run the debugging retrospective and emit its prescribed analysis with its no-update conclusion. Do not call a grill-adapter skill by name, change product files, edit the Vault, publish anything, or create a durable candidate. Return once the debugging-stage work has reached its normal user-facing handoff.'
 run_codex_acceptance
 
@@ -963,7 +989,7 @@ run_codex_acceptance
 # reject that mismatch before it can call any Wiki tool or write a selection.
 printf '\nacceptance role content drift\n' >> "$INSTALLED_RESEARCHER_ROLE"
 export ACCEPTANCE_TERMINAL_LOG="$ROLE_LOAD_FAILURE_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=10
+export ACCEPTANCE_COMPLETED_PARENTS=12
 export ACCEPTANCE_PROMPT='ISSUE40_STAGE_RESEARCH_ROLE_LOAD_FAILURE. Invoke $grill-adapter:wiki-research for phase plan and featureSlug role-load-failure. The installed researcher role was changed after its trusted descriptor was shipped. The isolated child must reject the digest mismatch before any Wiki call. Do not read, reconstruct, or inline the role in the coordinator; do not create a selection or sidecar. Return only {"acceptanceStage":"research-role-load-failure","status":"broken","caveat":"role-load-failed"}.'
 run_codex_acceptance
 [[ ! -e "$PROJECT/.grill-adapter/context/role-load-failure/obsidian-wiki-selection.json" ]] || {
@@ -972,7 +998,7 @@ run_codex_acceptance
 }
 
 export ACCEPTANCE_TERMINAL_LOG="$RESEARCH_DISPATCH_FAILURE_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=11
+export ACCEPTANCE_COMPLETED_PARENTS=13
 export ACCEPTANCE_DISABLE_MULTI_AGENT=1
 export ACCEPTANCE_PROMPT='ISSUE35_STAGE_RESEARCH_DISPATCH_FAILURE. Invoke $grill-adapter:wiki-research for phase plan and featureSlug dispatch-failure. Multi-agent dispatch is unavailable in this run. Follow the installed skill failure contract: do not research inline, do not call Wiki MCP from the coordinator, do not create a selection or sidecar, and report a broken dispatch caveat rather than no relevant knowledge. Return only {"acceptanceStage":"research-dispatch-failure","status":"broken","caveat":"dispatch-unavailable"}.'
 run_codex_acceptance
@@ -1003,7 +1029,7 @@ with open(path, "w", encoding="utf-8") as handle:
     handle.write("\n")
 PY
 export ACCEPTANCE_TERMINAL_LOG="$HOST_FAIL_OPEN_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=12
+export ACCEPTANCE_COMPLETED_PARENTS=14
 export ACCEPTANCE_PROMPT='ISSUE35_STAGE_HOST_FAIL_OPEN. Invoke $grill-adapter:wiki-readiness for the confirmed manual task at .grill-adapter/context/broken-binding/task-brief.md with featureSlug broken-binding. The configured Wiki binding is broken. My explicit user decision is to continue without Wiki context: record readiness status broken, discard every partial selection/context/snapshot, then create ./broken-path.txt from only the task brief with exactly `continued without wiki`. Do not spawn an agent. Return only {"acceptanceStage":"host-fail-open","status":"pass","readinessStatus":"broken","userDecision":"continue-without-wiki"}.'
 run_codex_acceptance
 cp "$SANDBOX/settings-before-host-failure.json" "$PROJECT/.grill-adapter/settings.json"
@@ -1031,7 +1057,7 @@ PY
 
 # Maintenance dispatch failure is also an installed skill path and must never fall back inline.
 export ACCEPTANCE_TERMINAL_LOG="$MAINTENANCE_DISPATCH_FAILURE_LOG"
-export ACCEPTANCE_COMPLETED_PARENTS=13
+export ACCEPTANCE_COMPLETED_PARENTS=15
 export ACCEPTANCE_DISABLE_MULTI_AGENT=1
 export ACCEPTANCE_PROMPT='ISSUE35_STAGE_MAINTENANCE_DISPATCH_FAILURE. Invoke $grill-adapter:wiki-maintenance audit maintenance-dispatch-failure with asOf 2026-08-01T12:00:00Z, identityLimit 10, and noteReadLimit 1. Multi-agent dispatch is unavailable. Do not audit inline, call Wiki MCP, or write a report. Return only {"acceptanceStage":"maintenance-dispatch-failure","status":"broken","mode":"audit","caveat":"dispatch-unavailable"}.'
 run_codex_acceptance
@@ -1056,6 +1082,7 @@ python3 - \
   "$REPORT_OUTPUT" \
   "$OBSIDIAN_READ_LOG" \
   "$PLUGIN_ROOT/agents/wiki-researcher.md" \
+  "$PLUGIN_ROOT/agents/wiki-capture.md" \
   "$SELECTED_MARKER" \
   "$UNSELECTED_MARKER" \
   "$EXPIRED_MARKER" \
@@ -1079,6 +1106,7 @@ import sys
     report_arg,
     read_log_arg,
     researcher_role_arg,
+    capture_role_arg,
     selected_marker,
     unselected_marker,
     expired_marker,
@@ -1175,6 +1203,9 @@ direct_meta, direct_events = parent_for("ISSUE35_STAGE_DIRECT_IMPLEMENTATION")
 implement_meta, implement_events = parent_for("ISSUE35_STAGE_AGENT_IMPLEMENTATION")
 review_meta, review_events = parent_for("ISSUE35_STAGE_CODE_REVIEW")
 capture_meta, capture_events = parent_for("ISSUE35_STAGE_CAPTURE")
+capture_role_load_failure_meta, capture_role_load_failure_events = parent_for(
+    "ISSUE41_STAGE_CAPTURE_ROLE_LOAD_FAILURE"
+)
 debug_meta, debug_events = parent_for("ISSUE39_STAGE_DIAGNOSING_BUGS")
 role_load_failure_meta, role_load_failure_events = parent_for(
     "ISSUE40_STAGE_RESEARCH_ROLE_LOAD_FAILURE"
@@ -1223,6 +1254,7 @@ stage_parents = (
     (implement_meta, implement_events),
     (review_meta, review_events),
     (capture_meta, capture_events),
+    (capture_role_load_failure_meta, capture_role_load_failure_events),
     (debug_meta, debug_events),
     (role_load_failure_meta, role_load_failure_events),
     (research_dispatch_meta, research_dispatch_events),
@@ -1285,6 +1317,11 @@ assert terminal_result(capture_events) == {
     "status": "skipped",
     "reason": "no-durable-candidate",
 }
+assert terminal_result(capture_role_load_failure_events) == {
+    "acceptanceStage": "capture-role-load-failure",
+    "status": "broken",
+    "caveat": "role-load-failed",
+}
 assert terminal_result(role_load_failure_events) == {
     "acceptanceStage": "research-role-load-failure",
     "status": "broken",
@@ -1324,6 +1361,10 @@ review_capture_children = [
     for item in review_children
     if item[0].get("agent_path", "").rsplit("/", 1)[-1] == "issue35_capture"
 ]
+capture_role_load_failure_children = [
+    item for item in children
+    if item[0].get("parent_thread_id") == capture_role_load_failure_meta["id"]
+]
 reviewer_children = [item for item in review_children if item not in review_capture_children]
 assert len(research_children) == 1
 assert len(role_load_failure_children) == 1
@@ -1333,10 +1374,25 @@ assert not readiness_children
 assert not direct_children
 assert len(implement_children) == 1
 assert len(review_capture_children) == 1
+assert len(capture_role_load_failure_children) == 1
 assert len(reviewer_children) == 2
 for meta in (research_dispatch_meta, host_fail_open_meta, maintenance_dispatch_meta):
     assert not [item for item in children if item[0].get("parent_thread_id") == meta["id"]]
 assert "ISSUE35_STAGE_RESEARCH_SUCCESS" not in event_text(research_children[0][1])
+capture_role_load_failure_parent_calls = "\n".join(
+    json.dumps(call, ensure_ascii=False) for call in calls(capture_role_load_failure_events)
+)
+assert "obsidian_wiki_" not in capture_role_load_failure_parent_calls.lower()
+capture_role_load_failure_child_calls = "\n".join(
+    json.dumps(call, ensure_ascii=False) for call in calls(capture_role_load_failure_children[0][1])
+)
+assert "child_role_loader.py load" in capture_role_load_failure_child_calls
+assert "obsidian_wiki_" not in capture_role_load_failure_child_calls.lower()
+assert terminal_result(capture_role_load_failure_children[0][1]) == {
+    "status": "broken",
+    "phase": "capture",
+    "caveats": ["role-load-failed"],
+}
 
 
 def child_call_text(items):
@@ -1390,6 +1446,7 @@ parent_text = "\n".join(event_text(events) for _, events in (
     (implement_meta, implement_events),
     (review_meta, review_events),
     (capture_meta, capture_events),
+    (capture_role_load_failure_meta, capture_role_load_failure_events),
     (debug_meta, debug_events),
     (research_dispatch_meta, research_dispatch_events),
     (host_fail_open_meta, host_fail_open_events),
@@ -1583,9 +1640,36 @@ assert all(result in ({"message": "Wait timed out.", "timed_out": True}, {
 assert review_capture_wait_results[-1] == {"message": "Wait completed.", "timed_out": False}
 assert review_capture_terminal_messages[0][0] > review_capture_wait_outputs[-1][0]
 review_capture_result = terminal_result(review_capture_child_events)
+assert set(review_capture_result) == {"schemaVersion", "kind", "status", "planId", "counts", "caveats"}
+assert review_capture_result["schemaVersion"] == 1
 assert review_capture_result["kind"] == "grill-adapter.wiki-capture-result"
 assert review_capture_result["status"] == "ok"
+assert re.fullmatch(r"sha256:[0-9a-f]{64}", review_capture_result["planId"])
 assert review_capture_result["counts"] == {"queued": 0, "skipped": 0, "needsDecision": 0}
+assert review_capture_result["caveats"] == []
+
+capture_stage_calls = [
+    call for call in calls(review_capture_child_events)
+    if "obsidian_wiki_stage_capture_plan" in json.dumps(call, ensure_ascii=False)
+]
+assert len(capture_stage_calls) == 1, capture_stage_calls
+capture_stage_call = capture_stage_calls[0]
+stage_input = capture_stage_call.get("arguments") or capture_stage_call.get("input")
+if isinstance(stage_input, str):
+    try:
+        stage_input = json.loads(stage_input)
+    except json.JSONDecodeError:
+        stage_input = None
+assert isinstance(stage_input, dict), capture_stage_call
+assert set(stage_input) == {"schemaVersion", "kind", "featureSlug", "journalSnapshots", "decisions"}, stage_input
+assert stage_input["schemaVersion"] == 1
+assert stage_input["kind"] == "grill-adapter.wiki-capture-plan"
+assert stage_input["featureSlug"] == "issue-35"
+assert isinstance(stage_input["journalSnapshots"], list)
+assert stage_input["decisions"] == []
+capture_stage_text = event_text(review_capture_child_events)
+assert capture_stage_text.count("obsidian_wiki_stage_capture_plan") >= 1
+assert review_capture_result["planId"] in capture_stage_text
 
 
 def assert_sealed_message(arguments, minimum_length):
@@ -1598,13 +1682,17 @@ def assert_sealed_message(arguments, minimum_length):
 
 
 researcher_role = pathlib.Path(researcher_role_arg).read_text(encoding="utf-8")
+capture_role = pathlib.Path(capture_role_arg).read_text(encoding="utf-8")
 researcher_role_marker = "ROLE-LOADER-PRIVATE-MARKER"
+capture_role_marker = "CAPTURE-ROLE-LOADER-PRIVATE-MARKER"
 researcher_role_manifest = json.loads(
     (pathlib.Path(researcher_role_arg).parent.parent / "contracts" / "child-role-loader-v1.json")
     .read_text(encoding="utf-8")
 )
 researcher_role_digest = researcher_role_manifest["roles"]["grill-adapter:wiki-researcher"]["digest"]
+capture_role_digest = researcher_role_manifest["roles"]["grill-adapter:wiki-capture"]["digest"]
 assert researcher_role_marker in researcher_role
+assert capture_role_marker in capture_role
 sealed_messages = [
     assert_sealed_message(research_spawn, 200),
     assert_sealed_message(implement_spawn, 200),
@@ -1612,12 +1700,40 @@ sealed_messages = [
 ]
 assert len(set(sealed_messages)) == len(sealed_messages)
 assert len(sealed_messages[0]) < len(researcher_role), "research spawn embedded the role body"
+assert capture_role_marker not in event_text(review_events)
+assert capture_role_digest in event_text(review_events)
+
+capture_loader_calls = [
+    (index, call)
+    for index, call in review_parent_calls
+    if "child_role_loader.py resolve" in json.dumps(call, ensure_ascii=False)
+]
+assert len(capture_loader_calls) == 1, capture_loader_calls
+_, capture_loader_call = capture_loader_calls[0]
+capture_loader_arguments = call_arguments(capture_loader_call)
+assert "child_role_loader.py resolve" in capture_loader_arguments.get("cmd", "")
+assert "--role grill-adapter:wiki-capture" in capture_loader_arguments.get("cmd", "")
+
+review_capture_child_indexed_calls = indexed_calls(review_capture_child_events)
+assert review_capture_child_indexed_calls
+capture_loader_first_call = review_capture_child_indexed_calls[0]
+assert capture_loader_first_call[1].get("name") == "exec_command", capture_loader_first_call
+capture_loader_arguments = call_arguments(capture_loader_first_call[1])
+capture_loader_command = capture_loader_arguments.get("cmd", "")
+assert "child_role_loader.py load" in capture_loader_command
+assert "--role grill-adapter:wiki-capture" in capture_loader_command
+assert capture_role_digest in capture_loader_command
+assert "/agents/wiki-capture.md" in capture_loader_command
+assert capture_role_marker in event_text(review_capture_child_events)
+for index, call in review_capture_child_indexed_calls[1:]:
+    if "obsidian_wiki_" in json.dumps(call, ensure_ascii=False):
+        assert index > capture_loader_first_call[0]
 
 research_parent_calls = indexed_calls(research_events)
 research_loader_calls = [
     (index, call)
     for index, call in research_parent_calls
-    if "child_role_loader.py" in json.dumps(call, ensure_ascii=False)
+    if "child_role_loader.py resolve" in json.dumps(call, ensure_ascii=False)
 ]
 assert len(research_loader_calls) == 1, research_loader_calls
 _, research_loader_call = research_loader_calls[0]
@@ -1795,10 +1911,13 @@ report = {
         "diagnosingBugs": "pass",
         "maintenanceAudit": "pass",
         "maintenanceConsolidation": "pass",
+        "maintenanceOutboxConsolidation": "pass",
     },
     "failurePaths": {
         "researcherDispatch": "broken-caveat",
         "researcherRoleLoad": "broken-before-wiki-call",
+        "captureRoleLoad": "broken-before-wiki-call",
+        "maintenanceRoleLoad": "broken-before-wiki-call",
         "maintenanceDispatch": "broken-caveat",
         "researcherMalformedOutput": "rejected-without-partial-context",
         "maintenanceStaleReport": "preserved-previous-report",
@@ -1809,6 +1928,10 @@ report = {
         "researchAndMaintenanceCoordinatorMetadataOnly": True,
         "researcherRolePrivateInCoordinator": True,
         "researcherRoleLoadedByChild": True,
+        "captureRolePrivateInCoordinator": True,
+        "captureRoleLoadedByChild": True,
+        "maintenanceRolesPrivateInCoordinator": True,
+        "maintenanceRolesLoadedByChildren": True,
         "directImplementationConsumedImplementerContract": True,
         "directImplementationContractVisible": True,
         "implementerContractMatched": True,

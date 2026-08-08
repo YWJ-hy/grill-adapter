@@ -5,6 +5,22 @@
     "grill-adapter:wiki-researcher": {
       "source": "agents/wiki-researcher.md",
       "digest": "sha256:aa92da6028c35bb42e3860a6401692eff445cbd5de78e4c5cac72d1eada1b5be"
+    },
+    "grill-adapter:wiki-capture": {
+      "source": "agents/wiki-capture.md",
+      "digest": "sha256:389bccbd43fcd968691a6035a873915c1f9fcf2a807d3883e2cc835048366185"
+    },
+    "grill-adapter:wiki-maintenance-audit": {
+      "source": "agents/wiki-maintenance-audit.md",
+      "digest": "sha256:9717152bdb26036f91ad57f4ed2541093a9d2bf34d13fcf2473a8dc07bd236f1"
+    },
+    "grill-adapter:wiki-maintenance-consolidation": {
+      "source": "agents/wiki-maintenance-consolidation.md",
+      "digest": "sha256:0a56957d96f3e26e1d2109557a747af6f11d48989a4dbb79c48ee2c9f1695be6"
+    },
+    "grill-adapter:wiki-outbox-consolidation": {
+      "source": "agents/wiki-outbox-consolidation.md",
+      "digest": "sha256:020025203c5f705c01334b7edeeb2cf3d30136326e9b22f38d9302bb3fe5a698"
     }
   }
 }

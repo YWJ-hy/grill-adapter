@@ -382,7 +382,7 @@ Codex 能兼容读取 Claude marketplace，但真实安装探针显示，仅靠 
 - `/update-wiki` 默认派生恰好一个无继承主对话的 `wiki-capture` Agent；候选/evidence/Note 正文与 durable、atomic、ownership、neutrality 判断留在 child，主 session 只接收 plan ID 与计数。
 - child 只能提交一次 snapshot-bound Capture Plan。确定性执行层重验 journal/candidate digest、binding + root authorization、schema、stable/ADR/Skill Card identity、typed links、CAS hash 与 path，再把草稿写入按 project identity 分区的 machine-local Outbox；plan-owned ref/manifest 中断可由相同输入恢复。
 - 完整草稿由 Wiki repository hidden refs 下的 immutable Git commits 保护；临时 worktree 用后即删，正式 base worktree 始终 clean。正式 Disclose/Carry/Bind 忽略 queued 与 `pr-open`；Capture targeting 与隔离 Outbox consolidation 才能读取当前项目 overlay。
-- `status`/`review`/`correct` 只作用于当前项目；review/publish 复用 maintenance role 做语义等价合并与矛盾 defer，所有 exclude/defer/delete/revise/merge 都追加 superseding entry。显式 `publish` 不接 feature slug，以 `planDigest` 批量发布 eligible entries；same-path/identity 冲突 defer 而不阻断无关 path/repository。用户可见状态只有 `queued`、`pr-open`、`active`，SessionStart 至多一条 counts-only reminder。
+- `status`/`review`/`correct` 只作用于当前项目；review/publish 使用独立 `wiki-outbox-consolidation` role 做语义等价合并与矛盾 defer，所有 exclude/defer/delete/revise/merge 都追加 superseding entry。Capture、audit、candidate consolidation 与 Outbox consolidation 的 Codex coordinator 只传 role descriptor；child 在首个 Wiki 调用前校验 source/digest 后加载当前 mode 的单独 contract。显式 `publish` 不接 feature slug，以 `planDigest` 批量发布 eligible entries；same-path/identity 冲突 defer 而不阻断无关 path/repository。用户可见状态只有 `queued`、`pr-open`、`active`，SessionStart 至多一条 counts-only reminder。
 - 2026-07 的 direct proposal/apply + feature-scoped applied-receipt publisher 被本决策取代为正常流程；原实现只保留 migration 与精确 legacy recovery。
 
 **理由**

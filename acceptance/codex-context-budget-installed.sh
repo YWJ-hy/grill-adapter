@@ -81,10 +81,11 @@ fi
 
 analyze_captures() {
   python3 - "$CAPTURES" "$INSTALLED_ROOT" "$THRESHOLDS" "$OUTPUT" \
-    "$ROOT/contracts/codex-context-budget-v1.json" <<'PY'
+    "$ROOT/contracts/codex-context-budget-v1.json" "$ROOT" <<'PY'
 import json
 import pathlib
 import re
+import subprocess
 import sys
 
 captures = pathlib.Path(sys.argv[1]).resolve()
@@ -92,6 +93,7 @@ installed_root = pathlib.Path(sys.argv[2]).resolve()
 threshold_path = pathlib.Path(sys.argv[3]).resolve()
 output_arg = sys.argv[4]
 contract_path = pathlib.Path(sys.argv[5]).resolve()
+repo_root = pathlib.Path(sys.argv[6]).resolve()
 
 
 def fail(message: str) -> None:
@@ -202,6 +204,34 @@ for name in stage_names:
         if not (installed_root / relative).is_file():
             fail(f"installed stage resource is missing: {relative}")
 
+baseline_commit = contract.get("baselineCommit")
+if not isinstance(baseline_commit, str) or not baseline_commit:
+    fail("default budget contract must declare baselineCommit")
+try:
+    baseline_contract = json.loads(subprocess.check_output(
+        ["git", "-C", str(repo_root), "show", f"{baseline_commit}:contracts/codex-context-budget-v1.json"],
+        text=True,
+    ))
+except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+    fail(f"cannot load context-budget baseline {baseline_commit}: {exc}")
+baseline_resources = baseline_contract.get("stageResources")
+if not isinstance(baseline_resources, dict) or set(baseline_resources) != set(stage_names):
+    fail("context-budget baseline must define exactly the four stage resource rosters")
+
+def baseline_stage_bytes(stage_name):
+    parts = [f'<context-budget-stage name="{stage_name}">']
+    for relative in baseline_resources[stage_name]:
+        try:
+            body = subprocess.check_output(
+                ["git", "-C", str(repo_root), "show", f"{baseline_commit}:{relative}"],
+                text=True,
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            fail(f"baseline resource missing for {stage_name}: {relative}: {exc}")
+        parts.extend((f'<resource path="{relative}">', body, "</resource>"))
+    parts.append("</context-budget-stage>")
+    return utf8_size("\n".join(parts))
+
 fixed_measurements = {
     "globalPluginSkillCatalog": {
         "bytes": utf8_size(catalog_payload),
@@ -248,10 +278,15 @@ for name in stage_names:
     stages[name] = {
         "bytes": total,
         "limit": limit,
+        "baselineCommit": baseline_commit,
+        "baselineBytes": baseline_stage_bytes(name),
         "status": status,
         "source": "codex debug prompt-input (installed stage resources)",
         "resources": stage_resources[name],
     }
+    stages[name]["reductionBytes"] = stages[name]["baselineBytes"] - total
+    if name in {"capture", "maintenance"} and stages[name]["reductionBytes"] <= 0:
+        fail(f"stage {name} did not decrease from baseline {baseline_commit}")
     if status == "fail":
         violations.append({"source": f"stages.{name}", "bytes": total, "limit": limit})
 
